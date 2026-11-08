@@ -100,6 +100,10 @@ static HRESULT APIENTRY lock_resource(HANDLE h,D3DDDIARG_LOCK *p) {
  if(p->Flags.Value&~(1u|0x20u|0x200u))return E_NOTIMPL;
  if(p->Flags.AreaValid&&(p->Area.left||p->Area.top||p->Area.right!=(LONG)r->logical_width||p->Area.bottom!=(LONG)r->logical_height))return E_NOTIMPL;
  memset(&q,0,sizeof(q));q.hAllocation=r->allocation;q.Flags.ReadOnly=p->Flags.ReadOnly;q.Flags.DonotWait=p->Flags.DoNotWait;
+ /* No subregion/page list is supplied: the runtime must lock the full
+  * allocation (D3DDDICB_LOCKFLAGS.LockEntire), including rounded padding.
+  * This changes neither synchronization nor GPU ownership. */
+ q.Flags.LockEntire=1;
  {
   struct read_lock_attempt attempt={d,&q,{0}};struct geo_readback_wait_ops ops={&attempt,read_lock_once,read_lock_clock,read_lock_pause};
   /* Microsoft D3DDDICB_LOCKFLAGS.DonotWait: return WASSTILLDRAWING while
@@ -131,6 +135,22 @@ static HRESULT APIENTRY blt(HANDLE h,const D3DDDIARG_BLT *p) {
  if(p->SrcRect.left||p->SrcRect.top||p->DstRect.left||p->DstRect.top||
     p->SrcRect.right!=(LONG)src->logical_width||p->SrcRect.bottom!=(LONG)src->logical_height||
     p->DstRect.right!=(LONG)dst->logical_width||p->DstRect.bottom!=(LONG)dst->logical_height)return E_NOTIMPL;
+ if(src->desc.usage==GEO_USAGE_RENDER_TARGET){
+  struct geo_copy_packet packet={GEO_COPY_MAGIC,sizeof(packet),1,0,1,800,600,0};D3DDDICB_RENDER q;
+  if(src->desc.format!=GEO_FORMAT_A8R8G8B8||dst->desc.format!=GEO_FORMAT_A8R8G8B8||
+     src->logical_width!=800||src->logical_height!=600||dst->logical_width!=800||dst->logical_height!=600||
+     d->command_bytes<sizeof(packet)||d->allocation_count<2||!d->commands||!d->allocations)return E_NOTIMPL;
+  if(!geo_progress_write(8,0,src->desc.usage))return E_FAIL;
+  memcpy(d->commands,&packet,sizeof(packet));memset(d->allocations,0,2*sizeof(*d->allocations));
+  d->allocations[0].hAllocation=dst->allocation;d->allocations[0].WriteOperation=1;
+  d->allocations[1].hAllocation=src->allocation;
+  memset(&q,0,sizeof(q));q.CommandLength=sizeof(packet);q.NumAllocations=2;q.hContext=d->context;
+  hr=d->cb.pfnRenderCb(d->runtime,&q);
+  if(SUCCEEDED(hr)){d->commands=q.pNewCommandBuffer;d->command_bytes=q.NewCommandBufferSize;
+   d->allocations=q.pNewAllocationList;d->allocation_count=q.NewAllocationListSize;
+   d->patches=q.pNewPatchLocationList;d->patch_count=q.NewPatchLocationListSize;}
+  geo_progress_write(15,(UINT)hr,GEO_COPY_MAGIC);return hr;
+ }
  if(!geo_progress_write(8,0,src->desc.usage))return E_FAIL;
  memset(&a,0,sizeof(a));a.hResource=src;a.Flags.ReadOnly=1;
  if(!geo_progress_write(9,0,src->desc.usage))return E_FAIL;

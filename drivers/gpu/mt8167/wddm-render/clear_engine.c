@@ -8,7 +8,7 @@ static int serial_after(uint32_t a,uint32_t b) {
 int32_t geo_engine_init(struct geo_engine *e,const struct geo_owner_ops *o) {
  if(!e||!o||o->size!=sizeof(*o)||o->version!=GEO_OWNER_OPS_VERSION||o->reserved||
     (o->capabilities&GEO_OWNER_REQUIRED)!=GEO_OWNER_REQUIRED||!o->context||!o->create||!o->bind||
-    !o->unbind||!o->destroy||!o->prepare||!o->discard_prepared||!o->submit)return GEO_UNSUPPORTED;
+    !o->unbind||!o->destroy||!o->prepare||!o->discard_prepared||!o->submit||!o->prepare_copy)return GEO_UNSUPPORTED;
  memset(e,0,sizeof(*e));e->owner=*o;return GEO_OK;
 }
 int32_t geo_create(struct geo_engine *e,struct geo_allocation *a,const struct geo_surface_desc *d) {
@@ -88,6 +88,21 @@ int32_t geo_prepare_draw_begin(struct geo_engine *e,struct geo_allocation *a,str
  j=&e->jobs[i];j->generation++;j->allocation=a;j->vertex=v;j->kind=GEO_DRAW_MAGIC;
  j->context=0;j->open_handle=0;j->vertex_open_handle=0;j->texture=0;j->texture_open_handle=0;j->owner_job=0;j->state=4;
  a->references++;v->references++;
+ t->magic=GEO_TICKET_MAGIC;t->slot=i;t->generation=j->generation;t->reserved=0;return GEO_OK;
+}
+int32_t geo_prepare_copy_begin(struct geo_engine *e,struct geo_allocation *d,struct geo_allocation *s,struct geo_dma_ticket *t) {
+ uint32_t i;struct geo_job *j;
+ if(!e||!d||!s||d==s||!t||!e->owner.prepare_copy||d->desc.usage!=GEO_USAGE_STAGING||s->desc.usage!=GEO_USAGE_RENDER_TARGET||
+    d->desc.format!=GEO_FORMAT_A8R8G8B8||s->desc.format!=GEO_FORMAT_A8R8G8B8||
+    d->desc.width!=800||d->desc.height!=600||d->desc.pitch!=3200||
+    s->desc.width!=800||s->desc.height!=600||s->desc.pitch!=3200)return GEO_INVALID;
+ if(e->poisoned||d->poisoned||s->poisoned)return GEO_POISONED;
+ if(!d->surface||!s->surface)return GEO_NOT_READY;
+ for(i=0;i<GEO_MAX_JOBS;i++)if(!e->jobs[i].state&&e->jobs[i].generation!=UINT32_MAX)break;
+ if(i==GEO_MAX_JOBS||d->references==UINT32_MAX||s->references==UINT32_MAX)return GEO_BUSY;
+ j=&e->jobs[i];j->generation++;j->allocation=d;j->vertex=s;j->texture=0;
+ j->context=0;j->open_handle=0;j->vertex_open_handle=0;j->texture_open_handle=0;
+ j->owner_job=0;j->kind=GEO_COPY_MAGIC;j->state=4;d->references++;s->references++;
  t->magic=GEO_TICKET_MAGIC;t->slot=i;t->generation=j->generation;t->reserved=0;return GEO_OK;
 }
 int32_t geo_prepare_texture_begin(struct geo_engine *e,struct geo_allocation *a,struct geo_allocation *v,struct geo_allocation *x,struct geo_dma_ticket *t) {
