@@ -1,0 +1,7 @@
+# Copy338：予約後Render失敗の継続拒否
+
+正常337全runtime・visibility IRQ・command_busy・正規Stop/TDR退役を1a236645のまま採用。338 runtime変更はkmd_clear.cだけ。Copy予約後prepare_pendingまたはticket書込みに失敗すると、実IRQ同期下でengine.poisonedを立て、sessionをFAILEDへ閉じる。begin_copy同期が失敗して予約実行有無が不明な場合も同じgateへ。GeoSessionEnterが通常Render/Submitを拒否する。参照/tokenは即解放せず既存apply_proof→geo_retire_after_owner_drainへ残す。
+
+実関数を抽出したASan/UBSan9caseで正常継続、予約前拒否、prepare失敗、両ticket個別失敗、同期実行前/後の失敗、poison同期失敗時session閉鎖を確認。未実機、reset rootfix証明ではない。
+
+増分recipe `tools/ci/build-ge8300-copy338-gate.py` はsealed337 package/archivesをhash固定し、kmd_clear1TUだけcompile、KMD他12objectとnative67全archive/UMD/PCO/FW/3client/certを保持。SYS再link/署名、INF0.0.3.38/CAT再生成とmembership verify。SDK/PCO全再build無し。全source通常recipe/source gateは統合treeに保持する。source baseと署名binary sourceはmanifestで区別する。

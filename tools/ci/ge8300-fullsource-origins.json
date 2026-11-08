@@ -152,9 +152,9 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/kmd_clear.c",
-      "source_commit": "ab744bc6278fc1ed099e42f31b07444a2c860b61",
-      "role": "Integrated real Copy336 all-consumer/ownership contract",
-      "sha256": "a079fd0595afbc1c4f7a6f9cf6287348a6582e09feddc8890c930ba84ff6ecd5",
+      "source_commit": "2c0cbca4373f93644423b97428cb8d86dbbf3ebe",
+      "role": "Copy338 post-reservation failure session/engine gate; refs/token retained",
+      "sha256": "0c8a477eb4ee9b20fd1dd76d13a3764d76894d00cdd2524459010436bfb84b46",
       "previous_origins": [
         {
           "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
@@ -172,6 +172,11 @@
               "role": "Reviewed ABI4 shader/native runtime source329"
             }
           ]
+        },
+        {
+          "source_commit": "ab744bc6278fc1ed099e42f31b07444a2c860b61",
+          "role": "Integrated real Copy336 all-consumer/ownership contract",
+          "sha256": "a079fd0595afbc1c4f7a6f9cf6287348a6582e09feddc8890c930ba84ff6ecd5"
         }
       ]
     },
