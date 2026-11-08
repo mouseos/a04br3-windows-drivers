@@ -9,7 +9,7 @@ static int enter(struct a04_usb_owner *o)
 int a04_usb_owner_acquire_locked(struct a04_usb_owner *o)
 {
  int r=-1, gpio_attempted=0; unsigned clk1,clk2; uint16_t rail;
- 
+
  if(!o->online || o->leased || o->poisoned || !o->verify_upstream || !o->top_read || !o->top_write || !o->pmic || o->pmic->poisoned)goto done;
  if(o->probe_source) {
   int admission=o->probe_source(o->context);

@@ -43,6 +43,20 @@ try{
  & "$out\musb_physical_test.exe";if($LASTEXITCODE){throw "Physical backend test failed at line $LASTEXITCODE"}
  'WDK81_MUSB_PHYSICAL_ADMISSION_SHADOW_RUNDOWN_PASS'
 
+ # Production parent methods compiled/executed with real WDK types and fake
+ # register operations. The included .inc is the production provider itself.
+ $parentHost=@();foreach($name in @('usb_owner','pmic_read','gpio22')){
+  $source=if($name -eq 'pmic_read'){"$root\drivers\input\a04br3-buttons\pmic_read.c"}elseif($name -eq 'gpio22'){"$root\drivers\usb\mt8167-usb20\gpio22.c"}else{"$root\drivers\bus\mt8167-shared\usb_owner.c"}
+  $obj="$out\host-$name.obj";$parentHost+=$obj
+  & clang --target=x86_64-pc-windows-msvc -D_AMD64_ -DAMD64 @common -c $source -o $obj
+  if($LASTEXITCODE){throw 'Parent model dependency failed'}
+ }
+ & clang --target=x86_64-pc-windows-msvc -D_AMD64_ -DAMD64 @common -c "$root\tests\usb\musb_parent_test.c" -o "$out\musb_parent_test.obj"
+ if($LASTEXITCODE){throw 'Parent provider test compile failed'}
+ & lld-link /subsystem:console /machine:x64 /entry:main /nodefaultlib /opt:ref @parentHost "$out\musb_parent_test.obj" "/out:$out\musb_parent_test.exe"
+ if($LASTEXITCODE){throw 'Parent provider test link failed'}
+ & "$out\musb_parent_test.exe";if($LASTEXITCODE){throw "Parent provider test failed at line $LASTEXITCODE"}
+ 'WDK81_PRODUCTION_MUSB_PARENT_QUERY_OBSERVE_STOP_PROOF_PASS'
  # Compile opted-in parent glue against WDK/WDF 8.1. Do not link/replace the
  # current parent: main must merge this switch into its newer parent source.
  & clang --target=thumbv7-pc-windows-msvc -D_ARM_ -DARM -mfpu=none -mno-unaligned-access @common -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DA04_SHARED_USBPORT_CHILD=1 -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -DA04_SHARED_BUTTON_D0_EXPERIMENT=1 -DA04_SHARED_APMIXED_RESOURCE=1 -DA04_USB_GPIO22_SOURCE_EXPERIMENT=1 -c "$root\drivers\bus\mt8167-shared\wdf_parent_probe.c" -o "$out\parent-usbport-optin.obj"
