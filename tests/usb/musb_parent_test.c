@@ -60,6 +60,9 @@ int main(void){A04_PARENT_CONTEXT c;struct a04_pmic_read bus;MT_MUSB_OBSERVATION
  CHECK(!NT_SUCCESS(ParentMusbAcquire((PVOID)&c,6))&&!c.usb.leased);
  if(!NT_SUCCESS(ParentMusbAcquire((PVOID)&c,7)))return 100+c.musb.stage;CHECK(c.musb.held&&c.usb.leased);
  CHECK(NT_SUCCESS(ParentMusbObserve((PVOID)&c,&o))&&o.oc_clear&&(o.valid&MT_MUSB_STOP_PROOF)==MT_MUSB_STOP_PROOF);
+ phymem[0x800+0x6d]=0x3e;old=writes;
+ CHECK(!NT_SUCCESS(ParentMusbVbus((PVOID)&c,TRUE))&&writes==old&&!c.musb.powered);
+ CHECK(NT_SUCCESS(ParentMusbObserve((PVOID)&c,&o))&&!(o.valid&MT_MUSB_VBUS));phymem[0x800+0x6d]=0;
  CHECK(NT_SUCCESS(ParentMusbVbus((PVOID)&c,TRUE))&&c.musb.powered);
  CHECK(NT_SUCCESS(ParentMusbObserve((PVOID)&c,&o))&&o.vbus_on&&(o.evidence&MT_MUSB_NO_FORCED_VBUS));
  CHECK(NT_SUCCESS(ParentMusbVbus((PVOID)&c,TRUE))); /* idempotent source */

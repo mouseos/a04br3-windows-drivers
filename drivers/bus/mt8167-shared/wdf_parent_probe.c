@@ -1840,7 +1840,9 @@ static VOID MusbRoleWork(WDFWORKITEM work)
   c->musbChildCreated=2;retire=c->musbChild;WdfObjectReference(retire);
  }
  ParentUnlock(c);
- if(retire){(void)WdfPdoMarkMissing(retire);WdfObjectDereference(retire);}
+ if(retire){status=WdfPdoMarkMissing(retire);
+  if(!NT_SUCCESS(status)){ExAcquireFastMutex(&c->pwrapLock);if(c->musbChild==retire)c->musbChildCreated=1;ExReleaseFastMutex(&c->pwrapLock);}
+  WdfObjectDereference(retire);}
  /* PC cable never creates a failing USBPORT devnode. A later host-role
   * cable is observed read-only and enumerates a fresh standard stack. */
  if(ready){status=ParentAddProbeChild(dev,L"MT8167\\USB20",L"0",0x11100000u);

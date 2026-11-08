@@ -78,6 +78,8 @@ int main(void)
  /* Observe may block: cancellation there must win before Begin's first write. */
  CHECK(!MtMusbSubmit(r,12,&e,0,&p,data));test_cancel_context=r;test_cancel_cookie=12;Work();
  CHECK(r->job.state==MT_JOB_IDLE&&!r->hardware_job);
+ CHECK(!MtMusbRootQueue(r,A04_HUB_POWER_OFF));Work();
+ CHECK(!MtMusbObserve(r,&observation,&c,&done,&result)&&!result&&observation.source_off_verified);
  CHECK(MtMusbClose(r)&&test_releases==1&&test_unmaps==2&&test_refs==0);
  /* Stop failure retains everything; never calls Release or unmaps. */
  Fixture();CHECK(NT_SUCCESS(MtMusbOpen((PDEVICE_OBJECT)1,&r)));Work();

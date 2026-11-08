@@ -3,7 +3,7 @@
 USB1011のhelperから独立したWDM miniport `usbport_hcd.c` を追加した。
 `DriverEntry`が実USBPORTのGetHciMnを確認してRegisterUSBPortDriverを呼ぶ。
 root hub PDOとそのPnP/USBDI処理はinbox USBPORTへ委ねる。
-HCD1013では物理backend consumerと非同期橋渡しを接続した。実5V・過電流・確定停止を証明する親producerは未資格で、標準hubの実起動や実機転送は未検証。
+HCD1014では親のboard観測producerまで接続した。初回の実5V、過電流回路の実作動、標準hub起動と実機転送はmain確認まで未完了。
 HID経路のSYS/INFを変更せず、別SYS/INFにしている。opt-in親はUSBPORT20という別devnodeを生成し、旧HID LowerFiltersを継承しない。
 
 ## 原本と解析の区別
@@ -88,7 +88,10 @@ DMA8channel/QMU非稼働、IRQ mask、16 endpointのFIFO/REQ停止、SESSION off
 停止が実証できない時は成功を返さず、driver-owned shadowも既存consumerが保持する。
 source latch OFFとconnector comparator OFFを分離し、PCから外部電圧がある場合に0Vを捏造しない。
 同世代stop証明と再確認が成立した時だけRelease/unmap。
-全power/GPIO/clockは同一pwrapLock下の既存usb_ownerを使い、v1のborrow/releaseを遮断する。
+全power/GPIO/clockは同一pwrapLock下の既存usb_ownerを使い、standard profileのv1 acquire/vbus/health/releaseを拒否する。
+Observeはsource稼働中のrole/OC/VBUS異常でGPIO22をOFFにする。PHY校正/SESSIONの待機間もconsumerが
+Observeを呼ぶため、待機中に資格の監視を止めない。親D0終了ではGPIO遮断のみを行い、controller MMIOの
+停止はconsumer worker rundown後のStopAndProveに限定する。retained leaseがあればD0ExitはBUSY。
 
 1013の16KiB shadow、cookie/ticket/epoch、5秒deadline/100ms proof鮮度、USBPORT-owned
 async poll、Abort/Close/Stop detach/rundownを保持する。明示0xE2/fastfailは追加していない。
@@ -139,7 +142,7 @@ owner ABI2はopt-in子から親へ転送する。GPIO21 OC観測・unforced DEVC
 
 ## 検証と未達
 
-`make test-mt8167-musb-async test-mt8167-usb-root-hub test-mt8167-usb-generic-pio` がproduction PIOをASan/UBSanで実行する。
+`make test-mt8167-musb-owner test-mt8167-usb-faults` がproduction PIOをASan/UBSanで実行する。
 `tools/ci/build-mt8167-usbport-hcd-incremental.ps1` は既存WDK81 cacheで
 10TU ARM compile/link、実WDK型x64 callback/物理backend合成試験、opt-in親TU compile、SYS/CAT署名を行う。
 親TUはcompileだけで、現親の置換・配備をしていない。

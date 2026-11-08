@@ -1590,3 +1590,15 @@ build/gpu_parent_spm_resources_test: tests/gpu_parent_spm_resources_test.c drive
 .PHONY: test-gpu-parent-spm-resources
 test-gpu-parent-spm-resources: build/gpu_parent_spm_resources_test
 	./build/gpu_parent_spm_resources_test
+
+.PHONY: test-mt8167-musb-owner
+test-mt8167-musb-owner:
+	mkdir -p build
+	$(CC) $(CFLAGS) tests/usb/musb_board_proof_test.c -o build/mt8167_musb_board_proof_test
+	./build/mt8167_musb_board_proof_test
+	$(CC) $(CFLAGS) tests/usb/musb_async_test.c drivers/usb/mt8167-usb20/musb_async.c -o build/mt8167_musb_async_test
+	./build/mt8167_musb_async_test
+	$(CC) $(CFLAGS) -DA04_MUSB_HOST_CORE_EXPERIMENT=1 -Idrivers/usb/mt8167-usb20 tests/usb/root_hub_test.c drivers/usb/mt8167-usb20/root_hub.c drivers/usb/mt8167-usb20/host_core.c -o build/mt8167_musb_root_test
+	./build/mt8167_musb_root_test
+	$(CC) $(CFLAGS) -Idrivers/usb/mt8167-usb20 tests/usb/pio_transfer_test.c drivers/usb/mt8167-usb20/pio_transfer.c -o build/mt8167_musb_pio_test
+	./build/mt8167_musb_pio_test
