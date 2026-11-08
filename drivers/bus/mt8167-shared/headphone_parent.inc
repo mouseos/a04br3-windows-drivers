@@ -164,7 +164,7 @@ static NTSTATUS ParentHpReadiness(PVOID p,ULONG *flags)
  if(!flags||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;*flags=0;
  if(ParentLock(c))return STATUS_DEVICE_NOT_READY;
  if(c->hpCalibrationValid)*flags|=A04_HP_READY_MEASURED;
- if(!c->regs.poisoned&&c->regs.online&&c->gpio&&mt8167_accdet_read_socket(&io,&jack)==MT8167_ACCDET_OK)*flags|=A04_HP_READY_SENSE;
+ if(!ParentAccdetLeaseLive(c)&&mt8167_accdet_read_socket(&io,&jack)==MT8167_ACCDET_OK)*flags|=A04_HP_READY_SENSE;
  if(c->audio.leased&&!c->audio.poisoned&&!c->voice.active&&!c->voice.poisoned&&c->codecDomain.held&&!c->codecDomain.poisoned)*flags|=A04_HP_READY_ANALOG;
  /* No measured HP latency in this boot: do not synthesize LATENCY bit. */
  ParentUnlock(c);return STATUS_SUCCESS;
@@ -174,7 +174,7 @@ static NTSTATUS ParentHpJack(PVOID p,struct mt8167_accdet_socket*out)
  A04_PARENT_CONTEXT*c=ParentContext((WDFDEVICE)p);struct mt8167_accdet_io io={c,ParentAccdetRead32};enum mt8167_accdet_result r;
  if(!out||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;RtlZeroMemory(out,sizeof(*out));
  if(ParentLock(c))return STATUS_DEVICE_NOT_READY;
- if(!c->gpio||!c->regs.online||c->regs.poisoned){ParentUnlock(c);return STATUS_DEVICE_NOT_READY;}
+ if(ParentAccdetLeaseLive(c)){ParentUnlock(c);return STATUS_DEVICE_NOT_READY;}
  r=mt8167_accdet_read_socket(&io,out);ParentUnlock(c);
  return r==MT8167_ACCDET_OK?STATUS_SUCCESS:r==MT8167_ACCDET_CHANGED?STATUS_DEVICE_BUSY:STATUS_DEVICE_NOT_READY;
 }

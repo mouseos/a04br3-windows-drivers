@@ -19,6 +19,12 @@
 #endif
 #endif
 #include "register_owner.h"
+#ifndef A04_SHARED_ACCDET_READ
+#define A04_SHARED_ACCDET_READ 0
+#endif
+#if A04_SHARED_ACCDET_READ
+#include "../../input/mt8167-accdet/gpio_lease.h"
+#endif
 #include "client_interface.h"
 #include "audio_interface.h"
 #ifndef A04_SHARED_SD_POWER
@@ -265,6 +271,9 @@ typedef struct {
 #if A04_SHARED_SD_POWER
  struct a04_sd_power sdPower;
 #endif
+#if A04_SHARED_ACCDET_READ
+ struct mt8167_accdet_gpio_lease accdetGpio;
+#endif
  PVOID topck,infra,gpio,pwrap,apmixed; ULONG apmixedLength; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio; struct a04_usb_owner usb; ULONG wifiGeneration; int wifiActive;
 #if A04_SHARED_WIFI_RUNTIME
 struct a04_rtc32k_lease wifiRtc;
@@ -360,9 +369,6 @@ static int ParentRegWrite(void *context,enum a04_shared_bank bank,unsigned offse
     if(!base)return -1;
     WRITE_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)base+offset),value);return 0;
 }
-#ifndef A04_SHARED_ACCDET_READ
-#define A04_SHARED_ACCDET_READ 0
-#endif
 #if A04_SHARED_ACCDET_READ
 #include "../../input/mt8167-accdet/parent.inc"
 #endif
@@ -1243,6 +1249,9 @@ static void ParentStop(A04_PARENT_CONTEXT *c,int can_access)
 #if A04_SHARED_GPU_PLATFORM
     a04_gpu_domain_revoke(&c->gpuDomain);
 #endif
+#if A04_SHARED_ACCDET_READ
+    ParentAccdetRelease(c,can_access&&!c->removed);
+#endif
     c->wifiActive=0;
     c->regs.online=0;
     c->pmic.online=0;
@@ -1266,6 +1275,9 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
     /* Failed/partial audio ownership cannot be interpreted as quiescent.
      * Retain mappings; this is not proof PnP retains physical resources. */
     if(c->audio.poisoned || c->audio.leased || c->audioAfe || c->usb.leased)return STATUS_DEVICE_BUSY;
+#if A04_SHARED_ACCDET_READ
+    if(c->accdetGpio.held||c->accdetGpio.poisoned)return STATUS_DEVICE_BUSY;
+#endif
 #if A04_SHARED_CAPTURE
     if(c->captureInput.reserved||c->captureInput.poisoned)return STATUS_DEVICE_BUSY;
 #endif
@@ -1476,6 +1488,11 @@ NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
     c->usb.online=(c->apmixed && !c->usb.poisoned) ? 1 : 0;
 #if A04_SHARED_TOUCH_D0_EXPERIMENT
     c->regs.online=c->regs.poisoned ? 0 : 1;
+#endif
+#if A04_SHARED_ACCDET_READ
+    /* GPIO failure is local to ACCDET; never fail GPU/thermal/other devices
+     * merely because a jack pin was inherited in an unowned/foreign state. */
+    if(c->regs.online)ParentAccdetAcquire(c);
 #endif
     if (InterlockedCompareExchange(&c->admissionClosed,0,2)==2) result=STATUS_SUCCESS;
     else { c->pmic.online=0; c->usb.online=0; c->regs.online=0;c->audio.online=0; }

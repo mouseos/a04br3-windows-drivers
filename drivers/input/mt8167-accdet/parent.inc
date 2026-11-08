@@ -6,6 +6,27 @@ static VOID ParentHpCalibrationIoctl(WDFQUEUE,WDFREQUEST,size_t,size_t);
 #endif
 static int ParentAccdetRead32(void *context,unsigned off,uint32_t *value)
 {return ParentRegRead(context,A04_SHARED_GPIO,off,value);}
+static int ParentAccdetWrite32(void*context,unsigned off,uint32_t value)
+{
+ /* No public write IOCTL. Only stock mode19/input/IES acquisition fields. */
+ if(off!=0x10&&off!=0x330&&off!=0x910)return -1;
+ return ParentRegWrite(context,A04_SHARED_GPIO,off,value);
+}
+static struct mt8167_accdet_gpio_io ParentAccdetGpioIo(A04_PARENT_CONTEXT*c)
+{struct mt8167_accdet_gpio_io io={c,ParentAccdetRead32,ParentAccdetWrite32};return io;}
+static void ParentAccdetAcquire(A04_PARENT_CONTEXT*c)
+{
+ struct mt8167_accdet_gpio_io io=ParentAccdetGpioIo(c);
+ if(!c->gpio||!c->regs.online||c->regs.poisoned||c->removed)return;
+ (void)mt8167_accdet_gpio_acquire(&c->accdetGpio,&io);
+}
+static int ParentAccdetLeaseLive(A04_PARENT_CONTEXT*c)
+{
+ struct mt8167_accdet_gpio_io io=ParentAccdetGpioIo(c);
+ return !c->gpio||!c->regs.online||c->regs.poisoned||c->removed?-1:mt8167_accdet_gpio_live(&c->accdetGpio,&io);
+}
+static void ParentAccdetRelease(A04_PARENT_CONTEXT*c,int can_access)
+{struct mt8167_accdet_gpio_io io=ParentAccdetGpioIo(c);(void)mt8167_accdet_gpio_release(&c->accdetGpio,&io,can_access&&c->gpio&&c->regs.online&&!c->regs.poisoned);}
 static VOID ParentAccdetStatus(A04_PARENT_CONTEXT *c,WDFREQUEST request)
 {
  struct mt8167_accdet_status *s=NULL;struct mt8167_accdet_io io={c,ParentAccdetRead32};
@@ -16,9 +37,11 @@ static VOID ParentAccdetStatus(A04_PARENT_CONTEXT *c,WDFREQUEST request)
  else{
   if(!c->gpio)s->reasons|=MT8167_ACCDET_REASON_MAPPING;
   if(!c->regs.online)s->reasons|=MT8167_ACCDET_REASON_OFFLINE;
-  if(c->regs.poisoned)s->reasons|=MT8167_ACCDET_REASON_POISON;
+  if(c->regs.poisoned||c->accdetGpio.poisoned)s->reasons|=MT8167_ACCDET_REASON_POISON;
   if(InterlockedCompareExchange(&c->removed,0,0))s->reasons|=MT8167_ACCDET_REASON_REMOVED;
-  if(!s->reasons)mt8167_accdet_read_status(&io,s);
+  if(!s->reasons){mt8167_accdet_read_status(&io,s);if(ParentAccdetLeaseLive(c)){
+   s->reasons|=MT8167_ACCDET_REASON_LEASE;s->result=MT8167_ACCDET_NOT_READY;
+  }}
   ParentUnlock(c);
  }
  /* This is a diagnostic result envelope, never a successful socket sample. */
@@ -39,7 +62,7 @@ static VOID ParentAccdetControl(WDFQUEUE queue,WDFREQUEST request,size_t outByte
  if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
  RtlZeroMemory(s,sizeof(*s));
  if(ParentLock(c)){WdfRequestComplete(request,STATUS_DEVICE_NOT_READY);return;}
- if(!c->gpio||!c->regs.online||c->regs.poisoned||InterlockedCompareExchange(&c->removed,0,0)){ParentUnlock(c);WdfRequestComplete(request,STATUS_DEVICE_NOT_READY);return;}
+ if(ParentAccdetLeaseLive(c)){ParentUnlock(c);WdfRequestComplete(request,STATUS_DEVICE_NOT_READY);return;}
  result=mt8167_accdet_read_socket(&io,s);ParentUnlock(c);
  status=result==MT8167_ACCDET_OK?STATUS_SUCCESS:result==MT8167_ACCDET_CHANGED?STATUS_DEVICE_BUSY:STATUS_DEVICE_NOT_READY;
  WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?sizeof(*s):0);

@@ -29,3 +29,17 @@ Bluetoothは別branchの[採取RT8.1契約](https://github.com/mouseos/a04br3-wi
 `mt8167-accdet-status.exe --status` は唯一のinterfaceを選び、この固定照会を1回だけ行う。ACCDET_STAGE 1=args/2=interface set/3=enumeration/4=detail・uniqueness/5=open/6=IOCTL/7=ABI validationを出力し、result/reasons/valid/fieldを記録する。未準備resultではERROR21で終了し、Connectedを出さない。2秒timeout→cancel→2秒join、join不能ならERROR_TIMEOUTを出してprocess終了する。通常READ_SOCKETとの自動反復や、資格不足を解消するmux/pull/PMIC writeはない。
 
 親1103は1102にこの診断だけを追加した独立候補であり、AFE jack1027は1102でも使える。未確定の資格を緩めず、RTC/thermal/USB/Audio ownerと既存flagsを保持する。次の主担当の一括更新へsource単位で統合する。現在の親を旧基点へ巻き戻さない。
+
+## GPIO19 stock biasと単一親D0 lease（親1108後段）
+
+この節は旧1102/1103の「内蔵pull-up必須」「親はGPIOを書かない」という制限を、本機のstock根拠で更新する。IOCTL/schemaとactive-low sampleの意味は保持する。
+
+stock LK ELF SHA256 `988e405def2a13778023becbe5b78f8b34a119ef3950d7760e1129d33561e224` のGPIO初期化0x41e008ccは、GPIO bank1 DIR=0x03c3、PULLEN=0xfc20、PULLSEL=0x4020を設定する。GPIO19 bit3はいずれも0で、MODE table0x41e39900のGPIO15..19 entryも0。REA Evidence `ev_4a1f7e6cd99d015ddea4ac13ebd92021bb8270a85458065fd83403ada2c2c951` と `ev_46094c8ea2cd5fbc297922c1653f60980033ac6ecb1f2d4a09a608297df95932`。静的な初期化契約であり、外付け抵抗の部品値や実音声成功を証明するものではない。
+
+上記CT3 sourceのaccdet_setup_eintはgpio_request/input/debounce/IRQを要求する。pinctrl-mtk-common.c:846 gpio_request_enableと:957 irq_request_resourcesはmode0/input/IESを設定し、pullは変更しない。実stock-kernel.dtsのaccdetもGPIO19 active-low、pinconf_default/audiodefaultは空。Linuxのgeneric bias APIが存在することだけでは、このpinのpull-up指定の根拠にならない。本機XNUのUniXNU-a04br3 package/PlatformExpert/Inputとkernel IOKit ARMを照合した範囲では、独立したGPIO19 bias producerは見つからなかった。
+
+`gpio_lease.h`の状態は既存shared親contextにのみ置く。D0開始の閉鎖admissionとpwrapLock下でDIR/input・MODE0・同一bias tupleの二重snapshotを検査し、Linux同等のinput/mode0/IESをmask更新・readbackする。foreign mux/outputは取得しない。stockのPULLEN/PULLSEL=0/0と旧来の1/1のみ受容し、片側だけの変更は拒否する。PULLEN/PULLSEL/DOUT writeは一切追加しない。socket・HP readiness・HP ReadJackはこのlive leaseを必須にし、実DINの二重読取りを保持する。
+
+IES0x910 bit10はGPIO18..20共有なので、個別read後やHP stop時には解放しない。親全体のadmission閉鎖とrundown終了後、同じmutex下でlive状態を検証して保存maskを復元する。他pinのbitsは保持する。read/write/readback失敗やsurprise removalはpoison/retainとしてmappingを解放しない。取得拒否はACCDET局所に限定し、他の親deviceのD0開始を失敗させない。理由bit12はlive leaseなし、bit3/4はそれぞれ0/1・1/0の不一致を示す。
+
+親1108はHP ABI version2/build1107・thermal V3 build1104を保持し、既存署名audio1030と組み合わせる後段候補。現親1104/next132媒体やMencius AFE open-error修正は変更しない。IRQ/debounce通知の実装ではなく瞬時sampleであり、実機HP再生は未確認。stock0/0のrun129 snapshotは理由0x18の原因だった旧条件に一致するが、新版の実機成功は通常batchの観測待ち。

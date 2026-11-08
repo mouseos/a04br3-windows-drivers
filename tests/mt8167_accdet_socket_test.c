@@ -23,6 +23,8 @@ int main(void){
  f=good();f.dir=~(1u<<3);f.mode=~(7u<<12);f.ies=f.pull=f.select=f.din=~0u;
  assert(mt8167_accdet_read_socket(&io,&s)==MT8167_ACCDET_OK&&!s.inserted); /* unrelated pins ignored */
  assert(mt8167_accdet_read_socket(0,&s)==MT8167_ACCDET_INVALID&&!s.qualified);
+ f=good();f.pull=f.select=0;assert(mt8167_accdet_read_socket(&io,&s)==MT8167_ACCDET_OK&&s.qualified&&!s.inserted);
+ f=good();f.pull=f.select=f.din=0;assert(mt8167_accdet_read_socket(&io,&s)==MT8167_ACCDET_OK&&s.qualified&&s.inserted);
  struct mt8167_accdet_status diagnostic;
  assert(sizeof(diagnostic)==68);
  for(unsigned bad=0;bad<5;bad++){

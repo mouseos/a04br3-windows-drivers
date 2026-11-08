@@ -16,6 +16,7 @@
 #define MT8167_ACCDET_REASON_OFFLINE   (1u<<9)
 #define MT8167_ACCDET_REASON_POISON    (1u<<10)
 #define MT8167_ACCDET_REASON_REMOVED   (1u<<11)
+#define MT8167_ACCDET_REASON_LEASE     (1u<<12)
 struct mt8167_accdet_status {
     uint32_t size,version,result,reasons,valid;
     uint32_t first[6],last[6]; /* DIR,MODE,IES,PULLEN,PULLSEL,DIN */
@@ -42,8 +43,8 @@ static inline void mt8167_accdet_read_status(const struct mt8167_accdet_io *io,s
     if(s->first[0])s->reasons|=MT8167_ACCDET_REASON_DIR;
     if(s->first[1])s->reasons|=MT8167_ACCDET_REASON_MODE;
     if(!s->first[2])s->reasons|=MT8167_ACCDET_REASON_IES;
-    if(!s->first[3])s->reasons|=MT8167_ACCDET_REASON_PULL;
-    if(!s->first[4])s->reasons|=MT8167_ACCDET_REASON_SELECT;
+    if(!s->first[3]&&s->first[4])s->reasons|=MT8167_ACCDET_REASON_PULL;
+    if(s->first[3]&&!s->first[4])s->reasons|=MT8167_ACCDET_REASON_SELECT;
     for(i=0;i<6;i++)if(s->first[i]!=s->last[i])s->reasons|=MT8167_ACCDET_REASON_CHANGED;
     if(s->reasons&31u)s->result=MT8167_ACCDET_NOT_READY;
     else s->result=(s->reasons&MT8167_ACCDET_REASON_CHANGED)?MT8167_ACCDET_CHANGED:MT8167_ACCDET_OK;

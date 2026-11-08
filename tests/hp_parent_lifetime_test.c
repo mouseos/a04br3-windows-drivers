@@ -4,11 +4,13 @@
 #include <assert.h>
 #include <stdio.h>
 #include "hp_parent_stubs/ntddk.h"
+#include "../drivers/input/mt8167-accdet/gpio_lease.h"
 #include "../drivers/bus/mt8167-shared/thermal_owner.h"
 #include "../drivers/bus/mt8167-shared/thermal_pio_record.h"
 #include "../drivers/bus/mt8167-shared/codec_headphone.h"
 #include "../drivers/bus/mt8167-shared/headphone_interface.h"
 struct parent{
+ struct mt8167_accdet_gpio_lease accdetGpio;
  volatile LONG admissionClosed,removed,thermalPioUsed,adcPurpose;
  PVOID topck,infra,apmixed,gpio,audioAfe;ULONG apmixedLength;PHYSICAL_ADDRESS thermalAssigned[2];
  struct a04_shared_thermal_owner thermal;PVOID thermalPioMappings[2];ULONGLONG thermalPioDeadline;int thermalRundown;
@@ -21,7 +23,7 @@ struct parent{
  struct{int online,poisoned;}regs;int classd;
 };typedef struct parent A04_PARENT_CONTEXT;
 struct request{PVOID buffer;size_t size,information;NTSTATUS status;};
-static ULONG th[1024],adc[1024],top[1024],infra[1024],analog[1024],afe[1024];
+static ULONG th[1024],adc[1024],top[1024],infra[1024],analog[1024],afe[1024],gpio[1024];
 static int calibrationMock;
 static int power,refs,maps,locks,mapCalls,failMap,ready=1,getProof,setProof,sampleTimeout,jackInserted,drained;
 static ULONGLONG now;
@@ -59,14 +61,16 @@ static int a04_mt6392_classd_verify_muted(int*p){return *p;}
 static int ParentDomainRead(void*p,unsigned offset,uint32_t*out){A04_PARENT_CONTEXT*c=p;*out=*((ULONG*)((UCHAR*)c->apmixed+offset));return 0;}
 static int ParentDomainWrite(void*p,unsigned offset,uint32_t value){A04_PARENT_CONTEXT*c=p;*((ULONG*)((UCHAR*)c->apmixed+offset))=value;return 0;}
 static int ParentVerifyDmaDrained(PVOID p){(void)p;return drained?0:-1;}
-static int ParentAccdetRead32(void*p,unsigned off,uint32_t*out){(void)p;switch(off){case 0x910:*out=1u<<10;break;case 0x510:case 0x610:*out=8;break;case 0x210:*out=jackInserted?0:8;break;default:*out=0;}return 0;}
+static int ParentAccdetRead32(void*p,unsigned off,uint32_t*out){A04_PARENT_CONTEXT*c=p;if(off==0x210)*out=jackInserted?0:8;else *out=*((ULONG*)((UCHAR*)c->gpio+off));return 0;}
+static int ParentAccdetWrite32(void*p,unsigned off,uint32_t v){A04_PARENT_CONTEXT*c=p;*((ULONG*)((UCHAR*)c->gpio+off))=v;return 0;}
+static int ParentAccdetLeaseLive(A04_PARENT_CONTEXT*c){struct mt8167_accdet_gpio_io io={c,ParentAccdetRead32,ParentAccdetWrite32};return c->removed||!c->regs.online||c->regs.poisoned?-1:mt8167_accdet_gpio_live(&c->accdetGpio,&io);}
 static WDFDEVICE WdfIoQueueGetDevice(WDFQUEUE q){return q;}
 static NTSTATUS WdfRequestRetrieveOutputBuffer(WDFREQUEST r,size_t bytes,PVOID*out,PVOID n){(void)n;if(r->size<bytes)return STATUS_INVALID_PARAMETER;*out=r->buffer;return 0;}
 static void WdfRequestComplete(WDFREQUEST r,NTSTATUS s){r->status=s;r->information=0;}
 static void WdfRequestCompleteWithInformation(WDFREQUEST r,NTSTATUS s,size_t n){r->status=s;r->information=n;}
 #include "../drivers/bus/mt8167-shared/thermal_native_parent.inc"
 #include "../drivers/bus/mt8167-shared/headphone_parent.inc"
-static struct parent initial(void){struct parent c={0};memset(th,0,sizeof(th));memset(adc,0,sizeof(adc));memset(top,0,sizeof(top));memset(infra,0,sizeof(infra));memset(analog,0,sizeof(analog));memset(afe,0,sizeof(afe));c.topck=top;c.infra=infra;c.apmixed=analog;c.apmixedLength=4096;c.audioAfe=afe;c.gpio=top;c.regs.online=1;c.thermal.online=1;c.thermalAssigned[0].QuadPart=1;c.thermalAssigned[1].QuadPart=2;infra[0x128/4]=1;mapCalls=0;failMap=0;sampleTimeout=0;now=0;return c;}
+static struct parent initial(void){struct parent c={0};memset(th,0,sizeof(th));memset(adc,0,sizeof(adc));memset(top,0,sizeof(top));memset(infra,0,sizeof(infra));memset(analog,0,sizeof(analog));memset(afe,0,sizeof(afe));memset(gpio,0,sizeof(gpio));c.topck=top;c.infra=infra;c.apmixed=analog;c.apmixedLength=4096;c.audioAfe=afe;c.gpio=gpio;c.regs.online=1;c.thermal.online=1;c.thermalAssigned[0].QuadPart=1;c.thermalAssigned[1].QuadPart=2;infra[0x128/4]=1;mapCalls=0;failMap=0;sampleTimeout=0;now=0;struct mt8167_accdet_gpio_io io={&c,ParentAccdetRead32,ParentAccdetWrite32};assert(!mt8167_accdet_gpio_acquire(&c.accdetGpio,&io));return c;}
 int main(void){
  struct parent c=initial();ULONG generation=0,stage=0,adopted=0,raw[3]={0};struct a04_hp_raw_sample sample;
  assert(sizeof(sample)==72&&sizeof(struct a04_hp_raw_pair)==160);
