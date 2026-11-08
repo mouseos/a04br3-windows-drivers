@@ -17,3 +17,5 @@ c=(R/"tools/winpe/mt8167-peripheral-update.c").read_text()
 assert "SetupCopyOEMInfW(paths_[0],dir,SPOST_PATH,0,proof.published_inf" in c
 assert "else if(e==ERROR_NOT_FOUND)e=0" in c and "proof.otg_functional_success=1" not in c
 assert "PERIPHERAL_TARGET_COUNT<=11" in c and "i>=8" in c
+
+assert "preserved_sources['Windows/System32/ge8300-umd.dll']=m['current_render_witnesses']['umd']['path']" in (R/"tools/recovery/prepare-peripheral-followup138.py").read_text()

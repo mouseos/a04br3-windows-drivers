@@ -114,6 +114,7 @@ def build_policy(root,path,finalize=False):
   for dep in v.get('dependencies',[]):require(sha(rooted(root,v['directory'])/dep['exe'])==dep['sha256'],'Signed client dependency byte pin mismatch')
   CURRENT_CLIENTS.append({**v,'name':name})
  preserved_sources={e['source_path']:(Path(m['fresh']['path']).parent/e['backup_path']).as_posix() for e in fm['files'] if e['source_path'] in CURRENT_PRESERVED}
+ preserved_sources['Windows/System32/ge8300-umd.dll']=m['current_render_witnesses']['umd']['path']
  for name in CURRENT_PRESERVED:
   if name not in preserved_sources:preserved_sources[name]=('port/xnu/out/private-windows-rt-peripheral-run123-diagnostics/fixed/' if name=='Windows/System32/MT8167RenderSingleGpu.exe' else 'port/xnu/out/private-windows-rt-combined-run129-diagnostics/fixed/')+name
  # Preserve all already-deployed GPU clients and the exact53 log baseline without executing them.

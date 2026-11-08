@@ -41,6 +41,6 @@ try{
  }
  $manifest=if($Mode -eq 'CaptureClient'){'capture-client-manifest.json'}else{'peripheral-service-manifest.json'}
  $m|ConvertTo-Json -Depth 30|Set-Content -Encoding UTF8 "$out\$manifest"
- & llvm-readobj --file-headers --coff-imports "$out\$name.exe"|Set-Content "$out\pe-imports.txt";if($LASTEXITCODE){throw 'PE import inspection failed'}
+ & (Join-Path (Split-Path (Get-Command clang.exe).Source) 'llvm-readobj.exe') --file-headers --coff-imports "$out\$name.exe"|Set-Content "$out\pe-imports.txt";if($LASTEXITCODE){throw 'PE import inspection failed'}
  Write-Output ($Mode+'_SIGNED_PATH_VERIFIED')
 }finally{$env:TMP=$oldTmp;$env:TEMP=$oldTemp}
