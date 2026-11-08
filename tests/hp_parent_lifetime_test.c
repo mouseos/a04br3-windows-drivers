@@ -25,6 +25,7 @@ struct parent{
 struct request{PVOID buffer;size_t size,information;NTSTATUS status;};
 static ULONG th[1024],adc[1024],top[1024],infra[1024],analog[1024],afe[1024],gpio[1024];
 static int calibrationMock;
+static ULONG proofVersion=2;
 static int power,refs,maps,locks,mapCalls,failMap,ready=1,getProof,setProof,sampleTimeout,jackInserted,drained;
 static ULONGLONG now;
 static ULONG READ_REGISTER_ULONG(volatile ULONG*p){
@@ -55,7 +56,7 @@ static void ParentUnlock(A04_PARENT_CONTEXT*p){(void)p;assert(locks);locks=0;}
 static PVOID MmMapIoSpace(PHYSICAL_ADDRESS address,size_t size,int type){(void)type;assert(size==0x1000);if(++mapCalls==failMap)return 0;++maps;return address.QuadPart==1?th:adc;}
 static void MmUnmapIoSpace(PVOID p,size_t size){assert((p==th||p==adc)&&size==0x1000);--maps;assert(maps>=0);}
 static NTSTATUS ExGetFirmwareEnvironmentVariable(UNICODE_STRING*n,GUID*g,PVOID out,ULONG*bytes,ULONG*attrs){
- (void)n;(void)g;assert(*bytes==72);A04_THERMAL_PIO_RECORD*r=out;memset(r,0,sizeof(*r));r->bytes=72;r->version=2;r->ready=ready;r->stage=6;r->reset_after=1;r->pause_after=0x10e;*attrs=6;getProof++;return 0;}
+ (void)n;(void)g;assert(*bytes==72);A04_THERMAL_PIO_RECORD*r=out;memset(r,0,sizeof(*r));r->bytes=72;r->version=proofVersion;r->ready=ready;r->stage=6;r->reset_after=1;r->pause_after=0x10e;*attrs=6;getProof++;return 0;}
 static NTSTATUS ExSetFirmwareEnvironmentVariable(UNICODE_STRING*n,GUID*g,PVOID p,ULONG bytes,ULONG attrs){(void)n;(void)g;assert(!p&&!bytes&&!attrs);setProof++;return 0;}
 static int a04_mt6392_classd_verify_muted(int*p){return *p;}
 static int ParentDomainRead(void*p,unsigned offset,uint32_t*out){A04_PARENT_CONTEXT*c=p;*out=*((ULONG*)((UCHAR*)c->apmixed+offset));return 0;}
@@ -70,8 +71,9 @@ static void WdfRequestComplete(WDFREQUEST r,NTSTATUS s){r->status=s;r->informati
 static void WdfRequestCompleteWithInformation(WDFREQUEST r,NTSTATUS s,size_t n){r->status=s;r->information=n;}
 #include "../drivers/bus/mt8167-shared/thermal_native_parent.inc"
 #include "../drivers/bus/mt8167-shared/headphone_parent.inc"
-static struct parent initial(void){struct parent c={0};memset(th,0,sizeof(th));memset(adc,0,sizeof(adc));memset(top,0,sizeof(top));memset(infra,0,sizeof(infra));memset(analog,0,sizeof(analog));memset(afe,0,sizeof(afe));memset(gpio,0,sizeof(gpio));c.topck=top;c.infra=infra;c.apmixed=analog;c.apmixedLength=4096;c.audioAfe=afe;c.gpio=gpio;c.regs.online=1;c.thermal.online=1;c.thermalAssigned[0].QuadPart=1;c.thermalAssigned[1].QuadPart=2;infra[0x128/4]=1;mapCalls=0;failMap=0;sampleTimeout=0;now=0;struct mt8167_accdet_gpio_io io={&c,ParentAccdetRead32,ParentAccdetWrite32};assert(!mt8167_accdet_gpio_acquire(&c.accdetGpio,&io));return c;}
-int main(void){
+static struct parent initial(void){struct parent c={0};memset(th,0,sizeof(th));memset(adc,0,sizeof(adc));memset(top,0,sizeof(top));memset(infra,0,sizeof(infra));memset(analog,0,sizeof(analog));memset(afe,0,sizeof(afe));memset(gpio,0,sizeof(gpio));c.topck=top;c.infra=infra;c.apmixed=analog;c.apmixedLength=4096;c.audioAfe=afe;c.gpio=gpio;c.regs.online=1;c.thermal.online=1;c.thermalAssigned[0].QuadPart=1;c.thermalAssigned[1].QuadPart=2;infra[0x128/4]=proofVersion==2?1:0;th[0x3c/4]=proofVersion==3?0x10e:0;mapCalls=0;failMap=0;sampleTimeout=0;now=0;struct mt8167_accdet_gpio_io io={&c,ParentAccdetRead32,ParentAccdetWrite32};assert(!mt8167_accdet_gpio_acquire(&c.accdetGpio,&io));return c;}
+int main(int argc,char **argv){
+ if(argc>1){assert(argv[1][0]=='3');proofVersion=3;}
  struct parent c=initial();ULONG generation=0,stage=0,adopted=0,raw[3]={0};struct a04_hp_raw_sample sample;
  assert(sizeof(sample)==72&&sizeof(struct a04_hp_raw_pair)==160);
  ready=0;assert(ParentHpAdcBegin(&c,&generation)==STATUS_DEVICE_NOT_READY&&!generation&&!maps&&!refs&&!power&&!c.adcPurpose&&!c.thermalRundown);ready=1;
@@ -114,7 +116,7 @@ int main(void){
  /* Fresh simulated boot after intentionally retained cases (no real maps). */
  for(unsigned fault=0;fault<6;fault++){
   maps=power=refs=0;c=initial();assert(ParentHpAdcBegin(&c,&generation)==0);
-  switch(fault){case 0:top[0x24/4]=2;break;case 1:infra[0x128/4]=0;break;
+  switch(fault){case 0:top[0x24/4]=2;break;case 1:if(proofVersion==3)th[0x3c/4]=0;else infra[0x128/4]=0;break;
    case 2:th[0xc/4]=1;break;case 3:th[0x10/4]=1;break;
    case 4:th[0x418/4]=1u<<16;break;case 5:adc[0]=1;break;}
   assert(ParentHpAdcEnd(&c,generation)==STATUS_DEVICE_HARDWARE_ERROR&&c.thermal.poisoned&&maps==2&&power==1&&refs==1);

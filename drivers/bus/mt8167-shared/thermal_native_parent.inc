@@ -25,10 +25,32 @@ static int ThermalPioWait(void *p,unsigned us)
 { if(!ThermalPioQualified(p)||!us||us>1000)return -1;KeStallExecutionProcessor(us);return 0; }
 static int ThermalPioRecordValid(const A04_THERMAL_PIO_RECORD *r,ULONG bytes,ULONG attributes)
 {
- return bytes==sizeof(*r)&&sizeof(*r)==72&&attributes==6&&r->version==2&&r->bytes==sizeof(*r)&&r->ready==1&&r->stage==6&&
-  r->clock_after!=MAXULONG&&!(r->clock_after&0x40000002u)&&r->reset_after!=MAXULONG&&(r->reset_after&1)&&
+ return bytes==sizeof(*r)&&sizeof(*r)==72&&attributes==6&&(r->version==2||r->version==3)&&r->bytes==sizeof(*r)&&r->ready==1&&r->stage==6&&
+  r->clock_after!=MAXULONG&&!(r->clock_after&0x40000002u)&&(r->version==3||(r->reset_after!=MAXULONG&&(r->reset_after&1)))&&
   !r->irq_after&&!(r->ahb_after>>16)&&!r->mon_after&&(r->pause_after&0x10eu)==0x10eu&&
   !r->adc_mode&&!r->adc_trigger&&r->adc_busy!=0xffffu&&!(r->adc_busy&1)&&!r->irq_pending;
+}
+/* v3 uses the CT3 paused/disabled producer stop, not an STA latch promise.
+ * Called under ParentLock at BOTH ends of the same single ADC lease. */
+static int ParentAdcResetContract(A04_PARENT_CONTEXT *c,ULONG version)
+{
+ ULONG state;
+ if(version==3)return 1; /* qualified live stop below is mandatory */
+ state=READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->infra+0x128));
+ return version==2&&state!=MAXULONG&&(state&1);
+}
+static int ParentAdcMasterStopped(PVOID th,ULONG version)
+{
+ ULONG pause;
+ if(!th)return 0;
+ if(version==3){
+  pause=READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)th+0x3c));
+  if(pause==MAXULONG||(pause&0x10eu)!=0x10eu)return 0;
+ }
+ return !READ_REGISTER_ULONG((volatile ULONG*)th)&&
+  !READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)th+0xc))&&
+  !READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)th+0x10))&&
+  !(READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)th+0x418))>>16);
 }
 #if A04_SHARED_HP_PCM
 /* Serialized by adcPurpose, not an additional AUXADC owner. Cache only the
@@ -87,8 +109,7 @@ static NTSTATUS ParentThermalPioMeasure(PVOID p,ULONG *adopted,ULONG raw[3],ULON
  if(c->thermal.poisoned||c->thermal.leased||!c->topck||!c->infra||!c->apmixed||c->apmixedLength<0x608){status=STATUS_DEVICE_NOT_READY;goto unlock;}
  value=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->topck+0x24));
  if(value==MAXULONG||(value&0x40000002u)){status=STATUS_DEVICE_NOT_READY;goto unlock;}
- value=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->infra+0x128));
- if(value==MAXULONG||!(value&1)){status=STATUS_DEVICE_NOT_READY;goto unlock;}
+ if(!ParentAdcResetContract(c,record.version)){status=STATUS_DEVICE_NOT_READY;goto unlock;}
  /* ParentPrepare checked the complete exclusive eight-range assignment.
   * No child-supplied physical address or pointer can reach this owner. Map
   * only after strict firmware/clock/reset admission, before the first use. */
@@ -97,11 +118,8 @@ static NTSTATUS ParentThermalPioMeasure(PVOID p,ULONG *adopted,ULONG raw[3],ULON
  if(!thermal){status=STATUS_INSUFFICIENT_RESOURCES;goto unlock;}
  adc=MmMapIoSpace(c->thermalAssigned[1],0x1000,MmNonCached);
  if(!adc){status=STATUS_INSUFFICIENT_RESOURCES;goto unlock;}
- /* Firmware left the old bus master in reset; no IRQ/ISR/DPC is created. */
- if(READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)thermal+0xc))||
-    READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)thermal+0x10))||
-    READ_REGISTER_ULONG((volatile ULONG *)thermal)||
-    (READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)thermal+0x418))>>16)||
+ /* v2 reset-held or v3 stock paused/disabled; no IRQ/ISR/DPC. */
+ if(!ParentAdcMasterStopped(thermal,record.version)||
     READ_REGISTER_USHORT((volatile USHORT *)adc)||READ_REGISTER_USHORT((volatile USHORT *)((volatile UCHAR *)adc+4))||
     (READ_REGISTER_USHORT((volatile USHORT *)((volatile UCHAR *)adc+0x10))&1)) {status=STATUS_DEVICE_NOT_READY;goto unlock;}
  /* 500ms total observation/cleanup budget. Expiration after touching hardware
@@ -134,8 +152,9 @@ static NTSTATUS ParentThermalPioMeasure(PVOID p,ULONG *adopted,ULONG raw[3],ULON
  if(READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+0x604))!=value)goto retain;
  if(READ_REGISTER_USHORT((volatile USHORT *)((volatile UCHAR *)adc+4))||
     (READ_REGISTER_USHORT((volatile USHORT *)((volatile UCHAR *)adc+0x10))&1))goto retain;
- value=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->infra+0x128));
- if(value==MAXULONG||!(value&1))goto retain;
+ value=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->topck+0x24));
+ if(value==MAXULONG||(value&0x40000002u)||!ParentAdcResetContract(c,record.version)||
+    !ParentAdcMasterStopped(thermal,record.version)||READ_REGISTER_USHORT((volatile USHORT*)adc))goto retain;
  *stage=10;c->thermal.quiescent=1;c->thermal.leased=0;c->thermal.native_claim=0;c->thermal.firmware_released=0;c->thermal.adc_exclusive=0;
  MmUnmapIoSpace(c->thermalPioMappings[0],0x1000);MmUnmapIoSpace(c->thermalPioMappings[1],0x1000);
  c->thermalPioMappings[0]=c->thermalPioMappings[1]=NULL;
