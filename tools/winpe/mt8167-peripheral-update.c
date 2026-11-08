@@ -124,7 +124,16 @@ static DWORD old_services(void){static struct value {WCHAR name[256];DWORD type,
 static DWORD preserved(void){WCHAR sys[MAX_PATH],full[MAX_PATH];HANDLE h;DWORD i,e;if(!GetSystemDirectoryW(sys,MAX_PATH))return GetLastError();for(i=0;i<sizeof(preserved_files)/sizeof(preserved_files[0]);i++){h=INVALID_HANDLE_VALUE;e=path(full,sys,preserved_files[i].name);if(!e)e=deferred_file(full,preserved_files[i].hash,&h);if(h!=INVALID_HANDLE_VALUE)CloseHandle(h);if(e)return e;}return old_services();}
 static DWORD property(HDEVINFO set,SP_DEVINFO_DATA *dev,DWORD code,const WCHAR *expected){WCHAR b[256];DWORD t,n;if(!SetupDiGetDeviceRegistryPropertyW(set,dev,code,&t,(BYTE *)b,sizeof(b),&n))return GetLastError();if(t!=REG_SZ||n<2||n>sizeof(b)||(n&1)||b[n/2-1]||lstrcmpiW(b,expected))return ERROR_REVISION_MISMATCH;return 0;}
 static DWORD installed_inf(unsigned,HDEVINFO,SP_DEVINFO_DATA *,int);
-static DWORD selected_inf_locator_unverified;
+static DWORD selected_inf_locator_unverified,selected_inf_probe_stage;
+/* Explicit provenance, never infer an optional error from its number alone.
+ * 2=InfPath value lookup, 3=installed list build, 4=installed enum,
+ * 5=installed INF detail, 6=store locator, 8=published locator.
+ * Context setup(1/10), content reads(7/9/11), identity/shape, cleanup(12)
+ * are mandatory even if their API/file error happens to be 2 or 1168. */
+static DWORD inf_location_missing(DWORD error,DWORD stage){
+ return (error==ERROR_FILE_NOT_FOUND||error==ERROR_NOT_FOUND)&&
+  (stage==2||stage==3||stage==4||stage==5||stage==6||stage==8);
+}
 /* Opt-in only for the pinned fresh124 failed-install Buttons child. Unknown
  * identity/configuration or an already installed service is never a baseline. */
 static DWORD first_keypad_baseline(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev){
@@ -159,6 +168,7 @@ static DWORD installed_inf_name(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,WCH
  static WCHAR instance[MAX_DEVICE_ID_LEN];static SP_DRVINFO_DETAIL_DATA_W detail;
  SP_DEVINFO_DATA node;SP_DEVINSTALL_PARAMS_W params;SP_DRVINFO_DATA_W driver,extra;
  HDEVINFO own=INVALID_HANDLE_VALUE;DWORD e=0,n=0;int built=0;
+ selected_inf_probe_stage=10;
  if(!SetupDiGetDeviceInstanceIdW(set,dev,instance,MAX_DEVICE_ID_LEN,NULL))return GetLastError();
  own=SetupDiCreateDeviceInfoList(NULL,NULL);if(own==INVALID_HANDLE_VALUE)return GetLastError();
  ZeroMemory(&node,sizeof(node));node.cbSize=sizeof(node);
@@ -167,14 +177,18 @@ static DWORD installed_inf_name(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,WCH
  if(!SetupDiGetDeviceInstallParamsW(own,&node,&params)){e=GetLastError();goto done;}
  params.FlagsEx|=DI_FLAGSEX_INSTALLEDDRIVER;
  if(!SetupDiSetDeviceInstallParamsW(own,&node,&params)){e=GetLastError();goto done;}
+ selected_inf_probe_stage=3;
  if(!SetupDiBuildDriverInfoList(own,&node,SPDIT_COMPATDRIVER)){e=GetLastError();goto done;}built=1;
  ZeroMemory(&driver,sizeof(driver));driver.cbSize=sizeof(driver);
+ selected_inf_probe_stage=4;
  if(!SetupDiEnumDriverInfoW(own,&node,SPDIT_COMPATDRIVER,0,&driver)){e=GetLastError();goto done;}
+ selected_inf_probe_stage=10;
  ZeroMemory(&extra,sizeof(extra));extra.cbSize=sizeof(extra);
  if(SetupDiEnumDriverInfoW(own,&node,SPDIT_COMPATDRIVER,1,&extra)){e=ERROR_INVALID_DATA;goto done;}
  e=GetLastError();if(e!=ERROR_NO_MORE_ITEMS)goto done;e=0;
  if(driver.DriverVersion!=targets[i].version||(((ULONGLONG)driver.DriverDate.dwHighDateTime<<32)|driver.DriverDate.dwLowDateTime)!=targets[i].date){e=ERROR_REVISION_MISMATCH;goto done;}
  ZeroMemory(&detail,sizeof(detail));detail.cbSize=sizeof(detail);
+ selected_inf_probe_stage=5;
  if(!SetupDiGetDriverInfoDetailW(own,&node,&driver,&detail,sizeof(detail),&n)){
   e=GetLastError();if(e!=ERROR_INSUFFICIENT_BUFFER)goto done;e=0;
  }
@@ -182,14 +196,15 @@ static DWORD installed_inf_name(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,WCH
  for(n=0;n<MAX_PATH&&detail.InfFileName[n];n++);if(!n||n==MAX_PATH){e=ERROR_INVALID_DATA;goto done;}
  lstrcpyW(out,detail.InfFileName);
 done:
- if(built&&!SetupDiDestroyDriverInfoList(own,&node,SPDIT_COMPATDRIVER)&&!e)e=GetLastError();
- if(!SetupDiDestroyDeviceInfoList(own)&&!e)e=GetLastError();return e;
+ if(built&&!SetupDiDestroyDriverInfoList(own,&node,SPDIT_COMPATDRIVER)){e=GetLastError();selected_inf_probe_stage=12;}
+ if(!SetupDiDestroyDeviceInfoList(own)){e=GetLastError();selected_inf_probe_stage=12;}
+ selected_inf_locator_unverified=inf_location_missing(e,selected_inf_probe_stage);return e;
 }
 static DWORD installed_inf(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,int candidate){
  /* Service transaction is serial; keep bounded path scratch off the ARM stack. */
  HKEY key;static WCHAR inf[128],win[MAX_PATH],dir[MAX_PATH],full[MAX_PATH],folder[MAX_PATH],staged[MAX_PATH],store[MAX_PATH],published[MAX_PATH],parent[MAX_PATH];DWORD type,n=sizeof(inf),j,e,needed=0,last=0;HANDLE held=INVALID_HANDLE_VALUE;
- selected_inf_locator_unverified=0;key=SetupDiOpenDevRegKey(set,dev,DICS_FLAG_GLOBAL,0,DIREG_DRV,KEY_QUERY_VALUE);if(key==INVALID_HANDLE_VALUE)return GetLastError();
- e=RegQueryValueExW(key,L"InfPath",NULL,&type,(BYTE *)inf,&n);RegCloseKey(key);if(e)return e;
+ selected_inf_locator_unverified=0;selected_inf_probe_stage=1;key=SetupDiOpenDevRegKey(set,dev,DICS_FLAG_GLOBAL,0,DIREG_DRV,KEY_QUERY_VALUE);if(key==INVALID_HANDLE_VALUE)return GetLastError();
+ selected_inf_probe_stage=2;e=RegQueryValueExW(key,L"InfPath",NULL,&type,(BYTE *)inf,&n);RegCloseKey(key);if(e){if(candidate)selected_inf_locator_unverified=inf_location_missing(e,selected_inf_probe_stage);return e;}
  if(type!=REG_SZ||n<2||n>sizeof(inf)||(n&1)||inf[n/2-1])return ERROR_INVALID_DATA;
  for(j=0;inf[j];j++)if(!((inf[j]>='a'&&inf[j]<='z')||(inf[j]>='A'&&inf[j]<='Z')||(inf[j]>='0'&&inf[j]<='9')||inf[j]=='.'||inf[j]=='-'||inf[j]=='_'))return ERROR_INVALID_DATA;
  if(!candidate)return lstrcmpiW(inf,targets[i].base_inf)?ERROR_REVISION_MISMATCH:0;
@@ -200,27 +215,27 @@ static DWORD installed_inf(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,int cand
   e=path(full,dir,inf);
  }else{
   e=path(folder,base_directory,targets[i].folder);if(!e)e=path(staged,folder,targets[i].inf);
-  if(!e)e=deferred_file(staged,targets[i].hash[0],&held);if(held!=INVALID_HANDLE_VALUE){CloseHandle(held);held=INVALID_HANDLE_VALUE;}if(e)return e;
+  selected_inf_probe_stage=11;if(!e)e=deferred_file(staged,targets[i].hash[0],&held);if(held!=INVALID_HANDLE_VALUE){CloseHandle(held);held=INVALID_HANDLE_VALUE;}if(e)return e;
   e=installed_inf_name(i,set,dev,full);record(i,0x254,e);if(e)return e;
-  if(!SetupGetInfDriverStoreLocationW(full,NULL,NULL,store,MAX_PATH,&needed))e=GetLastError();record(i,0x250,e);if(e){if(e==ERROR_NOT_FOUND)selected_inf_locator_unverified=1;return e;}
+  selected_inf_probe_stage=6;if(!SetupGetInfDriverStoreLocationW(full,NULL,NULL,store,MAX_PATH,&needed))e=GetLastError();record(i,0x250,e);if(e){selected_inf_locator_unverified=inf_location_missing(e,selected_inf_probe_stage);return e;}
   if(!needed||needed>MAX_PATH)return ERROR_INVALID_DATA;
-  e=deferred_file(store,targets[i].hash[0],&held);if(held!=INVALID_HANDLE_VALUE){CloseHandle(held);held=INVALID_HANDLE_VALUE;}if(e)return e;
-  if(!SetupGetInfPublishedNameW(store,published,MAX_PATH,&needed))e=GetLastError();record(i,0x251,e);if(e){if(e==ERROR_NOT_FOUND)selected_inf_locator_unverified=1;return e;}
+  selected_inf_probe_stage=7;e=deferred_file(store,targets[i].hash[0],&held);if(held!=INVALID_HANDLE_VALUE){CloseHandle(held);held=INVALID_HANDLE_VALUE;}if(e)return e;
+  selected_inf_probe_stage=8;if(!SetupGetInfPublishedNameW(store,published,MAX_PATH,&needed))e=GetLastError();record(i,0x251,e);if(e){selected_inf_locator_unverified=inf_location_missing(e,selected_inf_probe_stage);return e;}
   if(!needed||needed>MAX_PATH)return ERROR_INVALID_DATA;
   for(j=0;published[j];j++)if(published[j]==L'\\')last=j;
   if(!last||!published_inf_leaf(published+last+1))return ERROR_INVALID_DATA;
   lstrcpyW(parent,published);parent[last]=0;if(lstrcmpiW(parent,dir))return ERROR_REVISION_MISMATCH;
   lstrcpyW(full,published);
  }
- if(!e)e=deferred_file(full,targets[i].hash[0],&held);if(held!=INVALID_HANDLE_VALUE)CloseHandle(held);record(i,0x252,e);return e;
+ selected_inf_probe_stage=9;if(!e)e=deferred_file(full,targets[i].hash[0],&held);if(held!=INVALID_HANDLE_VALUE)CloseHandle(held);record(i,0x252,e);return e;
 }
 /* A missing optional package locator is not missing selected identity.
- * Only ERROR_NOT_FOUND from the two locator APIs may be recorded separately;
+ * Only missing2/1168 with explicit locator-stage provenance is separate;
  * type/identity/INF hash/trust/file failures remain execution failures. */
 static DWORD selected_runtime(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,DWORD *location_error){
  DWORD e;*location_error=ERROR_NOT_READY;e=selected_identity(i,set,dev,1);if(e)return e;
- e=installed_inf(i,set,dev,1);*location_error=e;
- return e==ERROR_NOT_FOUND&&selected_inf_locator_unverified?0:e;
+ e=installed_inf(i,set,dev,1);*location_error=e;record(i,0x255,selected_inf_probe_stage);
+ return (e==ERROR_FILE_NOT_FOUND||e==ERROR_NOT_FOUND)&&selected_inf_locator_unverified?0:e;
 }
 static DWORD installed_gpu_extras(int candidate){
 #if A04_CANDIDATE_EXTRA_COUNT

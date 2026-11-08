@@ -21,3 +21,9 @@ RTC560cf boot4b67b67aedc4beb9863bfe1791de8713f925d8eedc6dfc702ea66df82895927bは
 clear-boundary-*.logはGPR1/version1/4096byteのbinaryであり通常cleartextとしてdecodeしない。GPU前に4096byte実確保とvolume flush/precommit、stage*64の40byte/DWORD10、PID word2、FNV1a32 checksumを固定。基点47name+hash、新RUN/servicePID/clientPIDと実332/SYS/UMD/clienthashを結合し、専用read-ge8300-boundary332.pyへ渡す。末尾/slot不在だけで未実行を断定しない。新clientの上限900s/診断1500s/install900sを保持、実terminal/crash/resetを早期判定するmain observerと一致させる。
 
 retained readonly4clientはphase0、boundaryGPUはphase1で最後。renderだけstage/DIF→3010/予定restart1、他10SYSはexactbytes/selected保持。RTC4b67適用済み保持、bootwrite不要。SCMにGPR1解釈やpixel成功stubを追加しない。
+
+## actualpost134 INF所在2の段階分離
+
+実node10はmetadata2/inf_location2だがSYS0/CMstarted。selected_identityの版/date/service/classは必須のまま、installed INF所在のInfPath値取得・installed-driver list生成/一意entry取得・driver INF detail・store/published locatorだけ2/1168を所在未確認として保持する。PB0x255に取得段階を記録。旧2locator1168だけのflagから一般的エラー番号判定へ緩めず、API段階由来flagを要求する。context生成/instance解決/cleanupとstaged/store/published実fileの読取り/hash検査は別段階でfatal。unknown型/版/sha/CAT/署名/UMD/FW/SYS/CMは継続拒否。
+
+selected_runtimeは所在未確認をinf_location_errorへ残しmetadata_error0を返す。GPU readinessは実selected_identity+SYS+UMD/FW+署名CAT+CMstarted/problem0で決め、INF場所APIの不備だけで試験を再停止しない。tests/selected_inf_gate_test.pyは実helper/判定関数で0..12全stageと2/1168/access/型/hash/identityエラーをASan/UBSan実行。
