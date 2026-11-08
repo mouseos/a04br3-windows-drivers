@@ -20,7 +20,7 @@ NTSTATUS Mt8167RegisterWaveRt(PDEVICE_OBJECT device, PIRP irp,
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
     if(NT_SUCCESS(status)) {
         PMINIPORTTOPOLOGY topology=NULL;PPORT topoPort=NULL;
-        status=Mt8167NewTopology(&topology);
+        status=Mt8167NewTopology(&topology,device);
         if(NT_SUCCESS(status))status=PcNewPort(&topoPort,CLSID_PortTopology);
         if(NT_SUCCESS(status))
             status=topoPort->Init(device,irp,static_cast<PUNKNOWN>(topology),NULL,resources);
