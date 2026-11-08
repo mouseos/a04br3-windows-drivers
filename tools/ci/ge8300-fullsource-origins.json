@@ -450,6 +450,60 @@
       "source_commit": "f96948533601f9fdcdcc22b9700aacd96dbf7204",
       "role": "native322-external-interface",
       "sha256": "310d408ebb637db7f3bad9e53888a34b35ca98080013ce0554f02782b7d51965"
+    },
+    {
+      "path": "drivers/gpu/mt8167/gpu_mmu.c",
+      "source_commit": "f96948533601f9fdcdcc22b9700aacd96dbf7204",
+      "role": "native322-external-closure",
+      "sha256": "ba4b147a3b1c46fb4de75ac5aaf321b0312870161b14d5139652c8502466ade8"
+    },
+    {
+      "path": "drivers/gpu/mt8167/gpu_mmu.h",
+      "source_commit": "f96948533601f9fdcdcc22b9700aacd96dbf7204",
+      "role": "native322-external-closure",
+      "sha256": "a824315f19b81e801e897333c4f08f06d5a3a4b5ff94b0156bd0ec07a1df5c39"
+    },
+    {
+      "path": "drivers/gpu/mt8167/windows_hw.c",
+      "source_commit": "f96948533601f9fdcdcc22b9700aacd96dbf7204",
+      "role": "native322-external-closure",
+      "sha256": "ce63135c25274efbf34eb708e96980c90ad3f0d5f536c60f5a5f3c81bfb3fe38"
+    },
+    {
+      "path": "drivers/gpu/mt8167/windows_hw.h",
+      "source_commit": "f96948533601f9fdcdcc22b9700aacd96dbf7204",
+      "role": "native322-external-closure",
+      "sha256": "da6eeece0a9283faf113a7704f722cbf4539b370487f7565d08ab2ec4da25059"
+    },
+    {
+      "path": "drivers/gpu/mt8167/firmware.h",
+      "source_commit": "f96948533601f9fdcdcc22b9700aacd96dbf7204",
+      "role": "native322-external-closure",
+      "sha256": "130bbd9c6d6d9853314c31c1d98a04e68980415732888471547fcce8edf6f593"
+    },
+    {
+      "path": "drivers/gpu/mt8167/dma_pages.c",
+      "source_commit": "f96948533601f9fdcdcc22b9700aacd96dbf7204",
+      "role": "native322-external-closure",
+      "sha256": "879da4cbd5aecf7f295c8064057e98ef03a11265f7984fb12a2d8db3e18208de"
+    },
+    {
+      "path": "drivers/gpu/mt8167/dma_pages.h",
+      "source_commit": "f96948533601f9fdcdcc22b9700aacd96dbf7204",
+      "role": "native322-external-closure",
+      "sha256": "6235a791b38b9041612a6c0fe9109b018e9831e8579d98bcab4412e4496e4932"
+    },
+    {
+      "path": "drivers/gpu/mt8167/rogue_power.h",
+      "source_commit": "f96948533601f9fdcdcc22b9700aacd96dbf7204",
+      "role": "native322-external-closure",
+      "sha256": "1313d3996c1087256b276a6c6fb79c9326b8472a13680f5b0beadd126b2e6d13"
+    },
+    {
+      "path": "drivers/gpu/mt8167/fwif/pvr_rogue_cr_defs.h",
+      "source_commit": "f96948533601f9fdcdcc22b9700aacd96dbf7204",
+      "role": "native322-external-closure",
+      "sha256": "7421bd9524a485e729421fa1452e09d6687d7a34b092c2502a3c1271b0295b7c"
     }
   ],
   "legacy_files_preserved": [
@@ -914,5 +968,49 @@
   "old_driver_cache_required": false,
   "git_history_required": false,
   "hardware_verified": false,
-  "signed_package_byte_identity_claimed": false
+  "signed_package_byte_identity_claimed": false,
+  "native_shared_kmd_dependencies": [
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/frontend/draw_abi.h",
+      "selected_source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "sha256": "923beffc558f5d00b6bca23a7125e000560268021c2996423656ffe531d890c7",
+      "native_reference_source_sha256": "286ea989ecf5fc53f4d0b020872c7420790366dc2e2c6e962288320885769dae",
+      "selection": "Shared wire framing and KMD-internal declarations use KMD320, not the older private native checkout copy"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/frontend/draw_link_abi.h",
+      "selected_source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "sha256": "c59dec3c4374ed9fac60a20938eb4e9fc81632fcba1d2518941f88c8f598b805",
+      "native_reference_source_sha256": "e1102e7676309c63b98d570f9433fce26a15a6246791461d7f6f79a9fd8eef53",
+      "selection": "Shared wire framing and KMD-internal declarations use KMD320, not the older private native checkout copy"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/frontend/draw_protocol.c",
+      "selected_source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "sha256": "1907c34fab878a95906dbb6f7299b91b21ddf68797d517e382072894a9282ad5",
+      "native_reference_source_sha256": "005ae28ce3cae242d0332cf353e423577f27dd362c662c888df5290620f4d33b",
+      "selection": "Shared wire framing and KMD-internal declarations use KMD320, not the older private native checkout copy"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/frontend_memory.h",
+      "selected_source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "sha256": "ad19500b1eff6b9df526d9457a3b797224f6fddefb70055ed4560b62301334a0",
+      "native_reference_source_sha256": "bff221c3ca574d8a7f8d622220395d3765d5676183fa75692977b1da6f446ed8",
+      "selection": "Shared wire framing and KMD-internal declarations use KMD320, not the older private native checkout copy"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/kmd_clear.h",
+      "selected_source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "sha256": "425fcb0c95e5d1d447fc9d25931a88bb0b9af377b26f68e1fd439034e903c1e6",
+      "native_reference_source_sha256": "e6854c1abcc248ecef3ae003171a0a7ca4657beff1f4ddc8976560f3b4f22f19",
+      "selection": "Shared wire framing and KMD-internal declarations use KMD320, not the older private native checkout copy"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/clear_engine.h",
+      "selected_source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "sha256": "33f332b87e9dabe65fcd46a52d8542b18f51ae7944566b1cf72ce676cbe6aa1c",
+      "native_reference_source_sha256": "814e814018661078b2f0f62901afa88b656590c0b1a3c2a1b9f2eabd61aec33d",
+      "selection": "Shared wire framing and KMD-internal declarations use KMD320, not the older private native checkout copy"
+    }
+  ]
 }
