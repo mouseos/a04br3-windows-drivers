@@ -35,3 +35,10 @@ ASan/UBSan通過、WDK/owner/IRQ/FW/cacheはmock。ARM/sign/実機結果は別re
 https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/ns-d3dkmddi-_dxgkarg_patch
 生HTML/textと実R22/R23は成果物rootへ保持。再Patchは公式に複数回呼出し可能。
 source単一branch fix/gpu341-resident-copy。実機main、最新fresh146以後のみ、340無変更再実行なし。
+
+正式caller結合試験: tools/ci/test-ge8300-cold-live341.py はproduction bind(staging branch)/
+cold_for_bind/cold資産準備/prepare_copyをそのまま実行。ClearCOMPLETE→stagingMAP→
+jobNONE/FWoffline→firstCopy asset/boot/arm→完了mock→同rootsecondCopyrearmで
+stop/retire/build各1回、boot1回、rearm2回を確認。native削除/再構築の追加呼出しなし。
+Hardware/retirement/IRQ/cacheはmockでsiliconproofではない。
+Huygens KMD e24a5001を前方merge済み。旧source丸ごとの巻戻し無し。

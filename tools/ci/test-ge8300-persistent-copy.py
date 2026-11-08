@@ -78,6 +78,7 @@ static NTSTATUS enter(struct e_native_owner*c,BOOLEAN cleanup){(void)c;(void)cle
 static NTSTATUS leave(struct e_native_owner*c,NTSTATUS status){(void)c;return status;}
 static NTSTATUS wait_boundary_locked(struct e_native_owner*c){return c->job_state==E_JOB_COMPLETE?0:STATUS_DEVICE_BUSY;}
 static struct e_native_resource*resource(struct e_native_owner*c,uint64_t id){for(int i=0;i<2;i++)if(c->resources[i].id==id)return &c->resources[i];return NULL;}
+static NTSTATUS e_native_prepare_copy_storage_locked(struct e_native_owner*c){assert(c->copy_transfer&&!c->allocation->firmware.hardware_owned);return 0;}
 /* Cold first-use bootstrap only. No stop/retire/rebuild stub exists. */
 static NTSTATUS e_native_boot_locked(struct e_native_owner*c){assert(!c->allocation->start.online&&!c->allocation->start.attempted&&!c->allocation->firmware.hardware_owned);boot_calls++;c->allocation->start.online=1;c->allocation->start.attempted=1;c->allocation->firmware.hardware_owned=1;c->allocation->start.memory->hardware_owned=1;return 0;}
 '''
