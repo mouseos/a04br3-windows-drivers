@@ -117,7 +117,8 @@ static DWORD installed_sys(unsigned i,int candidate){WCHAR s[MAX_PATH],d[MAX_PAT
  * accept a missing file, skip CAT checks, or reinterpret a mismatched version. */
 static int published_inf_leaf(const WCHAR *s){unsigned i=3;if(lstrlenW(s)<8)return 0;if((s[0]!=L'o'&&s[0]!=L'O')||(s[1]!=L'e'&&s[1]!=L'E')||(s[2]!=L'm'&&s[2]!=L'M'))return 0;if(s[i]<L'0'||s[i]>L'9')return 0;while(s[i]>=L'0'&&s[i]<=L'9'){if(++i>12)return 0;}return !lstrcmpiW(s+i,L".inf");}
 static DWORD installed_inf(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,int candidate){
- HKEY key;WCHAR inf[128],win[MAX_PATH],dir[MAX_PATH],full[MAX_PATH],folder[MAX_PATH],staged[MAX_PATH],store[MAX_PATH],published[MAX_PATH],parent[MAX_PATH];DWORD type,n=sizeof(inf),j,e,needed=0,last=0;HANDLE held=INVALID_HANDLE_VALUE;
+ /* Service transaction is serial; keep bounded path scratch off the ARM stack. */
+ HKEY key;static WCHAR inf[128],win[MAX_PATH],dir[MAX_PATH],full[MAX_PATH],folder[MAX_PATH],staged[MAX_PATH],store[MAX_PATH],published[MAX_PATH],parent[MAX_PATH];DWORD type,n=sizeof(inf),j,e,needed=0,last=0;HANDLE held=INVALID_HANDLE_VALUE;
  key=SetupDiOpenDevRegKey(set,dev,DICS_FLAG_GLOBAL,0,DIREG_DRV,KEY_QUERY_VALUE);if(key==INVALID_HANDLE_VALUE)return GetLastError();
  e=RegQueryValueExW(key,L"InfPath",NULL,&type,(BYTE *)inf,&n);RegCloseKey(key);if(e)return e;
  if(type!=REG_SZ||n<2||n>sizeof(inf)||(n&1)||inf[n/2-1])return ERROR_INVALID_DATA;
