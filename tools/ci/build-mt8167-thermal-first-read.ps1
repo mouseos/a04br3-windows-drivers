@@ -31,7 +31,7 @@ Copy-Item "$root\drivers\power\mt8167-thermal\mt8167-thermal-native.inf" "$out\p
 $thumb='BCBF6C456C6F0DD0818434763B189488FBF13570';$cert=Get-Item "Cert:\CurrentUser\My\$thumb"
 if(!$cert.HasPrivateKey -or $cert.NotAfter -le (Get-Date)){throw 'Existing signer required'}
 New-Item -ItemType Directory "$out\client"|Out-Null
-$umflags=@('-nostdlibinc','--target=thumbv7-pc-windows-msvc','-std=c11','-O2','-ffreestanding','-fno-builtin','-fms-extensions','-fno-stack-protector','-D_ARM_','-DARM','-D_WIN32_WINNT=0x0603','-isystem',"$UserIncludeDirectory",'-isystem',"$KitIncludeDirectory\shared")
+$umflags=@('-nostdlibinc','--target=thumbv7-pc-windows-msvc','-std=c11','-O2','-ffreestanding','-fno-builtin','-fms-extensions','-fno-stack-protector','-D_ARM_','-DARM','-D_WIN32_WINNT=0x0603','-isystem',"$UserIncludeDirectory",'-isystem',"$KitIncludeDirectory\shared",'-isystem',"$KitIncludeDirectory\km\crt")
 & clang @umflags -c "$root\tools\thermal\mt8167-thermal-ioctl-status.c" -o "$out\obj\ioctl_status_client.obj"
 if($LASTEXITCODE){throw 'Fixed status client compile failed'}
 $client="$out\client\mt8167-thermal-ioctl-status.exe"
