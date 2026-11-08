@@ -1035,6 +1035,13 @@ static void ParentUsbGpioWrite(void *p,unsigned off,unsigned v) { A04_PARENT_CON
 static int ParentUsbOvercurrent(void *p) {
  A04_PARENT_CONTEXT*c=p;
  if(!c->gpio)return -1;
+#if A04_SHARED_USBPORT_CHILD
+ if(c->musb.held){
+  struct mt_musb_board_io io;struct mt_musb_board_sample sample;
+  RtlZeroMemory(&io,sizeof(io));io.context=c;io.gpio=ParentUsbGpioRead;
+  return mt_musb_pin_candidate(&io,&sample)||!sample.oc_valid||!sample.oc||sample.id?-1:0;
+ }
+#endif
 #if A04_USB_GPIO22_SOURCE_EXPERIMENT
  /* Board usb20_host.c has CONFIG_OC disabled. Do not make an unconfigured
   * GPIO21 a mandatory overcurrent measurement. This profile has ID/source
@@ -1101,40 +1108,28 @@ static int ParentUsbVerify(void *p) {
 #endif
 static int ParentUsbAcquire(PVOID p) {
 #if A04_SHARED_USBPORT_CHILD
- A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);int result=-1;
- if(ParentLock(c))return -1;
- if(!c->musb.held)result=a04_usb_owner_acquire_locked(&c->usb);
- ParentUnlock(c);return result;
+ UNREFERENCED_PARAMETER(p);return -1; /* standard profile: only ABI2 owns this controller */
 #else
  return a04_usb_owner_acquire(&ParentContext((WDFDEVICE)p)->usb);
 #endif
 }
 static int ParentUsbVbus(PVOID p,int on) {
 #if A04_SHARED_USBPORT_CHILD
- A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);int result=-1;
- if(ParentLock(c))return -1;
- if(!c->musb.held)result=a04_usb_owner_vbus_locked(&c->usb,on);
- ParentUnlock(c);return result;
+ UNREFERENCED_PARAMETER(p);UNREFERENCED_PARAMETER(on);return -1; /* standard profile: only ABI2 owns this controller */
 #else
  return a04_usb_owner_vbus(&ParentContext((WDFDEVICE)p)->usb,on);
 #endif
 }
 static int ParentUsbHealth(PVOID p) {
 #if A04_SHARED_USBPORT_CHILD
- A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);int result=-1;
- if(ParentLock(c))return -1;
- if(!c->musb.held)result=a04_usb_owner_health_locked(&c->usb);
- ParentUnlock(c);return result;
+ UNREFERENCED_PARAMETER(p);return -1; /* standard profile: only ABI2 owns this controller */
 #else
  return a04_usb_owner_health(&ParentContext((WDFDEVICE)p)->usb);
 #endif
 }
 static int ParentUsbRelease(PVOID p) {
 #if A04_SHARED_USBPORT_CHILD
- A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);int result=-1;
- if(ParentLock(c))return -1;
- if(!c->musb.held)result=a04_usb_owner_release_locked(&c->usb);
- ParentUnlock(c);return result;
+ UNREFERENCED_PARAMETER(p);return -1; /* standard profile: only ABI2 owns this controller */
 #else
  return a04_usb_owner_release(&ParentContext((WDFDEVICE)p)->usb);
 #endif
@@ -1486,7 +1481,13 @@ NTSTATUS ParentD0Exit(WDFDEVICE dev,WDF_POWER_DEVICE_STATE target)
      if(held)return STATUS_DEVICE_BUSY;
     }
 #endif
-    ParentStop(ParentContext(dev),1);return STATUS_SUCCESS;
+    ParentStop(ParentContext(dev),1);
+#if A04_SHARED_USBPORT_CHILD
+    {A04_PARENT_CONTEXT *c=ParentContext(dev);int held;ExAcquireFastMutex(&c->pwrapLock);
+     held=c->musb.held||c->usb.leased;ExReleaseFastMutex(&c->pwrapLock);
+     if(held)return STATUS_DEVICE_BUSY;}
+#endif
+    return STATUS_SUCCESS;
 }
 NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
 {
