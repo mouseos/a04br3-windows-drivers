@@ -1,5 +1,20 @@
 # MT8167 PowerVR power sequencing foundation
 
+## 最新の実機結果（2026-11-08、run109停止後）
+
+主担当から返却されたGPU320の実観測は、Install3010/flush0、計画reboot1回、
+Diagnostic `00011AF5` / client `84c` 開始後に
+`BUGCHECK 10E/0B/8B765B28/C00000A3/84A3B870`、fastboot復帰。
+新しい119/3は未観測だが、Patch通過や描画成功を示すものではない。
+fresh110 checkpointは自動回収待ちで、停止原因の追跡と修正は主担当が担当する。
+同じ320の再試験は行わない。通常の標準D3D描画/readback完遂は未成功。
+
+公開single-checkoutのfullsource320 build成功はこの実機失敗と区別する。
+build source `e5816a86` の未署名成果物、および署名binaryのclient `f4f1b4f9` /
+UMD `3f8291d0` / native `fb217359` の出自は変更していない。
+以下の「run109試験中」は開始時点の記録として保持する。
+
+
 ## 現行GE8300の状態（2026-11-08、run109開始時点）
 
 現在は実native factory/controlとVidMmの独立MDL lease、実aperture/PTE bindをKMDへ結合している。
