@@ -49,7 +49,16 @@ static NTSTATUS GeoBuildPagingBufferImpl(HANDLE adapter,DXGKARG_BUILDPAGINGBUFFE
  if(!a||!p||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  if(p->Operation==DXGK_OPERATION_MAP_APERTURE_SEGMENT) {
   allocation=p->MapApertureSegment.hAllocation;
-  if(!allocation||p->MapApertureSegment.SegmentId!=1||p->MapApertureSegment.Flags.Value||
+  GeoFactoryCheckpoint(24,STATUS_SUCCESS,p->MapApertureSegment.Flags.Value,p->MapApertureSegment.MdlOffset,p->MapApertureSegment.NumberOfPages,allocation!=NULL);
+  GeoFactoryCheckpoint(25,STATUS_SUCCESS,p->MapApertureSegment.SegmentId,p->MapApertureSegment.OffsetInPages,
+    p->MapApertureSegment.pMdl?MmGetMdlByteCount(p->MapApertureSegment.pMdl):0,
+    p->MapApertureSegment.pMdl?MmGetMdlByteOffset(p->MapApertureSegment.pMdl):0);
+  /* CacheCoherent requests a coherency guarantee, not hardware snooping.
+   * This allocation path always leases the actual cached VidMm PFNs. The
+   * native owner flushes for GPU before publish, then CPU only after real
+   * GPU/SLC completion, before advertising CPU_VISIBLE/IRQ completion.
+   * Reserved bits remain invalid; no segment hardware-coherent cap is set. */
+  if(!allocation||p->MapApertureSegment.SegmentId!=1||(p->MapApertureSegment.Flags.Value&~1u)||
      !p->MapApertureSegment.pMdl||MmGetMdlByteOffset(p->MapApertureSegment.pMdl)||p->MapApertureSegment.MdlOffset)return STATUS_NOT_SUPPORTED;
   bytes=allocation->desc.pitch*allocation->desc.height;
   if(p->MapApertureSegment.NumberOfPages!=BYTES_TO_PAGES(bytes))return STATUS_NOT_SUPPORTED;
