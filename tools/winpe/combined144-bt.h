@@ -9,6 +9,7 @@ static DWORD bt_find(HDEVINFO set,const WCHAR *id,SP_DEVINFO_DATA *found,DWORD *
   {DWORD j=0;while(j+1<n/2&&ids[j]){if(!lstrcmpiW(ids+j,id)){(*matches)++;*found=d;}while(j<n/2&&ids[j])j++;j++;}}
  }return ERROR_MORE_DATA;
 }
+#if !A04_FEATURE148
 static DWORD bt_first_install(void){
  struct {DWORD schema,bytes,result,imported,registered,installed,reboot_required,no_live_restart;WCHAR published_inf[260];} proof={1,552,0,0,0,0,0,1,{0}};
  static WCHAR dir[MAX_PATH],p[3][MAX_PATH],sys[MAX_PATH],drivers[MAX_PATH],installed[MAX_PATH];HANDLE held[5]={INVALID_HANDLE_VALUE,INVALID_HANDLE_VALUE,INVALID_HANDLE_VALUE,INVALID_HANDLE_VALUE,INVALID_HANDLE_VALUE},directory=INVALID_HANDLE_VALUE;const WCHAR *members[5]={NULL,NULL,NULL,NULL,NULL};HDEVINFO set=INVALID_HANDLE_VALUE;SP_DEVINFO_DATA dev;static SP_DEVINSTALL_PARAMS_W params;static SP_DRVINFO_DATA_W driver,extra;DWORD e=0,n,i,matches=0,saved;int list=0;SC_HANDLE scm=NULL,svc=NULL;
@@ -49,6 +50,7 @@ static DWORD bt_first_install(void){
   * suppress thermal/WLAN/USB diagnostics after the shared planned reboot. */
  return saved;
 }
+#endif
 static DWORD bt_readonly_status(void){
  struct {DWORD schema,bytes,result,root_count,child_count,root_status,root_problem,child_status,child_problem,standard_bthmini;} proof={1,40,0,0,0,0,0,0,0,0};HDEVINFO set;SP_DEVINFO_DATA root,child;DWORD e=0,saved;ULONG status=0,problem=0;CONFIGRET cr;
  set=SetupDiGetClassDevsW(NULL,NULL,NULL,DIGCF_ALLCLASSES|DIGCF_PRESENT);if(set==INVALID_HANDLE_VALUE)e=GetLastError();else{

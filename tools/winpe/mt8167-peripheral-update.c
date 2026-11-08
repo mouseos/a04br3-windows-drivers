@@ -69,9 +69,17 @@ struct diagnostic_client {const WCHAR *exe,*arguments,*name,*relative_directory;
 #ifndef A04_DIAGNOSTIC_CLIENT_COUNT
 #define A04_DIAGNOSTIC_CLIENT_COUNT (sizeof(diagnostic_clients)/sizeof(diagnostic_clients[0]))
 #endif
+#ifndef A04_FEATURE148
+#define A04_FEATURE148 0
+#endif
+#ifndef A04_RENDER_TARGET_INDEX
+#define A04_RENDER_TARGET_INDEX 10u
+#endif
 #define PERIPHERAL_TARGET_COUNT (sizeof(targets)/sizeof(targets[0]))
+/* Retained render identity is explicit; MSDC must never inherit its error policy. */
+static int render_target(unsigned i){return i==A04_RENDER_TARGET_INDEX && !lstrcmpW(targets[i].id,L"ACPI\\MOU0006") && !lstrcmpW(targets[i].sys,L"ge8300-render.sys");}
 typedef char bounded_gpu_extras[(A04_CANDIDATE_EXTRA_COUNT<=2)?1:-1];
-typedef char bounded_target_count[(PERIPHERAL_TARGET_COUNT>0 && PERIPHERAL_TARGET_COUNT<=11)?1:-1];
+typedef char bounded_target_count[(PERIPHERAL_TARGET_COUNT>0 && PERIPHERAL_TARGET_COUNT<=(A04_FEATURE148?12:11))?1:-1];
 #ifndef A04_UNBOUND_KEYPAD_CONFIG
 #define A04_UNBOUND_KEYPAD_CONFIG 0x40u
 #endif
@@ -143,7 +151,22 @@ static char *decimal(char *p,DWORD x){char b[11];unsigned n=0;do{b[n++]=(char)('
 /* Same canonical names/type/length/data-SHA256 encoding as Native.ValueFingerprint.
  * Only the fixed old service roots; never writes them or enumerates other services. */
 static DWORD old_services(void){static struct value {WCHAR name[256];DWORD type,bytes;BYTE digest[32];} vals[64],tmp;static BYTE data[65536],canonical[32768];WCHAR keyname[256];HKEY key;DWORD i,j,k,count,n,bytes,type,e,total;BYTE root[32];static const char hx[]="0123456789abcdef";for(k=0;k<sizeof(preserved_services)/sizeof(preserved_services[0]);k++){lstrcpyW(keyname,L"SYSTEM\\CurrentControlSet\\Services\\");lstrcatW(keyname,preserved_services[k].name);e=RegOpenKeyExW(HKEY_LOCAL_MACHINE,keyname,REG_OPTION_OPEN_LINK,KEY_READ,&key);if(!preserved_services[k].present){if(e==ERROR_FILE_NOT_FOUND)continue;if(!e)RegCloseKey(key);return ERROR_REVISION_MISMATCH;}if(e)return e;for(count=0;count<=64;count++){n=256;bytes=sizeof(data);e=RegEnumValueW(key,count,count<64?vals[count].name:tmp.name,&n,NULL,&type,data,&bytes);if(e==ERROR_NO_MORE_ITEMS){e=0;break;}if(e||count==64||type==REG_LINK||n>255||bytes>sizeof(data)){e=e?e:ERROR_INVALID_DATA;break;}vals[count].type=type;vals[count].bytes=bytes;e=hash_bytes(data,bytes,vals[count].digest);if(e)break;}RegCloseKey(key);if(e)return e;for(i=0;i<count;i++)for(j=i+1;j<count;j++)if(lstrcmpiW(vals[i].name,vals[j].name)>0){tmp=vals[i];vals[i]=vals[j];vals[j]=tmp;}total=0;for(i=0;i<count;i++){char line[400],*p=line;for(j=0;vals[i].name[j];j++){WCHAR c=vals[i].name[j];if(c>127)return ERROR_INVALID_DATA;if(c>='a'&&c<='z')c-=32;*p++=(char)c;}*p++=0;p=decimal(p,vals[i].type);*p++=':';p=decimal(p,vals[i].bytes);*p++=':';for(j=0;j<32;j++){*p++=hx[vals[i].digest[j]>>4];*p++=hx[vals[i].digest[j]&15];}*p++='\n';if(total+(DWORD)(p-line)>sizeof(canonical))return ERROR_INVALID_DATA;memcpy(canonical+total,line,p-line);total+=(DWORD)(p-line);}e=hash_bytes(canonical,total,root);if(e)return e;for(i=0;i<32;i++)if(root[i]!=preserved_services[k].hash[i])return ERROR_REVISION_MISMATCH;}return 0;}
-static DWORD preserved(void){WCHAR sys[MAX_PATH],full[MAX_PATH];HANDLE h;DWORD i,e;if(!GetSystemDirectoryW(sys,MAX_PATH))return GetLastError();for(i=0;i<sizeof(preserved_files)/sizeof(preserved_files[0]);i++){h=INVALID_HANDLE_VALUE;e=path(full,sys,preserved_files[i].name);if(!e)e=deferred_file(full,preserved_files[i].hash,&h);if(h!=INVALID_HANDLE_VALUE)CloseHandle(h);if(e)return e;}return old_services();}
+#if A04_FEATURE148
+/* Only captured named values are asserted here. This is not a root/subtree hash. */
+static DWORD captured_registry_values(void){
+ BYTE data[4096];HKEY key;DWORD i,type,bytes,e;
+ for(i=0;i<sizeof(captured_values)/sizeof(captured_values[0]);i++){
+  e=RegOpenKeyExW(HKEY_LOCAL_MACHINE,captured_values[i].key,REG_OPTION_OPEN_LINK,KEY_READ,&key);if(e)return e;
+  bytes=sizeof(data);e=RegQueryValueExW(key,captured_values[i].name,NULL,&type,data,&bytes);RegCloseKey(key);
+  if(e)return e;if(type!=captured_values[i].type||bytes!=captured_values[i].bytes||memcmp(data,captured_values[i].data,bytes))return ERROR_REVISION_MISMATCH;
+ }return 0;
+}
+#endif
+static DWORD preserved(void){WCHAR sys[MAX_PATH],full[MAX_PATH];HANDLE h;DWORD i,e;if(!GetSystemDirectoryW(sys,MAX_PATH))return GetLastError();for(i=0;i<sizeof(preserved_files)/sizeof(preserved_files[0]);i++){h=INVALID_HANDLE_VALUE;if(A04_FEATURE148&&preserved_files[i].name[0]==L'\\'){full[0]=sys[0];full[1]=L':';lstrcpyW(full+2,preserved_files[i].name);e=0;}else e=path(full,sys,preserved_files[i].name);if(!e)e=deferred_file(full,preserved_files[i].hash,&h);if(h!=INVALID_HANDLE_VALUE)CloseHandle(h);if(e)return e;}e=old_services();
+#if A04_FEATURE148
+ if(!e)e=captured_registry_values();
+#endif
+ return e;}
 static DWORD property(HDEVINFO set,SP_DEVINFO_DATA *dev,DWORD code,const WCHAR *expected){WCHAR b[256];DWORD t,n;if(!SetupDiGetDeviceRegistryPropertyW(set,dev,code,&t,(BYTE *)b,sizeof(b),&n))return GetLastError();if(t!=REG_SZ||n<2||n>sizeof(b)||(n&1)||b[n/2-1]||lstrcmpiW(b,expected))return ERROR_REVISION_MISMATCH;return 0;}
 static DWORD installed_inf(unsigned,HDEVINFO,SP_DEVINFO_DATA *,int);
 static DWORD selected_inf_locator_unverified,selected_inf_probe_stage;
@@ -160,7 +183,7 @@ static DWORD inf_location_missing(DWORD error,DWORD stage){
  * identity/configuration or an already installed service is never a baseline. */
 static DWORD first_keypad_baseline(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev){
  static const DWORD absent_props[3]={SPDRP_SERVICE,SPDRP_CLASSGUID,SPDRP_DRIVER};WCHAR value[256];DWORD n,type,flags,j,e;SC_HANDLE manager,service;
- if(PERIPHERAL_TARGET_COUNT!=11||i!=7||lstrcmpW(targets[i].id,L"MT6392\\Buttons")||lstrcmpW(targets[i].sys,L"mt8167-keypad.sys"))return ERROR_INVALID_PARAMETER;
+ if((PERIPHERAL_TARGET_COUNT!=11&&!(A04_FEATURE148&&PERIPHERAL_TARGET_COUNT==12))||i!=7||lstrcmpW(targets[i].id,L"MT6392\\Buttons")||lstrcmpW(targets[i].sys,L"mt8167-keypad.sys"))return ERROR_INVALID_PARAMETER;
  if(!SetupDiGetDeviceRegistryPropertyW(set,dev,SPDRP_CONFIGFLAGS,&type,(BYTE *)&flags,sizeof(flags),&n))return GetLastError();
  if(type!=REG_DWORD||n!=4||flags!=A04_UNBOUND_KEYPAD_CONFIG)return ERROR_REVISION_MISMATCH;
  for(j=0;j<3;j++){
@@ -176,7 +199,7 @@ static DWORD selected_identity(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,int 
  error=deferred_driver_value(set,dev,L"DriverDateData",REG_BINARY,(BYTE *)&d,sizeof(d),&n);record(i,0x216,error);if(error)return error;type=DEVPROP_TYPE_FILETIME;
  }record(i,0x217,type);record(i,0x218,n);if(type!=DEVPROP_TYPE_FILETIME||n!=8||(((ULONGLONG)d.dwHighDateTime<<32)|d.dwLowDateTime)!=(candidate?targets[i].date:targets[i].base_date))return ERROR_REVISION_MISMATCH;e=property(set,dev,SPDRP_SERVICE,targets[i].service);if(e)return e;e=property(set,dev,SPDRP_CLASSGUID,targets[i].cls);return e;}
 static DWORD selected(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,int candidate){DWORD e=selected_identity(i,set,dev,candidate);return e?e:installed_inf(i,set,dev,candidate);}
-static DWORD installed_sys(unsigned i,int candidate){WCHAR s[MAX_PATH],d[MAX_PATH],p[MAX_PATH];HANDLE h=INVALID_HANDLE_VALUE;DWORD e;if(!GetSystemDirectoryW(s,MAX_PATH))return GetLastError();e=path(d,s,L"drivers");if(!e)e=path(p,d,(!candidate&&A04_FEATURE144&&i==3)?L"mt6630-runtime.sys":targets[i].sys);if(!e&&!candidate&&((A04_PERIPHERAL_FIRST_INSTALL_MASK|A04_PERIPHERAL_DEFERRED_UNBOUND_MASK)&(1u<<i))){h=CreateFileW(p,FILE_READ_ATTRIBUTES,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,NULL);if(h!=INVALID_HANDLE_VALUE){CloseHandle(h);return ERROR_ALREADY_EXISTS;}e=GetLastError();return e==ERROR_FILE_NOT_FOUND?0:e;}if(!e)e=deferred_file(p,candidate?targets[i].hash[1]:targets[i].base_sys,&h);if(h!=INVALID_HANDLE_VALUE)CloseHandle(h);return e;}
+static DWORD installed_sys(unsigned i,int candidate){WCHAR s[MAX_PATH],d[MAX_PATH],p[MAX_PATH];HANDLE h=INVALID_HANDLE_VALUE;DWORD e;if(!GetSystemDirectoryW(s,MAX_PATH))return GetLastError();e=path(d,s,L"drivers");if(!e)e=path(p,d,(!candidate&&A04_FEATURE144&&!A04_FEATURE148&&i==3)?L"mt6630-runtime.sys":targets[i].sys);if(!e&&!candidate&&((A04_PERIPHERAL_FIRST_INSTALL_MASK|A04_PERIPHERAL_DEFERRED_UNBOUND_MASK)&(1u<<i))){h=CreateFileW(p,FILE_READ_ATTRIBUTES,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,NULL);if(h!=INVALID_HANDLE_VALUE){CloseHandle(h);return ERROR_ALREADY_EXISTS;}e=GetLastError();return e==ERROR_FILE_NOT_FOUND?0:e;}if(!e)e=deferred_file(p,candidate?targets[i].hash[1]:targets[i].base_sys,&h);if(h!=INVALID_HANDLE_VALUE)CloseHandle(h);return e;}
 /* DIF may store the original INF basename in the selected class key while
  * SetupCopyOEMInf publishes only oemNNN.inf in Windows\INF. Resolve that exact
  * installed package through SetupAPI; never scan the INF directory,
@@ -261,7 +284,7 @@ static DWORD selected_runtime(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,DWORD
 }
 static DWORD installed_gpu_extras(int candidate){
 #if A04_CANDIDATE_EXTRA_COUNT
- WCHAR sys[MAX_PATH],full[MAX_PATH];HANDLE held;DWORD j,e=0;if(PERIPHERAL_TARGET_COUNT!=11||A04_CANDIDATE_EXTRA_COUNT!=2)return ERROR_INVALID_DATA;
+ WCHAR sys[MAX_PATH],full[MAX_PATH];HANDLE held;DWORD j,e=0;if((PERIPHERAL_TARGET_COUNT!=11&&!(A04_FEATURE148&&PERIPHERAL_TARGET_COUNT==12))||A04_CANDIDATE_EXTRA_COUNT!=2)return ERROR_INVALID_DATA;
  if(!GetSystemDirectoryW(sys,MAX_PATH))return GetLastError();
  for(j=0;j<A04_CANDIDATE_EXTRA_COUNT;j++){held=INVALID_HANDLE_VALUE;e=path(full,sys,candidate_extras[j].installed);if(!e)e=deferred_file(full,candidate?candidate_extras[j].hash:candidate_extras[j].baseline_hash,&held);if(held!=INVALID_HANDLE_VALUE)CloseHandle(held);if(e)return e;}
  return 0;
@@ -324,7 +347,7 @@ static DWORD sd_readonly_presence(DEVINST host){
 static DWORD keypad_hid_bindings(DEVINST host){
  static const GUID hid={0x4d1e55b2,0xf16f,0x11cf,{0x88,0xcb,0x00,0x11,0x11,0x00,0x00,0x30}};
  static DWORD detailbuf[512];static WCHAR ids[1024];DEVINST seen[64],cur,parent;HDEVINFO set;SP_DEVICE_INTERFACE_DATA iface;SP_DEVINFO_DATA dev;DWORD i,j,n,type,depth,count=0,keyboard=0,col04=0,e=0;CONFIGRET cr;
- if(PERIPHERAL_TARGET_COUNT!=11)return ERROR_INVALID_PARAMETER;
+ if((PERIPHERAL_TARGET_COUNT!=11&&!(A04_FEATURE148&&PERIPHERAL_TARGET_COUNT==12)))return ERROR_INVALID_PARAMETER;
  set=SetupDiGetClassDevsW(&hid,NULL,NULL,DIGCF_DEVICEINTERFACE|DIGCF_PRESENT);if(set==INVALID_HANDLE_VALUE)return GetLastError();
  for(i=0;i<64;i++){
   SP_DEVICE_INTERFACE_DETAIL_DATA_W *detail=(SP_DEVICE_INTERFACE_DETAIL_DATA_W*)detailbuf;
@@ -349,7 +372,7 @@ static DWORD keypad_hid_bindings(DEVINST host){
 /* Completed snapshot is an observation boundary, not peripheral success. */
 struct combined_node_record {DWORD observed,discovery_error,cr,status,problem,metadata_error,sys_error,inf_location_error;};
 struct combined_client_result {DWORD observed,phase,client_id,pid,created,wait_status,exit_valid,exit_code,result;};
-static struct combined_node_record combined_nodes[11];
+static struct combined_node_record combined_nodes[PERIPHERAL_TARGET_COUNT];
 static struct combined_client_result combined_clients[8];
 static DWORD combined_gpu_node_ready,combined_diagnostic;
 static DWORD combined_snapshot(const WCHAR *phase,DWORD result,int include_volume){
@@ -388,7 +411,8 @@ static DWORD run_clients(DWORD peripheral_result)
   const struct diagnostic_client *c=&diagnostic_clients[i];WCHAR sys[MAX_PATH],dir[MAX_PATH],exe[MAX_PATH],out[MAX_PATH],name[64],cmd[2*MAX_PATH+64];HANDLE held=INVALID_HANDLE_VALUE,stdout_=INVALID_HANDLE_VALUE,stderr_=INVALID_HANDLE_VALUE,nul=INVALID_HANDLE_VALUE,job=NULL;JOBOBJECT_EXTENDED_LIMIT_INFORMATION limit;SECURITY_ATTRIBUTES sa;STARTUPINFOW start;PROCESS_INFORMATION process;DWORD e=0,exit=0xffffffffu,wait=0xffffffffu,exit_valid=0;
   if(i>=8||c->phase>1)return ERROR_INVALID_DATA;
   if(c->phase==1){
-   DWORD boundary;if(i+1!=A04_DIAGNOSTIC_CLIENT_COUNT||PERIPHERAL_TARGET_COUNT!=11||A04_CANDIDATE_EXTRA_COUNT!=2||!combined_gpu_node_ready)return ERROR_NOT_READY;
+   if(A04_FEATURE148)return ERROR_INVALID_PARAMETER;
+   DWORD boundary;if(i+1!=A04_DIAGNOSTIC_CLIENT_COUNT||(PERIPHERAL_TARGET_COUNT!=11&&!(A04_FEATURE148&&PERIPHERAL_TARGET_COUNT==12))||A04_CANDIDATE_EXTRA_COUNT!=2||!combined_gpu_node_ready)return ERROR_NOT_READY;
    boundary=persist_before_gpu(first);if(boundary)return boundary;
   }
   combined_clients[i].observed=1;combined_clients[i].phase=c->phase;combined_clients[i].client_id=i;combined_clients[i].created=0;combined_clients[i].exit_valid=0;
@@ -409,7 +433,8 @@ static DWORD run_clients(DWORD peripheral_result)
   if(stderr_!=INVALID_HANDLE_VALUE){if(!FlushFileBuffers(stderr_)&&!e)e=GetLastError();if(!CloseHandle(stderr_)&&!e)e=GetLastError();}
   if(nul!=INVALID_HANDLE_VALUE)CloseHandle(nul);
   combined_clients[i].wait_status=wait;combined_clients[i].exit_valid=exit_valid;combined_clients[i].exit_code=exit;combined_clients[i].result=e;
-  if(c->phase==1){struct {DWORD schema,bytes,result,exit_valid,exit_code;} g={1,20,e,exit_valid,exit};DWORD saved=save_blob(L"gpu-result.bin",&g,sizeof(g));record(i,0x284,saved);if(saved&&!e)e=saved;}
+  if(c->phase==1){
+   if(A04_FEATURE148)return ERROR_INVALID_PARAMETER;struct {DWORD schema,bytes,result,exit_valid,exit_code;} g={1,20,e,exit_valid,exit};DWORD saved=save_blob(L"gpu-result.bin",&g,sizeof(g));record(i,0x284,saved);if(saved&&!e)e=saved;}
   record(i,0x221,e);if(e&&!first)first=e;
  }
  {DWORD e=combined_snapshot(L"Final",first,0);if(e&&!first)first=e;}
@@ -440,15 +465,15 @@ static DWORD legacy_usb_node_observation(DWORD discovery){
 }
 #endif
 #include "combined144-bt.h"
-static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_COUNT][5],directory_holds[PERIPHERAL_TARGET_COUNT];static WCHAR paths_[PERIPHERAL_TARGET_COUNT][3][MAX_PATH],extra_paths[2][MAX_PATH],folders[PERIPHERAL_TARGET_COUNT][MAX_PATH];SP_DEVINFO_DATA devs[PERIPHERAL_TARGET_COUNT];HDEVINFO set=INVALID_HANDLE_VALUE;DWORD i,j,e=0,first=0;const WCHAR *members[5];for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){directory_holds[i]=INVALID_HANDLE_VALUE;for(j=0;j<5;j++)held[i][j]=INVALID_HANDLE_VALUE;}
+static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_COUNT][5],directory_holds[PERIPHERAL_TARGET_COUNT];static WCHAR paths_[PERIPHERAL_TARGET_COUNT][3][MAX_PATH],extra_paths[2][MAX_PATH],folders[PERIPHERAL_TARGET_COUNT][MAX_PATH];SP_DEVINFO_DATA devs[PERIPHERAL_TARGET_COUNT];HDEVINFO set=INVALID_HANDLE_VALUE;DWORD i,j,pass,e=0,first=0;const WCHAR *members[5];for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){directory_holds[i]=INVALID_HANDLE_VALUE;for(j=0;j<5;j++)held[i][j]=INVALID_HANDLE_VALUE;}
  /* Every candidate trio is held, byte-checked and CAT-verified before staging. */
  for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){e=path(folders[i],base_directory,targets[i].folder);if(!e)e=hold_directory(folders[i],&directory_holds[i]);if(e)goto done;for(j=0;j<3;j++){const WCHAR *n=j==0?targets[i].inf:(j==1?targets[i].sys:targets[i].cat);e=path(paths_[i][j],folders[i],n);if(!e)e=deferred_file(paths_[i][j],targets[i].hash[j],&held[i][j]);if(e)goto done;members[j]=paths_[i][j];}members[3]=members[4]=NULL;
 #if A04_CANDIDATE_EXTRA_COUNT
- if(i==10){for(j=0;j<A04_CANDIDATE_EXTRA_COUNT;j++){e=path(extra_paths[j],folders[i],candidate_extras[j].name);if(!e)e=deferred_file(extra_paths[j],candidate_extras[j].hash,&held[i][j+3]);if(e)goto done;members[j+3]=extra_paths[j];}}
+ if(render_target(i)){for(j=0;j<A04_CANDIDATE_EXTRA_COUNT;j++){e=path(extra_paths[j],folders[i],candidate_extras[j].name);if(!e)e=deferred_file(extra_paths[j],candidate_extras[j].hash,&held[i][j+3]);if(e)goto done;members[j+3]=extra_paths[j];}}
 #endif
  e=fixed_signer(paths_[i][2],held[i][2]);if(!e)e=deferred_members(i,paths_[i][2],members,held[i]);if(e)goto done;}
  if(log_error){e=log_error;goto done;}e=deferred_marker(L"boot-transition-authorized.bin",0);if(!e)e=preserved();if(e)goto done;set=SetupDiGetClassDevsW(NULL,NULL,NULL,DIGCF_ALLCLASSES|DIGCF_PRESENT);if(set==INVALID_HANDLE_VALUE){e=GetLastError();goto done;}
- if(diagnostic){memset(combined_nodes,0xff,sizeof(combined_nodes));memset(combined_clients,0xff,sizeof(combined_clients));for(i=0;i<11;i++)combined_nodes[i].observed=0;for(i=0;i<8;i++)combined_clients[i].observed=0;combined_gpu_node_ready=0;for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){ULONG status=0,problem=0;CONFIGRET cr;if(A04_PERIPHERAL_DEFERRED_UNBOUND_MASK&(1u<<i)){e=deferred_find(i,set,&devs[i]);if(!e)e=first_keypad_baseline(i,set,&devs[i]);if(!e)e=installed_sys(i,0);record(i,0x269,e);if(e&&!first)first=e;continue;}e=deferred_find(i,set,&devs[i]);if(!e){
+ if(diagnostic){memset(combined_nodes,0xff,sizeof(combined_nodes));memset(combined_clients,0xff,sizeof(combined_clients));for(i=0;i<PERIPHERAL_TARGET_COUNT;i++)combined_nodes[i].observed=0;for(i=0;i<8;i++)combined_clients[i].observed=0;combined_gpu_node_ready=0;for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){ULONG status=0,problem=0;CONFIGRET cr;if(A04_PERIPHERAL_DEFERRED_UNBOUND_MASK&(1u<<i)){e=deferred_find(i,set,&devs[i]);if(!e)e=first_keypad_baseline(i,set,&devs[i]);if(!e)e=installed_sys(i,0);record(i,0x269,e);if(e&&!first)first=e;continue;}e=deferred_find(i,set,&devs[i]);if(!e){
  DWORD metadata,sys,inf_error=ERROR_NOT_READY;combined_nodes[i].observed=1;combined_nodes[i].discovery_error=0;cr=CM_Get_DevNode_Status(&status,&problem,devs[i].DevInst,0);record(i,0x202,(DWORD)cr);record(i,0x203,status);record(i,0x204,problem);
  metadata=selected_runtime(i,set,&devs[i],&inf_error);record(i,0x253,inf_error);record(i,0x219,metadata);sys=installed_sys(i,1);record(i,0x21a,sys);combined_nodes[i].cr=cr;combined_nodes[i].status=status;combined_nodes[i].problem=problem;combined_nodes[i].metadata_error=metadata;combined_nodes[i].sys_error=sys;combined_nodes[i].inf_location_error=inf_error;
  e=metadata?metadata:sys;if(!e&&(cr!=CR_SUCCESS||!(status&DN_STARTED)||problem))e=ERROR_NOT_READY;
@@ -456,7 +481,7 @@ static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_CO
 #if A04_USB_PC_ROLE_OPTIONAL_LEGACY_NODE
  if(i==2){DWORD seen=legacy_usb_node_observation(e);if(seen)e=seen;else if(e==ERROR_NOT_FOUND)e=0;}
 #endif
- if(PERIPHERAL_TARGET_COUNT==11&&i==10){combined_gpu_node_ready=e?0:1;}else if(e&&!first)first=e;}e=installed_gpu_extras(1);record(10,0x285,e);if(e)combined_gpu_node_ready=0;
+ if(render_target(i)){combined_gpu_node_ready=e?0:1;if(A04_FEATURE148&&e&&!first)first=e;}else if(e&&!first)first=e;}e=installed_gpu_extras(1);record(A04_RENDER_TARGET_INDEX,0x285,e);if(e)combined_gpu_node_ready=0;
 #if !A04_DIAGNOSTIC_ONLY || A04_READONLY_PERIPHERAL_STATUS
  if(A04_RUN_THERMAL_READ){e=readonly_status();if(e&&!first)first=e;}
 #endif
@@ -481,8 +506,14 @@ static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_CO
  e=import_aux_hcd1014();if(e)goto done;
 #endif
  for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){if(!(A04_PERIPHERAL_INSTALL_MASK&(1u<<i)))continue;if(A04_PERIPHERAL_DEFERRED_UNBOUND_MASK&(1u<<i))continue;if(WaitForSingleObject(stop_event,0)==WAIT_OBJECT_0){e=ERROR_CANCELLED;goto done;}if(!SetupCopyOEMInfW(paths_[i][0],folders[i],SPOST_PATH,0,NULL,0,NULL,NULL)){e=GetLastError();goto done;}record(i,0x205,0);}
- for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){if(!(A04_PERIPHERAL_INSTALL_MASK&(1u<<i)))continue;if(WaitForSingleObject(stop_event,0)==WAIT_OBJECT_0){e=ERROR_CANCELLED;goto done;}e=deferred_install(i,set,&devs[i],paths_[i][0]);if(e)goto done;}
-#if A04_FEATURE144
+ for(pass=0;pass<PERIPHERAL_TARGET_COUNT;pass++){
+#if A04_FEATURE148
+ i=install_order[pass];
+#else
+ i=pass;
+#endif
+ if(!(A04_PERIPHERAL_INSTALL_MASK&(1u<<i)))continue;if(WaitForSingleObject(stop_event,0)==WAIT_OBJECT_0){e=ERROR_CANCELLED;goto done;}e=deferred_install(i,set,&devs[i],paths_[i][0]);if(e)goto done;}
+#if A04_FEATURE144 && !A04_FEATURE148
  e=bt_first_install();if(e)goto done;
 #endif
  e=preserved();if(e)goto done;e=deferred_marker(L"deferred-pending.bin",1);if(!e)e=deferred_arm_diagnostics();if(!e)e=ERROR_SUCCESS_REBOOT_REQUIRED;
@@ -497,4 +528,4 @@ static DWORD batch_once(void){DWORD e;int diagnostic=0;e=local_system();if(e)ret
 static DWORD once(void){REASON_CONTEXT r;HANDLE power;DWORD e=local_system(),cleanup=0;if(e)return e;memset(&r,0,sizeof(r));r.Version=POWER_REQUEST_CONTEXT_VERSION;r.Flags=POWER_REQUEST_CONTEXT_SIMPLE_STRING;r.Reason.SimpleReasonString=L"Fixed peripheral deferred update";power=PowerCreateRequest(&r);if(power==INVALID_HANDLE_VALUE)return GetLastError();if(!PowerSetRequest(power,PowerRequestSystemRequired)){e=GetLastError();CloseHandle(power);return e;}e=batch_once();if(!PowerClearRequest(power,PowerRequestSystemRequired))cleanup=GetLastError();if(!CloseHandle(power)&&!cleanup)cleanup=GetLastError();if(cleanup&&(e==0||e==ERROR_SUCCESS_REBOOT_REQUIRED))e=cleanup;return e;}
 static void WINAPI control(DWORD c){if(c==SERVICE_CONTROL_STOP&&stop_event)SetEvent(stop_event);}
 static void WINAPI service_main(DWORD argc,WCHAR **argv){DWORD e,event_error;(void)argc;(void)argv;stop_event=CreateEventW(NULL,TRUE,FALSE,NULL);event_error=stop_event?0:GetLastError();status_handle=RegisterServiceCtrlHandlerW(service_name,control);if(!status_handle)return;memset(&service_status,0,sizeof(service_status));service_status.dwServiceType=SERVICE_WIN32_OWN_PROCESS;service_status.dwCurrentState=SERVICE_RUNNING;service_status.dwControlsAccepted=SERVICE_ACCEPT_STOP;SetServiceStatus(status_handle,&service_status);e=event_error?event_error:once();{DWORD final=combined_finalize(e);if(final&&(e==0||e==ERROR_SUCCESS_REBOOT_REQUIRED))e=final;}if(!A04_DIAGNOSTIC_ONLY&&e==ERROR_SUCCESS_REBOOT_REQUIRED){DWORD w=deferred_start_waiter();if(w){(void)disable_self();e=w;}}if(e&&e!=ERROR_SUCCESS_REBOOT_REQUIRED)(void)disable_self();record(0,0x207,e);if(logfile!=INVALID_HANDLE_VALUE){if(!FlushFileBuffers(logfile)&&!e)e=ERROR_WRITE_FAULT;CloseHandle(logfile);logfile=INVALID_HANDLE_VALUE;}service_status.dwCurrentState=SERVICE_STOPPED;service_status.dwControlsAccepted=0;if(e){service_status.dwWin32ExitCode=ERROR_SERVICE_SPECIFIC_ERROR;service_status.dwServiceSpecificExitCode=e;}SetServiceStatus(status_handle,&service_status);if(stop_event)CloseHandle(stop_event);}
-void mainCRTStartup(void){const WCHAR *cmd=GetCommandLineW();DWORD e,i;combined_service_pid=GetCurrentProcessId();combined_run_id=GetTickCount()^combined_service_pid;memset(combined_nodes,0xff,sizeof(combined_nodes));memset(combined_clients,0xff,sizeof(combined_clients));for(i=0;i<11;i++)combined_nodes[i].observed=0;for(i=0;i<8;i++)combined_clients[i].observed=0;SetErrorMode(SEM_FAILCRITICALERRORS|SEM_NOOPENFILEERRORBOX);if(*cmd=='"'){cmd++;while(*cmd&&*cmd!='"')cmd++;if(*cmd)cmd++;}else while(*cmd&&*cmd!=' '&&*cmd!='\t')cmd++;while(*cmd==' '||*cmd=='\t')cmd++;if(!lstrcmpW(cmd,L"--reboot-after-stop"))e=deferred_reboot_waiter();else if(*cmd)e=ERROR_INVALID_PARAMETER;else{SERVICE_TABLE_ENTRYW t[2]={{(LPWSTR)service_name,service_main},{NULL,NULL}};e=StartServiceCtrlDispatcherW(t)?0:GetLastError();}if(logfile!=INVALID_HANDLE_VALUE)CloseHandle(logfile);ExitProcess(e);}
+void mainCRTStartup(void){const WCHAR *cmd=GetCommandLineW();DWORD e,i;combined_service_pid=GetCurrentProcessId();combined_run_id=GetTickCount()^combined_service_pid;memset(combined_nodes,0xff,sizeof(combined_nodes));memset(combined_clients,0xff,sizeof(combined_clients));for(i=0;i<PERIPHERAL_TARGET_COUNT;i++)combined_nodes[i].observed=0;for(i=0;i<8;i++)combined_clients[i].observed=0;SetErrorMode(SEM_FAILCRITICALERRORS|SEM_NOOPENFILEERRORBOX);if(*cmd=='"'){cmd++;while(*cmd&&*cmd!='"')cmd++;if(*cmd)cmd++;}else while(*cmd&&*cmd!=' '&&*cmd!='\t')cmd++;while(*cmd==' '||*cmd=='\t')cmd++;if(!lstrcmpW(cmd,L"--reboot-after-stop"))e=deferred_reboot_waiter();else if(*cmd)e=ERROR_INVALID_PARAMETER;else{SERVICE_TABLE_ENTRYW t[2]={{(LPWSTR)service_name,service_main},{NULL,NULL}};e=StartServiceCtrlDispatcherW(t)?0:GetLastError();}if(logfile!=INVALID_HANDLE_VALUE)CloseHandle(logfile);ExitProcess(e);}
