@@ -38,10 +38,16 @@ static DWORD uart_error;
 struct peripheral_target {const WCHAR *id,*service,*cls,*folder,*inf,*sys,*cat;ULONGLONG version,date;BYTE hash[3][32];ULONGLONG base_version,base_date;BYTE base_sys[32];const WCHAR *base_inf;};
 struct preserved_file {const WCHAR *name;BYTE hash[32];};
 struct preserved_service {const WCHAR *name;DWORD present;BYTE hash[32];};
-struct diagnostic_client {const WCHAR *exe,*arguments,*name,*relative_directory;BYTE hash[32];DWORD timeout_ms;};
+struct candidate_extra_file {const WCHAR *name,*installed;BYTE hash[32],baseline_hash[32];};
+struct diagnostic_client {const WCHAR *exe,*arguments,*name,*relative_directory;BYTE hash[32];DWORD timeout_ms,phase;};
 #include "peripheral-batch-policy.h"
+#include "rotation-job-contract.h"
+#ifndef A04_CANDIDATE_EXTRA_COUNT
+#define A04_CANDIDATE_EXTRA_COUNT 0u
+#endif
 #define PERIPHERAL_TARGET_COUNT (sizeof(targets)/sizeof(targets[0]))
-typedef char bounded_target_count[(PERIPHERAL_TARGET_COUNT>0 && PERIPHERAL_TARGET_COUNT<=10)?1:-1];
+typedef char bounded_gpu_extras[(A04_CANDIDATE_EXTRA_COUNT<=2)?1:-1];
+typedef char bounded_target_count[(PERIPHERAL_TARGET_COUNT>0 && PERIPHERAL_TARGET_COUNT<=11)?1:-1];
 #ifndef A04_PERIPHERAL_FIRST_INSTALL_MASK
 #define A04_PERIPHERAL_FIRST_INSTALL_MASK 0u
 #endif
@@ -113,7 +119,7 @@ static DWORD installed_inf(unsigned,HDEVINFO,SP_DEVINFO_DATA *,int);
  * identity/configuration or an already installed service is never a baseline. */
 static DWORD first_keypad_baseline(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev){
  static const DWORD absent_props[3]={SPDRP_SERVICE,SPDRP_CLASSGUID,SPDRP_DRIVER};WCHAR value[256];DWORD n,type,flags,j,e;SC_HANDLE manager,service;
- if(PERIPHERAL_TARGET_COUNT!=10||i!=7||lstrcmpW(targets[i].id,L"MT6392\\Buttons")||lstrcmpW(targets[i].sys,L"mt8167-keypad.sys"))return ERROR_INVALID_PARAMETER;
+ if(PERIPHERAL_TARGET_COUNT!=11||i!=7||lstrcmpW(targets[i].id,L"MT6392\\Buttons")||lstrcmpW(targets[i].sys,L"mt8167-keypad.sys"))return ERROR_INVALID_PARAMETER;
  if(!SetupDiGetDeviceRegistryPropertyW(set,dev,SPDRP_CONFIGFLAGS,&type,(BYTE *)&flags,sizeof(flags),&n))return GetLastError();
  if(type!=REG_DWORD||n!=4||flags!=0x40u)return ERROR_REVISION_MISMATCH;
  for(j=0;j<3;j++){
@@ -161,6 +167,16 @@ static DWORD installed_inf(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,int cand
   lstrcpyW(full,published);
  }
  if(!e)e=deferred_file(full,targets[i].hash[0],&held);if(held!=INVALID_HANDLE_VALUE)CloseHandle(held);record(i,0x252,e);return e;
+}
+static DWORD installed_gpu_extras(int candidate){
+#if A04_CANDIDATE_EXTRA_COUNT
+ WCHAR sys[MAX_PATH],full[MAX_PATH];HANDLE held;DWORD j,e=0;if(PERIPHERAL_TARGET_COUNT!=11||A04_CANDIDATE_EXTRA_COUNT!=2)return ERROR_INVALID_DATA;
+ if(!GetSystemDirectoryW(sys,MAX_PATH))return GetLastError();
+ for(j=0;j<A04_CANDIDATE_EXTRA_COUNT;j++){held=INVALID_HANDLE_VALUE;e=path(full,sys,candidate_extras[j].installed);if(!e)e=deferred_file(full,candidate?candidate_extras[j].hash:candidate_extras[j].baseline_hash,&held);if(held!=INVALID_HANDLE_VALUE)CloseHandle(held);if(e)return e;}
+ return 0;
+#else
+ return 0;
+#endif
 }
 static DWORD save_blob(const WCHAR *name,const void *data,DWORD bytes){WCHAR p[MAX_PATH];HANDLE h;DWORD e,n;e=path(p,log_directory,name);if(e)return e;h=CreateFileW(p,GENERIC_WRITE,FILE_SHARE_READ,NULL,CREATE_NEW,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_WRITE_THROUGH,NULL);if(h==INVALID_HANDLE_VALUE)return GetLastError();e=(!WriteFile(h,data,bytes,&n,NULL)||n!=bytes||!FlushFileBuffers(h))?ERROR_WRITE_FAULT:0;CloseHandle(h);return e;}
 /* Read-only ABI copied from RTC5 rtc_ioctl.h and thermal17 readout{,_ioctl}.h.
@@ -213,7 +229,7 @@ static DWORD sd_readonly_presence(DEVINST host){
 static DWORD keypad_hid_bindings(DEVINST host){
  static const GUID hid={0x4d1e55b2,0xf16f,0x11cf,{0x88,0xcb,0x00,0x11,0x11,0x00,0x00,0x30}};
  static DWORD detailbuf[512];static WCHAR ids[1024];DEVINST seen[64],cur,parent;HDEVINFO set;SP_DEVICE_INTERFACE_DATA iface;SP_DEVINFO_DATA dev;DWORD i,j,n,type,depth,count=0,keyboard=0,col04=0,e=0;CONFIGRET cr;
- if(PERIPHERAL_TARGET_COUNT!=10)return ERROR_INVALID_PARAMETER;
+ if(PERIPHERAL_TARGET_COUNT!=11)return ERROR_INVALID_PARAMETER;
  set=SetupDiGetClassDevsW(&hid,NULL,NULL,DIGCF_DEVICEINTERFACE|DIGCF_PRESENT);if(set==INVALID_HANDLE_VALUE)return GetLastError();
  for(i=0;i<64;i++){
   SP_DEVICE_INTERFACE_DETAIL_DATA_W *detail=(SP_DEVICE_INTERFACE_DETAIL_DATA_W*)detailbuf;
@@ -234,50 +250,96 @@ static DWORD keypad_hid_bindings(DEVINST host){
  if(i==64)e=ERROR_MORE_DATA;SetupDiDestroyDeviceInfoList(set);record(7,0x260,e);record(7,0x261,count);record(7,0x262,keyboard);record(7,0x263,col04);
  return e?e:((count==4&&keyboard==1&&col04==1)?0:ERROR_NOT_READY);
 }
+#include "engine-system-volume-flush.h"
+/* Completed snapshot is an observation boundary, not peripheral success. */
+struct combined_node_record {DWORD observed,discovery_error,cr,status,problem,metadata_error,sys_error;};
+struct combined_client_result {DWORD observed,phase,created,wait_status,exit_valid,exit_code,result;};
+static struct combined_node_record combined_nodes[11];
+static struct combined_client_result combined_clients[8];
+static DWORD combined_gpu_node_ready;
+static DWORD combined_snapshot(const WCHAR *phase,DWORD result,int include_volume){
+ HKEY key=NULL;WCHAR name[256];DWORD e=0,nodes=PERIPHERAL_TARGET_COUNT,clients=(DWORD)(sizeof(diagnostic_clients)/sizeof(diagnostic_clients[0])),schema=1,complete=0;
+ if(clients>8)return ERROR_INVALID_DATA;
+ lstrcpyW(name,L"SYSTEM\\CurrentControlSet\\Services\\");lstrcatW(name,service_name);lstrcatW(name,L"\\Parameters\\CombinedResult\\");lstrcatW(name,phase);
+ e=RegCreateKeyExW(HKEY_LOCAL_MACHINE,name,0,NULL,0,KEY_SET_VALUE,NULL,&key,NULL);if(e)return e;
+ #define PUT(n,t,v,b) do{if(!e)e=RegSetValueExW(key,n,0,t,(const BYTE*)(v),b);}while(0)
+ PUT(L"Complete",REG_DWORD,&complete,4);PUT(L"Schema",REG_DWORD,&schema,4);PUT(L"ObservedResult",REG_DWORD,&result,4);PUT(L"NodeCount",REG_DWORD,&nodes,4);PUT(L"ClientCount",REG_DWORD,&clients,4);
+ PUT(L"Nodes",REG_BINARY,combined_nodes,sizeof(combined_nodes));PUT(L"Clients",REG_BINARY,combined_clients,sizeof(combined_clients));
+ if(include_volume)PUT(L"SystemVolumeFlush",REG_BINARY,&volume_flush,sizeof(volume_flush));
+ complete=1;PUT(L"Complete",REG_DWORD,&complete,4);if(!e)e=RegFlushKey(key);RegCloseKey(key);
+ #undef PUT
+ return e;
+}
+static DWORD persist_before_gpu(DWORD peripheral_result){
+ struct {DWORD schema,bytes,observed_result,node_count,client_count;} h={1,20,peripheral_result,PERIPHERAL_TARGET_COUNT,(DWORD)(sizeof(diagnostic_clients)/sizeof(diagnostic_clients[0]))};DWORD e;
+ e=save_blob(L"peripheral-result.bin",&h,sizeof(h));if(!e&&logfile!=INVALID_HANDLE_VALUE&&!FlushFileBuffers(logfile))e=GetLastError();
+ if(!e)e=combined_snapshot(L"Peripheral",peripheral_result,0);record(0,0x280,e);if(e)return e;
+ e=flush_fixed_system_volume();record(0,0x281,e);if(e)return e;
+ e=combined_snapshot(L"Peripheral",peripheral_result,1);if(!e)e=flush_fixed_system_volume();record(0,0x282,e);return e;
+}
 /* Exactly the two pinned signed clients; one process each, no shell/retry. */
-static DWORD run_clients(void)
+static DWORD run_clients(DWORD peripheral_result)
 {
- unsigned i;DWORD first=0;
+ unsigned i;DWORD first=peripheral_result;
  for(i=0;i<sizeof(diagnostic_clients)/sizeof(diagnostic_clients[0]);i++){
-  const struct diagnostic_client *c=&diagnostic_clients[i];WCHAR sys[MAX_PATH],dir[MAX_PATH],exe[MAX_PATH],out[MAX_PATH],name[64],cmd[2*MAX_PATH+64];HANDLE held=INVALID_HANDLE_VALUE,stdout_=INVALID_HANDLE_VALUE,stderr_=INVALID_HANDLE_VALUE,nul=INVALID_HANDLE_VALUE,job=NULL;JOBOBJECT_EXTENDED_LIMIT_INFORMATION limit;SECURITY_ATTRIBUTES sa;STARTUPINFOW start;PROCESS_INFORMATION process;DWORD e=0,exit=0,wait;
+  const struct diagnostic_client *c=&diagnostic_clients[i];WCHAR sys[MAX_PATH],dir[MAX_PATH],exe[MAX_PATH],out[MAX_PATH],name[64],cmd[2*MAX_PATH+64];HANDLE held=INVALID_HANDLE_VALUE,stdout_=INVALID_HANDLE_VALUE,stderr_=INVALID_HANDLE_VALUE,nul=INVALID_HANDLE_VALUE,job=NULL;JOBOBJECT_EXTENDED_LIMIT_INFORMATION limit;SECURITY_ATTRIBUTES sa;STARTUPINFOW start;PROCESS_INFORMATION process;DWORD e=0,exit=0xffffffffu,wait=0xffffffffu,exit_valid=0;
+  if(i>=8||c->phase>1)return ERROR_INVALID_DATA;
+  if(c->phase==1){
+   DWORD boundary;if(i+1!=sizeof(diagnostic_clients)/sizeof(diagnostic_clients[0])||PERIPHERAL_TARGET_COUNT!=11||A04_CANDIDATE_EXTRA_COUNT!=2||!combined_gpu_node_ready)return ERROR_NOT_READY;
+   boundary=persist_before_gpu(first);if(boundary)return boundary;
+  }
+  combined_clients[i].observed=1;combined_clients[i].phase=c->phase;
   memset(&sa,0,sizeof(sa));sa.nLength=sizeof(sa);sa.bInheritHandle=TRUE;memset(&start,0,sizeof(start));memset(&process,0,sizeof(process));start.cb=sizeof(start);
   if(!GetSystemDirectoryW(sys,MAX_PATH))e=GetLastError();if(!e)e=path(dir,sys,c->relative_directory);if(!e)e=path(exe,dir,c->exe);if(!e)e=deferred_file(exe,c->hash,&held);
   if(!e){LONG result;WINTRUST_FILE_INFO f;WINTRUST_DATA d;GUID action=WINTRUST_ACTION_GENERIC_VERIFY_V2;memset(&f,0,sizeof(f));f.cbStruct=sizeof(f);f.pcwszFilePath=exe;f.hFile=held;memset(&d,0,sizeof(d));d.cbStruct=sizeof(d);d.dwUIChoice=WTD_UI_NONE;d.dwUnionChoice=WTD_CHOICE_FILE;d.pFile=&f;d.dwProvFlags=WTD_CACHE_ONLY_URL_RETRIEVAL;d.dwStateAction=WTD_STATEACTION_VERIFY;result=WinVerifyTrust(NULL,&action,&d);if(result)e=ERROR_TRUST_FAILURE;d.dwStateAction=WTD_STATEACTION_CLOSE;WinVerifyTrust(NULL,&action,&d);}
   if(!e){lstrcpyW(name,c->name);lstrcatW(name,L".stdout.txt");e=path(out,log_directory,name);if(!e){stdout_=CreateFileW(out,GENERIC_WRITE,FILE_SHARE_READ,&sa,CREATE_NEW,FILE_FLAG_WRITE_THROUGH,NULL);if(stdout_==INVALID_HANDLE_VALUE)e=GetLastError();}}
   if(!e){lstrcpyW(name,c->name);lstrcatW(name,L".stderr.txt");e=path(out,log_directory,name);if(!e){stderr_=CreateFileW(out,GENERIC_WRITE,FILE_SHARE_READ,&sa,CREATE_NEW,FILE_FLAG_WRITE_THROUGH,NULL);if(stderr_==INVALID_HANDLE_VALUE)e=GetLastError();}}
   if(!e){nul=CreateFileW(L"NUL",GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,&sa,OPEN_EXISTING,0,NULL);if(nul==INVALID_HANDLE_VALUE)e=GetLastError();}
-  if(!e){job=CreateJobObjectW(NULL,NULL);memset(&limit,0,sizeof(limit));limit.BasicLimitInformation.LimitFlags=JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;if(!job)e=GetLastError();else if(!SetInformationJobObject(job,JobObjectExtendedLimitInformation,&limit,sizeof(limit)))e=GetLastError();}
+  if(!e){job=CreateJobObjectW(NULL,NULL);memset(&limit,0,sizeof(limit));limit.BasicLimitInformation.LimitFlags=mt8167_rotation_job_flags(c->relative_directory,c->exe,c->arguments);if(!job)e=GetLastError();else if(!SetInformationJobObject(job,JobObjectExtendedLimitInformation,&limit,sizeof(limit)))e=GetLastError();}
   if(!e){lstrcpyW(cmd,L"\"");lstrcatW(cmd,exe);lstrcatW(cmd,L"\" ");lstrcatW(cmd,c->arguments);start.dwFlags=STARTF_USESTDHANDLES;start.hStdInput=nul;start.hStdOutput=stdout_;start.hStdError=stderr_;
    if(!CreateProcessW(exe,cmd,NULL,NULL,TRUE,CREATE_NO_WINDOW|CREATE_SUSPENDED,NULL,base_directory,&start,&process))e=GetLastError();
-   else{if(!AssignProcessToJobObject(job,process.hProcess)||ResumeThread(process.hThread)==(DWORD)-1){e=GetLastError();TerminateProcess(process.hProcess,e);CloseHandle(process.hThread);CloseHandle(process.hProcess);process.hProcess=NULL;}else{CloseHandle(process.hThread);record(i,0x220,process.dwProcessId);wait=WaitForSingleObject(process.hProcess,c->timeout_ms);if(wait!=WAIT_OBJECT_0){e=wait==WAIT_TIMEOUT?ERROR_TIMEOUT:GetLastError();if(!TerminateProcess(process.hProcess,ERROR_TIMEOUT)&&!e)e=GetLastError();(void)WaitForSingleObject(process.hProcess,5000);}else if(!GetExitCodeProcess(process.hProcess,&exit))e=GetLastError();else e=exit;CloseHandle(process.hProcess);}}
+   else{if(!AssignProcessToJobObject(job,process.hProcess)||ResumeThread(process.hThread)==(DWORD)-1){e=GetLastError();TerminateProcess(process.hProcess,e);CloseHandle(process.hThread);CloseHandle(process.hProcess);process.hProcess=NULL;}else{combined_clients[i].created=1;CloseHandle(process.hThread);record(i,0x220,process.dwProcessId);wait=WaitForSingleObject(process.hProcess,c->timeout_ms);if(wait!=WAIT_OBJECT_0){e=wait==WAIT_TIMEOUT?ERROR_TIMEOUT:GetLastError();if(!TerminateProcess(process.hProcess,ERROR_TIMEOUT)&&!e)e=GetLastError();(void)WaitForSingleObject(process.hProcess,5000);}else if(!GetExitCodeProcess(process.hProcess,&exit))e=GetLastError();else{exit_valid=1;e=exit;}CloseHandle(process.hProcess);}}
   }
-  if(job)CloseHandle(job);record(i,0x221,e);if(held!=INVALID_HANDLE_VALUE)CloseHandle(held);if(stdout_!=INVALID_HANDLE_VALUE){FlushFileBuffers(stdout_);CloseHandle(stdout_);}if(stderr_!=INVALID_HANDLE_VALUE){FlushFileBuffers(stderr_);CloseHandle(stderr_);}if(nul!=INVALID_HANDLE_VALUE)CloseHandle(nul);if(e&&!first)first=e;
+  if(job)CloseHandle(job);
+  if(held!=INVALID_HANDLE_VALUE)CloseHandle(held);
+  if(stdout_!=INVALID_HANDLE_VALUE){if(!FlushFileBuffers(stdout_)&&!e)e=GetLastError();if(!CloseHandle(stdout_)&&!e)e=GetLastError();}
+  if(stderr_!=INVALID_HANDLE_VALUE){if(!FlushFileBuffers(stderr_)&&!e)e=GetLastError();if(!CloseHandle(stderr_)&&!e)e=GetLastError();}
+  if(nul!=INVALID_HANDLE_VALUE)CloseHandle(nul);
+  combined_clients[i].wait_status=wait;combined_clients[i].exit_valid=exit_valid;combined_clients[i].exit_code=exit;combined_clients[i].result=e;
+  if(c->phase==1){struct {DWORD schema,bytes,result,exit_valid,exit_code;} g={1,20,e,exit_valid,exit};DWORD saved=save_blob(L"gpu-result.bin",&g,sizeof(g));record(i,0x284,saved);if(saved&&!e)e=saved;}
+  record(i,0x221,e);if(e&&!first)first=e;
  }
+ {DWORD e=combined_snapshot(L"Final",first,0);if(e&&!first)first=e;}
  return first;
 }
 #endif
-static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_COUNT][5],directory_holds[PERIPHERAL_TARGET_COUNT];static WCHAR paths_[PERIPHERAL_TARGET_COUNT][3][MAX_PATH],folders[PERIPHERAL_TARGET_COUNT][MAX_PATH];SP_DEVINFO_DATA devs[PERIPHERAL_TARGET_COUNT];HDEVINFO set=INVALID_HANDLE_VALUE;DWORD i,j,e=0,first=0;const WCHAR *members[5];for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){directory_holds[i]=INVALID_HANDLE_VALUE;for(j=0;j<5;j++)held[i][j]=INVALID_HANDLE_VALUE;}
+static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_COUNT][5],directory_holds[PERIPHERAL_TARGET_COUNT];static WCHAR paths_[PERIPHERAL_TARGET_COUNT][3][MAX_PATH],extra_paths[2][MAX_PATH],folders[PERIPHERAL_TARGET_COUNT][MAX_PATH];SP_DEVINFO_DATA devs[PERIPHERAL_TARGET_COUNT];HDEVINFO set=INVALID_HANDLE_VALUE;DWORD i,j,e=0,first=0;const WCHAR *members[5];for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){directory_holds[i]=INVALID_HANDLE_VALUE;for(j=0;j<5;j++)held[i][j]=INVALID_HANDLE_VALUE;}
  /* Every candidate trio is held, byte-checked and CAT-verified before staging. */
- for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){e=path(folders[i],base_directory,targets[i].folder);if(!e)e=hold_directory(folders[i],&directory_holds[i]);if(e)goto done;for(j=0;j<3;j++){const WCHAR *n=j==0?targets[i].inf:(j==1?targets[i].sys:targets[i].cat);e=path(paths_[i][j],folders[i],n);if(!e)e=deferred_file(paths_[i][j],targets[i].hash[j],&held[i][j]);if(e)goto done;members[j]=paths_[i][j];}members[3]=members[4]=NULL;e=fixed_signer(paths_[i][2],held[i][2]);if(!e)e=deferred_members(i,paths_[i][2],members,held[i]);if(e)goto done;}
+ for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){e=path(folders[i],base_directory,targets[i].folder);if(!e)e=hold_directory(folders[i],&directory_holds[i]);if(e)goto done;for(j=0;j<3;j++){const WCHAR *n=j==0?targets[i].inf:(j==1?targets[i].sys:targets[i].cat);e=path(paths_[i][j],folders[i],n);if(!e)e=deferred_file(paths_[i][j],targets[i].hash[j],&held[i][j]);if(e)goto done;members[j]=paths_[i][j];}members[3]=members[4]=NULL;
+#if A04_CANDIDATE_EXTRA_COUNT
+ if(i==10){for(j=0;j<A04_CANDIDATE_EXTRA_COUNT;j++){e=path(extra_paths[j],folders[i],candidate_extras[j].name);if(!e)e=deferred_file(extra_paths[j],candidate_extras[j].hash,&held[i][j+3]);if(e)goto done;members[j+3]=extra_paths[j];}}
+#endif
+ e=fixed_signer(paths_[i][2],held[i][2]);if(!e)e=deferred_members(i,paths_[i][2],members,held[i]);if(e)goto done;}
  if(log_error){e=log_error;goto done;}e=deferred_marker(L"boot-transition-authorized.bin",0);if(!e)e=preserved();if(e)goto done;set=SetupDiGetClassDevsW(NULL,NULL,NULL,DIGCF_ALLCLASSES|DIGCF_PRESENT);if(set==INVALID_HANDLE_VALUE){e=GetLastError();goto done;}
- if(diagnostic){for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){ULONG status=0,problem=0;CONFIGRET cr;e=deferred_find(i,set,&devs[i]);if(!e){
- DWORD metadata,sys;cr=CM_Get_DevNode_Status(&status,&problem,devs[i].DevInst,0);record(i,0x202,(DWORD)cr);record(i,0x203,status);record(i,0x204,problem);
- metadata=selected(i,set,&devs[i],1);record(i,0x219,metadata);sys=installed_sys(i,1);record(i,0x21a,sys);
+ if(diagnostic){memset(combined_nodes,0xff,sizeof(combined_nodes));memset(combined_clients,0xff,sizeof(combined_clients));for(i=0;i<11;i++)combined_nodes[i].observed=0;for(i=0;i<8;i++)combined_clients[i].observed=0;combined_gpu_node_ready=0;for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){ULONG status=0,problem=0;CONFIGRET cr;e=deferred_find(i,set,&devs[i]);if(!e){
+ DWORD metadata,sys;combined_nodes[i].observed=1;combined_nodes[i].discovery_error=0;cr=CM_Get_DevNode_Status(&status,&problem,devs[i].DevInst,0);record(i,0x202,(DWORD)cr);record(i,0x203,status);record(i,0x204,problem);
+ metadata=selected(i,set,&devs[i],1);record(i,0x219,metadata);sys=installed_sys(i,1);record(i,0x21a,sys);combined_nodes[i].cr=cr;combined_nodes[i].status=status;combined_nodes[i].problem=problem;combined_nodes[i].metadata_error=metadata;combined_nodes[i].sys_error=sys;
  e=metadata?metadata:sys;if(!e&&(cr!=CR_SUCCESS||!(status&DN_STARTED)||problem))e=ERROR_NOT_READY;
-}if(e&&!first)first=e;}e=readonly_status();if(e&&!first)first=e;
+}else{combined_nodes[i].observed=1;combined_nodes[i].discovery_error=e;}if(PERIPHERAL_TARGET_COUNT==11&&i==10){combined_gpu_node_ready=e?0:1;}else if(e&&!first)first=e;}e=installed_gpu_extras(1);record(10,0x285,e);if(e)combined_gpu_node_ready=0;e=readonly_status();if(e&&!first)first=e;
 #if A04_PERIPHERAL_NEXT_PROFILE
  e=wlan_readonly_status();if(e&&!first)first=e;
  {SP_DEVINFO_DATA sd;DWORD find=deferred_find(4,set,&sd);e=find?find:sd_readonly_presence(sd.DevInst);record(4,0x245,e);if(e&&!first)first=e;}
  if(A04_PERIPHERAL_FIRST_INSTALL_MASK){SP_DEVINFO_DATA keypad;DWORD find=deferred_find(7,set,&keypad);e=find?find:keypad_hid_bindings(keypad.DevInst);record(7,0x267,e);if(e&&!first)first=e;}
- e=run_clients();if(e&&!first)first=e;
+ e=run_clients(first);if(e&&!first)first=e;
 #endif
  e=preserved();if(e&&!first)first=e;e=first;goto done;}
  /* Only generated explicit install bits receive DIF; retained nodes are never reinstalled. */
  for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){if(!(A04_PERIPHERAL_INSTALL_MASK&(1u<<i)))continue;e=deferred_find(i,set,&devs[i]);if(!e)e=selected(i,set,&devs[i],0);if(!e)e=installed_sys(i,0);if(e)goto done;}
+ e=installed_gpu_extras(0);if(e)goto done;
  for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){if(WaitForSingleObject(stop_event,0)==WAIT_OBJECT_0){e=ERROR_CANCELLED;goto done;}if(!SetupCopyOEMInfW(paths_[i][0],folders[i],SPOST_PATH,0,NULL,0,NULL,NULL)){e=GetLastError();goto done;}record(i,0x205,0);}
  for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){if(!(A04_PERIPHERAL_INSTALL_MASK&(1u<<i)))continue;if(WaitForSingleObject(stop_event,0)==WAIT_OBJECT_0){e=ERROR_CANCELLED;goto done;}e=deferred_install(i,set,&devs[i],paths_[i][0]);if(e)goto done;}
  e=preserved();if(e)goto done;e=deferred_marker(L"deferred-pending.bin",1);if(!e)e=deferred_arm_diagnostics();if(!e)e=ERROR_SUCCESS_REBOOT_REQUIRED;
- done:record(0,0x206,e);if(set!=INVALID_HANDLE_VALUE)SetupDiDestroyDeviceInfoList(set);for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){for(j=0;j<3;j++)if(held[i][j]!=INVALID_HANDLE_VALUE)CloseHandle(held[i][j]);if(directory_holds[i]!=INVALID_HANDLE_VALUE)CloseHandle(directory_holds[i]);}return e;}
+ done:record(0,0x206,e);if(set!=INVALID_HANDLE_VALUE)SetupDiDestroyDeviceInfoList(set);for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){for(j=0;j<5;j++)if(held[i][j]!=INVALID_HANDLE_VALUE)CloseHandle(held[i][j]);if(directory_holds[i]!=INVALID_HANDLE_VALUE)CloseHandle(directory_holds[i]);}return e;}
 static DWORD batch_once(void){DWORD e;int diagnostic=0;e=local_system();if(e)return e;e=disable_self();if(e)return e;e=paths();if(e)return e;{WCHAR p[MAX_PATH];e=path(p,log_directory,L"service.log");if(e)return e;logfile=CreateFileW(p,GENERIC_WRITE,FILE_SHARE_READ,NULL,OPEN_ALWAYS,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_WRITE_THROUGH,NULL);if(logfile==INVALID_HANDLE_VALUE)return GetLastError();SetFilePointer(logfile,0,NULL,FILE_END);}e=deferred_marker(L"deferred-pending.bin",0);if(e==ERROR_FILE_NOT_FOUND){e=deferred_marker(L"install-attempted.bin",1);if(!e)e=deferred_boot_fence(1);}else if(!e){e=deferred_boot_fence(0);if(!e)e=deferred_marker(L"diagnostic-attempted.bin",1);diagnostic=1;}record(0,0x200,e);if(e)return e;return transaction(diagnostic);}
 static DWORD once(void){REASON_CONTEXT r;HANDLE power;DWORD e=local_system(),cleanup=0;if(e)return e;memset(&r,0,sizeof(r));r.Version=POWER_REQUEST_CONTEXT_VERSION;r.Flags=POWER_REQUEST_CONTEXT_SIMPLE_STRING;r.Reason.SimpleReasonString=L"Fixed peripheral deferred update";power=PowerCreateRequest(&r);if(power==INVALID_HANDLE_VALUE)return GetLastError();if(!PowerSetRequest(power,PowerRequestSystemRequired)){e=GetLastError();CloseHandle(power);return e;}e=batch_once();if(!PowerClearRequest(power,PowerRequestSystemRequired))cleanup=GetLastError();if(!CloseHandle(power)&&!cleanup)cleanup=GetLastError();if(cleanup&&(e==0||e==ERROR_SUCCESS_REBOOT_REQUIRED))e=cleanup;return e;}
 static void WINAPI control(DWORD c){if(c==SERVICE_CONTROL_STOP&&stop_event)SetEvent(stop_event);}

@@ -45,7 +45,7 @@ static DWORD deferred_members(unsigned index,const WCHAR *cat,const WCHAR *paths
  memset(&data,0,sizeof(data));data.dwUnionChoice=WTD_CHOICE_FILE;data.pFile=&file;
  status=deferred_trust(&data);pnp_record(index,0x102,(DWORD)status);if(status)return ERROR_TRUST_FAILURE;
  if(!CryptCATAdminAcquireContext2(&admin,NULL,BCRYPT_SHA256_ALGORITHM,NULL,0))return GetLastError();
- for(i=0;i<3u;i++){
+ for(i=0;i<5u;i++){
   if(i==2||!paths[i])continue;
   bytes=sizeof(hash);
   if(!SetFilePointerEx(files[i],zero,NULL,FILE_BEGIN)||!CryptCATAdminCalcHashFromFileHandle2(admin,files[i],&bytes,hash,0)){
