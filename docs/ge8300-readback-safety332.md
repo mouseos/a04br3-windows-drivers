@@ -6,7 +6,7 @@
 
 typed callbackは実失敗を既存SetErrorCbへ伝え、sticky error後のClear/Draw/Pair/Copy/Map/新resourceを拒否。CPUcopyは両Lock成功後のみ、destination Lock失敗でもsource Unlockを行う。resource/contextは既存参照保持を維持し、未完job/bound/open参照があるallocationを破棄しない。成功fenceやDMA停止を合成しない。
 
-新client ge8300-d3d-texture-boundary.exeを別fileで作る。旧f3af/2727 clientは保持。Copy/Flush/Map前後は段階ごとのFlushFileBuffersで記録。専用clientはGPU前に4096byteのclear-boundary-TICK-PID.logを全書込み/flushし、volume FlushFileBuffersで作成metadataをcommitする（失敗ならGPU実行しない）。UMDは同process環境から既存fileを開き、固定64byte slotへCRC付き40byte recordを置換/flush。file拡張や新UMDfile metadataに依存しない。collect対象は既存clear-*.log pattern内だがbinary GPR1 schemaであるためtextpixel判定から分離する。
+新client ge8300-d3d-texture-boundary.exeを別fileで作る。旧f3af/2727 clientは保持。Copy/Flush/Map前後は段階ごとのFlushFileBuffersで記録。専用clientはGPU前に4096byteのclear-boundary-TICK-PID.logを全書込み/flushし、volume FlushFileBuffersで作成metadataをcommitする（失敗ならGPU実行しない）。UMDは同process環境から既存fileを開き、固定64byte slotへword単位FNV checksum付き40byte recordを置換/flush。file拡張や新UMDfile metadataに依存しない。collect対象は既存clear-*.log pattern内だがbinary GPR1 schemaであるためtextpixel判定から分離する。
 
 最小stage: 2/3 CreateDevice、8 Copyentry、9/10 srcLock、11/12 dstLock、13/14 CPUcopy、15 Unlockreturn、16/17 実Lock呼出、20/21 clientCopy、22/23 Flush、24/25 Map。上書きslotのtickとdetailで最終境界を読み、pixelごとの記録はしない。
 

@@ -1,5 +1,17 @@
 # TAB-A04-BR3 Windows ドライバ
 
+## 後続332：ABI5機能＋readback安全化（実GPU未検証）
+
+[332の契約と限界](docs/ge8300-readback-safety332.md)。331機能へlegacy SG DMA Get/PutのDISPATCH契約修正9d43d5a0を統合し、実LockCbの非待機・期限管理・失敗保持と段階記録を追加する。旧署名clientは保持し、新clientは`ge8300-d3d-texture-boundary.exe`。
+
+```powershell
+git clone --depth 1 --single-branch --branch work/ge8300-readback-safety332 https://github.com/mouseos/a04br3-windows-drivers.git
+Set-Location a04br3-windows-drivers
+./tools/ci/build-ge8300-from-source.ps1 -EnableCandidate -RunHostTests
+```
+
+実host回帰・必要TU増分compile/link/signは確認したが、131resetの因果/解消と実GPUは未検証。UMDのDeviceHung通知やTDR記録を、未停止DMAの成功停止・scheduler回復・OS再起動防止へ読み替えない。旧327/329/330/331および現媒体は凍結保持する。
+
 ## 行列VS＋SAMPLEの後続331（実GPU未検証）
 
 [ABI5の実装範囲](docs/ge8300-matrix-texture331.md)。330の実生成行列VSと327の実生成SAMPLE PSを、実texture backing/lifetimeを保った同じnative jobへ結合する。CB由来UVのみであり、補間varying UV・Present・通常Windows全描画の完成ではない。327resetを修正した候補とも扱わない。

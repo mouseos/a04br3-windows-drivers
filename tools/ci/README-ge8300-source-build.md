@@ -1,3 +1,8 @@
+# 現行332 source build
+
+branch `work/ge8300-readback-safety332`の通常wrapperは331 ABI5機能と332 DMA IRQL/readback/新boundaryclientをsource buildする。native61/compiler375 TU、過去driver cache/private hive不要。必要TUの増分署名と通常fullbuild/CI全実行は区別する。reset解消・実GPU成功は未検証。
+詳細は[332契約](../../docs/ge8300-readback-safety332.md)。以下は以前の手順・出自。
+
 # 現行331 source build
 
 branch `work/ge8300-matrix-texture331`で通常wrapperを使用する。330の61native/375compiler TUへABI5の行列VS＋CB由来UVのSAMPLE PSを結合。実sourceとorigin/hashを同時検査する。
