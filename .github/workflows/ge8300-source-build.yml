@@ -1,4 +1,4 @@
-name: GE8300 323 single-checkout source build
+name: GE8300 325 single-checkout source build
 on:
   workflow_dispatch:
 permissions:

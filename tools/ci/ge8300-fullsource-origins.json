@@ -1,5 +1,5 @@
 {
-  "schema": "ge8300-fullsource323-origins-v1",
+  "schema": "ge8300-fullsource325-origins-v1",
   "package_side_base_commit": "50974a3cd35336c57d151020feef20471968ab13",
   "native_source_commit": "f96948533601f9fdcdcc22b9700aacd96dbf7204",
   "kmd_source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
@@ -285,9 +285,14 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/umd/typed_draw.c",
-      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
-      "role": "UMD-base3f829",
-      "sha256": "345677e57675770691ae11d202132f661e45e6cbd34800b7cd2d1f1a830b0ed8"
+      "source_commit": "1e4ca5d11701a809653c518e07b75aa6c8cfb409",
+      "role": "Bounded input witness325",
+      "sha256": "5aa78582ab0e7b029f0a045bd4394628d84ffa8652ab2a87c044d19301a31e83",
+      "baseline_origin": {
+        "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+        "role": "UMD-base3f829",
+        "sha256": "345677e57675770691ae11d202132f661e45e6cbd34800b7cd2d1f1a830b0ed8"
+      }
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/umd/typed_dxgi.c",
@@ -1014,5 +1019,22 @@
     }
   ],
   "native_unit_count": 54,
-  "native_unit_sources_sha256": "e901ed65337a7f2d40a046ebd8883597c1a3d61af401e0869759337ae7592a91"
+  "native_unit_sources_sha256": "e901ed65337a7f2d40a046ebd8883597c1a3d61af401e0869759337ae7592a91",
+  "reviewed_native_deltas": [
+    {
+      "source_commit": "1e4ca5d11701a809653c518e07b75aa6c8cfb409",
+      "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_d3d_viewport.c",
+      "sha256": "53cd50bcf05bebeeae496509b9a99c3c2d94a1899b3770e9f355a16b79906982",
+      "baseline_destination_sha256": "fa8c0660378e1b5a5d352c8e39102c4cf6a46ff0fb072536132a66b2eb98dae1",
+      "role": "PPP offset-scale order325"
+    },
+    {
+      "source_commit": "1e4ca5d11701a809653c518e07b75aa6c8cfb409",
+      "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_d3d_viewport.h",
+      "sha256": "8b5b68f0c9aa4fd338ff6eb801a18d52df7498b638183aaa25cedc6e98467c3a",
+      "baseline_destination_sha256": "12efe5e335074bd6debf70e75afe319afc794bf9252da5bb926dcbad6146c3b7",
+      "role": "PPP offset-scale order325"
+    }
+  ],
+  "viewport_source_commit": "1e4ca5d11701a809653c518e07b75aa6c8cfb409"
 }

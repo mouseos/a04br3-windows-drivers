@@ -497,7 +497,7 @@
       "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_d3d_viewport.c",
       "source_commit": "f96948533601f9fdcdcc22b9700aacd96dbf7204",
       "source_sha256": "333d8e5a88acc29e9eb7eb3adb27ccd77ff8909b81b571f008c25ffe6711eaad",
-      "sha256": "fa8c0660378e1b5a5d352c8e39102c4cf6a46ff0fb072536132a66b2eb98dae1",
+      "sha256": "53cd50bcf05bebeeae496509b9a99c3c2d94a1899b3770e9f355a16b79906982",
       "include_rewrites": [
         [
           "native_d3d_viewport.h",
@@ -508,16 +508,30 @@
           "../../wddm-render/clear_protocol.h"
         ]
       ],
-      "rewrite_includes_only": true
+      "rewrite_includes_only": true,
+      "reviewed_delta": {
+        "source_commit": "1e4ca5d11701a809653c518e07b75aa6c8cfb409",
+        "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_d3d_viewport.c",
+        "sha256": "53cd50bcf05bebeeae496509b9a99c3c2d94a1899b3770e9f355a16b79906982",
+        "baseline_destination_sha256": "fa8c0660378e1b5a5d352c8e39102c4cf6a46ff0fb072536132a66b2eb98dae1",
+        "role": "PPP offset-scale order325"
+      }
     },
     {
       "source": "drivers/gpu/mt8167/vendor_m1_11/native_d3d_viewport.h",
       "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_d3d_viewport.h",
       "source_commit": "f96948533601f9fdcdcc22b9700aacd96dbf7204",
       "source_sha256": "12efe5e335074bd6debf70e75afe319afc794bf9252da5bb926dcbad6146c3b7",
-      "sha256": "12efe5e335074bd6debf70e75afe319afc794bf9252da5bb926dcbad6146c3b7",
+      "sha256": "8b5b68f0c9aa4fd338ff6eb801a18d52df7498b638183aaa25cedc6e98467c3a",
       "include_rewrites": [],
-      "rewrite_includes_only": true
+      "rewrite_includes_only": true,
+      "reviewed_delta": {
+        "source_commit": "1e4ca5d11701a809653c518e07b75aa6c8cfb409",
+        "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_d3d_viewport.h",
+        "sha256": "8b5b68f0c9aa4fd338ff6eb801a18d52df7498b638183aaa25cedc6e98467c3a",
+        "baseline_destination_sha256": "12efe5e335074bd6debf70e75afe319afc794bf9252da5bb926dcbad6146c3b7",
+        "role": "PPP offset-scale order325"
+      }
     },
     {
       "source": "drivers/gpu/mt8167/vendor_m1_11/native_draw_job.c",

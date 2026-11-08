@@ -1,5 +1,25 @@
 # TAB-A04-BR3 Windows ドライバ
 
+## 現行source候補3.25（2026-11-08）
+
+native322/KMD320/UMDshader323の単一checkoutへ、PPP viewportのoffset/scale順序修正325を統合。
+[通常fullbuild手順](tools/ci/README-ge8300-source-build.md)は過去driver cache/private hive不要。
+[修正根拠と限定検証](docs/ge8300-blacktriangle119-viewport.md)を参照。324 laneは未採用。
+
+既存の正規WDK8.1/MSVC ARM32/LLVM/Python環境で、通常fullbuildする。
+
+```powershell
+git clone --depth 1 --single-branch --branch work/ge8300-single-checkout325 https://github.com/mouseos/a04br3-windows-drivers.git
+Set-Location a04br3-windows-drivers
+./tools/ci/build-ge8300-from-source.ps1 -EnableCandidate -RunHostTests
+```
+
+
+run119の実GPU3.23ではVS/PS作成とDrawRender/Copy/Map/native completionが成功したが、
+三角形は全480000pixel黒。色補間へ未到達。source上のviewport誤順序を直した3.25は
+主担当の次試験待ちで、**公開fullsource生成物も実機未検証**。一般Texture/UI全描画・
+全ドライバ完成とは扱わない。以下は以前のsource候補と到達点の記録。
+
 ## 公開単一checkout 3.23 source候補（2026-11-08）
 
 KMD320(f73da1e3)・native322(f9694853)・実UMD基点3f8291d0＋shader323(eb4dca0e)を

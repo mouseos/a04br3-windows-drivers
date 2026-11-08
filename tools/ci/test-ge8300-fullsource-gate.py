@@ -39,6 +39,18 @@ mapfile.write_text(json.dumps(changed));run('drop reset helper from compilation 
 changed=json.loads(json.dumps(native));changed['native_unit_sources'][unit]=changed['native_unit_sources']['vendor_m1_11\\windows_stop']
 mapfile.write_text(json.dumps(changed));run('alias one source unit to another reviewed but wrong native source',False)
 mapfile.write_text(json.dumps(native));run('restored canonical mapping',True)
+# Overlay origin is exact, not a generic hash-refresh bypass.
+origfile=fixture/'tools/ci/ge8300-fullsource-origins.json'
+changed_orig=json.loads(json.dumps(origins));changed_orig['reviewed_native_deltas'][0]['source_commit']='f96948533601f9fdcdcc22b9700aacd96dbf7204'
+origfile.write_text(json.dumps(changed_orig));run('misattribute viewport325 to old native322 origin',False)
+origfile.write_text(json.dumps(origins))
+changed=json.loads(json.dumps(native))
+for row in changed['files']:
+ if row['destination'].endswith('/native_d3d_viewport.c'):
+  del row['reviewed_delta']
+mapfile.write_text(json.dumps(changed));run('remove reviewed viewport overlay while retaining changed source',False)
+mapfile.write_text(json.dumps(native));run('restored exact325 origin and map',True)
+
 receipt={'schema':'ge8300-fullsource-map-regression-v1','production_source_modified':False,'driver_cache_used':False,'hardware_operations':False,'cases':records}
 (out/'receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
 print(json.dumps(receipt))
