@@ -19,4 +19,6 @@ int a04_parent_translate_audio_resources(const struct a04_parent_resource *,
     const struct a04_parent_resource *,size_t,struct a04_parent_mapping *,uint64_t *);
 int a04_parent_translate_gpu_domain_resources(const struct a04_parent_resource *,
     const struct a04_parent_resource *,size_t,struct a04_parent_mapping *,uint64_t *,uint64_t *);
+int a04_parent_translate_gpu_thermal_resources(const struct a04_parent_resource *,
+ const struct a04_parent_resource *,size_t,struct a04_parent_mapping *,uint64_t *,uint64_t *);
 #endif

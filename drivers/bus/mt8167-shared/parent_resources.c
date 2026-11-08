@@ -91,3 +91,26 @@ int a04_parent_translate_gpu_domain_resources(const struct a04_parent_resource *
  if(k!=5 || !s || a04_parent_translate_audio_resources(r,t,k,&map,&a))return -1;
  *out=map;*apmixed=a;*spm=s;return 0;
 }
+
+/* Parent1022: assigned parent ranges are delegated to one synthetic thermal
+ * PDO. No speculative physical mapping of an unassigned AUXADC/SPM window. */
+int a04_parent_translate_gpu_thermal_resources(const struct a04_parent_resource *raw,
+ const struct a04_parent_resource *t,size_t n,struct a04_parent_mapping *out,
+ uint64_t *apmixed,uint64_t *spm)
+{
+ struct a04_parent_resource r6[6],t6[6];size_t i,j,k=0;unsigned seen=0;
+ struct a04_parent_mapping m;uint64_t a,s;
+ if(!raw||!t||!out||!apmixed||!spm||n!=8)return -1;
+ for(i=0;i<n;++i){
+  uint64_t b=t[i].base;uint32_t len=t[i].length;
+  if(!b||!len||b>UINT64_MAX-(len-1)||!t[i].exclusive)return -1;
+  for(j=0;j<i;++j)if(b<=t[j].base?t[j].base-b<len:b-t[j].base<t[j].length)return -1;
+  if(raw[i].base==0x1100d000u||raw[i].base==0x11003000u){
+   unsigned bit=raw[i].base==0x1100d000u?1u:2u;
+   if((seen&bit)||raw[i].exclusive!=1||t[i].exclusive!=1||raw[i].length!=0x1000||len!=0x1000||raw[i].base!=b)return -1;
+   seen|=bit;
+  }else{if(k==6)return -1;r6[k]=raw[i];t6[k++]=t[i];}
+ }
+ if(seen!=3||k!=6||a04_parent_translate_gpu_domain_resources(r6,t6,6,&m,&a,&s))return -1;
+ *out=m;*apmixed=a;*spm=s;return 0;
+}
