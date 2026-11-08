@@ -25,3 +25,5 @@ CPU数/timeout/cacheflush/DDK packet ABIの回避変更なし。専用probeboot�
 
 実prepare_copy + 実transfer/CCBコードを64連続transaction、578拒否gateでASan/UBSan検証。
 hardware/cache/IRQ/firmwareだけmock。実silicon動作・画素保持・reset解消は未証明。
+
+owner private構造変更によりplatform consumerも依存再compile対象（native5TU+miniport1TU）。

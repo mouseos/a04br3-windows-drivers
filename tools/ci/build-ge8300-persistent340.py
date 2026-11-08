@@ -40,19 +40,19 @@ for x in kmd['members']:
 run([llvm/'llvm-lib.exe','/machine:arm','/out:'+str(out/kmd['file']),*[out/'objects'/n for n in reversed(names)]])
 if [ntpath.basename(n) for n in capture([ar,'t',out/kmd['file']]).splitlines()]!=names:raise ValueError('KMD archive member order changed')
 
-# Only four changed native TUs; retain the other63 exact object hashes/order.
+# Four changed native TUs plus platform private-header consumer; retain the other62 exact object hashes/order.
 (out/'native-before').mkdir();(out/'native-objects').mkdir()
 native_names=[ntpath.basename(n) for n in capture([ar,'t',base/native['file']]).splitlines()]
 if len(native_names)!=67 or set(native_names)!={x['name'] for x in native['members']}:raise ValueError('Native67 member closure')
 run([ar,'x','--output='+str(out/'native-before'),base/native['file']])
 for x in native['members']:pin(out/'native-before'/x['name'],x['sha256']);shutil.copyfile(out/'native-before'/x['name'],out/'native-objects'/x['name'])
-changed_native={'native_owner_factory.c','native_owner_factory_runtime.c','windows_native_copy_storage.c','windows_native_copy_transfer.c'}
+changed_native={'native_owner_factory.c','native_owner_factory_platform.c','native_owner_factory_runtime.c','windows_native_copy_storage.c','windows_native_copy_transfer.c'}
 for nu in load(pkgbase/'copy337-build-manifest.json')['compiled_units']:
  if nu['role']!='native' or ntpath.basename(nu['source']) not in changed_native:continue
  args=[relocate(x) for x in nu['arguments']]
  ns=root/nu['source'];no=out/'native-objects'/nu['object'];run([clang,*args,'-c',ns,'-o',no])
  units.append({'source':nu['source'],'source_sha256':sha(ns),'object':nu['object'],'object_sha256':sha(no),'arguments':args,'role':'native'})
-if len(units)!=5:raise ValueError('Exactly four native plus one miniport compiled')
+if len(units)!=6:raise ValueError('Exactly five native plus one miniport compiled')
 native_rows=[]
 changed_objects={x['object'] for x in units if x['role']=='native'}
 for x in native['members']:
@@ -91,4 +91,4 @@ newm['retained_provenance']=[{'name':f.name,'sha256':sha(f)} for f in pkg.iterdi
 with zipfile.ZipFile(t/'outputs.zip','w',zipfile.ZIP_DEFLATED) as z:
  for f in out.rglob('*'):
   if f.is_file():z.write(f,f.relative_to(out).as_posix())
-print('PERSISTENTCOPY340_FIVE_TU_SIGNED',sha(pkg/'signed-manifest.json'),sha(pkg/'ge8300-render.sys'))
+print('PERSISTENTCOPY340_SIX_TU_SIGNED',sha(pkg/'signed-manifest.json'),sha(pkg/'ge8300-render.sys'))
