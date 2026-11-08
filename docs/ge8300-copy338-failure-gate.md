@@ -5,3 +5,5 @@
 実関数を抽出したASan/UBSan9caseで正常継続、予約前拒否、prepare失敗、両ticket個別失敗、同期実行前/後の失敗、poison同期失敗時session閉鎖を確認。未実機、reset rootfix証明ではない。
 
 増分recipe `tools/ci/build-ge8300-copy338-gate.py` はsealed337 package/archivesをhash固定し、kmd_clear1TUだけcompile、KMD他12objectとnative67全archive/UMD/PCO/FW/3client/certを保持。SYS再link/署名、INF0.0.3.38/CAT再生成とmembership verify。SDK/PCO全再build無し。全source通常recipe/source gateは統合treeに保持する。source baseと署名binary sourceはmanifestで区別する。
+
+単一checkout recipeもcopy6TUを通常native build一覧へ追加し、元152B USC（SHA5c68917f…）をsource JSONから既存と同一形式のheaderへ生成する。source mapが67でも実recipeが61という欠落をgateで拒否する。asset改変・compile一覧からcopy除外を含むsource gate13case通過。これらtools変更は署名済338 driver bytesを変更しない。全67TU/375PCOの再build成功を主張しない。

@@ -52,6 +52,7 @@ if($WithOwnerAllocation){
 if($WithFactory){
  if(!$WithOwnerAllocation){throw 'Factory requires -WithOwnerAllocation'}
  $common+='-DA04_GE8300_NATIVE_OWNER_DRAW=1'
+ $units+=@('vendor_m1_11\native_copy_job','vendor_m1_11\native_copy_queue','vendor_m1_11\windows_native_copy_storage','vendor_m1_11\windows_native_copy_transfer','vendor_m1_11\native_copy_state','vendor_m1_11\native_copy_usc')
  $units+=@('vendor_m1_11\native_d3d_viewport','vendor_m1_11\native_varying_pds','vendor_m1_11\native_draw_job','vendor_m1_11\native_triangle_suite','vendor_m1_11\native_triangle_vdm','vendor_m1_11\native_triangle_pds','vendor_m1_11\native_triangle_ppp','vendor_m1_11\native_triangle_texture','wddm-render\clear_protocol','wddm-render\frontend\draw_protocol','wddm-render\frontend\draw_link_protocol')
  $units+=@('wddm-render\frontend\shader_draw_protocol','wddm-render\compiler\witness_codec','wddm-render\compiler\witness_info')
  $units+=@('vendor_m1_11\native_texture2d_state','vendor_m1_11\native_texture2d_program','wddm-render\frontend\texture_draw_protocol','wddm-render\compiler\texture2d_sm4')
@@ -59,6 +60,18 @@ if($WithFactory){
 }
 $oldTemp=$env:TEMP;$oldTmp=$env:TMP;$transcript=$false
 New-Item -ItemType Directory $out,(Join-Path $out 'tmp')|Out-Null
+if($WithFactory){
+ $asset=Get-Content (Join-Path $PSScriptRoot 'ge8300-copy-usc-asset.json') -Raw|ConvertFrom-Json
+ [byte[]]$assetBytes=$asset.bytes
+ $hasher=[Security.Cryptography.SHA256]::Create()
+ try{$actual=([BitConverter]::ToString($hasher.ComputeHash($assetBytes))).Replace('-','').ToLowerInvariant()}finally{$hasher.Dispose()}
+ if($assetBytes.Length -ne 152 -or $actual -cne '5c68917faa051238b23674b64c6b137ef7ff75425dbde9dbc5e1e5a36e02c4a3' -or $asset.sha256 -cne $actual){throw 'Exact original copy USC asset required'}
+ $generated=Join-Path $out 'generated';New-Item -ItemType Directory $generated|Out-Null
+ $hex=@($assetBytes|ForEach-Object{'0x{0:x2}' -f $_}) -join ','
+ [IO.File]::WriteAllText((Join-Path $generated 'a04_copy_usc_asset.h'),('static const unsigned char a04_copy_usc_asset[152]={'+$hex+'};'+"`n"),[Text.Encoding]::ASCII)
+ $common+="-I$generated"
+}
+
 try {
  $env:TEMP=Join-Path $out 'tmp';$env:TMP=$env:TEMP
  Start-Transcript -Path (Join-Path $out 'build.log')|Out-Null;$transcript=$true

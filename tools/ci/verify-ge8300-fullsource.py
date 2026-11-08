@@ -53,3 +53,13 @@ for row in plan['files']:
  if sha(file(row['path']))!=row['sha256']:raise ValueError('Compiler snapshot changed: '+row['path'])
 if sha(file('tests/fixtures/tokenized_shader_before323.c'))!='c838cb69ea91369084b1d8b4a8ea313d981f7b35925c9b8bc12a97dc6a16890e':raise ValueError('Pre323 fixture changed')
 print(json.dumps({'schema':'ge8300-fullsource327-source-verification-v1','reviewed_native_overlays':len(reviewed),'viewport_source_commit':origins['viewport_source_commit'],'origin_files':len(origins['files']),'legacy_files':len(origins['legacy_files_preserved']),'native_scoped_files':len(native['files']),'native_units':len(units),'compiler_snapshot_files':len(plan['files']),'compiler_units':len(plan['units']),'old_git_history_used':False,'driver_cache_used':False,'hardware_verified':False}))
+
+# The normal native build must consume every declared TU, including Copy.
+recipe=file('tools/ci/build-ge8300-native-owner-core.ps1').decode()
+selected=[]
+for line in recipe.splitlines():
+ if re.match(r'\s*\$units\s*\+?=',line):
+  selected.extend(re.findall(r"'([^']+)'",line))
+if set(selected)!=set(units) or len(selected)!=len(units):raise ValueError('Normal native build TU list differs from source map')
+asset=json.loads(file('tools/ci/ge8300-copy-usc-asset.json'))
+if len(asset['bytes'])!=152 or sha(bytes(asset['bytes']))!='5c68917faa051238b23674b64c6b137ef7ff75425dbde9dbc5e1e5a36e02c4a3' or asset['sha256']!=sha(bytes(asset['bytes'])):raise ValueError('Original copy asset changed')
