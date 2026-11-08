@@ -24,3 +24,12 @@ BUILD_IN_PROJECT/after
 |native draw ABI/owner|target/vertex/code/constantsの契約。一般SRVのGPU layout・MDL寿命・sampler descriptor・fence/cache・subresourceの結合は未実装|
 
 固定native1x1 texture helperの存在を標準D3D Texture/SRV対応と混同しない。SAMPLEをparserだけで受理したり、既定成功・texture caps宣言で未実装経路を埋めない。次のGPU実修正はmainから返るshader/triangle実結果を優先する。
+
+## 独立3.24署名候補
+
+`tools/ci/build-ge8300-sm4-lane324.ps1` は、署名3.23の回収済みbuildとcompiler/pair
+manifestをhash照合し、PCO archiveの `sm4_adapter.obj` のみをcompile・置換する。
+他32member、3.23 UMD archive、entry objects、NIR/util/support/CRT/pairを保持してDLLをlinkする。
+`tools/ci/package-ge8300-sm4-lane324.ps1` は3.23のKMD/native322/FW/client/closureを保持し、
+INF版だけ3.24へ変更しCATを生成・同一開発証明書で署名する。SDK/PCO全buildは行わない。
+実機未検証の独立候補であり、run119には含めない。採用は3.23実機shader結果を受けて判断する。
