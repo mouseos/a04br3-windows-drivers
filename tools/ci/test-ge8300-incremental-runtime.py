@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+"""Real Clang graph: shared/private headers, flags, external pins, 17 callers."""
+import argparse, copy, hashlib, importlib.util, json, shutil, subprocess
+from pathlib import Path
+p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);a=p.parse_args();root=Path(__file__).resolve().parents[2];out=a.output.resolve()
+if not out.is_relative_to(root) or out.exists():raise ValueError('New checkout-local output required')
+out.mkdir(parents=True);repo=out/'source fixture with spaces';repo.mkdir();external=out/'external kit';external.mkdir()
+spec=importlib.util.spec_from_file_location('runtime_plan',root/'tools/ci/plan-ge8300-incremental-runtime.py');mod=importlib.util.module_from_spec(spec);spec.loader.exec_module(mod)
+def run(*args):return subprocess.check_output(args,cwd=repo,text=True).strip()
+run('git','init','-q');run('git','config','user.name','yuma shimizu');run('git','config','user.email','46545607+mouseos@users.noreply.github.com')
+assert run('git','config','user.email').endswith('@users.noreply.github.com')
+(repo/'shared.h').write_text('#define SHARED_VALUE 7\n');(repo/'private.h').write_text('#define PRIVATE_VALUE 11\n')
+for i in range(17):(repo/f'unit{i}.c').write_text('#include "shared.h"\n'+('#include "private.h"\n' if i==0 else '')+f'int f{i}(void){{return SHARED_VALUE;}}\n')
+run('git','add','.');run('git','commit','-qm','Initial exact 17-caller include graph');base=run('git','rev-parse','HEAD')
+clang=Path(shutil.which('clang')).resolve();h=mod.sha(clang.read_bytes());units=[{'source':f'unit{i}.c','object':f'unit{i}.obj','arguments':['-nostdinc','-std=c11']} for i in range(17)];cases=[]
+def plan(current=None,previous=None,pins=None,expected=None):
+ r=mod.plan(repo,base,current or units,previous or units,clang,h,pins or [])
+ if expected is not None:assert r['rebuild_objects']==expected,(r['rebuild_objects'],expected)
+ return r
+plan(expected=[]);cases.append('17 unchanged TUs retained; paths with spaces')
+(repo/'shared.h').write_text('#define SHARED_VALUE 9\n');run('git','add','.');run('git','commit','-qm','Shared ownership header delta')
+plan(expected=[f'unit{i}.obj' for i in range(17)]);cases.append('actual transitive shared header rebuilds all17 consumers')
+run('git','reset','--hard','-q',base)
+(repo/'private.h').write_text('#define PRIVATE_VALUE 19\n');run('git','add','.');run('git','commit','-qm','Private helper delta')
+plan(expected=['unit0.obj']);cases.append('private header rebuilds only actual consumer')
+run('git','reset','--hard','-q',base)
+changed=copy.deepcopy(units);changed[3]['arguments']+=['-DMODE=1'];plan(changed,expected=['unit3.obj']);cases.append('codegen flags force rebuild without source edit')
+(repo/'new.c').write_text('#include "shared.h"\nint newfn(void){return SHARED_VALUE;}\n');run('git','add','.');run('git','commit','-qm','Add new copy consumer')
+new=units+[{'source':'new.c','object':'new.obj','arguments':['-nostdinc','-std=c11']}];plan(new,expected=['new.obj']);cases.append('new TU discovered from actual source graph')
+run('git','reset','--hard','-q',base)
+r=plan(units[:-1],expected=[]);assert r['removed_objects']==['unit16.obj'];cases.append('removed archive member explicit rather than silently retained')
+(external/'kit.h').write_text('#define KIT_VALUE 1\n');(repo/'unit0.c').write_text('#include "shared.h"\n#include "kit.h"\nint f0(void){return KIT_VALUE;}\n');run('git','add','.');run('git','commit','-qm','Use pinned external header')
+x=copy.deepcopy(units);x[0]['arguments']+=['-I'+str(external)]
+try:plan(x);raise AssertionError('Expected missing external pin rejection')
+except ValueError as e:assert 'Unpinned actual external include' in str(e)
+cases.append('unlisted real SDK/header dependency refuses reuse')
+pins=[{'path':str(external/'kit.h'),'sha256':mod.sha((external/'kit.h').read_bytes())}];plan(x,pins=pins,expected=['unit0.obj']);cases.append('exact external dependency pin accepted')
+r=plan(x,pins=pins,expected=['unit0.obj']);assert 'external_input_provenance_changed_or_missing' in r['units'][0]['reasons'];cases.append('missing prior SDK provenance forces actual TU rebuild')
+(external/'kit.h').write_text('#define KIT_VALUE 2\n')
+try:plan(x,pins=pins);raise AssertionError('Expected changed external pin rejection')
+except ValueError as e:assert 'pin mismatch' in str(e)
+cases.append('changed toolchain include fails closed')
+try:mod.plan(repo,base,units,units,clang,'0'*64,[]);raise AssertionError('Expected compiler pin rejection')
+except ValueError as e:assert 'Clang executable pin' in str(e)
+cases.append('wrong compiler pin rejected')
+(repo/'unit1.c').write_text('int changed(void){return 0;}\n')
+try:plan();raise AssertionError('Expected dirty source rejection')
+except ValueError as e:assert 'clean' in str(e)
+cases.append('uncommitted runtime source rejected')
+receipt={'schema':'actual-clang-incremental-runtime-regression-v1','cases_passed':len(cases),'cases':cases,'real_clang':str(clang),'clang_sha256':h,'code_generation_executed':False,'hardware_operations':False}
+(out/'receipt.json').write_text(json.dumps(receipt,indent=2)+'\n');print(json.dumps(receipt))
