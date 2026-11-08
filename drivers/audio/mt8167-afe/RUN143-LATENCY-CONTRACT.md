@@ -26,3 +26,11 @@ CT3 GPL7c478212のmt8167-afe-pcm.c:73 `.fifo_size=0`はALSAの宣言であり物
 既存host fixtureの誤定義HWLATENCY3をWDK正本の2、POSITIONREGISTER3、実GUIDへ修正。既存production safe-copy gate試験をASan/UBSanで再検証し、Id2の拒否/Id3の非介入/不正user memory/short copy/IRQLを確認。runtime C/C++はコメント訂正だけで実行code変更なし。これは再生修正済み候補ではなく、未解決の実契約を誤って任意と扱わないためのsource修正。
 
 [Microsoft KSRTAUDIO_HWLATENCY](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ksmedia/ns-ksmedia-ksrtaudio_hwlatency) / [KSPROPERTY_RTAUDIO](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ksmedia/ne-ksmedia-ksproperty_rtaudio)。root成果windows-rt-afe-run143-initializeのREA evidence/raw observationへ対応する。実機owner main、端末/UART/媒体非接触。
+
+## main補助ログを受けたformat/buffer/notification照合
+
+shared GetMixFormatの48k/stereo/float32/8Bと物理pinのPCM16/4Bは別契約。現consumerはGetMixFormatの返却をそのままshared Initializeへ渡し、WaveRT ValidFormatは物理48k/stereo/16bitを検査する。shared engine変換を理由なく廃止したり、driverへfloat32能力を追加しない。実buffer12288Bは50msの物理PCM16（9600B）をpage roundした値と整合し、float32の物理frame広告不足が最初の失敗とする根拠はない。
+
+実AUDIOKSE 0x1000a4acはnotification対応ならBUFFER_WITH_NOTIFICATION/Id5、未対応ならBUFFER/Id1を選択する。実PortCls 0x26478はId5のnotification interface未取得時にC00000BBを返す別経路を持つ。一方、現StreamはIMiniportWaveRTStreamのみQIしNotification interfaceを広告しない。`IAudioClient_Initialize` flags0はevent callbackを要求していない。bufferの存在だけでclient mapping成功を主張しないが、通知未実装を偽TRUEにして解消する理由もない。
+
+最終HRESULT80070032を握り潰さず、そのままfail/PCM_EXECUTED0とするconsumerは維持。必須Id2が成功不能である契約欠陥は上記REAで確定している。値の正規producerなしにgate解除/零値返却で新署名候補を作らない。
