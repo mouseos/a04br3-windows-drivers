@@ -18,12 +18,30 @@ static void mapped(PDEVICE_OBJECT dev,PIRP irp,PSCATTER_GATHER_LIST sg,PVOID con
     struct map_wait *w=context;UNREFERENCED_PARAMETER(dev);UNREFERENCED_PARAMETER(irp);
     w->sg=sg;KeSetEvent(&w->event,IO_NO_INCREMENT,FALSE);
 }
+/* Legacy DMA_OPERATIONS SG DDIs require DISPATCH_LEVEL, unlike the Ex API.
+ * The owning bind/release remains PASSIVE: lower before waiting, touching
+ * pageable state, releasing the physical lease, or freeing the binding. */
+static NTSTATUS get_sg_dispatch(PDMA_ADAPTER adapter,PDEVICE_OBJECT pdo,PMDL mdl,
+ PVOID address,ULONG bytes,struct map_wait *wait,BOOLEAN to_device)
+{
+    KIRQL previous;NTSTATUS status;
+    KeRaiseIrql(DISPATCH_LEVEL,&previous);
+    status=adapter->DmaOperations->GetScatterGatherList(adapter,pdo,mdl,address,bytes,mapped,wait,to_device);
+    KeLowerIrql(previous);return status;
+}
+static void put_sg_dispatch(PDMA_ADAPTER adapter,PSCATTER_GATHER_LIST sg,BOOLEAN to_device)
+{
+    KIRQL previous;
+    KeRaiseIrql(DISPATCH_LEVEL,&previous);
+    adapter->DmaOperations->PutScatterGatherList(adapter,sg,to_device);
+    KeLowerIrql(previous);
+}
 NTSTATUS a04_native_mdl_release_cold(struct a04_native_mdl_binding **owner)
 {
     struct a04_native_mdl_binding *b;
     if(!owner || !(b=*owner) || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
     if(b->exposed || b->targets)return STATUS_DEVICE_BUSY;
-    while(b->maps){b->maps--;b->adapter->DmaOperations->PutScatterGatherList(b->adapter,b->sg[b->maps],b->to_device);}
+    while(b->maps){b->maps--;put_sg_dispatch(b->adapter,b->sg[b->maps],b->to_device);}
     if(b->retained)b->lease.release(b->lease.context,b->mdl);
     ExFreePoolWithTag(b,TAG);*owner=NULL;return STATUS_SUCCESS;
 }
@@ -52,8 +70,8 @@ static NTSTATUS bind_pages(struct a04_native_mdl_binding **out,PDMA_ADAPTER a,
     for(at=0;at<bytes;at+=CHUNK){
         ULONG n=bytes-at;if(n>CHUNK)n=CHUNK;
         KeInitializeEvent(&w.event,NotificationEvent,FALSE);w.sg=NULL;
-        status=a->DmaOperations->GetScatterGatherList(a,pdo,mdl,
-            (UCHAR *)MmGetMdlVirtualAddress(mdl)+at,n,mapped,&w,to_device);
+        status=get_sg_dispatch(a,pdo,mdl,
+            (UCHAR *)MmGetMdlVirtualAddress(mdl)+at,n,&w,to_device);
         if(!NT_SUCCESS(status))goto done;
         /* OS owns the callback until completion. Do not timeout/free a stack
          * callback context while it may still be invoked by DMA support. */
