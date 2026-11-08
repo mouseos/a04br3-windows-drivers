@@ -85,6 +85,54 @@ reset();fail_at=2;assert(a04_native_mdl_bind(&b,&a,&p,&mdl,mdl.bytes,&lease)==0)
 reset();direction=TRUE;assert(a04_native_mdl_bind_input(&b,&a,&p,&mdl,mdl.bytes,&lease)==0);assert(a04_native_mdl_sync_for_gpu(b)==0);assert(a04_native_mdl_mark_exposed(b)==0);assert(a04_native_mdl_detach_after_mmu_ack(b)==0);flush_fail=1;assert(a04_native_mdl_sync_for_cpu(b)==STATUS_DEVICE_BUSY&&freed==0&&!a04_native_mdl_cpu(b));assert(a04_native_mdl_release_cold(&b)==STATUS_DEVICE_BUSY&&b&&releases==0);tests++;
 printf("{\"cases_passed\":%u,\"fault_resources_retained\":true,\"device_verified\":false}\n",tests);free(mdl.va);return 0;}
 '''.replace(chr(34)+'SOURCE'+chr(34),chr(34)+str(src)+chr(34))
+def function(path,name):
+ text=path.read_text();at=text.index(name+'(');start=text.rfind('\n',0,at)+1;first=text.index('{',at);i=first+1;depth=1
+ while depth:
+  depth+=(text[i]=='{')-(text[i]=='}');i+=1
+ return text[start:i]
+extra=r'''
+
+#define A04_GE8300_NATIVE_OWNER_MDL_TARGET 1
+#define TAG 0x644d474eu
+#define STATUS_IO_DEVICE_ERROR ((int32_t)0xc0000185)
+#define STATUS_IO_TIMEOUT ((int32_t)0xc00000b5)
+#define RGXFWIF_KCCB_CMD_MMUCACHE 102
+typedef struct{uint32_t ui32Addr;}test_addr;
+struct test_cmd;
+struct a04_vendor_uncached {void *cpu;};
+struct a04_rgx_fw_runtime {uint32_t *command_sync;test_addr command_sync_addr;struct test_cmd *kcommands;};
+struct test_firmware{int hardware_owned;struct a04_rgx_fw_runtime*runtime;};
+struct a04_vendor_render_cold{struct test_firmware*firmware;struct{uint32_t memory;}layout;};
+struct a04_vendor_native_cold{struct a04_vendor_render_cold*render;struct a04_native_mdl_binding*registered_target,*registered_vertex;uint64_t target_offset,vertex_offset;struct{struct a04_native_mdl_binding*binding;uint64_t offset;}linear[8];ULONG linear_count;int quarantined;struct a04_vendor_uncached output[4];};
+struct a04_vendor_start{struct test_firmware*memory;uint32_t command_sequence,command_busy;};
+typedef struct{uint32_t ui32ReadOffset,ui32WriteOffset;}RGXFWIF_CCB_CTL;
+typedef struct test_cmd{uint32_t eCmdType,eDM;union{struct{struct{uint32_t ui32Addr;}sMemoryContext;uint32_t ui32Flags;test_addr sMMUCacheSync;uint16_t ui16MMUCacheSyncUpdateValue;}sMMUCacheData;}uCmdData;}RGXFWIF_KCCB_CMD;
+static int timeout_mode;static struct a04_vendor_native_cold*active;
+static int a04_rgx_device_write_words(volatile void*dst,const void*src,unsigned n){memcpy((void*)dst,src,n);return 0;}
+static int a04_rgx_device_read_words(void*dst,const volatile void*src,unsigned n){memcpy(dst,(const void*)src,n);return 0;}
+static int read_queue(struct a04_rgx_fw_runtime*f,RGXFWIF_CCB_CTL*k){(void)f;memset(k,0,sizeof(*k));return 0;}
+static void publish(struct a04_vendor_start*s,struct a04_rgx_fw_runtime*f,uint32_t next){(void)next;for(unsigned i=0;i<1024;i++)assert(((uint64_t*)active->output[2+i/512].cpu)[i%512]==0);if(!timeout_mode)*f->command_sync=s->command_sequence;}
+static NTSTATUS wait_kernel(struct a04_rgx_fw_runtime*f,uint32_t next){(void)f;(void)next;return timeout_mode?STATUS_IO_TIMEOUT:0;}
+static void KeStallExecutionProcessor(unsigned n){(void)n;}
+static NTSTATUS a04_vendor_native_target_acquire_pt_quiescent(struct a04_vendor_native_cold*n){(void)n;assert(!"GPU reacquire not used by these CPU-handoff cases");return STATUS_NOT_SUPPORTED;}
+'''
+extra+='\n'+function(r/'vendor_m1_11/render_owner/windows_native_target.c','binding_set')+'\n'+function(r/'vendor_m1_11/render_owner/windows_native_target.c','a04_vendor_native_target_remove_pt')+'\n'+function(r/'vendor_m1_11/render_owner/windows_native_target.c','a04_vendor_native_target_cpu_after_mmu_ack')+'\n'+function(r/'vendor_m1_11/render_owner/windows_native_execute.c','target_handoff')
+extra+=r'''
+
+static void test_pt_ack(PMDL mdl,PDMA_ADAPTER a,PDEVICE_OBJECT p,const struct a04_native_mdl_lease*l){
+ for(timeout_mode=0;timeout_mode<=1;timeout_mode++){
+  struct a04_native_mdl_binding*b=NULL;uint64_t pt[1024];uint32_t sync=0;RGXFWIF_KCCB_CMD commands[128]={0};
+  struct a04_rgx_fw_runtime fw={&sync,{123},commands};struct test_firmware mem={1,&fw};struct a04_vendor_render_cold render={&mem,{0x120}};struct a04_vendor_native_cold n={0};struct a04_vendor_start start={&mem,0,1};
+  reset();direction=FALSE;assert(a04_native_mdl_bind(&b,a,p,mdl,mdl->bytes,l)==0&&a04_native_mdl_sync_for_gpu(b)==0&&a04_native_mdl_mark_exposed(b)==0);
+  n.render=&render;n.registered_target=b;n.output[2].cpu=pt;n.output[3].cpu=pt+512;active=&n;for(unsigned i=0;i<1024;i++)pt[i]=1;
+  NTSTATUS got=target_handoff(&n,&start,TRUE);
+  if(timeout_mode){assert(got==STATUS_IO_TIMEOUT&&flushed==0&&freed==0&&!a04_native_mdl_cpu(b));assert(a04_native_mdl_release_cold(&b)==STATUS_DEVICE_BUSY);}
+  else{assert(got==0&&flushed==2&&freed==2&&a04_native_mdl_cpu(b));assert(commands[0].eCmdType==RGXFWIF_KCCB_CMD_MMUCACHE&&commands[0].uCmdData.sMMUCacheData.ui32Flags==0x1f&&commands[0].uCmdData.sMMUCacheData.ui16MMUCacheSyncUpdateValue==1);assert(a04_native_mdl_retire_after_gpu_off(b)==0&&a04_native_mdl_release_cold(&b)==0);}
+ }
+}
+'''
+code=code.replace('int main(void)',extra+'\nint main(void)')
+code=code.replace('printf("{', 'test_pt_ack(&mdl,&a,&p,&lease);tests+=2;printf("{')
 (a.out/'test.c').write_text(code);cmd=['cc','-std=c11','-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer','-I'+str(a.out),str(a.out/'test.c'),str(r/'dma_pages.c'),'-o',str(a.out/'test')]
 v=subprocess.run(cmd,capture_output=True,text=True);(a.out/'compile.log').write_text(v.stdout+v.stderr);v.check_returncode()
 # A fault intentionally retains its lease; leak detection is separate from UAF/UB.
