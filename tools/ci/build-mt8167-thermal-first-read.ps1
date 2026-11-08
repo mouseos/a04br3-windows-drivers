@@ -3,7 +3,8 @@ param([Parameter(Mandatory=$true)][string]$ClosureDirectory,
  [Parameter(Mandatory=$true)][string]$KitIncludeDirectory,
  [Parameter(Mandatory=$true)][string]$DependencyDirectory,
  [Parameter(Mandatory=$true)][string]$SignTool,
- [Parameter(Mandatory=$true)][string]$OutputDirectory)
+ [Parameter(Mandatory=$true)][string]$OutputDirectory,
+ [string]$UserLibraryDirectory='C:\Program Files (x86)\Windows Kits\10\Lib\10.0.17763.0\um\arm')
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'));$out=[IO.Path]::GetFullPath($OutputDirectory)
 if(!$out.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase) -or (Test-Path $out)){throw 'Fresh source-local output required'}
@@ -28,6 +29,17 @@ if($LASTEXITCODE){throw 'Client link failed'}
 Copy-Item "$root\drivers\power\mt8167-thermal\mt8167-thermal-native.inf" "$out\package\mt8167-thermal.inf"
 $thumb='BCBF6C456C6F0DD0818434763B189488FBF13570';$cert=Get-Item "Cert:\CurrentUser\My\$thumb"
 if(!$cert.HasPrivateKey -or $cert.NotAfter -le (Get-Date)){throw 'Existing signer required'}
+New-Item -ItemType Directory "$out\client"|Out-Null
+$umflags=@('--target=thumbv7-pc-windows-msvc','-std=c11','-O2','-ffreestanding','-fno-builtin','-fms-extensions','-fno-stack-protector','-D_ARM_','-DARM','-D_WIN32_WINNT=0x0603','-isystem',"$KitIncludeDirectory\um",'-isystem',"$KitIncludeDirectory\shared")
+& clang @umflags -c "$root\tools\thermal\mt8167-thermal-ioctl-status.c" -o "$out\obj\ioctl_status_client.obj"
+if($LASTEXITCODE){throw 'Fixed status client compile failed'}
+$client="$out\client\mt8167-thermal-ioctl-status.exe"
+& lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib "$out\obj\ioctl_status_client.obj" "$UserLibraryDirectory\kernel32.lib" "$UserLibraryDirectory\setupapi.lib" "/out:$client"
+if($LASTEXITCODE){throw 'Fixed status client link failed'}
+& $SignTool sign /fd SHA256 /sha1 $thumb /s My $client
+if($LASTEXITCODE){throw 'Status client signing failed'}
+& $SignTool verify /pa /v $client
+if($LASTEXITCODE -or (Get-AuthenticodeSignature $client).SignerCertificate.Thumbprint -cne $thumb){throw 'Status client signer mismatch'}
 $unsigned=Sha $sys
 & $SignTool sign /fd SHA256 /sha1 $thumb /s My $sys;if($LASTEXITCODE){throw 'SYS sign failed'}
 & "$DependencyDirectory\signing\bin\Inf2Cat.exe" "/driver:$out\package" /os:6_3_ARM /uselocaltime;if($LASTEXITCODE){throw 'CAT generation failed'}
@@ -36,7 +48,9 @@ $cat="$out\package\mt8167-thermal.cat"
 foreach($p in @($sys,$cat)){& $SignTool verify /pa /v $p;if($LASTEXITCODE -or (Get-AuthenticodeSignature $p).SignerCertificate.Thumbprint -cne $thumb){throw 'Signer mismatch'}}
 foreach($p in @($sys,"$out\package\mt8167-thermal.inf")){& $SignTool verify /pa /v /c $cat $p;if($LASTEXITCODE){throw 'CAT membership failed'}}
 & llvm-readobj --file-headers --coff-imports $sys|Set-Content -Encoding UTF8 "$out\client-pe.txt";if($LASTEXITCODE){throw 'PE metadata failed'}
-@{schema='mt8167-thermal-first-read';source_commit=$commit;driver_version='0.0.1.9';compiled=@('wdf_native_thermal');reused=$reused;flags=$flags;compiler=(& clang --version);unsigned_sha256=$unsigned;signer_thumbprint=$thumb;parent_delta_required=$false;parent_rebuilt=$false;audio_rebuilt=$false;measurement_on_first_valid_read=$true;parent_one_shot_retained=$true;max_age_ms=1000;hardware_verified=$false;files=@(Get-ChildItem "$out\package" -File|ForEach-Object{@{path=$_.Name;sha256=(Sha $_.FullName)}})}|ConvertTo-Json -Depth 14|Set-Content -Encoding UTF8 "$out\package\signed-manifest.json"
+@{schema='mt8167-thermal-first-read';source_commit=$commit;driver_version='0.0.1.10';compiled=@('wdf_native_thermal');reused=$reused;flags=$flags;compiler=(& clang --version);unsigned_sha256=$unsigned;signer_thumbprint=$thumb;parent_delta_required=$false;parent_rebuilt=$false;audio_rebuilt=$false;measurement_on_first_valid_read=$true;parent_one_shot_retained=$true;max_age_ms=1000;hardware_verified=$false;files=@(Get-ChildItem "$out\package" -File|ForEach-Object{@{path=$_.Name;sha256=(Sha $_.FullName)}})}|ConvertTo-Json -Depth 14|Set-Content -Encoding UTF8 "$out\package\signed-manifest.json"
+@{source_commit=$commit;client_sha256=(Sha $client);fixed_ioctl='0x226814';input_bytes=0;output_bytes=64;invocation='--status';fixed_output='thermal-ioctl-status-v1.bin';hardware_read_triggered=$false;temperature_success_claimed=$false}|ConvertTo-Json|Set-Content -Encoding UTF8 "$out\client\manifest.json"
+Compress-Archive "$out\client\*" "$out\ioctl-status-client.zip"
 Compress-Archive "$out\package\*" "$out\client-signed.zip"
 Compress-Archive "$out\obj\*","$out\client-pe.txt" "$out\client-objects.zip"
 Get-FileHash "$out\client-signed.zip","$out\client-objects.zip" -Algorithm SHA256
