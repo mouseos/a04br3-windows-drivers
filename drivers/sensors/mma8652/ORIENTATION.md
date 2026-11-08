@@ -58,3 +58,14 @@ Z、raw読出し、I2C、PnP、HID descriptorや電源policyは変更しない�
 本branchの符号・INF版は既存 `b788381` と同じ0.0.1.8である。
 既に同commitを統合したtreeでは符号修正を重複適用せず、追加コメント・試験・本資料を取り込む。
 既存0.0.1.8と同じ座標出力のため、この追試用差分だけでDriverVerを上げる必要はない。
+
+## 1.10の候補
+
+fresh106の搭載SYSは署名済みupright1.8とbyte一致した。最新の上下逆申告に
+対応する候補として、1.10では1.8/統合1.9のHID境界にあるX/Yだけを反転し、
+(-board Y, board X, board Z)を返す。既存1.7と同じ変換だが、旧1.7の低い
+DriverVerと別署名identityは現在のexact更新契約に合わないため、1.10を
+ソースから新規生成し、既存BCBF signerでSYS/CATを署名する。
+Z・基板軸・校正・descriptor・IOCTL・I2C・電源処理は変更しない。
+これは現在姿勢での実機成功を示さない。上記の1.8向けorientation fixtureは
+その履歴を記述するものであり、1.10の物理姿勢の合否判定には流用しない。
