@@ -6,7 +6,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'winpe'))
 from peripheral_batch_policy import rooted,sha,read,require,cstr,cbytes,inftext
 from codec_msdc_transaction import version,datevalue
 from peripheral_next_policy import TARGETS as OLD_TARGETS
-COMBINED_GPU_ADAPTER_READY=True
+COMBINED_GPU_ADAPTER_READY=False # final338 package and main seal pending;337 draft cannot arm
 CLIENT_NAMES=('clock_compare','battery_temperature','accdet_status','afe_jack','audio_consumer','gpu_suite')
 PROFILE='combined-audio-classfix-fresh142-v1';SERVICE='MT8167CombinedFollowup142'
 FRESH='f5ee192fd738b6db129064e71e43bc0a80bf35c6341e0177d468e3bbd6283e37';BOOT='1eb91bc2-cb82-4433-85f1-a70b3570529e'
@@ -103,7 +103,7 @@ def validate(root,path):
  v=m['diagnostics']['audio_consumer'];require(v['mode']=='silent-standard-pcm' and v['audible_output_allowed'] is False and v['exe']=='mt8167-silent-pcm-consumer.exe' and v['arguments']==['--speaker-silence'] and v['phase']==0 and v['one_shot'] and 0 < v['timeout_ms'] <= 60000 and v['relative_directory']==SERVICE+'\\clients','Bounded existing standard audio consumer required')
  require(set(m['diagnostics']) >= set(CLIENT_NAMES) and CLIENT_NAMES[-1]=='gpu_suite','Fixed normal clients only')
  require(m['rotation_execute'] is False and m['wlan_scan_execute'] is False and m['planned_reboots']==1 and m['install_targets']==['audio','wifi','render'],'No repeated scan/rotation/DIF/reboot')
- companion=m['companion_packages']['hcd1015'];require(companion['stage_only'] and not companion['DIF'] and not companion['rebuilt'],'HCD1014 import-only contract required')
+ companion=m['companion_packages']['hcd1015'];_,hseal=pin(companion['main_seal']);pin(companion['producer_pins']);require(hseal['status']=='main-independent-leaf-artifact-seal' and hseal['source_commit']=='e6794990f3e35889cdf1a16df2db27151ee82928','Main HCD1015 leaf seal required');require(companion['stage_only'] and not companion['DIF'] and not companion['rebuilt'],'HCD1014 import-only contract required')
  cp=rooted(root,companion['manifest']);cm=read(cp);require(sha(cp)==companion['manifest_sha256'] and cm['signed'] and cm['source_commit']=='e6794990f3e35889cdf1a16df2db27151ee82928','Retained signed1015 provenance required')
  require([f['name'] for f in companion['files']]==['mt8167-musb-hcd.sys','mt8167-musb-hcd.inf','mt8167-musb-hcd.cat'],'Fixed HCD trio only')
  for f in companion['files']:require(sha(rooted(root,Path(companion['directory'])/f['name']))==f['sha256'] and any(e['path']==f['name'] and e['sha256']==f['sha256'] for e in cm['files']),'HCD trio manifest mismatch')
