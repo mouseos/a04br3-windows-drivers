@@ -28,3 +28,9 @@ Menciusが`native_owner_mdl`のSG所有権/Ex同期/uniquecontext/PT再bindを�
 - public host command: `make test-ge8300-native-copy334`。ARM source closureは`tools/ci/build-ge8300-copy334-objects.py --baseline-build ... --output ...`。driver/link/signを装うhelperではない。
 
 残るruntime結合はMenciusのSG変更と同時に行う。特に旧RT出力のDMA directionはFALSE、copy sourceはdevice-readになるため、単に同じSG listを流用してCPU ownershipを偽装できない。source/destination両方の実transfer所有期間、PT再bind、DM3 submitと実IRQ/SLC/GP、その後CPU所有返却とscheduler通知を一組で結合するまで候補packageを作らない。
+
+## 低レベル実TQ submitとGPU完了（runtime未結合）
+
+`windows_native_copy_transfer`はcoldで固定したTQ/UPDATEのshadowから、実registered Dxgk IRQ lock下で同一ownerのKCCB/CCCBへpublishする。実IRQ claim後のPASSIVEでTQ read/write/UFOを確認し、実SLC invalidate→GP SYNC→実値一致まで処理する。各待機は単調時刻2秒上限。source/destination CPU pixel access、LockCb、第二IRQ、偽scheduler通知はない。曖昧なwrite/timeoutはgraph poisonとretain。
+
+GPU完了はCPU_VISIBLEではないため、command_busyとsubmitted contextを保持する。MenciusのSG所有権返却＋fresh real IRQ/scheduler fenceと結合するまで解放・通知しない。未結合のこの低レベルmoduleだけをactive packageへ混載してはならない。実stagingのformat/800x600/pitch/usageをfactory実descriptorで検査するAPIとし、同サイズだけのbufferをBGRA surfaceと推測しない。

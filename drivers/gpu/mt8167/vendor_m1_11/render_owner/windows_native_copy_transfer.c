@@ -1,0 +1,170 @@
+/* SPDX-License-Identifier: BSD-2-Clause-Patent
+ * Same DM3 TQ/UFO/SLC/GP protocol as validated windows_render_clear.c.
+ * Native owner transport only: no private RT, CPU copy, or fake completion. */
+#include "windows_native_copy_transfer.h"
+#include "windows_native_cold_private.h"
+#include "windows_start.h"
+#include "native_owner_irq.h"
+#include "native_copy_queue.h"
+#include "A04BR3RogueRuntimeLayout.h"
+#include "A04BR3RogueDeviceWords.h"
+#include "../../windows_hw.h"
+#define TAG 0x71544741u
+struct a04_native_tq_transfer {
+ struct a04_native_copy_storage *storage;
+ struct a04_vendor_native_cold *native;
+ struct a04_native_copy_queue_input input;
+ struct a04_native_copy_queue_result queue;
+ ULONG state,kernel_next;uint64_t epoch,irq_serial;
+ _Alignas(8) UCHAR ring[4096],workspace[4096];
+};
+static int queues(struct a04_rgx_fw_runtime *f,RGXFWIF_CCB_CTL *k)
+{
+ RGXFWIF_CCB_CTL q;a04_gpu_dma_barrier();
+ return !f||!f->kctl||!f->fctl||!f->kcommands||!f->command_sync||
+  a04_rgx_device_read_words(k,f->kctl,sizeof(*k))||
+  a04_rgx_device_read_words(&q,f->fctl,sizeof(q))||k->ui32WrapMask!=127u||
+  k->ui32CmdSize!=sizeof(RGXFWIF_KCCB_CMD)||k->ui32ReadOffset>127u||k->ui32WriteOffset>127u||
+  q.ui32WrapMask!=31u||q.ui32CmdSize!=sizeof(RGXFWIF_FWCCB_CMD)||
+  q.ui32ReadOffset>31u||q.ui32WriteOffset!=q.ui32ReadOffset;
+}
+static NTSTATUS poison(struct a04_native_tq_transfer *c,struct a04_vendor_start *s,NTSTATUS status)
+{
+ c->state=4;c->native->quarantined=TRUE;c->native->render->poisoned=TRUE;
+ s->command_poisoned=TRUE;return NT_SUCCESS(status)?STATUS_IO_DEVICE_ERROR:status;
+}
+NTSTATUS a04_native_tq_transfer_prepare(struct a04_native_tq_transfer **out,
+ struct a04_native_copy_storage *storage)
+{
+ struct a04_vendor_native_cold *n=a04_native_copy_storage_parent(storage);
+ struct a04_vendor_render_cold *r;struct a04_native_tq_transfer *c;
+ const struct a04_native_copy_job_image *image=a04_native_copy_storage_image(storage);
+ RGXFWIF_CCCB_CTL ctl;ULONG sync;
+ if(!out||*out||!n||!image||KeGetCurrentIrql()!=PASSIVE_LEVEL||!(r=n->render)||
+    r->native_owner!=n||r->poisoned||n->quarantined||!r->firmware||
+    r->firmware->hardware_owned||r->sequence==UINT32_MAX||!r->buffer[0].cpu||
+    r->layout.control[3]>65536u-sizeof(ctl)||r->layout.commands[3]>65536u-4096u||
+    r->layout.sync>65536u-4u)return STATUS_INVALID_PARAMETER;
+ if(a04_rgx_device_read_words(&ctl,(UCHAR*)r->buffer[0].cpu+r->layout.control[3],sizeof(ctl))||
+    ctl.ui32WrapMask!=4095u||ctl.ui32ReadOffset!=r->client_write[3]||
+    ctl.ui32WriteOffset!=r->client_write[3]||
+    a04_rgx_device_read_words(&sync,(UCHAR*)r->buffer[0].cpu+r->layout.sync,4u)||sync!=r->sequence)
+  return STATUS_DEVICE_BUSY;
+ c=ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*c),TAG);if(!c)return STATUS_INSUFFICIENT_RESOURCES;
+ RtlZeroMemory(c,sizeof(*c));c->storage=storage;c->native=n;
+ c->input=(struct a04_native_copy_queue_input){0xc0080000u+r->layout.tq,
+  0xc0080000u+r->layout.sync,r->sequence,ctl.ui32ReadOffset,ctl.ui32WriteOffset,ctl.ui32DepOffset,0,1};
+ if(a04_rgx_device_read_words(c->ring,(UCHAR*)r->buffer[0].cpu+r->layout.commands[3],4096u)||
+    a04_native_copy_queue_build(c->ring,c->workspace,&c->input,image,&c->queue)){
+  ExFreePoolWithTag(c,TAG);return STATUS_INVALID_DEVICE_STATE;
+ }
+ c->state=1;*out=c;return STATUS_SUCCESS;
+}
+NTSTATUS a04_native_tq_transfer_submit(struct a04_native_tq_transfer *c,
+ struct a04_vendor_start *s,struct a04_native_irq_core *irq,ULONG expected)
+{
+ struct a04_vendor_render_cold *r;struct a04_rgx_fw_runtime *f;
+ RGXFWIF_CCB_CTL k;RGXFWIF_CCCB_CTL ctl;ULONG sync;
+ if(!c||!s||!irq||KeGetCurrentIrql()<=DISPATCH_LEVEL||c->state!=1||expected>127u||
+    !(r=c->native->render)||r->native_owner!=c->native||r->poisoned||c->native->quarantined||
+    !s->online||!s->core||s->command_poisoned||s->shutdown_started||
+    !s->memory||s->memory!=r->firmware||!s->memory->hardware_owned||!s->memory->uncached||
+    !(f=s->memory->runtime)||irq->core!=s->core||irq->runtime!=f||!irq->epoch||
+    !irq->powered||irq->masked||irq->closed||irq->faulted||irq->draining)return STATUS_INVALID_DEVICE_STATE;
+ if(InterlockedCompareExchange(&s->command_busy,1,0))return STATUS_DEVICE_BUSY;
+ if(queues(f,&k)||k.ui32ReadOffset!=expected||k.ui32WriteOffset!=expected||
+    r->sequence!=c->input.previous_value||r->client_write[3]!=c->input.write||
+    a04_rgx_device_read_words(&ctl,(UCHAR*)r->buffer[0].cpu+r->layout.control[3],sizeof(ctl))||
+    ctl.ui32ReadOffset!=c->input.read||ctl.ui32WriteOffset!=c->input.write||
+    ctl.ui32DepOffset!=c->input.dependency||ctl.ui32WrapMask!=4095u||
+    a04_rgx_device_read_words(&sync,(UCHAR*)r->buffer[0].cpu+r->layout.sync,4u)||sync!=c->input.previous_value){
+  InterlockedExchange(&s->command_busy,0);return STATUS_DEVICE_BUSY;
+ }
+ /* From here ambiguity retains ownership, including command_busy. No wait,
+  * allocation, CPU buffer access or fabricated completion at DIRQL. */
+ c->state=2;c->epoch=irq->epoch;c->irq_serial=irq->serial;c->kernel_next=(expected+1u)&127u;
+ if(c->queue.padding_bytes&&a04_rgx_device_write_words(
+    (UCHAR*)r->buffer[0].cpu+r->layout.commands[3]+c->input.write,
+    c->ring+c->input.write,sizeof(RGXFWIF_CCB_CMD_HEADER)))return poison(c,s,STATUS_IO_DEVICE_ERROR);
+ if(a04_rgx_device_write_words((UCHAR*)r->buffer[0].cpu+r->layout.commands[3]+c->queue.task_offset,
+    c->ring+c->queue.task_offset,296u)||
+    a04_rgx_device_write_words(&f->kcommands[expected],&c->queue.kick,sizeof(c->queue.kick)))
+  return poison(c,s,STATUS_IO_DEVICE_ERROR);
+ r->sequence=c->queue.completion_value;r->client_write[3]=c->queue.write_offset;
+ a04_gpu_dma_barrier();((volatile RGXFWIF_CCB_CTL*)f->kctl)->ui32WriteOffset=c->kernel_next;
+ a04_gpu_dma_barrier();WRITE_REGISTER_ULONG((volatile ULONG*)(void*)(s->core+0xb00),0x10);
+ return STATUS_SUCCESS;
+}
+static NTSTATUS wait_queue(struct a04_rgx_fw_runtime *f,ULONG next)
+{
+ ULONGLONG began=KeQueryInterruptTime();LARGE_INTEGER delay;RGXFWIF_CCB_CTL k;
+ delay.QuadPart=-10000;
+ for(;;){
+  if(queues(f,&k))return STATUS_IO_DEVICE_ERROR;
+  if(k.ui32ReadOffset==next)return STATUS_SUCCESS;
+  if(KeQueryInterruptTime()-began>=20000000u)return STATUS_IO_TIMEOUT;
+  (void)KeDelayExecutionThread(KernelMode,FALSE,&delay);
+ }
+}
+static NTSTATUS issue(struct a04_vendor_start *s,struct a04_rgx_fw_runtime *f,RGXFWIF_KCCB_CMD *cmd)
+{
+ RGXFWIF_CCB_CTL k;ULONG next;
+ if(queues(f,&k)||k.ui32ReadOffset!=k.ui32WriteOffset)return STATUS_DEVICE_BUSY;
+ if(a04_rgx_device_write_words(&f->kcommands[k.ui32WriteOffset],cmd,sizeof(*cmd)))return STATUS_IO_DEVICE_ERROR;
+ next=(k.ui32WriteOffset+1u)&127u;
+ a04_gpu_dma_barrier();((volatile RGXFWIF_CCB_CTL*)f->kctl)->ui32WriteOffset=next;
+ a04_gpu_dma_barrier();WRITE_REGISTER_ULONG((volatile ULONG*)(void*)(s->core+0xb00),0x10);
+ return wait_queue(f,next);
+}
+NTSTATUS a04_native_tq_transfer_finish_gpu(struct a04_native_tq_transfer *c,
+ struct a04_vendor_start *s,struct a04_native_irq_core *irq,struct a04_native_copy_gpu_result *out)
+{
+ struct a04_vendor_render_cold *r;struct a04_rgx_fw_runtime *f;RGXFWIF_CCCB_CTL ctl;
+ RGXFWIF_KCCB_CMD cmd={0};ULONG value;NTSTATUS status;ULONGLONG began;LARGE_INTEGER delay;
+ if(!out)return STATUS_INVALID_PARAMETER;RtlZeroMemory(out,sizeof(*out));
+ if(!c||!s||!irq||KeGetCurrentIrql()!=PASSIVE_LEVEL||c->state!=2||!(r=c->native->render)||
+    !s->memory||s->memory!=r->firmware||!(f=s->memory->runtime)||!s->memory->hardware_owned||
+    !s->online||s->command_busy!=1||s->command_poisoned||s->shutdown_started||
+    irq->runtime!=f||irq->core!=s->core||irq->epoch!=c->epoch||irq->faulted||irq->closed||!irq->powered||irq->draining)
+  return STATUS_INVALID_DEVICE_STATE;
+ /* An actual newly claimed source is required; a timer/raise-IRQL path
+  * cannot enter GPU completion. The existing owner must route that claim. */
+ if(!irq->masked||irq->serial<=c->irq_serial)return STATUS_PENDING;
+ out->phase=1;status=wait_queue(f,c->kernel_next);if(!NT_SUCCESS(status))goto fail;
+ began=KeQueryInterruptTime();delay.QuadPart=-10000;
+ for(;;){
+  if(a04_rgx_device_read_words(&ctl,(UCHAR*)r->buffer[0].cpu+r->layout.control[3],sizeof(ctl))||
+     a04_rgx_device_read_words(&value,(UCHAR*)r->buffer[0].cpu+r->layout.sync,4u)){status=STATUS_IO_DEVICE_ERROR;goto fail;}
+  if(ctl.ui32WrapMask!=4095u||ctl.ui32DepOffset>4095u||(ctl.ui32DepOffset&7u)){status=STATUS_IO_DEVICE_ERROR;goto fail;}
+  if(ctl.ui32ReadOffset==c->queue.write_offset&&ctl.ui32WriteOffset==c->queue.write_offset&&
+     value==c->queue.completion_value)break;
+  if(KeQueryInterruptTime()-began>=20000000u){status=STATUS_IO_TIMEOUT;goto fail;}
+  (void)KeDelayExecutionThread(KernelMode,FALSE,&delay);
+ }
+ out->phase=2;out->task_sequence=value;out->client_write=c->queue.write_offset;
+ cmd.eCmdType=RGXFWIF_KCCB_CMD_SLCFLUSHINVAL;cmd.eDM=0;cmd.uCmdData.sSLCFlushInvalData.bInval=TRUE;
+ status=issue(s,f,&cmd);if(!NT_SUCCESS(status))goto fail;
+ if(s->command_sequence>=0xfffffffeu){status=STATUS_INTEGER_OVERFLOW;goto fail;}
+ RtlZeroMemory(&cmd,sizeof(cmd));cmd.eCmdType=RGXFWIF_KCCB_CMD_SYNC;cmd.eDM=0;
+ cmd.uCmdData.sSyncData.sSyncObjDevVAddr=f->command_sync_addr;
+ cmd.uCmdData.sSyncData.uiUpdateVal=++s->command_sequence;
+ *(volatile ULONG*)f->command_sync=0;a04_gpu_dma_barrier();
+ status=issue(s,f,&cmd);if(!NT_SUCCESS(status))goto fail;
+ began=KeQueryInterruptTime();
+ while(*(volatile ULONG*)f->command_sync!=s->command_sequence){
+  a04_gpu_dma_barrier();if(KeQueryInterruptTime()-began>=20000000u){status=STATUS_IO_TIMEOUT;goto fail;}
+  (void)KeDelayExecutionThread(KernelMode,FALSE,&delay);
+ }
+ a04_gpu_dma_barrier();out->phase=3;out->flush_sequence=s->command_sequence;c->state=3;
+ /* Still NOT CPU_VISIBLE. Leave command_busy retained for the ownership
+  * return + fresh real visibility IRQ/fence half, not implemented here. */
+ return STATUS_SUCCESS;
+fail:return poison(c,s,status);
+}
+NTSTATUS a04_native_tq_transfer_release_unsubmitted(struct a04_native_tq_transfer **out)
+{
+ struct a04_native_tq_transfer *c;
+ if(!out||!(c=*out)||KeGetCurrentIrql()!=PASSIVE_LEVEL||c->state!=1||
+    !c->native->render->firmware||c->native->render->firmware->hardware_owned)return STATUS_DEVICE_BUSY;
+ ExFreePoolWithTag(c,TAG);*out=NULL;return STATUS_SUCCESS;
+}
