@@ -8,13 +8,14 @@ TAB-A04-BR3のWindows RT 8.1 ARM32向けドライバをまとめるリポジト�
 
 Windows RT本体の起動、タッチ、４CPU、電池表示、加速度センサーの回転検出を実機で確認しています。回転方向の補正と、各デバイスの電源遷移・安定性は継続作業です。
 
-PowerVR GE8300は、標準Direct3Dで異なる２色の描画・stagingへのコピー・Map読戻しが連続で成功し、各800×600の480,000画素一致・不一致0を確認しました。今回の処理ではブルースクリーンなし。続く三角形用シェーダーの作成は失敗しており、Windows RTランタイムが設定しない署名フィールドへの依存を除く修正版を準備しています。一般のDirect3Dアプリ、全３D機能、Windows UI全体へのGPU適用が完成したという意味ではありません。
+PowerVR GE8300は、標準Direct3Dで異なる２色の描画・stagingへのコピー・Map読戻しが連続で成功し、各800×600の480,000画素一致・不一致0を確認しました。今回の処理ではブルースクリーンなし。3.23では三角形用VS/PS・入力レイアウト・頂点/定数バッファの作成まで実機で成功しましたが、描画結果は全面黒でした。GPUジョブ完了と同じ起動の画素読戻しを照合し、PPP viewportのoffset/scale順序逆転を一次ソースと生成処理で特定しました。3.25署名候補は準備済みで、修正後の実機描画は未確認です。一般のDirect3Dアプリ、全３D機能、Windows UI全体へのGPU適用が完成したという意味ではありません。
 
 |対象|ソース・手順|状態|
 |---|---|---|
 |GE8300の単一checkoutビルド|[work/ge8300-single-checkout323](https://github.com/mouseos/a04br3-windows-drivers/tree/work/ge8300-single-checkout323)|公開ソースからKMD/native/UMD/compilerを構築。対応範囲は同ブランチの説明を参照|
 |GE8300のreset修正|[work/ge8300-implemented-reset322](https://github.com/mouseos/a04br3-windows-drivers/tree/work/ge8300-implemented-reset322)|固定BVNCの実装済みreset controlを検査する3.22。全idle/FW OFF/IRQ drain/platform OFF条件を保持し、標準Direct3Dの２色連続readbackを実機確認|
-|GE8300のRT8.1シェーダー署名修正|[work/ge8300-rt-shader-signature323](https://github.com/mouseos/a04br3-windows-drivers/tree/work/ge8300-rt-shader-signature323)|実ランタイムとWDKの契約に基づく3.23署名候補。修正後のシェーダー作成・三角形描画は実機未確認|
+|GE8300のRT8.1シェーダー署名修正|[work/ge8300-rt-shader-signature323](https://github.com/mouseos/a04br3-windows-drivers/tree/work/ge8300-rt-shader-signature323)|実ランタイムとWDKの契約に基づく3.23署名候補。VS/PS作成・２色readbackを実機確認。三角形は全面黒で、後続viewport修正が必要|
+|GE8300のviewport順序修正|[work/ge8300-blacktriangle119](https://github.com/mouseos/a04br3-windows-drivers/tree/work/ge8300-blacktriangle119)|offset/scaleをPPP契約へ合わせた3.25署名候補。native1TUと初回入力観測のみ変更。実機修正成功は未確認|
 |MT6630 Wi-Fi接続・QoS統合|[work/mt6630-connect-qos1020-20261108](https://github.com/mouseos/a04br3-windows-drivers/tree/work/mt6630-connect-qos1020-20261108)|1012のscan成功を基点に接続処理とQoS対応を統合。署名候補を作成、接続・通信は未確認|
 |Samsung AJTD4R eMMC / MT8167 MSDC0|[work/msdc-ajtd4r-request-mdl](https://github.com/mouseos/a04br3-windows-drivers/tree/work/msdc-ajtd4r-request-mdl)|要求単位のMDL再利用と実ハード名を反映した1.9署名候補。実速度は未確認|
 |MT8167 USB 2.0|[work/mt8167-usb-host-convergence](https://github.com/mouseos/a04br3-windows-drivers/tree/work/mt8167-usb-host-convergence)|host開始・session喪失処理とboot keyboard/mouseの1009候補。実host給電・列挙・入力は未確認|
