@@ -444,4 +444,4 @@ jobs:
         with:
           authorized-key: ${{ secrets.A04BR3_RUNNER_SSH_PUBLIC_KEY }}
           keep-minutes: ${{ inputs.ssh_keep_minutes }}
-          on-ready-script: tools/ci/hold-wdk81-development.ps1
+          on-ready-script: tools/ci/hold-cache-development.ps1
