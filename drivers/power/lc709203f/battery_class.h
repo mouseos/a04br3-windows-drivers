@@ -15,6 +15,11 @@ struct a04_battery_class {
     ULONG tag;
     BOOLEAN valid;
     ULONG power_state;
+    /* Class criteria refer to the status we actually publish, not to unknown
+     * physical AC/current states. Owned by this same lock, scoped to tag. */
+    BOOLEAN notify_armed;
+    ULONG notify_tag;
+    BATTERY_NOTIFY notify_window;
     /* Immutable callback/context set at AddDevice, only on the local read-only
      * owner path. QueryInformation must release class lock before calling. */
     PVOID temperature_context;

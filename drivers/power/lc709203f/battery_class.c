@@ -13,7 +13,11 @@ BOOLEAN a04_battery_publish_power(struct a04_battery_class *c,
     BOOLEAN changed;
     WdfWaitLockAcquire(c->lock, NULL);
     changed = !c->valid || c->sample.percent != sample->percent ||
-              c->sample.voltage_mv != sample->voltage_mv || c->power_state != power_state;
+              c->sample.voltage_mv != sample->voltage_mv || c->power_state != power_state ||
+              (c->notify_armed && c->notify_tag == c->tag &&
+               (sample->percent < c->notify_window.LowCapacity ||
+                sample->percent > c->notify_window.HighCapacity ||
+                power_state != c->notify_window.PowerState));
     if (!c->valid) {
         ++c->tag;
         if (c->tag == BATTERY_TAG_INVALID) ++c->tag;
@@ -30,6 +34,8 @@ BOOLEAN a04_battery_invalidate(struct a04_battery_class *c)
     WdfWaitLockAcquire(c->lock, NULL);
     changed = c->valid;
     c->valid = FALSE;
+    c->notify_armed = FALSE;
+    c->notify_tag = BATTERY_TAG_INVALID;
     c->power_state = 0;
     WdfWaitLockRelease(c->lock);
     return changed;
@@ -124,11 +130,33 @@ NTSTATUS a04_battery_set_information(PVOID context, ULONG tag,
 }
 NTSTATUS a04_battery_set_notify(PVOID context, ULONG tag, PBATTERY_NOTIFY notify)
 {
-    UNREFERENCED_PARAMETER(context); UNREFERENCED_PARAMETER(tag); UNREFERENCED_PARAMETER(notify);
-    return STATUS_NOT_SUPPORTED;
+    struct a04_battery_class *c = context;
+    NTSTATUS status = STATUS_SUCCESS;
+    WdfWaitLockAcquire(c->lock, NULL);
+    if (!c->valid || tag != c->tag) status = STATUS_NO_SUCH_DEVICE;
+    else if (!notify || notify->LowCapacity > notify->HighCapacity ||
+             (notify->PowerState & ~(BATTERY_POWER_ON_LINE | BATTERY_CHARGING |
+                                    BATTERY_DISCHARGING | BATTERY_CRITICAL)))
+        status = STATUS_NOT_SUPPORTED;
+    else {
+        c->notify_window = *notify;
+        c->notify_tag = tag;
+        c->notify_armed = TRUE;
+        /* Never call BatteryClassStatusNotify here: class lock is held by
+         * BatteryClassIoctl and its synchronous callback would re-enter it.
+         * The real poll evaluates even an unchanged sample against this
+         * window, closing the registration-versus-publish race next poll.
+         * Existing unconditional change/invalidation notifications remain. */
+    }
+    WdfWaitLockRelease(c->lock);
+    return status;
 }
 NTSTATUS a04_battery_disable_notify(PVOID context)
 {
-    UNREFERENCED_PARAMETER(context);
-    return STATUS_NOT_SUPPORTED;
+    struct a04_battery_class *c = context;
+    WdfWaitLockAcquire(c->lock, NULL);
+    c->notify_armed = FALSE;
+    c->notify_tag = BATTERY_TAG_INVALID;
+    WdfWaitLockRelease(c->lock);
+    return STATUS_SUCCESS;
 }
