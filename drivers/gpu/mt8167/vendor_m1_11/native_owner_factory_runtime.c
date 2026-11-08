@@ -3,6 +3,7 @@
  * -> forced idle -> device pre-power/RGXStop -> MTK platform off -> ISR/MISR
  * rundown -> FW free. Never follow force-unload/bad-services bypasses. */
 #include "native_owner_factory_private.h"
+#include "native_factory_checkpoint.h"
 #include "windows_native_cold_private.h"
 #include "../windows_hw.h"
 #include "A04BR3RogueRuntimeLayout.h"
@@ -55,18 +56,18 @@ NTSTATUS e_native_stop_locked(struct e_native_owner *c)
         /* Stop retires this token as aborted, it never fabricates a scheduler
          * completion from the passive finish/cache observation. */
     }
-    status=irq_phase(c,drain_begin);if(!NT_SUCCESS(status))return status;
-    status=a04_vendor_render_cleanup_contexts(&a->render,&a->start,&failed);if(!NT_SUCCESS(status))return status;
+    status=irq_phase(c,drain_begin);GeoFactoryCheckpoint(35,status,1,c->job_state,a->dispatch.state,a->irq.draining);if(!NT_SUCCESS(status))return status;
+    status=a04_vendor_render_cleanup_contexts(&a->render,&a->start,&failed);GeoFactoryCheckpoint(35,status,2,failed,a->render.cleanup_mask,a->start.command_poisoned);if(!NT_SUCCESS(status))return status;
     if(a->render.cleanup_mask!=15)return STATUS_IO_DEVICE_ERROR;
-    status=a04_vendor_m1_11_windows_forced_power_off(&a->start,TRUE,&idle);
+    status=a04_vendor_m1_11_windows_forced_power_off(&a->start,TRUE,&idle);GeoFactoryCheckpoint(35,status,3,(ULONG)idle,a->start.power_off_ack,a->start.online);
     if(!NT_SUCCESS(status) || !NT_SUCCESS(idle) || !a->start.power_off_ack || a->start.online)return NT_SUCCESS(status)?STATUS_IO_DEVICE_ERROR:status;
-    status=irq_phase(c,drain_close);if(!NT_SUCCESS(status))return status;
-    status=a04_vendor_m1_11_windows_core_hold_reset(&a->start,TRUE,&c->reset);if(!NT_SUCCESS(status))return status;
+    status=irq_phase(c,drain_close);GeoFactoryCheckpoint(35,status,4,a->irq.sampled_fw_valid,a->irq.sampled_fw_count,(ULONG)a->irq.serial);if(!NT_SUCCESS(status))return status;
+    status=a04_vendor_m1_11_windows_core_hold_reset(&a->start,TRUE,&c->reset);GeoFactoryCheckpoint(35,status,5,c->reset.reset_held,c->off_irq.source_closed,0);GeoFactoryCheckpoint(36,status,c->reset.phase,c->reset.failed_register,(ULONG)c->reset.failed_value,(ULONG)(c->reset.failed_value>>32));if(!NT_SUCCESS(status))return status;
     if(!c->reset.reset_held || !c->off_irq.source_closed || c->off_irq.epoch!=c->hardware_epoch)return STATUS_IO_DEVICE_ERROR;
     /* No further GPU0/MFG read after domain OFF. The legitimate parent owns
      * only SPM/INFRA and independently re-reads the actual OFF conditions. */
     WRITE_REGISTER_ULONG((volatile ULONG *)(void *)(c->mfg+4),15u);
-    status=c->platform.Off(c->platform.Header.Context,c->platform_token);if(!NT_SUCCESS(status))return status;
+    status=c->platform.Off(c->platform.Header.Context,c->platform_token);GeoFactoryCheckpoint(35,status,6,0,0,0);if(!NT_SUCCESS(status))return status;
     c->hardware_off=TRUE;
     status=c->platform.VerifyOff(c->platform.Header.Context,c->platform_token);if(!NT_SUCCESS(status))return status;
     if(a->binding){status=a04_native_mdl_sync_for_cpu(a->binding);if(!NT_SUCCESS(status))return status;}
@@ -98,9 +99,9 @@ NTSTATUS e_native_retire_graph_locked(struct e_native_owner *c)
         a->irq.core=NULL;a->irq.runtime=NULL;a->irq.bytes=0;
         RtlZeroMemory(&a->dispatch,sizeof(a->dispatch));
     }
-    if(a->native){status=a04_vendor_native_release_cold(&a->native);if(!NT_SUCCESS(status))return status;}
-    if(a->render.firmware){status=a04_vendor_render_release_cold(&a->render);if(!NT_SUCCESS(status))return status;}
-    status=a04_vendor_m1_11_windows_free(&a->firmware);if(!NT_SUCCESS(status))return status;
+    if(a->native){status=a04_vendor_native_release_cold(&a->native);GeoFactoryCheckpoint(36,status,1,0,0,0);if(!NT_SUCCESS(status))return status;}
+    if(a->render.firmware){status=a04_vendor_render_release_cold(&a->render);GeoFactoryCheckpoint(36,status,2,0,0,0);if(!NT_SUCCESS(status))return status;}
+    status=a04_vendor_m1_11_windows_free(&a->firmware);GeoFactoryCheckpoint(36,status,3,0,0,0);if(!NT_SUCCESS(status))return status;
     return STATUS_SUCCESS;
 }
 NTSTATUS e_native_build_graph_locked(struct e_native_owner *c)
@@ -140,9 +141,9 @@ NTSTATUS e_native_boot_locked(struct e_native_owner *c)
     if(!a04_vendor_m1_11_power_valid(&power))return STATUS_DEVICE_NOT_READY;
     uint64_t bvnc=(uint64_t)READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x24))<<32 |
         READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x20));
-    status=a04_vendor_m1_11_windows_start(&a->start,&a->firmware,c->core,0x80000,bvnc,&power,A04_VENDOR_IRQ_MASKED);
+    status=a04_vendor_m1_11_windows_start(&a->start,&a->firmware,c->core,0x80000,bvnc,&power,A04_VENDOR_IRQ_MASKED);GeoFactoryCheckpoint(37,status,1,a->start.online,a->start.attempted,a->start.command_poisoned);
     if(!NT_SUCCESS(status))return status;
-    status=a04_vendor_m1_11_windows_fence(&a->start,0,TRUE);if(!NT_SUCCESS(status))return status;
+    status=a04_vendor_m1_11_windows_fence(&a->start,0,TRUE);GeoFactoryCheckpoint(37,status,2,0,0,0);if(!NT_SUCCESS(status))return status;
     c->hardware_epoch++;
     RtlZeroMemory(&a->irq,sizeof(a->irq));
     status=a04_native_irq_bind(&a->irq,c->core,0x80000,a->firmware.runtime,c->hardware_epoch);if(!NT_SUCCESS(status))return status;
@@ -150,5 +151,6 @@ NTSTATUS e_native_boot_locked(struct e_native_owner *c)
     status=a04_native_dispatch_initialize(&a->dispatch,a->native,&a->start,&a->irq,c->hardware_epoch,c,e_native_synchronize);
     if(!NT_SUCCESS(status))return status;
     if(!e_native_synchronize(c,boot_enable,&call))return STATUS_IO_DEVICE_ERROR;
+    GeoFactoryCheckpoint(37,call.status,3,(ULONG)c->hardware_epoch,a->irq.masked,a->dispatch.state);
     return call.status;
 }

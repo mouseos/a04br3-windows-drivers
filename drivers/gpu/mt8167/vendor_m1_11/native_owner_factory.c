@@ -116,6 +116,19 @@ static int32_t create(void *p,const struct geo_surface_desc *d,uint64_t *id)
     RtlZeroMemory(r,sizeof(*r));r->desc=*d;r->id=++c->next_id;
     r->next=c->resources;c->resources=r;*id=r->id;return leave(c,STATUS_SUCCESS);
 }
+/* Capture scheduler/native progress under the real Dxgk IRQ lock.  Persist
+ * only at PASSIVE, never turn this observation into a completion. */
+struct native_progress {struct e_native_owner *c;ULONG job,dispatch,serial,generation;};
+static BOOLEAN read_native_progress(void *p) {
+ struct native_progress *x=p;x->job=x->c->job_state;
+ x->dispatch=x->c->allocation->dispatch.state;x->serial=(ULONG)x->c->allocation->irq.serial;
+ x->generation=x->c->generation;return TRUE;
+}
+static void native_progress(struct e_native_owner *c,ULONG stage,NTSTATUS status) {
+ struct native_progress x={c,0,0,0,0};
+ if(e_native_synchronize(c,read_native_progress,&x))
+  GeoFactoryCheckpoint(stage,status,x.job,x.dispatch,x.serial,x.generation);
+}
 static NTSTATUS wait_boundary_locked(struct e_native_owner *c)
 {
     ULONGLONG began=KeQueryInterruptTime();LARGE_INTEGER delay;
@@ -221,7 +234,7 @@ static int32_t prepare(void *p,uint64_t surface,uint32_t colour,uint64_t *job)
     struct e_native_owner *c=p;RGXFWIF_CCB_CTL k;NTSTATUS s;
     if(!job)return STATUS_INVALID_PARAMETER;*job=0;s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
     if(!surface || surface!=c->surface || !c->allocation->binding || c->next_id==UINT64_MAX)return leave(c,STATUS_DEVICE_BUSY);
-    s=wait_boundary_locked(c);if(!NT_SUCCESS(s))return leave(c,s);
+    s=wait_boundary_locked(c);native_progress(c,34,s);if(!NT_SUCCESS(s))return leave(c,s);
     /* No live rewrite of USC/PDS. Rebuild under the same adapter/retained MDL
      * after real normal retirement; subsequent boot has a new hardware epoch. */
     s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);
@@ -234,6 +247,7 @@ static int32_t prepare(void *p,uint64_t surface,uint32_t colour,uint64_t *job)
            k.ui32WrapMask!=127 || k.ui32ReadOffset>127 || k.ui32ReadOffset!=k.ui32WriteOffset)s=STATUS_DEVICE_BUSY;
         else{c->kick_write=k.ui32WriteOffset;c->job=++c->next_id;c->job_state=E_JOB_PREPARED;*job=c->job;}
     }
+    native_progress(c,38,s);
     if(!NT_SUCCESS(s))c->state=E_OWNER_FAILED;
     return leave(c,s);
 }
@@ -294,7 +308,7 @@ static NTSTATUS service(void *p,uint64_t epoch)
      * this retires only the work request, never a GPU completion. */
     if(!c->irq_gate && c->job_state==E_JOB_NONE)return leave(c,STATUS_SUCCESS);
     if(!c->irq_gate)return leave(c,STATUS_INVALID_DEVICE_STATE);
-    s=a04_native_dispatch_service(&c->allocation->dispatch);return leave(c,s);
+    s=a04_native_dispatch_service(&c->allocation->dispatch);native_progress(c,39,s);return leave(c,s);
 }
 static NTSTATUS acquire(void *p,struct geo_owner_lease *out)
 {
@@ -373,7 +387,7 @@ static int32_t prepare_draw_impl(void *p,const struct geo_draw_request *request,
     if(request->target!=c->surface || request->vertex!=c->vertex || !c->vertex ||
        !c->allocation->binding || !c->allocation->vertex || c->next_id==UINT64_MAX ||
        RtlCompareMemory(&c->description,&request->target_desc,sizeof(c->description))!=sizeof(c->description))return leave(c,STATUS_INVALID_DEVICE_STATE);
-    s=wait_boundary_locked(c);if(!NT_SUCCESS(s))return leave(c,s);
+    s=wait_boundary_locked(c);native_progress(c,34,s);if(!NT_SUCCESS(s))return leave(c,s);
     offset=(uint64_t)request->state.first_vertex*request->state.vertex_stride+request->state.vertex_offset;
     end=offset+(uint64_t)request->state.vertex_count*request->state.vertex_stride;
     if(request->state.vertex_count!=3 || end>c->vertex_description.width)return leave(c,STATUS_INVALID_PARAMETER);
