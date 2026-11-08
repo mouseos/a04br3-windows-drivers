@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "status": "draft-only-awaiting-source-fixes",
+  "transaction": "combined-run145",
+  "post_capture_number": 146,
+  "profile": "combined-peripherals-fresh144-draft",
+  "service_name": "MT8167CombinedFollowup144",
+  "draft": true,
+  "normal_install_allowed": false,
+  "arm_allowed": false,
+  "media_generation_allowed": false,
+  "hardware_owner": "main",
+  "fresh": {
+    "path": "port/xnu/out/private-windows-rt-prebackup-run144/manifest.json",
+    "sha256": "0faa9fd09cce293d411ad025e64e54c27d5975948b54935c00e25a3feff15a60"
+  },
+  "recovery_boot_id": "c35ceece-d15b-4e07-98f9-5f1d2accd64f",
+  "fresh_file_count": 39,
+  "gpu_client_log_baseline": {
+    "path": "port/gsi/logs/ios-feasibility/windows-rt-fresh144-baseline-client-files.json",
+    "sha256": "655da04f1826ffa256e12af0cb6d52b9faf90c2794002b5820aa93d00002f51f"
+  },
+  "gpu_baseline_count": 57,
+  "retained_boot_sha256": "1fef20aa28be71ae0bd826ec91619df3b492abd23631632d5b0d679e38ca560a",
+  "boot_write_required": false,
+  "actual_installed_versions": {
+    "parent": "2026.11.8.1115",
+    "audio": "2026.11.8.1033",
+    "wifi": "2026.11.8.1021",
+    "render": "0.0.3.38"
+  },
+  "candidate_packages": {},
+  "install_targets": null,
+  "diagnostic_clients": null,
+  "gpu_client_execute": false,
+  "gpu_client_count": 0,
+  "same_GPU338_retest_allowed": false,
+  "blockers": [
+    "GPUCopy entry terminal/reset source fix and signed package/main seal pending",
+    "audio 0x80070032 source fix and signed candidate/main seal pending",
+    "thermal interface259 source fix and signed candidate/main seal pending",
+    "Final145 scope/pins/client policy not fixed; no arm from draft"
+  ],
+  "prior_run143": {
+    "install_success": true,
+    "planned_restarts": 1,
+    "unexpected_restarts": 1,
+    "observed_total_restarts": 2,
+    "GPU_client_index": 5,
+    "GPU_pid": 2752,
+    "first_boundary": "GOP1 RenderCb return / Map S_OK",
+    "terminal_boundary": "later GPUCopy entry",
+    "reset_fixed": false,
+    "GPU_functional_success": false,
+    "audio_observed_error": "0x80070032",
+    "thermal_interface_observed_error": 259,
+    "late_GPU_logs_possible": true
+  },
+  "preservation_rules": [
+    "Retain frozen run143 source/media/301pins",
+    "Preserve latest fresh144 raw originals; never substitute fresh142/138",
+    "Retain old SCM/static configuration/GPU ledger; updated runtime output is evaluated by version/run",
+    "No SOFTWARE/userdata rollback; no SDK/WDK/PCO setup or device operations"
+  ]
+}
