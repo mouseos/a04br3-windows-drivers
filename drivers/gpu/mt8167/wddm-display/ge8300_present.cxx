@@ -16,9 +16,17 @@
 #ifndef A04_GE8300_WDDM_COPY
 #define A04_GE8300_WDDM_COPY 0
 #endif
+#ifndef A04_GE8300_DOD_RENDER_TQ_BRIDGE
+#define A04_GE8300_DOD_RENDER_TQ_BRIDGE 0
+#endif
+#if A04_GE8300_DOD_RENDER_TQ_BRIDGE
+#include "render_tq_client.hxx"
+#endif
 BOOLEAN A04Ge8300Present(const BLT_INFO* dst,const BLT_INFO* src,const RECT* rect)
 {
-#if A04_GE8300_WDDM_VENDOR_TILE
+#if A04_GE8300_DOD_RENDER_TQ_BRIDGE
+    return GeoRenderTqPresent(dst,src,rect);
+#elif A04_GE8300_WDDM_VENDOR_TILE
     HANDLE file=NULL; PFILE_OBJECT object=NULL; IO_STATUS_BLOCK io={}; OBJECT_ATTRIBUTES attr;
     UNICODE_STRING name=RTL_CONSTANT_STRING(L"\\Device\\A04GE8300");
     struct a04_present_surface source,dest; struct a04_present_tile tile;

@@ -2,6 +2,7 @@
 #include "native_binding.h"
 #include "kmd_objects.h"
 #include "query_adapter.h"
+#include "dod_tq_bridge.h"
 #include "init_checkpoint.h"
 #include "../vendor_m1_11/native_factory_checkpoint.h"
 #ifndef GEO_LINKED_NATIVE_CORE
@@ -14,6 +15,7 @@ struct geo_render_device {
  PDEVICE_OBJECT pdo;
  DXGKRNL_INTERFACE dxgk;
  DXGK_DEVICE_INFO device_info;
+ struct geo_dod_tq_bridge dod_tq;
  UINT native_created,started;
  PIO_WORKITEM work;LONG work_busy;
 };
@@ -22,6 +24,7 @@ static NTSTATUS add_device(PDEVICE_OBJECT pdo,void **out) {
  if(!pdo||!out||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  d=ExAllocatePoolWithTag(NonPagedPool,sizeof(*d),'mOeG');if(!d)return STATUS_INSUFFICIENT_RESOURCES;
  RtlZeroMemory(d,sizeof(*d));ObReferenceObject(pdo);d->pdo=pdo;
+ GeoDodTqInitialize(&d->dod_tq);
  GeoInitializeFrontendMemory(&d->adapter);
  d->work=IoAllocateWorkItem(pdo);
  if(!d->work){ObDereferenceObject(pdo);ExFreePoolWithTag(d,'mOeG');return STATUS_INSUFFICIENT_RESOURCES;}
@@ -54,6 +57,7 @@ static NTSTATUS start_device(void *context,DXGK_START_INFO *start,DXGKRNL_INTERF
 static NTSTATUS stop_device(void *context) {
  struct geo_render_device *d=context;NTSTATUS status;
  if(!d||!d->started||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+ GeoDodTqStop(&d->dod_tq);
  if(d->session.state!=GEO_SESSION_STOPPED){
   status=GeoStopOwnerSession(&d->session);if(status!=STATUS_SUCCESS)return status;
  }
@@ -65,7 +69,7 @@ static NTSTATUS stop_device(void *context) {
 static NTSTATUS remove_device(void *context) {
  struct geo_render_device *d=context;
  if(!d||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
- if(InterlockedCompareExchange(&d->adapter.memory_record_count,0,0)||InterlockedCompareExchange(&d->adapter.memory_fault,0,0)||d->native_created||d->started||(d->adapter.engine.allocation_count||d->adapter.device_count)||InterlockedCompareExchange(&d->work_busy,0,0))return STATUS_DEVICE_BUSY;
+ if(!GeoDodTqCanRemove(&d->dod_tq)||InterlockedCompareExchange(&d->adapter.memory_record_count,0,0)||InterlockedCompareExchange(&d->adapter.memory_fault,0,0)||d->native_created||d->started||(d->adapter.engine.allocation_count||d->adapter.device_count)||InterlockedCompareExchange(&d->work_busy,0,0))return STATUS_DEVICE_BUSY;
  IoFreeWorkItem(d->work);ObDereferenceObject(d->pdo);ExFreePoolWithTag(d,'mOeG');return STATUS_SUCCESS;
 }
 static BOOLEAN interrupt_routine(void *context,ULONG message) {
@@ -92,11 +96,16 @@ static void queue_owner_work(struct geo_render_device *d) {
 static void dpc_routine(void *context) {
  struct geo_render_device *d=(struct geo_render_device *)context;if(d){GeoClearDpc(&d->adapter);queue_owner_work(d);}
 }
+static NTSTATUS query_dod_tq(IN_CONST_PVOID context,IN_PQUERY_INTERFACE query) {
+ struct geo_render_device *d=(struct geo_render_device *)context;
+ return d?GeoDodTqQuery(&d->dod_tq,query):STATUS_INVALID_PARAMETER;
+}
 static NTSTATUS power_state(void *context,ULONG uid,DEVICE_POWER_STATE power,POWER_ACTION action) {
  struct geo_render_device *d=(struct geo_render_device *)context;UNREFERENCED_PARAMETER(action);
  /* Microsoft DxgkDdiSetPowerState DeviceUid: DISPLAY_ADAPTER_HW_ID=-1.
   * This render-only device has no monitor/child power operations. */
  if(!d||uid!=0xffffffffu)return STATUS_NOT_SUPPORTED;
+ if(power!=PowerDeviceD0)GeoDodTqStop(&d->dod_tq);
  return GeoPowerOwnerSession(&d->session,power);
 }
 /* The RT8.1 ARM initialization gate requires these base callbacks even for
@@ -203,6 +212,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driver,PUNICODE_STRING registry) {
  table.DxgkDdiBuildPagingBuffer=GeoBuildPagingBuffer;table.DxgkDdiRender=GeoRender;table.DxgkDdiPatch=GeoPatch;
  table.DxgkDdiSubmitCommand=GeoSubmitCommand;table.DxgkDdiQueryCurrentFence=GeoQueryCurrentFence;
  table.DxgkDdiResetFromTimeout=GeoResetFromTimeout;table.DxgkDdiRestartFromTimeout=GeoRestartFromTimeout;
+ table.DxgkDdiQueryInterface=query_dod_tq;
  table.DxgkDdiDispatchIoRequest=dispatch_io_request;
  table.DxgkDdiGetNodeMetadata=get_node_metadata;
  table.DxgkDdiQueryChildRelations=query_child_relations;
