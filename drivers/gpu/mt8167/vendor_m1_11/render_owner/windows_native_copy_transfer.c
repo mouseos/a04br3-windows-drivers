@@ -15,7 +15,8 @@ struct a04_native_tq_transfer {
  struct a04_vendor_native_cold *native;
  struct a04_native_copy_queue_input input;
  struct a04_native_copy_queue_result queue;
- ULONG state,kernel_next;uint64_t epoch,irq_serial;
+ volatile LONG state;ULONG kernel_next;uint64_t epoch,irq_serial,claimed_serial;
+ struct a04_native_irq_core *irq;
  _Alignas(8) UCHAR ring[4096],workspace[4096];
 };
 static int queues(struct a04_rgx_fw_runtime *f,RGXFWIF_CCB_CTL *k)
@@ -30,7 +31,7 @@ static int queues(struct a04_rgx_fw_runtime *f,RGXFWIF_CCB_CTL *k)
 }
 static NTSTATUS poison(struct a04_native_tq_transfer *c,struct a04_vendor_start *s,NTSTATUS status)
 {
- c->state=4;c->native->quarantined=TRUE;c->native->render->poisoned=TRUE;
+ InterlockedExchange(&c->state,5);c->native->quarantined=TRUE;c->native->render->poisoned=TRUE;
  s->command_poisoned=TRUE;return NT_SUCCESS(status)?STATUS_IO_DEVICE_ERROR:status;
 }
 NTSTATUS a04_native_tq_transfer_prepare(struct a04_native_tq_transfer **out,
@@ -82,7 +83,8 @@ NTSTATUS a04_native_tq_transfer_submit(struct a04_native_tq_transfer *c,
  }
  /* From here ambiguity retains ownership, including command_busy. No wait,
   * allocation, CPU buffer access or fabricated completion at DIRQL. */
- c->state=2;c->epoch=irq->epoch;c->irq_serial=irq->serial;c->kernel_next=(expected+1u)&127u;
+ c->epoch=irq->epoch;c->irq_serial=irq->serial;c->irq=irq;c->kernel_next=(expected+1u)&127u;
+ InterlockedExchange(&c->state,2);
  if(c->queue.padding_bytes&&a04_rgx_device_write_words(
     (UCHAR*)r->buffer[0].cpu+r->layout.commands[3]+c->input.write,
     c->ring+c->input.write,sizeof(RGXFWIF_CCB_CMD_HEADER)))return poison(c,s,STATUS_IO_DEVICE_ERROR);
@@ -116,20 +118,28 @@ static NTSTATUS issue(struct a04_vendor_start *s,struct a04_rgx_fw_runtime *f,RG
  a04_gpu_dma_barrier();WRITE_REGISTER_ULONG((volatile ULONG*)(void*)(s->core+0xb00),0x10);
  return wait_queue(f,next);
 }
+NTSTATUS a04_native_tq_transfer_begin_finish(struct a04_native_tq_transfer *c,
+ struct a04_native_irq_core *q,const struct a04_native_irq_receipt *receipt)
+{
+ if(!c||!q||!receipt||KeGetCurrentIrql()<=DISPATCH_LEVEL||c->irq!=q||
+    InterlockedCompareExchange(&c->state,0,0)!=2||!q->powered||!q->masked||q->closed||
+    q->faulted||q->draining||!NT_SUCCESS(receipt->fault)||receipt->epoch!=c->epoch||
+    receipt->epoch!=q->epoch||receipt->serial<=c->irq_serial||receipt->serial!=q->serial)
+  return STATUS_INVALID_DEVICE_STATE;
+ c->claimed_serial=receipt->serial;InterlockedExchange(&c->state,3);return STATUS_SUCCESS;
+}
 NTSTATUS a04_native_tq_transfer_finish_gpu(struct a04_native_tq_transfer *c,
- struct a04_vendor_start *s,struct a04_native_irq_core *irq,struct a04_native_copy_gpu_result *out)
+ struct a04_vendor_start *s,struct a04_native_copy_gpu_result *out)
 {
  struct a04_vendor_render_cold *r;struct a04_rgx_fw_runtime *f;RGXFWIF_CCCB_CTL ctl;
  RGXFWIF_KCCB_CMD cmd={0};ULONG value;NTSTATUS status;ULONGLONG began;LARGE_INTEGER delay;
  if(!out)return STATUS_INVALID_PARAMETER;RtlZeroMemory(out,sizeof(*out));
- if(!c||!s||!irq||KeGetCurrentIrql()!=PASSIVE_LEVEL||c->state!=2||!(r=c->native->render)||
+ if(!c||!s||KeGetCurrentIrql()!=PASSIVE_LEVEL||InterlockedCompareExchange(&c->state,0,0)!=3||!(r=c->native->render)||
     !s->memory||s->memory!=r->firmware||!(f=s->memory->runtime)||!s->memory->hardware_owned||
     !s->online||s->command_busy!=1||s->command_poisoned||s->shutdown_started||
-    irq->runtime!=f||irq->core!=s->core||irq->epoch!=c->epoch||irq->faulted||irq->closed||!irq->powered||irq->draining)
-  return STATUS_INVALID_DEVICE_STATE;
- /* An actual newly claimed source is required; a timer/raise-IRQL path
-  * cannot enter GPU completion. The existing owner must route that claim. */
- if(!irq->masked||irq->serial<=c->irq_serial)return STATUS_PENDING;
+    c->claimed_serial<=c->irq_serial)return STATUS_INVALID_DEVICE_STATE;
+ /* ISR receipt was captured under the actual IRQ lock. Parent rundown and
+  * exclusive service own this immutable job/epoch through the PASSIVE work. */
  out->phase=1;status=wait_queue(f,c->kernel_next);if(!NT_SUCCESS(status))goto fail;
  began=KeQueryInterruptTime();delay.QuadPart=-10000;
  for(;;){
@@ -155,7 +165,7 @@ NTSTATUS a04_native_tq_transfer_finish_gpu(struct a04_native_tq_transfer *c,
   a04_gpu_dma_barrier();if(KeQueryInterruptTime()-began>=20000000u){status=STATUS_IO_TIMEOUT;goto fail;}
   (void)KeDelayExecutionThread(KernelMode,FALSE,&delay);
  }
- a04_gpu_dma_barrier();out->phase=3;out->flush_sequence=s->command_sequence;c->state=3;
+ a04_gpu_dma_barrier();out->phase=3;out->flush_sequence=s->command_sequence;InterlockedExchange(&c->state,4);
  /* Still NOT CPU_VISIBLE. Leave command_busy retained for the ownership
   * return + fresh real visibility IRQ/fence half, not implemented here. */
  return STATUS_SUCCESS;
