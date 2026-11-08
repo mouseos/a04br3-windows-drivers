@@ -23,3 +23,8 @@ fresh152実結果が出てから、152 validator/native preparation/postreader�
 GPU342正式manifest d167f2e5、SYS431c06ad、main-independent-final-GPU342-artifact-sealを結合した。runtime/package sourceは59ded879、UTC INF日付修正recipe e395c3a6。native67/KMD13 members、8TU、6BCBF署名、actual341と同一RT8.1imports、83linkedfiles再利用sign-onlyというmain証拠を保持し、再compile/linkは行わない。
 client9934/--hardware=PowerVR/900000ms/phase1/one-shotと既存main sealを検証。153 source scopeはrender更新だけ、non-GPU clients空、温度/音声/WLAN/BT/回転/benchmark再試験なし。新source flagsはGPU phase1だけ有効にする予定、readonly既成功再試験のflagsは0。
 ただしfresh152・151実結果・native actual/同Recovery資格は全て未結合であり、armed GPU execute=false/count0のまま。主の153 observerへ、boot180→最初PB286からpre-GPU180→最初client PB220からGPU900を各一度だけ更新する候補を明記し、正式実装への結合は未完と区別する。
+
+## 通常source closure更新
+
+mainの通常full source closure e2d8d58bを別出自として結合した。通常gateはnative67/compiler375、driver cache/旧Git履歴なしで通過した保存logをmain sealのSHAと照合する。runtime16entries、reviewed literalとprevious_originsを保持するclosure更新は、署名binary/runtime59ded879と日付recipee395c3a6の変更ではない。full source binaryを新規生成したとも、通常fullbuildと既署名binaryがbyte同一とも主張しない。
+fresh152/151最終結果のnullとarm/media禁止は維持する。main seal追記前の旧draft pinsは履歴とし、更新sealを含む新templateのpinsを正本にする。

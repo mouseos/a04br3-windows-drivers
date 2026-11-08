@@ -5,6 +5,7 @@ from pathlib import Path
 
 PACKAGE_SOURCE='e395c3a6af64c82fdc56eec07a74592e5aa51504'
 RUNTIME_SOURCE='59ded879bab1c4c54abac73bd2b673adada33d4c'
+CLOSURE_SOURCE='e2d8d58bea0ba25595feb2566fbf2e455f435c32'
 PACKAGE=Path('port/xnu/out/windows-rt-tq-clear342/build/package342')
 
 def require(value,message):
@@ -39,7 +40,11 @@ def sealed342(root):
  sealpath=Path('port/xnu/out/windows-rt-tq-clear342/main-independent-seal.json');sp=rooted(root,sealpath);seal=read(sp)
  require(seal['status']=='main-independent-final-GPU342-artifact-seal' and seal['manifest_sha256']==candidate['manifest']['sha256'] and seal['SYS_sha256']=='431c06ade452b0ca00a920419bb39fe5261080469750a0bdf9f61670cccbec52' and seal['runtime_source_commit']==RUNTIME_SOURCE and seal['package_recipe_commit']==PACKAGE_SOURCE[:8] and seal['compiled_TUs_verified']==8 and seal['archive_members_verified']=={'native':67,'kmd':13} and seal['BCBF_valid_signatures']==6 and seal['RT81_imports_equal_actual341'] and seal['linked_objects_reused_without_recompile'],'Main342 artifact seal mismatch')
  require(seal['hardware_verified'] is False and seal['root_reset_fix_proven'] is False,'Build seal must not claim hardware result')
- candidate.update(status='main-sealed342-artifact-not-adopted-awaiting-fresh152',main_seal={'path':sealpath.as_posix(),'sha256':sha(sp)})
+ gatepath=Path('port/gsi/logs/ios-feasibility/windows-rt-tq-clear342/fullsource-gate.log');gp=rooted(root,gatepath);gate=read(gp)
+ require(seal['public_fullsource_closure_commit'] in (CLOSURE_SOURCE,CLOSURE_SOURCE[:8]) and seal['public_fullsource_gate_passed'] is True and seal['full_source_binary_built'] is False,'Separate public source closure proof required; not a full-source binary build')
+ require(sha(gp)==seal['public_fullsource_gate_log_sha256']=='58f098acbcf30215e9b8308e7841c5726e3ab6111ddf8958a581f4f5297509a5' and gate['native_units']==67 and gate['compiler_units']==375 and gate['old_git_history_used'] is False and gate['driver_cache_used'] is False and gate['hardware_verified'] is False,'Exact normal source gate receipt required')
+ candidate.update(status='main-sealed342-artifact-not-adopted-awaiting-fresh152',main_seal={'path':sealpath.as_posix(),'sha256':sha(sp)},
+                  public_fullsource_closure={'source_commit':CLOSURE_SOURCE,'gate_log':{'path':gatepath.as_posix(),'sha256':sha(gp)},'native_units':67,'compiler_units':375,'reviewed_literal_and_previous_origins_retained':True,'full_source_binary_built':False,'signed_binary_source_unchanged':RUNTIME_SOURCE,'signed_recipe_source_unchanged':PACKAGE_SOURCE})
  return candidate
 
 def fixed_client(root):
