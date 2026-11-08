@@ -106,7 +106,8 @@ $obj="$out\obj\hp-adc-client.obj";$exe="$out\package\client\mt8167-hp-adc-read.e
 $userInc=if($ClientIncludeDirectory){$ClientIncludeDirectory}else{$inc}
 $userHeaders=@('-isystem',"$userInc\km\crt",'-isystem',"$userInc\um",'-isystem',"$userInc\shared")
 if($ClientIncludeDirectory){
- foreach($x in Get-Content "$ClientIncludeDirectory\header-manifest.json" -Raw|ConvertFrom-Json){if((Sha (Join-Path $ClientIncludeDirectory $x.path)) -cne $x.sha256){throw 'Fixed client header changed'}}
+ $clientHeaderManifest=Get-Content "$ClientIncludeDirectory\header-manifest.json" -Raw|ConvertFrom-Json
+ foreach($x in $clientHeaderManifest){if((Sha (Join-Path $ClientIncludeDirectory $x.path)) -cne $x.sha256){throw 'Fixed client header changed'}}
 }
 & clang @common @userHeaders -nostdlibinc -w -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 -c "$root\tools\input\mt8167-hp-adc-read.c" -o $obj
 if($LASTEXITCODE){throw 'HP raw client compile failed'};$compiled+='hp-adc-client'
