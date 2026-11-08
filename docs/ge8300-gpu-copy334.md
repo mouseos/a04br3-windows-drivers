@@ -20,3 +20,11 @@ host回帰は800x600の非正方形clip、実VA binding、allocation overlap/ext
 - staging Mapのreal LockCb、およびDestroy/unmap/timeout時retain。
 
 Menciusが`native_owner_mdl`のSG所有権/Ex同期/uniquecontext/PT再bindを実装中。旧`sync_for_cpu`のKeFlushIoBuffersだけをDMA所有権返却に見立てて、このcopyを接続してはならない。現branchでは該当fileを変更していない。相手側の確定APIへ実leaseを結合してからwire consumersを同時version検証し、署名候補にする。現時点ではruntime未結合・未署名・未実機、caps不変更。未完成をrootfixとして媒体へ混載しない。
+
+## CCBとcold storageの追加
+
+- `native_copy_queue`はnative_ccbへ厳密208BTQ種別だけを追加し、TQ＋UPDATE296Bを一括予約。40Bheaderの余白を保持し、wrapはgroup前のpaddingだけ。TQ kickにTA/3DのHWRT cleanupを誤添付しない。全512整列offsetを実producerで検証。
+- `windows_native_copy_storage`は実registered RTと実linear stagingの469page PTEをOS DMA page listに照合し、専用USC/PDS2pageをcold配置する。既存native TA/3Dが使うleaf16と異なる、DOD既存heap baseの空leaf0だけを使用。親PC/PD一致、空leaf、DMA物理重複、device write/readbackを検証し、部分失敗はretain/quarantine。元RT/staging pixelsへCPUアクセスしない。callerが親graphを保持し、unbind/retireより先にこの子をreleaseする契約。cold-targetの単一markerを二重hold/dropしない。
+- public host command: `make test-ge8300-native-copy334`。ARM source closureは`tools/ci/build-ge8300-copy334-objects.py --baseline-build ... --output ...`。driver/link/signを装うhelperではない。
+
+残るruntime結合はMenciusのSG変更と同時に行う。特に旧RT出力のDMA directionはFALSE、copy sourceはdevice-readになるため、単に同じSG listを流用してCPU ownershipを偽装できない。source/destination両方の実transfer所有期間、PT再bind、DM3 submitと実IRQ/SLC/GP、その後CPU所有返却とscheduler通知を一組で結合するまで候補packageを作らない。
