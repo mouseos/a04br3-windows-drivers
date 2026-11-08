@@ -17,7 +17,7 @@ try{
  }
  @('LIBRARY USBPORT.SYS','EXPORTS',' USBPORT_GetHciMn',' USBPORT_RegisterUSBPortDriver')|Set-Content -Encoding ASCII "$out\usbport.def"
  & lld-link /lib /machine:arm "/def:$out\usbport.def" "/out:$out\usbport81.lib";if($LASTEXITCODE){throw 'USBPORT import library failed'}
- & lld-link /driver /subsystem:native /machine:arm /entry:DriverEntry /nodefaultlib /opt:noref @objs "$out\usbport81.lib" "$km\ntoskrnl.lib" "$km\hal.lib" "$km\libcntpr.lib" "/map:$out\mt8167-usbport-hcd.map" "/out:$out\mt8167-usbport-hcd.sys"
+ & lld-link /driver /subsystem:native /machine:arm /entry:GsDriverEntry /nodefaultlib /opt:noref @objs "$out\usbport81.lib" "$km\ntoskrnl.lib" "$km\hal.lib" "$km\bufferoverflowfastfailk.lib" "$km\libcntpr.lib" "/map:$out\mt8167-usbport-hcd.map" "/out:$out\mt8167-usbport-hcd.sys"
  if($LASTEXITCODE){throw 'ARM USBPORT HCD link failed'}
  # Real WDK-native callback and power-failure contract tests (no kernel run).
  $testobjs=@();foreach($name in @('root_hub','host_core','pio_transfer')){
