@@ -15,7 +15,7 @@ static VOID CompleteStack(PVOID h,PVOID ep,struct a04_mp_parameters *p,USBD_STAT
 {(void)ep;(void)s;(void)n;completions++;last=p;Packet.check(h);}
 static VOID SweepStack(struct a04_hcd *h){test_now+=10000;TimerDpc(NULL,h->runtime,NULL,NULL);Work();Packet.poll_controller(h);}
 int main(void){
- struct a04_hcd h;struct a04_mp_resources res={0};struct a04_mp_properties e={0};struct a04_mp_endpoint ep[4];
+ static struct a04_hcd h;struct a04_mp_resources res={0};struct a04_mp_properties e={0};struct a04_mp_endpoint ep[4];
  struct a04_mp_transfer tr[6];struct a04_mp_parameters pa[6];struct a04_mp_sg sg={0};UCHAR data[6][32];ULONG status;unsigned i;
  Fixture();test_qualified=1;test_banked=1;RtlZeroMemory(test_bank,sizeof(test_bank));RtlZeroMemory(pa,sizeof(pa));
  FillPacket();Packet.async_callback=ScheduleStack;Packet.invalidate_controller=InvalidateStack;Packet.invalidate_root=RootStack;Packet.complete=CompleteStack;

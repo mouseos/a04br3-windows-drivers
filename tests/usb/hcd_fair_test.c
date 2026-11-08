@@ -3,8 +3,8 @@
 #include "usbport_hcd_test.c"
 #undef main
 int main(void){
- struct a04_hcd h;struct a04_mp_resources resources={0};struct a04_mp_endpoint ep[17];
- struct a04_mp_properties e={0};struct a04_mp_parameters p[17];struct a04_mp_transfer t[17];struct a04_mp_sg sg={0};
+ static struct a04_hcd h;struct a04_mp_resources resources={0};static struct a04_mp_endpoint ep[17];
+ struct a04_mp_properties e={0};static struct a04_mp_parameters p[17];static struct a04_mp_transfer t[17];struct a04_mp_sg sg={0};
  UCHAR buffer[17][8];ULONG status,actual,i,base;
  CHECK(!LegacyHcdContract());fault=0;complete_cookie=0;admission=STATUS_SUCCESS;root_kind=root_result=0;connected=0;
  resources.fdo=(PDEVICE_OBJECT)1;resources.pdo=(PDEVICE_OBJECT)2;CHECK(!Packet.start(&h,&resources));

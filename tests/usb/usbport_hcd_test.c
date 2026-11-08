@@ -36,7 +36,7 @@ static VOID Complete(PVOID h,PVOID e,struct a04_mp_parameters *p,USBD_STATUS s,U
 {(void)e;(void)s;(void)actual;completed++;completed_parameters=p;Packet.check(h); /* reentrant callback */}
 int main(void)
 {
- struct a04_hcd h;struct a04_mp_resources r={0};struct a04_mp_endpoint ep;
+ static struct a04_hcd h;struct a04_mp_resources r={0};struct a04_mp_endpoint ep;
  struct a04_mp_properties e={0};struct a04_mp_parameters p={0};struct a04_mp_transfer t;
  struct a04_mp_sg sg={0};ULONG actual,status;UCHAR data[8];
  r.fdo=(PDEVICE_OBJECT)1;r.pdo=(PDEVICE_OBJECT)2;FillPacket();Packet.complete=Complete;Packet.async_callback=Schedule;Packet.invalidate_controller=InvalidateController;

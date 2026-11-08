@@ -6,7 +6,7 @@
 /* USBPORT owns the FDO/root PDO, addresses/pipes and completion serialization.
  * Worker never sees these extension pointers. Lock order: HCD -> runtime;
  * PASSIVE worker uses runtime only and never calls back into USBPORT. */
-struct a04_mp_endpoint {struct a04_mp_properties p;ULONG state,status,toggle,cookie,toggle_unknown;};
+struct a04_mp_endpoint {struct a04_mp_properties p;ULONG state,status,toggle,cookie,toggle_unknown,dispatch_blocked;};
 #define A04_HCD_PENDING 16u
 struct a04_mp_transfer {struct a04_mp_parameters *parameters;PVOID mapped;ULONG bytes,actual,state;
  struct a04_mp_parameters request;ULONGLONG admitted,order;};
@@ -14,7 +14,7 @@ struct a04_hcd {
  KSPIN_LOCK lock;ULONG signature,started,irq_enabled,root_irq,fault,next_cookie,epoch;
  struct a04_root_port port;struct a04_hub hub;struct a04_hub_action root_action;
  struct mt_musb_runtime *runtime;struct a04_mp_endpoint *open_ep[24];
- struct {struct a04_mp_endpoint *ep;struct a04_mp_transfer *transfer;} active[A04_HCD_PENDING];ULONGLONG order;ULONG dispatch_cursor;
+ struct {struct a04_mp_endpoint *ep;struct a04_mp_transfer *transfer;} active[A04_HCD_PENDING];UCHAR queued_out[A04_HCD_PENDING][MT_MUSB_SHADOW_BYTES];ULONGLONG order;ULONG dispatch_cursor;
 };
 static struct a04_mp_packet Packet;
 static LONG EpochSeed;
@@ -45,7 +45,7 @@ static void Kick(struct a04_hcd *h)
  for(off=0;off<A04_HCD_PENDING;off++){
   struct a04_mp_endpoint *e;struct a04_mp_transfer *t;i=(start+off)%A04_HCD_PENDING;
   e=h->active[i].ep;t=h->active[i].transfer;
-  if(!t||t->state!=1||e->state!=A04_EP_ACTIVE||e->status||ActiveSlot(h,e)!=(int)i)continue;
+  if(!t||t->state!=1||e->state!=A04_EP_ACTIVE||e->status||e->dispatch_blocked||ActiveSlot(h,e)!=(int)i)continue;
   if(e->p.type!=3&&KeQueryInterruptTime()-t->admitted>=50000000ull)continue;
   if(e->toggle_unknown&&!MtMusbRecoverToggle(h->runtime,e->cookie,&e->toggle))e->toggle_unknown=0;
   if(!e->toggle_unknown&&!MtMusbSubmitDeadline(h->runtime,e->cookie,&e->p,e->toggle,&t->request,t->mapped,e->p.type==3?0:t->admitted+50000000ull))t->state=3;
@@ -223,7 +223,7 @@ static VOID SetStatus(PVOID p,PVOID endpoint,ULONG status)
 static VOID Toggle(PVOID p,PVOID endpoint,ULONG toggle)
 {
  struct a04_hcd *h=CTX(p);struct a04_mp_endpoint *e=endpoint;KIRQL k;HLOCK(h,k);
- if(toggle<=1&&(ActiveSlot(h,e)<0||h->active[ActiveSlot(h,e)].transfer->state!=3)){e->toggle=toggle;e->toggle_unknown=0;}else h->fault=1;
+ if(toggle<=1&&(ActiveSlot(h,e)<0||h->active[ActiveSlot(h,e)].transfer->state!=3)){e->toggle=toggle;e->toggle_unknown=0;e->dispatch_blocked=0;}else h->fault=1;
  HUNLOCK(h,k);
 }
 static ULONG Submit(PVOID p,PVOID endpoint,struct a04_mp_parameters *v,PVOID transfer,struct a04_mp_sg *sg)
@@ -241,6 +241,9 @@ static ULONG Submit(PVOID p,PVOID endpoint,struct a04_mp_parameters *v,PVOID tra
   for(i=0;i<A04_HCD_PENDING;i++)if(!h->active[i].transfer)break;
   if(i==A04_HCD_PENDING)goto out;
   RtlZeroMemory(t,sizeof(*t));t->parameters=v;t->request=*v;t->mapped=sg?sg->mapped_va:NULL;
+  if(v->bytes&&(e->p.type==1?!(v->setup[0]&0x80):e->p.direction!=0)){
+   RtlCopyMemory(h->queued_out[i],t->mapped,v->bytes);t->mapped=h->queued_out[i];
+  }
   t->bytes=v->bytes;t->state=1;t->admitted=KeQueryInterruptTime();t->order=++h->order;
   h->active[i].ep=e;h->active[i].transfer=t;Kick(h);result=0;
  }
@@ -269,7 +272,7 @@ static VOID Poll(PVOID p,PVOID endpoint)
    ready=1;status=USBD_STATUS_XACT_ERROR;toggle=e->toggle;
   }else if(t->state==3&&!MtMusbTake(h->runtime,e->cookie,t->mapped,t->bytes,&actual,&status,&toggle))ready=1;
   if(ready){
-   t->actual=actual;t->state=2;e->toggle=toggle;parameters=t->parameters;
+   t->actual=actual;t->state=2;e->toggle=toggle;if(status!=USBD_STATUS_SUCCESS)e->dispatch_blocked=1;parameters=t->parameters;
    h->active[i].ep=NULL;h->active[i].transfer=NULL;Kick(h);
   }
  }
