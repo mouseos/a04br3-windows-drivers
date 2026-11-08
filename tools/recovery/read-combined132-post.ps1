@@ -24,12 +24,33 @@ function Values($k,[string[]]$only){
  foreach($n in $only){if($n -cnotin $names){$r[$n]=@{present=$false};continue};$kind=[string]$k.GetValueKind($n);if($kind -cnotin @('String','ExpandString','MultiString','Binary','DWord','QWord','None')){throw 'Unknown fixed value type'};$v=$k.GetValue($n,$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames);if($v -is [byte[]]){if($v.Length -gt 65536){throw 'Value byte bound exceeded'};$v=[BitConverter]::ToString($v).Replace('-','')}elseif($v -is [string]){if($v.Length -gt 32767){throw 'String byte bound exceeded'}}elseif($v -is [string[]]){if(2*(($v -join '').Length+$v.Count+1) -gt 65536){throw 'MultiString byte bound exceeded'}};$r[$n]=@{present=$true;kind=$kind;value=$v}}
  return $r
 }
-$r=[ordered]@{schema=1;scope='read-only private replay; actual combined snapshots and fixed selections; not functional success';source_manifest_sha256=$ExpectedManifestSha256;policy_sha256=$ExpectedPolicySha256;source_files=$pins;nodes=[ordered]@{};old_services=[ordered]@{};combined=[ordered]@{};errors=@();load_rc=-1;unload_rc=-1;privilege_restore_error=-1;originals_unchanged=$false}
+# Additive fixed-leaf runtime observation. This is never a preservation bypass.
+function Keypad-WdfRuntimeObservation($Root) {
+ $k=[MT8167OfflineHive.Native]::OpenPath($Root,'ControlSet001\Services\Mt6392Keys\Parameters\Wdf',$false)
+ if(!$k){return [ordered]@{present=$false}}
+ try {
+  if($k.GetValueNames().Count -gt 64 -or $k.GetSubKeyNames().Count -gt 32){throw 'Keypad WDF observation bound exceeded'}
+  $name='TimeOfLastSqmLog';$v=[ordered]@{present=$false}
+  if($name -cin $k.GetValueNames()){
+   if($k.GetValueKind($name) -ne [Microsoft.Win32.RegistryValueKind]::QWord){throw 'Keypad WDF timestamp must remain REG_QWORD'}
+   $v=[ordered]@{present=$true;type=11;bytes=8;raw_hex=[MT8167OfflineHive.Native]::ReadFixedRawValue($k,$name,11,8);interpretation='WDF namespaced runtime timestamp; not static configuration or proof of writer'}
+  }
+  return [ordered]@{present=$true;path='ControlSet001\Services\Mt6392Keys\Parameters\Wdf';timestamp=$v;strict_full_fingerprint_check_retained=$true}
+ }finally{$k.Dispose()}
+}
+$r=[ordered]@{schema=1;scope='read-only private replay; actual combined snapshots and fixed selections; not functional success';source_manifest_sha256=$ExpectedManifestSha256;policy_sha256=$ExpectedPolicySha256;source_files=$pins;nodes=[ordered]@{};old_services=[ordered]@{};service_preservation_comparisons=[ordered]@{};keypad_wdf_runtime=$null;full_service_preservation_equal=$true;combined=[ordered]@{};errors=@();load_rc=-1;unload_rc=-1;privilege_restore_error=-1;originals_unchanged=$false}
 $mount='MT8167OfflineSYSTEM_'+[Guid]::NewGuid().ToString('N');$root=$null;$priv=$null;$loaded=$false
 try{
  $priv=New-Object MT8167OfflineHive.Privileges;$r.load_rc=[MT8167OfflineHive.Native]::Load($mount,"$OutputDirectory\clone\SYSTEM");if($r.load_rc){throw 'Private replay load failed'};$loaded=$true;$root=[MT8167OfflineHive.Native]::OpenRoot($mount)
  $select=[MT8167OfflineHive.Native]::OpenPath($root,'Select',$false);try{$current=$select.GetValue('Current');if($current -ne 1){throw 'Explicit ControlSet001 required'}}finally{$select.Dispose()};$cs='ControlSet001'
- foreach($name in $p.service_preservation.PSObject.Properties.Name){$v=Peripheral-ServiceSnapshot $root "$cs\Services\$name";$r.old_services[$name]=$v;$old=$p.service_preservation.$name;if($v.present -ne $old.present -or $v.root_sha256 -cne $old.root_sha256 -or $v.subtree_sha256 -cne $old.subtree_sha256){$r.errors+=@('Old service fingerprint changed: '+$name)}}
+ foreach($name in $p.service_preservation.PSObject.Properties.Name){
+  $v=Peripheral-ServiceSnapshot $root "$cs\Services\$name";$r.old_services[$name]=$v;$old=$p.service_preservation.$name
+  $same=$v.present -eq $old.present -and $v.root_sha256 -ceq $old.root_sha256 -and $v.subtree_sha256 -ceq $old.subtree_sha256
+  $r.service_preservation_comparisons[$name]=[ordered]@{equal=$same;expected=$old;observed=$v}
+  if(!$same){$r.full_service_preservation_equal=$false;$r.errors+=@('Old service fingerprint changed: '+$name)}
+ }
+ $r.keypad_wdf_runtime=Keypad-WdfRuntimeObservation $root
+
  foreach($id in @('ACPI\BEN0001','MT8167\AFE','ACPI\MOU0001','MT8167\USB20','A04BR3\MT6630SDIO','ACPI\MOU0007','ACPI\MOU0006','ACPI\MOU0010','ACPI\MOU0013','MT6392\RTC','MT8167\Thermal','MT6392\Buttons','ACPI\MOU0008')){
   $k=[MT8167OfflineHive.Native]::OpenPath($root,"$cs\Enum\$id",$false);if(!$k){$r.nodes[$id]=@{present=$false};continue}
   try{$rows=@();$names=@($k.GetSubKeyNames());if($names.Count -gt 8){throw 'Fixed node instance bound exceeded'};foreach($n in $names){$leaf=[MT8167OfflineHive.Native]::OpenPath($root,("$cs\Enum\$id\"+$n),$false);try{$v=Values $leaf @('Service','ClassGUID','Driver','HardwareID','ConfigFlags','LowerFilters','UpperFilters');$row=[ordered]@{instance=$n;values=$v;selected_present=$false};if($v.Driver.present){$d=[string]$v.Driver.value;if($d -cnotmatch '^\{[a-fA-F0-9-]{36}\}\\[0-9]{4}$'){throw 'Unknown selected class path'};$dk=[MT8167OfflineHive.Native]::OpenPath($root,"$cs\Control\Class\$d",$false);if($dk){try{$row.selected=Values $dk @('InfPath','InfSection','DriverVersion','DriverDate','MatchingDeviceId','ProviderName','LowerFilters','UpperFilters');$row.selected_present=$true}finally{$dk.Dispose()}}};$rows+=@($row)}finally{$leaf.Dispose()}};$r.nodes[$id]=@{present=$true;instances=$rows}}finally{$k.Dispose()}
