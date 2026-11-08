@@ -6,7 +6,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'winpe'))
 from peripheral_batch_policy import rooted,sha,read,require,cstr,cbytes,inftext
 from codec_msdc_transaction import version,datevalue
 from peripheral_next_policy import TARGETS as OLD_TARGETS
-COMBINED_GPU_ADAPTER_READY=False # final338 package and main seal pending;337 draft cannot arm
+COMBINED_GPU_ADAPTER_READY=True # signed338 and frozen main independent seal required
 CLIENT_NAMES=('clock_compare','battery_temperature','accdet_status','afe_jack','audio_consumer','gpu_suite')
 PROFILE='combined-audio-classfix-fresh142-v1';SERVICE='MT8167CombinedFollowup142'
 FRESH='f5ee192fd738b6db129064e71e43bc0a80bf35c6341e0177d468e3bbd6283e37';BOOT='1eb91bc2-cb82-4433-85f1-a70b3570529e'
@@ -78,14 +78,14 @@ def validate(root,path):
  for role in ('parent','audio','wifi'):
   e=m['packages'][role];require(e.get('producer_pins') is not None,'Changed role needs completed producer pins');pin(e['producer_pins']);pin(e['main_seal'])
  gpu=m['candidate_gpu_suite'];mp=rooted(root,gpu['manifest']);pm=read(mp)
- require(sha(mp)==gpu['manifest_sha256']=='7e72db53da7d9202b2677a842a854669a7af44a7676e4e83b82dcdf9b8d77e14' and pm['schema']=='wddm-aperture-copy337-independent-sources-v1' and pm['package_source_commit']==pm['kernel_binary_source_commit']==pm['native_owner_source_commit']=='1a23664590825a73301f323bba28d7c67ab55d2d','Exact signed337 integrated source required')
- require(pm['umd_source_commit']=='61953cd64ab38f1ea4f9bb23f3242a5f57facf8e' and pm['SG_source_commit']=='51cbe2d47df4bef5e915cf7f5bff1d51fd94bec8' and pm['adapter_contract_version']==8 and pm['owner_ops_version']==3 and pm['copy_wire_version']==1 and pm['HAL_packet_DMA_operations']==0 and pm['driver_wire_version']==5 and pm['MDL_resolve_version']==1 and pm['control_version']==2,'337 ownership/peer wire contract mismatch')
- require(pm['PCO_core_rebuilt'] is False and pm['SDK_rebuilt'] is False and pm['firmware_changed'] is False and pm['client_changed'] is False and pm['root_reset_fix_proven'] is False,'Retained337 provenance and unverified runtime boundary required')
- require(len(pm['outputs'])==9 and len({x['name'] for x in pm['outputs']})==9,'Exact337 nine outputs required')
- for e in pm['outputs']:require(sha(rooted(root,Path(gpu['directory'])/e['name']))==e['sha256'],'337 signed output mismatch')
- for e in pm['retained_provenance']:require(sha(rooted(root,Path(gpu['directory'])/e['name']))==e['sha256'],'337 retained provenance mismatch')
- require(sha(rooted(root,Path(gpu['directory'])/pm['build_manifest_file']))==pm['build_manifest_sha256'],'337 build provenance mismatch')
- _,seal=pin(gpu['main_seal']);pin(gpu['producer_pins']);require(seal.get('status') is not None,'Main independent GPU337 seal required')
+ require(sha(mp)==gpu['manifest_sha256']=='981dce9b13535d0fa89030b56351f3f981ce3e96c3c4e36c9ee83f291b0e6e49' and pm['schema']=='copy338-render-failure-gate-independent-sources-v1' and pm['package_source_commit']==pm['kernel_binary_source_commit']=='1bfd01ba4a3ed81afe6b1934a9f50d1655282ae6' and pm['native_owner_source_commit']=='1a23664590825a73301f323bba28d7c67ab55d2d','Exact signed338 integrated source required')
+ require(pm['umd_source_commit']=='61953cd64ab38f1ea4f9bb23f3242a5f57facf8e' and pm['SG_source_commit']=='51cbe2d47df4bef5e915cf7f5bff1d51fd94bec8' and pm['adapter_contract_version']==8 and pm['owner_ops_version']==3 and pm['copy_wire_version']==1 and pm['HAL_packet_DMA_operations']==0 and pm['driver_wire_version']==5 and pm['MDL_resolve_version']==1 and pm['control_version']==2,'338 ownership/peer wire contract mismatch')
+ require(pm['PCO_core_rebuilt'] is False and pm['SDK_rebuilt'] is False and pm['firmware_changed'] is False and pm['client_changed'] is False and pm['root_reset_fix_proven'] is False,'Retained338 provenance and unverified runtime boundary required')
+ require(len(pm['outputs'])==9 and len({x['name'] for x in pm['outputs']})==9,'Exact338 nine outputs required')
+ for e in pm['outputs']:require(sha(rooted(root,Path(gpu['directory'])/e['name']))==e['sha256'],'338 signed output mismatch')
+ for e in pm['retained_provenance']:require(sha(rooted(root,Path(gpu['directory'])/e['name']))==e['sha256'],'338 retained provenance mismatch')
+ require(sha(rooted(root,Path(gpu['directory'])/pm['build_manifest_file']))==pm['build_manifest_sha256'],'338 build provenance mismatch')
+ _,seal=pin(gpu['main_seal']);pin(gpu['producer_pins']);require(gpu['main_seal']['sha256']=='eced235a9857f959ade2a4370d5ccfd8f14a25d401df2a9d4e05f23bcd34a1dd' and seal['status']=='main-independent-final-GPU338-artifact-seal' and seal['source_commit']==pm['package_source_commit'] and seal['manifest_sha256']==sha(mp) and seal['SYS_sha256']=='875e18d8c0db80ff241b025dfea08de38b7ecff1817886889e572692c0a0e623' and seal['adoption_boot_sha256']==boot_adoption_contract()['matched_boot']['sha256'] and seal['compiled_units']==1 and seal['native_UMD_PCO_FW_client_retained'] and pm['copy_failure_gate'] and pm['failed_Render_refs_retained'],'Frozen main independent GPU338 seal required')
  parent=m['packages']['parent'];pm=read(rooted(root,parent['manifest']))
  require(parent['driver_version']=='2026.11.8.1115' and m['parent_contract']=={'thermal_interface_version':3,'thermal_parent_build':1104,'headphone_interface_version':2,'headphone_parent_build':1107,'usb_producer_build':1014,'stock_record_version':3},'Exact integrated1115 contract required')
  _,binding=pin(m['parent_tuple']);pin(m['parent_tuple_pins'])
@@ -96,14 +96,14 @@ def validate(root,path):
  bp,bm=pin(m['gpu_client_log_baseline']);require(bm['source_fresh_manifest_sha256']==FRESH and len(bm['files'])==55,'Current44 log baseline required')
  for name,h in bm['files'].items():require(re.fullmatch(r'(clear|umd)-[A-Za-z0-9_.-]+\.log',name) and sha(rooted(root,Path(bm['source_directory'])/name))==h,'Baseline44 actual file mismatch')
  ex=m['unified_execution'];require(ex['install_phase_timeout_seconds']==900 and ex['postreboot_diagnostic_total_timeout_seconds']==1500 and ex['gpu_client_timeout_seconds']==900 and ex['rotation_client_timeout_seconds']==300,'Explicit final phase budgets required')
- require(m['gpu_client_execute'] is True and m['gpu_client_count']==1 and m['diagnostics']['gpu_suite']['phase']==1 and m['diagnostics']['gpu_suite']['timeout_ms']==900000 and m['diagnostics']['gpu_suite']['one_shot'] and m['diagnostics']['gpu_suite']['exe']=='ge8300-d3d-texture-boundary.exe' and m['diagnostics']['gpu_suite']['sha256']=='055bbff39b5e28a8e64f5a1b358b6084f68e03bfcdcebf7425d2e1b60fae6789','Exactly one pinned GPU337 boundary client last')
+ require(m['gpu_client_execute'] is True and m['gpu_client_count']==1 and m['diagnostics']['gpu_suite']['phase']==1 and m['diagnostics']['gpu_suite']['timeout_ms']==900000 and m['diagnostics']['gpu_suite']['one_shot'] and m['diagnostics']['gpu_suite']['exe']=='ge8300-d3d-texture-boundary.exe' and m['diagnostics']['gpu_suite']['sha256']=='055bbff39b5e28a8e64f5a1b358b6084f68e03bfcdcebf7425d2e1b60fae6789','Exactly one pinned GPU338 boundary client last')
  expected_clients={'clock_compare':('mt6392-clock-compare.exe','9aedebc8ed1d8d09f469657010ab8f612bde250e7cd2a388199b53dfa06c833c',[]),'battery_temperature':('lc709203f-temperature.exe','d1dfab34f139848964d68b8765489c06bbe3781165e8f9c114c2e312c5e06861',[]),'accdet_status':('mt8167-accdet-status.exe','bf0fb4dc3ea00efde7c19fbfec84cffbc3626a1c67a2c607ce14b09dedfd4a21',['--status']),'afe_jack':('mt8167-afe-jack-read.exe','dc3d705301b97d6263da69f0a94ffde11439b5fdd96e6a0df9fc5ab46d606d4e',['--read'])}
  for name,(exe,h,args) in expected_clients.items():
   v=m['diagnostics'][name];require(v['exe']==exe and v['sha256']==h and v['arguments']==args and v['one_shot'] and v['phase']==0 and v['timeout_ms']==({'accdet_status':8000,'afe_jack':15000}.get(name,10000)) and v['relative_directory']==SERVICE+'\\clients' and not v.get('dependencies',[]),'Exact readonly client pin/args/path required')
  v=m['diagnostics']['audio_consumer'];require(v['mode']=='silent-standard-pcm' and v['audible_output_allowed'] is False and v['exe']=='mt8167-silent-pcm-consumer.exe' and v['arguments']==['--speaker-silence'] and v['phase']==0 and v['one_shot'] and 0 < v['timeout_ms'] <= 60000 and v['relative_directory']==SERVICE+'\\clients','Bounded existing standard audio consumer required')
  require(set(m['diagnostics']) >= set(CLIENT_NAMES) and CLIENT_NAMES[-1]=='gpu_suite','Fixed normal clients only')
  require(m['rotation_execute'] is False and m['wlan_scan_execute'] is False and m['planned_reboots']==1 and m['install_targets']==['audio','wifi','render'],'No repeated scan/rotation/DIF/reboot')
- companion=m['companion_packages']['hcd1015'];_,hseal=pin(companion['main_seal']);pin(companion['producer_pins']);require(hseal['status']=='main-independent-leaf-artifact-seal' and hseal['source_commit']=='e6794990f3e35889cdf1a16df2db27151ee82928','Main HCD1015 leaf seal required');require(companion['stage_only'] and not companion['DIF'] and not companion['rebuilt'],'HCD1014 import-only contract required')
+ companion=m['companion_packages']['hcd1015'];_,hseal=pin(companion['main_seal']);pin(companion['producer_pins']);require(hseal['status']=='main-independent-leaf-artifact-seal' and hseal['source_commit']=='e6794990f3e35889cdf1a16df2db27151ee82928','Main HCD1015 leaf seal required');require(companion['stage_only'] and not companion['DIF'] and not companion['rebuilt'],'HCD1015 import-only contract required')
  cp=rooted(root,companion['manifest']);cm=read(cp);require(sha(cp)==companion['manifest_sha256'] and cm['signed'] and cm['source_commit']=='e6794990f3e35889cdf1a16df2db27151ee82928','Retained signed1015 provenance required')
  require([f['name'] for f in companion['files']]==['mt8167-musb-hcd.sys','mt8167-musb-hcd.inf','mt8167-musb-hcd.cat'],'Fixed HCD trio only')
  for f in companion['files']:require(sha(rooted(root,Path(companion['directory'])/f['name']))==f['sha256'] and any(e['path']==f['name'] and e['sha256']==f['sha256'] for e in cm['files']),'HCD trio manifest mismatch')
@@ -174,7 +174,7 @@ def generate(p):
 def assert_paths(image,capture=False):
  b=Path(image).read_bytes();require((SERVICE+'.exe').encode('utf-16le') in b and SERVICE.encode('utf-16le') in b,'Compiled service/data UTF16 identity missing')
  require('mt6392-clock-compare.exe'.encode('utf-16le') in b and 'mt8167-afe-jack-read.exe'.encode('utf-16le') in b,'Required RTC/AFE clients missing')
- require('ge8300-d3d-texture-boundary.exe'.encode('utf-16le') in b,'Pinned final GPU337 boundary leaf required');require('MT8167CombinedFollowup136'.encode('utf-16le') in b,'Old136 service preservation missing')
+ require('ge8300-d3d-texture-boundary.exe'.encode('utf-16le') in b,'Pinned final GPU338 boundary leaf required');require('MT8167CombinedFollowup136'.encode('utf-16le') in b,'Old136 service preservation missing')
 
 def main():
  a=argparse.ArgumentParser();a.add_argument('--workspace',type=Path,required=True);a.add_argument('--map',type=Path,required=True);a.add_argument('--out',type=Path,required=True);a.add_argument('--finalize',action='store_true');x=a.parse_args();root=x.workspace.resolve(strict=True);p,m,blocks=build_policy(root,x.map,x.finalize);out=x.out.resolve();require(out.is_relative_to(root) and not out.exists(),'New root output required');out.mkdir(mode=0o700)
