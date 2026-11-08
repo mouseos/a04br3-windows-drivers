@@ -13,3 +13,5 @@ run115後のcaptured-unmounted fresh116を明示結合する。GPUは実選択3.
 MicrosoftのAPI契約: https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdiopendevregkey 。DIREG_DRVは対象deviceのsoftware keyを開く。native選択metadataも同じdriver class keyの値を読み、fresh116で各候補版・date・SYS hash一致を確認済み。API欠損を成功へ置換せず、同じ選択ドライバの別の公式読取り経路で固定値を検証する。
 
 同じdiagnostic起動でthermal-firmware-readonly.hを一度呼び、既存UEFIの校正・PIO handoff変数をread-onlyでprivate新規logへ保存する。16/72byte取得、API/権限/復元/サイズの結果を区別し、取得失敗をGPU終了コードへ接続しない。FW変数への書込み・IOCTL試験は行わない。校正rawはprivate回収だけとし公開Git/Notion/Discordへ掲載しない。
+
+SCM EXEのbuild helperはKitHeaderRoot/LibraryRoot/SigntoolPathを明示でき、既存header・ARM importlibs・署名toolを再利用する。既定値は従来のWDK8.1配置。今回の最小hostは8.1 headersとSDK10 17763 ARM importlibsで、各path/hashをservice manifestのtoolchainへ記録する。SDK10 libraryを8.1由来とは記載しない。要求APIはRT8.1の実exportへ照合する。

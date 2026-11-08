@@ -3,7 +3,8 @@ param([switch]$EnableRenderProfile,
  [Parameter(Mandatory=$true)][string]$Workspace,
  [Parameter(Mandatory=$true)][string]$PackageMap,
  [Parameter(Mandatory=$true)][string]$OutputDirectory,
- [switch]$Sign,[string]$CertificateThumbprint)
+ [switch]$Sign,[string]$CertificateThumbprint,
+ [string]$KitHeaderRoot,[string]$LibraryRoot,[string]$SigntoolPath)
 $ErrorActionPreference='Stop'
 if(!$EnableRenderProfile){throw 'Explicit Render profile opt-in required'}
 if($Sign -and $CertificateThumbprint -notmatch '^[0-9A-Fa-f]{40}$'){throw 'Explicit signing certificate thumbprint required'}
@@ -17,7 +18,15 @@ New-Item -ItemType Directory "$out\tmp"|Out-Null
 $oldTemp=$env:TEMP;$oldTmp=$env:TMP
 try {
  $env:TEMP="$out\tmp";$env:TMP=$env:TEMP
- $kit="${env:ProgramFiles(x86)}\Windows Kits\8.1";$inc="$kit\Include";$lib="$kit\Lib\winv6.3\um\arm"
+ $kit="${env:ProgramFiles(x86)}\Windows Kits\8.1"
+ $inc=if($KitHeaderRoot){[IO.Path]::GetFullPath($KitHeaderRoot)}else{"$kit\Include"}
+ $lib=if($LibraryRoot){[IO.Path]::GetFullPath($LibraryRoot)}else{"$kit\Lib\winv6.3\um\arm"}
+ $signTool=if($SigntoolPath){[IO.Path]::GetFullPath($SigntoolPath)}else{"$kit\bin\x86\signtool.exe"}
+ $libraryNames=@('kernel32','advapi32','setupapi','bcrypt','wintrust','cfgmgr32')
+ $libraryFiles=@();$libraryPins=@()
+ foreach($name in $libraryNames){$file=Join-Path $lib ($name+'.lib');if(!(Test-Path $file)){throw 'Required ARM import library absent'};$libraryFiles+=$file;$libraryPins+=@{name=$name;path=$file;sha256=(Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()}}
+ if(!(Test-Path "$inc\um\windows.h") -or !(Test-Path $signTool)){throw 'Cached headers/signing tool absent'}
+ $toolchain=@{header_root=$inc;arm_library_root=$lib;signtool_path=$signTool;signtool_sha256=(Get-FileHash $signTool -Algorithm SHA256).Hash.ToLowerInvariant();import_libraries=$libraryPins;target='thumbv7-pc-windows-msvc';win32_winnt='0x0603';ntddi='0x06030000'}
  $source="$root\tools\winpe\mt8167-render-probe.c"
  & clang --target=thumbv7-pc-windows-msvc -O2 -ffreestanding -fno-builtin -fno-stack-protector -w -fms-extensions -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 -DNTDDI_VERSION=0x06030000 -DA04_RENDER_PROFILE=1 -DA04_RENDER_SINGLE_GPU=1 -DA04_RENDER_BIND_UPDATE=1 -DA04_HARDWARE_PROBE_ENGINE_PCM=1 -DA04_ENGINE_DEFERRED_UPDATE=1 "-I$inc\um" "-I$inc\shared" "-I$out" -c $source -o "$out\service.obj"
  if($LASTEXITCODE){throw 'Render-only service ARM compilation failed'}
@@ -25,7 +34,7 @@ try {
  foreach($role in @($policy.packages.PSObject.Properties.Name)){
   $dir=Join-Path $Workspace $policy.packages.$role.directory
   foreach($name in @('ge8300-render.inf','ge8300-render.sys','ge8300-mips.fw','ge8300-umd.dll')){
-   & "$kit\bin\x86\signtool.exe" verify /pa /c "$dir\ge8300-render.cat" "$dir\$name"
+   & $signTool verify /pa /c "$dir\ge8300-render.cat" "$dir\$name"
    if($LASTEXITCODE){throw 'Fixed 3.23 CAT membership failed'}
   }
  }
@@ -35,13 +44,13 @@ try {
  if($compareSig.Status -ne 'Valid' -or $compareSig.SignerCertificate.Thumbprint -ne $CertificateThumbprint){throw 'Existing comparator signature mismatch'}
  Copy-Item $compareSource "$out\compare-files.exe"
  $exe="$out\MT8167RenderSingleGpu.exe"
- & lld-link /subsystem:console,6.3 /machine:arm /entry:mainCRTStartup /nodefaultlib /dynamicbase /nxcompat "$out\service.obj" "$lib\kernel32.lib" "$lib\advapi32.lib" "$lib\setupapi.lib" "$lib\bcrypt.lib" "$lib\wintrust.lib" "/out:$exe"
+ & lld-link /subsystem:console,6.3 /machine:arm /entry:mainCRTStartup /nodefaultlib /dynamicbase /nxcompat "$out\service.obj" @libraryFiles "/out:$exe"
  if($LASTEXITCODE){throw 'Render-only service ARM link failed'}
  if($Sign){
   $cert=Get-Item "Cert:\CurrentUser\My\$CertificateThumbprint"
   if(!$cert.HasPrivateKey -or (Get-Date) -lt $cert.NotBefore -or (Get-Date) -gt $cert.NotAfter){throw 'Valid private signing certificate required'}
   foreach($image in @($exe)){
-   & "$kit\bin\x86\signtool.exe" sign /fd SHA256 /sha1 $CertificateThumbprint /s My $image
+   & $signTool sign /fd SHA256 /sha1 $CertificateThumbprint /s My $image
    if($LASTEXITCODE){throw 'Render service/comparator signing failed'}
    $check=Get-AuthenticodeSignature $image
    if($check.Status -ne 'Valid' -or $check.SignerCertificate.Thumbprint -ne $CertificateThumbprint){throw 'Service/comparator signature rejected'}
@@ -53,5 +62,5 @@ try {
  & llvm-readobj --file-headers --coff-imports $exe | Set-Content "$out\pe-imports.txt"
  if($LASTEXITCODE){throw 'Service PE inspection failed'}
  $policy=Get-Content -Raw "$out\render-policy-manifest.json"|ConvertFrom-Json
- [ordered]@{source_commit=(& git -C $root rev-parse HEAD);source_dirty=$false;profile='render-single-gpu323-run117-v1';service='MT8167RenderSingleGpu';signed=[bool]$Sign;signing_thumbprint=$(if($Sign){$sig.SignerCertificate.Thumbprint}else{$null});signature_status=$(if($Sign){[string]$sig.Status}else{'Unsigned'});exe_sha256=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant();policy_manifest_sha256=(Get-FileHash "$out\render-policy-manifest.json" -Algorithm SHA256).Hash.ToLowerInvariant();policy=$policy;comparator=@{exe='compare-files.exe';exe_sha256=(Get-FileHash "$out\compare-files.exe" -Algorithm SHA256).Hash.ToLowerInvariant();source_sha256=(Get-FileHash "$root\tools\winpe\compare-files.c" -Algorithm SHA256).Hash.ToLowerInvariant();signature_status=$(if($Sign){[string](Get-AuthenticodeSignature "$out\compare-files.exe").Status}else{'Unsigned'});signer_thumbprint=$(if($Sign){(Get-AuthenticodeSignature "$out\compare-files.exe").SignerCertificate.Thumbprint}else{$null});comparison='full bytes through exact EOF; no C runtime or external tool'};normal_install_allowed=$true;device_verified=$false}|ConvertTo-Json -Depth 14|Set-Content -Encoding UTF8 "$out\render-service-manifest.json"
+ [ordered]@{source_commit=(& git -C $root rev-parse HEAD);source_dirty=$false;toolchain=$toolchain;profile='render-single-gpu323-run117-v1';service='MT8167RenderSingleGpu';signed=[bool]$Sign;signing_thumbprint=$(if($Sign){$sig.SignerCertificate.Thumbprint}else{$null});signature_status=$(if($Sign){[string]$sig.Status}else{'Unsigned'});exe_sha256=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant();policy_manifest_sha256=(Get-FileHash "$out\render-policy-manifest.json" -Algorithm SHA256).Hash.ToLowerInvariant();policy=$policy;comparator=@{exe='compare-files.exe';exe_sha256=(Get-FileHash "$out\compare-files.exe" -Algorithm SHA256).Hash.ToLowerInvariant();source_sha256=(Get-FileHash "$root\tools\winpe\compare-files.c" -Algorithm SHA256).Hash.ToLowerInvariant();signature_status=$(if($Sign){[string](Get-AuthenticodeSignature "$out\compare-files.exe").Status}else{'Unsigned'});signer_thumbprint=$(if($Sign){(Get-AuthenticodeSignature "$out\compare-files.exe").SignerCertificate.Thumbprint}else{$null});comparison='full bytes through exact EOF; no C runtime or external tool'};normal_install_allowed=$true;device_verified=$false}|ConvertTo-Json -Depth 14|Set-Content -Encoding UTF8 "$out\render-service-manifest.json"
 }finally{$env:TEMP=$oldTemp;$env:TMP=$oldTmp}
