@@ -189,9 +189,9 @@ static DWORD launch(HANDLE user,HANDLE map,SNAPSHOT*s,const WCHAR*child,const WC
  sa.nLength=sizeof(sa);sa.lpSecurityDescriptor=&sd;sa.bInheritHandle=FALSE;
  __try{
  pipe=CreateNamedPipeW(PIPE,PIPE_ACCESS_DUPLEX|FILE_FLAG_FIRST_PIPE_INSTANCE|FILE_FLAG_OVERLAPPED,PIPE_TYPE_MESSAGE|PIPE_READMODE_MESSAGE|PIPE_WAIT|PIPE_REJECT_REMOTE_CLIENTS,1,sizeof(packet),sizeof(packet),0,&sa);
- if(pipe==INVALID_HANDLE_VALUE){rc=GetLastError();__leave;}
+ if(pipe==INVALID_HANDLE_VALUE){rc=GetLastError();lognum("BRIDGE_CREATE_RC",rc);__leave;}lognum("BRIDGE_CREATE_RC",0);
  ov.hEvent=CreateEventW(NULL,TRUE,FALSE,NULL);if(!ov.hEvent){rc=GetLastError();__leave;}
- job=CreateJobObjectW(NULL,NULL);if(!job){rc=GetLastError();__leave;}
+ job=CreateJobObjectW(NULL,NULL);if(!job){rc=GetLastError();lognum("SUPERVISOR_JOB_CREATE_RC",rc);__leave;}lognum("SUPERVISOR_JOB_CREATE_RC",0);
  limit.BasicLimitInformation.LimitFlags=JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
  if(!SetInformationJobObject(job,JobObjectExtendedLimitInformation,&limit,sizeof(limit))){rc=GetLastError();__leave;}
  si.cb=sizeof(si);si.lpDesktop=L"winsta0\\default";
@@ -209,7 +209,7 @@ static DWORD launch(HANDLE user,HANDLE map,SNAPSHOT*s,const WCHAR*child,const WC
  if(!GetNamedPipeClientProcessId(pipe,&pid)){rc=GetLastError();lognum("BRIDGE_PID_RC",rc);__leave;}if(pid!=pi.dwProcessId){rc=ERROR_ACCESS_DENIED;lognum("BRIDGE_PID_RC",rc);__leave;}lognum("BRIDGE_PID_RC",0);
  packet.magic=MAGIC;packet.bytes=sizeof(packet);
  if(!DuplicateHandle(GetCurrentProcess(),gLog,pi.hProcess,&packet.log,0,TRUE,DUPLICATE_SAME_ACCESS)||
- !DuplicateHandle(GetCurrentProcess(),map,pi.hProcess,&packet.map,0,TRUE,DUPLICATE_SAME_ACCESS)){rc=GetLastError();__leave;}
+ !DuplicateHandle(GetCurrentProcess(),map,pi.hProcess,&packet.map,0,TRUE,DUPLICATE_SAME_ACCESS)){rc=GetLastError();lognum("BRIDGE_DUPLICATE_RC",rc);__leave;}lognum("BRIDGE_DUPLICATE_RC",0);
  /* Reuse the event only after the previous overlapped operation completed. */
  memset(&ov.Internal,0,sizeof(ov.Internal));ov.InternalHigh=0;ov.Offset=ov.OffsetHigh=0;
  if(!pipe_io(pipe,&ov,FALSE,&packet,&rc)){lognum("BRIDGE_WRITE_RC",rc);__leave;}lognum("BRIDGE_WRITE_RC",0);
