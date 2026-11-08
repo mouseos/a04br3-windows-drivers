@@ -36,8 +36,8 @@ static HRESULT texture_probe(ID3D11Device *device,ID3D11DeviceContext *ctx,ID3D1
   chosen=pass<4?point:pass==7?NULL:linear;ID3D11DeviceContext_PSSetSamplers(ctx,0,1,&chosen);ID3D11DeviceContext_PSSetConstantBuffers(ctx,0,1,&cb);
   ID3D11DeviceContext_ClearRenderTargetView(ctx,view,black);ID3D11DeviceContext_Draw(ctx,3,0);
   hr=ID3D11Device_GetDeviceRemovedReason(device);line("TEXTURE_REMOVED_REASON",hr);if(FAILED(hr))goto done;
-  ID3D11DeviceContext_CopyResource(ctx,(ID3D11Resource *)staging,(ID3D11Resource *)target);ID3D11DeviceContext_Flush(ctx);
-  hr=ID3D11DeviceContext_Map(ctx,(ID3D11Resource *)staging,0,D3D11_MAP_READ,0,&map);line("TEXTURE_MAP_HRESULT",hr);if(FAILED(hr))goto done;
+  GEO_BOUNDARY("COPY_BEFORE",20,0);ID3D11DeviceContext_CopyResource(ctx,(ID3D11Resource *)staging,(ID3D11Resource *)target);GEO_BOUNDARY("COPY_AFTER",21,0);GEO_BOUNDARY("FLUSH_BEFORE",22,0);ID3D11DeviceContext_Flush(ctx);GEO_BOUNDARY("FLUSH_AFTER",23,0);
+  GEO_BOUNDARY("MAP_CALL_BEFORE",24,0);hr=ID3D11DeviceContext_Map(ctx,(ID3D11Resource *)staging,0,D3D11_MAP_READ,0,&map);GEO_BOUNDARY_MAP_AFTER();line("TEXTURE_MAP_HRESULT",hr);if(FAILED(hr))goto done;
   if(!map.pData||map.RowPitch<3200){ID3D11DeviceContext_Unmap(ctx,(ID3D11Resource *)staging,0);hr=E_UNEXPECTED;goto done;}
   for(y=0;y<600;y++)for(x=0;x<800;x++) {
    /* Independent screen geometry oracle, pixel centers, two-pixel edge band.

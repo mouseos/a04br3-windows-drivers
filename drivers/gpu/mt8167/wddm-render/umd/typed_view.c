@@ -50,6 +50,7 @@ static UINT unorm8(FLOAT f) {
 static void APIENTRY clear_rtv(D3D10DDI_HDEVICE h,D3D10DDI_HRENDERTARGETVIEW handle,FLOAT color[4]) {
  struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_rtv *v=view(h,handle);D3DDDIARG_SETRENDERTARGET q;D3DDDIARG_CLEAR c;HRESULT hr,restore;
  if(!d||!v||!color){geo_typed_error(h,E_INVALIDARG);return;}
+ if(FAILED(d->error)){geo_typed_error(h,d->error);return;}
  memset(&q,0,sizeof(q));q.hRenderTarget=v->resource->backend;hr=d->memory.pfnSetRenderTarget(&d->backend,&q);
  if(SUCCEEDED(hr)){
   memset(&c,0,sizeof(c));c.Flags=D3DCLEAR_TARGET;c.FillColor=unorm8(color[2])|(unorm8(color[1])<<8)|(unorm8(color[0])<<16)|(unorm8(color[3])<<24);

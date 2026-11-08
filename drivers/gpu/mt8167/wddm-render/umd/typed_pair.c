@@ -15,6 +15,7 @@ HRESULT geo_typed_submit_pair(D3D10DDI_HDEVICE h,const FLOAT vertices[3][8]) {
  struct geo_umd_tokenized_shader *vs,*ps;struct geo_surface_desc target;D3DKMT_HANDLE ta,va;D3DDDICB_RENDER q;
  UINT total,at=0,i;BYTE *blob;int32_t status;HRESULT hr;
  if(!d||!d->target||!d->bound_shader[0]||!d->bound_shader[1])return E_INVALIDARG;
+ if(d&&FAILED(d->error))return d->error;
  vs=d->bound_shader[0]->code;ps=d->bound_shader[1]->code;
  if(vs->pair_stage!=1||ps->pair_stage!=2||d->target->resource->width!=800||d->target->resource->height!=600)return E_NOTIMPL;
  hr=geo_typed_validate_native_state(h);if(FAILED(hr))return hr;

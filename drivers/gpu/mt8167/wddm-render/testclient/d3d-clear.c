@@ -171,6 +171,14 @@ static void runtime_inventory(IDXGIAdapter *adapter,const LUID *wanted) {
  }
  FreeLibrary(gdi);
 }
+#ifdef GEO_BOUNDARY_CLIENT
+static int boundary(const char *,UINT,UINT);
+#define GEO_BOUNDARY_MAP_AFTER() do{if(!boundary("MAP_CALL_AFTER",25,(UINT)hr)){if(SUCCEEDED(hr))ID3D11DeviceContext_Unmap(ctx,(ID3D11Resource *)staging,0);hr=E_FAIL;goto done;}}while(0)
+#define GEO_BOUNDARY(key,stage,status) do{if(!boundary(key,stage,(UINT)(status))){hr=E_FAIL;goto done;}}while(0)
+#else
+#define GEO_BOUNDARY_MAP_AFTER() ((void)0)
+#define GEO_BOUNDARY(key,stage,status) ((void)0)
+#endif
 static HRESULT triangle_probe(ID3D11Device *device,ID3D11DeviceContext *ctx,ID3D11RenderTargetView *view,ID3D11Texture2D *target,ID3D11Texture2D *staging) {
  ID3D11VertexShader *vs=NULL;ID3D11PixelShader *ps=NULL;ID3D11InputLayout *layout=NULL;ID3D11Buffer *vertices=NULL,*constants=NULL;ID3D11RasterizerState *raster=NULL;
  D3D11_INPUT_ELEMENT_DESC element={"POSITION",0,DXGI_FORMAT_R32G32B32A32_FLOAT,0,0,D3D11_INPUT_PER_VERTEX_DATA,0};
@@ -266,9 +274,13 @@ static HRESULT triangle_probe(ID3D11Device *device,ID3D11DeviceContext *ctx,ID3D
  ID3D11DeviceContext_ClearRenderTargetView(ctx,view,black);line("TRIANGLE_CLEAR_ISSUED",1);
  ID3D11DeviceContext_Draw(ctx,3,0);line("TRIANGLE_DRAW_ISSUED",1);
  hr=ID3D11Device_GetDeviceRemovedReason(device);line("TRIANGLE_DEVICE_REASON",hr);if(FAILED(hr)||!log_ok)goto done;
- ID3D11DeviceContext_CopyResource(ctx,(ID3D11Resource *)staging,(ID3D11Resource *)target);ID3D11DeviceContext_Flush(ctx);
+ GEO_BOUNDARY("COPY_BEFORE",20,0);
+ ID3D11DeviceContext_CopyResource(ctx,(ID3D11Resource *)staging,(ID3D11Resource *)target);
+ GEO_BOUNDARY("COPY_AFTER",21,0);GEO_BOUNDARY("FLUSH_BEFORE",22,0);
+ ID3D11DeviceContext_Flush(ctx);GEO_BOUNDARY("FLUSH_AFTER",23,0);
  line("TRIANGLE_MAP_BEGIN",1);if(!log_ok){hr=E_FAIL;goto done;}
- hr=ID3D11DeviceContext_Map(ctx,(ID3D11Resource *)staging,0,D3D11_MAP_READ,0,&map);line("TRIANGLE_MAP_HRESULT",hr);if(FAILED(hr))goto done;
+ GEO_BOUNDARY("MAP_CALL_BEFORE",24,0);
+ hr=ID3D11DeviceContext_Map(ctx,(ID3D11Resource *)staging,0,D3D11_MAP_READ,0,&map);GEO_BOUNDARY_MAP_AFTER();line("TRIANGLE_MAP_HRESULT",hr);if(FAILED(hr))goto done;
  if(!map.pData||map.RowPitch<3200){ID3D11DeviceContext_Unmap(ctx,(ID3D11Resource *)staging,0);hr=E_UNEXPECTED;goto done;}
  for(y=0;y<600;y++)for(x=0;x<800;x++){
   const BYTE *p=(const BYTE *)map.pData+y*map.RowPitch+x*4;UINT pixel=p[0]|((UINT)p[1]<<8)|((UINT)p[2]<<16)|((UINT)p[3]<<24);
@@ -305,8 +317,12 @@ static HRESULT color_probe(ID3D11Device *device,ID3D11DeviceContext *ctx,ID3D11R
  if(!log_ok){hr=E_FAIL;goto done;}
  ID3D11DeviceContext_ClearRenderTargetView(ctx,view,black);ID3D11DeviceContext_Draw(ctx,3,0);line("COLOR_DRAW_ISSUED",1);
  hr=ID3D11Device_GetDeviceRemovedReason(device);line("COLOR_DEVICE_REASON",hr);if(FAILED(hr))goto done;
- ID3D11DeviceContext_CopyResource(ctx,(ID3D11Resource *)staging,(ID3D11Resource *)target);ID3D11DeviceContext_Flush(ctx);
+ GEO_BOUNDARY("COPY_BEFORE",20,0);
+ ID3D11DeviceContext_CopyResource(ctx,(ID3D11Resource *)staging,(ID3D11Resource *)target);
+ GEO_BOUNDARY("COPY_AFTER",21,0);GEO_BOUNDARY("FLUSH_BEFORE",22,0);
+ ID3D11DeviceContext_Flush(ctx);GEO_BOUNDARY("FLUSH_AFTER",23,0);
  line("COLOR_MAP_BEGIN",1);if(!log_ok){hr=E_FAIL;goto done;}
+ GEO_BOUNDARY("MAP_CALL_BEFORE",24,0);
  hr=ID3D11DeviceContext_Map(ctx,(ID3D11Resource *)staging,0,D3D11_MAP_READ,0,&map);line("COLOR_MAP_HRESULT",hr);if(FAILED(hr))goto done;
  if(!map.pData||map.RowPitch<3200){ID3D11DeviceContext_Unmap(ctx,(ID3D11Resource *)staging,0);hr=E_UNEXPECTED;goto done;}
  for(y=0;y<600;y++)for(x=0;x<800;x++){
@@ -333,6 +349,22 @@ static HRESULT color_probe(ID3D11Device *device,ID3D11DeviceContext *ctx,ID3D11R
 #ifdef GEO_TEXTURE_CLIENT
 #include "texture_probe.inc"
 #endif
+#ifdef GEO_BOUNDARY_CLIENT
+#include "durable_progress.h"
+static int initialize_progress(void) {
+ WCHAR path[96];const WCHAR prefix[]=L"C:\\MT8167D3DClear\\clear-boundary-",hex[]=L"0123456789abcdef";
+ static BYTE zeros[GEO_PROGRESS_BYTES];UINT n=0,i,pid=GetCurrentProcessId(),tick=GetTickCount();DWORD written;HANDLE f,v;int good;
+ for(i=0;prefix[i];i++)path[n++]=prefix[i];for(i=0;i<8;i++)path[n++]=hex[(tick>>(28-4*i))&15];path[n++]=L'-';for(i=0;i<8;i++)path[n++]=hex[(pid>>(28-4*i))&15];path[n++]=L'.';path[n++]=L'l';path[n++]=L'o';path[n++]=L'g';path[n]=0;
+ f=CreateFileW(path,GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,CREATE_NEW,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,NULL);if(f==INVALID_HANDLE_VALUE)return 0;
+ good=WriteFile(f,zeros,sizeof(zeros),&written,NULL)&&written==sizeof(zeros)&&FlushFileBuffers(f);CloseHandle(f);if(!good)return 0;
+ /* Commit the newly-created file metadata BEFORE running any GPU work.
+  * Subsequent progress replaces allocated slots, never extends the file. */
+ v=CreateFileW(L"\\\\.\\C:",GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,0,NULL);if(v==INVALID_HANDLE_VALUE)return 0;
+ good=FlushFileBuffers(v)!=FALSE;CloseHandle(v);if(!good||!SetEnvironmentVariableW(GEO_PROGRESS_ENV,path))return 0;
+ return geo_progress_write(0,0,332);
+}
+static int boundary(const char *key,UINT stage,UINT status){line(key,status);return geo_progress_write(stage,status,0)&&log_ok;}
+#endif
 static HRESULT probe(IDXGIAdapter *adapter) {
  ID3D11Device *device=NULL;ID3D11DeviceContext *ctx=NULL;ID3D11Texture2D *target=NULL,*staging=NULL;
  ID3D11RenderTargetView *view=NULL;D3D_FEATURE_LEVEL level,wanted=D3D_FEATURE_LEVEL_9_1;
@@ -343,8 +375,9 @@ static HRESULT probe(IDXGIAdapter *adapter) {
  wanted=D3D_FEATURE_LEVEL_10_0;
 #endif
  line("REQUESTED_FEATURE_LEVEL",wanted);
+ GEO_BOUNDARY("CREATE_DEVICE_BEFORE",2,0);
  hr=D3D11CreateDevice(adapter,D3D_DRIVER_TYPE_UNKNOWN,NULL,0,&wanted,1,D3D11_SDK_VERSION,&device,&level,&ctx);
- line("CREATE_DEVICE_HRESULT",hr);if(FAILED(hr))goto done;
+ GEO_BOUNDARY("CREATE_DEVICE_AFTER",3,hr);line("CREATE_DEVICE_HRESULT",hr);if(FAILED(hr))goto done;
  line("FEATURE_LEVEL",level);
  if(level!=wanted){hr=E_UNEXPECTED;goto done;}
  desc.Width=800;desc.Height=600;desc.MipLevels=1;desc.ArraySize=1;desc.Format=DXGI_FORMAT_B8G8R8A8_UNORM;
@@ -361,8 +394,9 @@ static HRESULT probe(IDXGIAdapter *adapter) {
   /* Blocking runtime Map must wait for a genuine scheduler fence. No Sleep,
    * polling private command, CPU-generated clear, or WARP fallback. */
   line("MAP_BEGIN",pass);if(!log_ok){hr=E_FAIL;goto done;}
-  hr=ID3D11DeviceContext_Map(ctx,(ID3D11Resource *)staging,0,D3D11_MAP_READ,0,&map);
-  line("MAP_HRESULT",hr);if(FAILED(hr))goto done;
+  GEO_BOUNDARY("MAP_CALL_BEFORE",24,0);
+ hr=ID3D11DeviceContext_Map(ctx,(ID3D11Resource *)staging,0,D3D11_MAP_READ,0,&map);
+  GEO_BOUNDARY_MAP_AFTER();line("MAP_HRESULT",hr);if(FAILED(hr))goto done;
   match=0;mismatch=0;
   if(!map.pData||map.RowPitch<800*4) {
    ID3D11DeviceContext_Unmap(ctx,(ID3D11Resource *)staging,0);hr=E_UNEXPECTED;goto done;
@@ -416,6 +450,10 @@ void mainCRTStartup(void) {
  CreateDirectoryW(L"C:\\MT8167D3DClear",NULL);
  disk=CreateFileW(path,GENERIC_WRITE,FILE_SHARE_READ,NULL,CREATE_NEW,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,NULL);
  if(disk==INVALID_HANDLE_VALUE)ExitProcess(2);
+#ifdef GEO_BOUNDARY_CLIENT
+ if(!initialize_progress()){line("PROGRESS_PRECOMMIT_FAILED",GetLastError());CloseHandle(disk);ExitProcess(4);}
+ line("PROGRESS_PRECOMMITTED",1);
+#endif
 
 #ifdef GEO_COLOR_PAIR_CLIENT
  line("SCHEMA",6);line("COLOR_PAIR_PROFILE",1);

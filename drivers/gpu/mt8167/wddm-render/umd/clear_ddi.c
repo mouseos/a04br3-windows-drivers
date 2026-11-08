@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "clear_ddi.h"
 #include "../memory.h"
+#include <dxgi.h>
+#include "readback_wait.h"
+#include "../testclient/durable_progress.h"
 struct geo_umd_resource {
  struct geo_umd_resource *next;
  struct geo_umd_device *device;
@@ -87,13 +90,29 @@ static HRESULT APIENTRY clear(HANDLE h,const D3DDDIARG_CLEAR *p,UINT count,const
  d->allocations=q.pNewAllocationList;d->allocation_count=q.NewAllocationListSize;
  d->patches=q.pNewPatchLocationList;d->patch_count=q.NewPatchLocationListSize;return S_OK;
 }
+struct read_lock_attempt {struct geo_umd_device *device;D3DDDICB_LOCK *request;};
+static int32_t read_lock_once(void *p){struct read_lock_attempt *x=p;return x->device->cb.pfnLockCb(x->device->runtime,x->request);}
+static uint32_t read_lock_clock(void *p){(void)p;return GetTickCount();}
+static void read_lock_pause(void *p){(void)p;Sleep(1);}
 static HRESULT APIENTRY lock_resource(HANDLE h,D3DDDIARG_LOCK *p) {
  struct geo_umd_device *d=h;struct geo_umd_resource *r;D3DDDICB_LOCK q;HRESULT hr;
  if(!d||!p||p->SubResourceIndex||!(r=find(d,p->hResource))||r->locked||r->offered)return E_INVALIDARG;
  if(p->Flags.Value&~(1u|0x20u|0x200u))return E_NOTIMPL;
  if(p->Flags.AreaValid&&(p->Area.left||p->Area.top||p->Area.right!=(LONG)r->logical_width||p->Area.bottom!=(LONG)r->logical_height))return E_NOTIMPL;
  memset(&q,0,sizeof(q));q.hAllocation=r->allocation;q.Flags.ReadOnly=p->Flags.ReadOnly;q.Flags.DonotWait=p->Flags.DoNotWait;
- hr=d->cb.pfnLockCb(d->runtime,&q);if(FAILED(hr))return hr;
+ {
+  struct read_lock_attempt attempt={d,&q};struct geo_readback_wait_ops ops={&attempt,read_lock_once,read_lock_clock,read_lock_pause};
+  /* Microsoft D3DDDICB_LOCKFLAGS.DonotWait: return WASSTILLDRAWING while
+   * GPU owns the allocation. No IgnoreSync/Discard or fabricated idle. */
+  q.Flags.DonotWait=1;
+  if(!geo_progress_write(16,0,r->desc.usage))return E_FAIL;
+  hr=geo_readback_wait(&ops,D3DDDIERR_WASSTILLDRAWING,DXGI_ERROR_WAS_STILL_DRAWING,p->Flags.DoNotWait!=0);
+  if(!geo_progress_write(17,(UINT)hr,r->desc.usage)&&SUCCEEDED(hr)){
+   D3DDDICB_UNLOCK undo={0};undo.NumAllocations=1;undo.phAllocations=&q.hAllocation;
+   HRESULT undone=d->cb.pfnUnlockCb(d->runtime,&undo);if(FAILED(undone)){r->allocation=q.hAllocation;r->locked=1;return undone;}return E_FAIL;
+  }
+ }
+ if(FAILED(hr))return hr;
  if(!q.pData)return E_UNEXPECTED;
  r->allocation=q.hAllocation;r->locked=1;p->pSurfData=q.pData;p->Pitch=r->desc.pitch;p->SlicePitch=r->desc.pitch*r->logical_height;return S_OK;
 }
@@ -112,17 +131,21 @@ static HRESULT APIENTRY blt(HANDLE h,const D3DDDIARG_BLT *p) {
  if(p->SrcRect.left||p->SrcRect.top||p->DstRect.left||p->DstRect.top||
     p->SrcRect.right!=(LONG)src->logical_width||p->SrcRect.bottom!=(LONG)src->logical_height||
     p->DstRect.right!=(LONG)dst->logical_width||p->DstRect.bottom!=(LONG)dst->logical_height)return E_NOTIMPL;
+ if(!geo_progress_write(8,0,src->desc.usage))return E_FAIL;
  memset(&a,0,sizeof(a));a.hResource=src;a.Flags.ReadOnly=1;
- hr=lock_resource(d,&a);if(FAILED(hr))return hr;
- memset(&b,0,sizeof(b));b.hResource=dst;hr=lock_resource(d,&b);
+ if(!geo_progress_write(9,0,src->desc.usage))return E_FAIL;
+ hr=lock_resource(d,&a);geo_progress_write(10,(UINT)hr,src->desc.usage);if(FAILED(hr))return hr;
+ memset(&b,0,sizeof(b));b.hResource=dst;geo_progress_write(11,0,dst->desc.usage);hr=lock_resource(d,&b);geo_progress_write(12,(UINT)hr,dst->desc.usage);
  if(SUCCEEDED(hr)) {
   /* Normal RAM required by owner ABI. Runtime lock waits for the REAL fence;
    * this copies GPU results for readback and never synthesizes a clear. */
+  geo_progress_write(13,0,src->logical_height);
   for(y=0;y<src->logical_height;y++)memcpy((BYTE *)b.pSurfData+y*b.Pitch,(BYTE *)a.pSurfData+y*a.Pitch,src->logical_width*4u);
+  geo_progress_write(14,0,src->logical_height);
   memset(&u,0,sizeof(u));u.hResource=dst;cleanup=unlock_resource(d,&u);if(FAILED(cleanup))hr=cleanup;
  }
  memset(&u,0,sizeof(u));u.hResource=src;cleanup=unlock_resource(d,&u);if(SUCCEEDED(hr)&&FAILED(cleanup))hr=cleanup;
- return hr;
+ geo_progress_write(15,(UINT)hr,0);return hr;
 }
 static HRESULT APIENTRY create_resource2(HANDLE handle,D3DDDIARG_CREATERESOURCE2 *p) {
  D3DDDIARG_CREATERESOURCE q;HRESULT hr;

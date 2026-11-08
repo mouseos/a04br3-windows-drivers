@@ -95,6 +95,7 @@ static void APIENTRY create_resource(D3D10DDI_HDEVICE h,const D3D11DDIARG_CREATE
  struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_resource *r;D3DDDIARG_CREATERESOURCE q;D3DDDI_SURFACEINFO surf;HRESULT hr;
  if(!d||!handle.pDrvPrivate){geo_typed_error(h,E_INVALIDARG);return;}
  ((struct geo_typed_handle *)handle.pDrvPrivate)->object=NULL;
+ if(FAILED(d->error)){geo_typed_error(h,d->error);return;}
  trace_descriptor(h,2,p);
  hr=desc_valid(p);if(FAILED(hr)){geo_typed_error(h,hr);return;}
  r=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*r));if(!r){geo_typed_error(h,E_OUTOFMEMORY);return;}
@@ -130,6 +131,7 @@ static void APIENTRY destroy_resource(D3D10DDI_HDEVICE h,D3D10DDI_HRESOURCE hand
 }
 static void APIENTRY map_resource(D3D10DDI_HDEVICE h,D3D10DDI_HRESOURCE handle,UINT sub,D3D10_DDI_MAP mode,UINT flags,D3D10DDI_MAPPED_SUBRESOURCE *out) {
  struct geo_typed_resource *r=geo_typed_resource(h,handle);HRESULT hr=E_INVALIDARG;if(out)memset(out,0,sizeof(*out));
+ if(r&&FAILED(r->device->error)){geo_typed_error(h,r->device->error);return;}
  if(r&&!sub&&out&&r->usage!=D3D10_DDI_USAGE_IMMUTABLE&&r->usage!=D3D10_DDI_USAGE_DEFAULT){
   UINT read=mode==D3D10_DDI_MAP_READ||mode==D3D10_DDI_MAP_READWRITE,write=mode!=D3D10_DDI_MAP_READ;
   if(mode>=D3D10_DDI_MAP_READ&&mode<=D3D10_DDI_MAP_WRITE_NOOVERWRITE&&(!read||(r->map_flags&D3D10_DDI_CPU_ACCESS_READ))&&(!write||(r->map_flags&D3D10_DDI_CPU_ACCESS_WRITE)))
@@ -151,6 +153,7 @@ HRESULT geo_typed_read_resource(struct geo_typed_resource *r,UINT offset,UINT by
 static void APIENTRY copy_resource(D3D10DDI_HDEVICE h,D3D10DDI_HRESOURCE dst,D3D10DDI_HRESOURCE src) {
  struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_resource *a=geo_typed_resource(h,src),*b=geo_typed_resource(h,dst);D3DDDIARG_BLT q;HRESULT hr;
  if(!d||!a||!b||a==b||a->format!=b->format||a->width!=b->width||a->height!=b->height||b->dimension!=D3D10DDIRESOURCE_TEXTURE2D||b->usage!=D3D10_DDI_USAGE_STAGING){geo_typed_error(h,E_NOTIMPL);return;}
+ if(FAILED(d->error)){geo_typed_error(h,d->error);return;}
  memset(&q,0,sizeof(q));q.hSrcResource=a->backend;q.hDstResource=b->backend;q.SrcRect.right=q.DstRect.right=a->width;q.SrcRect.bottom=q.DstRect.bottom=a->height;
  hr=d->memory.pfnBlt(&d->backend,&q);geo_typed_device_trace(d,"RESOURCE_COPY_HRESULT",(UINT)hr);if(FAILED(hr))geo_typed_error(h,hr);
 }

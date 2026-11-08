@@ -99,6 +99,7 @@ HRESULT geo_typed_submit_draw(D3D10DDI_HDEVICE h,const FLOAT vertices[3][4]) {
  struct geo_typed_device *d=geo_typed_device(h);struct geo_draw_packet *p;struct geo_surface_desc target;D3DKMT_HANDLE ta,va,xa=0;struct geo_surface_desc texture_desc;D3DDDICB_RENDER q;
  UINT constants[2][128],total=1024,at=0,stage,i,header,sampled,general,combined,sampler_profile=0;BYTE *blob;HRESULT hr;
  if(!d||!d->target||!d->bound_shader[0]||!d->bound_shader[1])return E_INVALIDARG;
+ if(FAILED(d->error))return d->error;
  sampled=d->bound_shader[1]->code->texture_profile;general=!sampled&&d->bound_shader[0]->code->witness&&d->bound_shader[1]->code->witness;combined=sampled&&d->bound_shader[0]->code->witness;header=combined?sizeof(struct geo_draw_packet_v5):general?sizeof(struct geo_draw_packet_v4):sampled?sizeof(struct geo_draw_packet_v3):sizeof(*p);
  if(sampled){hr=geo_typed_texture_profile(d,&sampler_profile);if(FAILED(hr))return hr;hr=geo_typed_texture_allocation(d,&texture_desc,&xa);if(FAILED(hr))return hr;}
  if(d->target->resource->width!=800||d->target->resource->height!=600)return E_NOTIMPL;

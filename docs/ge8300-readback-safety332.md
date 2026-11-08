@@ -1,0 +1,17 @@
+# 331機能＋readback境界332（reset根因未証明）
+
+327の131遅延133ログはCreateDevice・2Clear各480000一致・全state bind・DrawRender0・DeviceReason0まで到達。次のCopy完了は未記録。CopyはRT Lock→staging Lock→CPUcopy→Unlock。shaderが未完ならRT Lockはscheduler fenceを待つ。未記録を未実行とは断定しない。
+
+332は331のABI5機能を保持し、すべての実LockCbへDonotWaitを設定する。Microsoft D3DDDICB_LOCKFLAGSはGPU使用中のWASSTILLDRAWING返却を明記する。明示非待機要求は1回で返す。他はSleep1msでyieldし、実成功または実失敗を待つ。連続busy30秒でDXGI_ERROR_DEVICE_HUNG。30秒は診断運用の保守的な上限で実測GPU成功時間ではない。native timeout/IRQ/MMIO/fence成功条件は変えない。
+
+typed callbackは実失敗を既存SetErrorCbへ伝え、sticky error後のClear/Draw/Pair/Copy/Map/新resourceを拒否。CPUcopyは両Lock成功後のみ、destination Lock失敗でもsource Unlockを行う。resource/contextは既存参照保持を維持し、未完job/bound/open参照があるallocationを破棄しない。成功fenceやDMA停止を合成しない。
+
+新client ge8300-d3d-texture-boundary.exeを別fileで作る。旧f3af/2727 clientは保持。Copy/Flush/Map前後は段階ごとのFlushFileBuffersで記録。専用clientはGPU前に4096byteのclear-boundary-TICK-PID.logを全書込み/flushし、volume FlushFileBuffersで作成metadataをcommitする（失敗ならGPU実行しない）。UMDは同process環境から既存fileを開き、固定64byte slotへCRC付き40byte recordを置換/flush。file拡張や新UMDfile metadataに依存しない。collect対象は既存clear-*.log pattern内だがbinary GPR1 schemaであるためtextpixel判定から分離する。
+
+最小stage: 2/3 CreateDevice、8 Copyentry、9/10 srcLock、11/12 dstLock、13/14 CPUcopy、15 Unlockreturn、16/17 実Lock呼出、20/21 clientCopy、22/23 Flush、24/25 Map。上書きslotのtickとdetailで最終境界を読み、pixelごとの記録はしない。
+
+TDRは既存ResetFromTimeout→通常quiesceで、FW完了/forcedoffACK/IRQclose/必須resetanchor/parentOffの真の証拠を要求する。未停止DMAを成功停止に変えず、R06入口/R07実戻りproof/R08restartの少数だけ常時ZwFlushKey。新MMIOは無し。3.22のreset bit修正は正常off後の未実装bit誤timeoutを修正したもので、hang時のemergency DMA-stop能力ではない。
+
+DonotWaitでもpaging内部やkernel/ISRが応答しない場合、user期限でkernelを中断できない。UMDのDeviceHung通知はscheduler TDR回復証明ではなくOS再起動を必ず防ぐとは言わない。今回reset根因は未確定。新候補＋最小証拠を一括評価し、旧327を同条件で反復しない。
+
+次媒体基点はfresh134/RTCboot4b67/133回収47file。旧132candidate/bootへ戻さない。原44不変＋同RUN72316/PIDAEC clearのexactprefix拡張＋新UMD2件を正式遅延更新として分類する。
