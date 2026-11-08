@@ -14,7 +14,8 @@ static int update(struct a04_hp_route *s,const struct a04_hp_io *io,unsigned n,u
  if(!qualified(s,io)||io->read(io->context,banks[n],offsets[n],&v)||
     (v&masks[n])!=s->expected[n]||(target&~mask))return -1;
  if(io->write(io->context,banks[n],offsets[n],(v&~mask)|target)||
-    io->read(io->context,banks[n],offsets[n],&after)||(after&mask)!=target)return -1;
+    io->read(io->context,banks[n],offsets[n],&after)||
+    (after&masks[n])!=((s->expected[n]&~mask)|target))return -1;
  s->expected[n]=(s->expected[n]&~mask)|target;return 0;
 }
 static int latch(struct a04_hp_route *s,const struct a04_hp_io *io,int16_t left,int16_t right)
