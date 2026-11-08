@@ -21,6 +21,33 @@ def stage_script(template,prepare,token,fresh):
  require('/ForceUnsigned' not in cmd and 'RESTORE_FROM' not in cmd,'fallback/rollback禁止')
  return cmd
 
+def baseline_failure_reports(prepare):
+ # Keep comparator bytes/order/exit handling. Emit metadata only in its failure arm.
+ result=[];ordinal=0;prefix='X:\\a04br3\\'
+ kinds={'fresh-input':'FRESH_INPUT','preserved-proof':'PRESERVED_FILE',
+        'baseline-proof':'EXTRA_BASELINE','rotation-proof':'ROTATION_BASELINE',
+        'rotation-reuse-proof':'ROTATION_REUSE'}
+ for i,line in enumerate(prepare):
+  if line!='if errorlevel 1 goto baselinefail' or not i or not prepare[i-1].startswith(prefix+'compare-files.exe '):
+   result.append(line);continue
+  args=[quoted or bare for quoted,bare in re.findall(r'"([^"]*)"|(\S+)',prepare[i-1].split(' >> ',1)[0])]
+  require(len(args)==3,'Fixed comparator command requires two file operands')
+  left,right=args[1:];require(left.startswith(prefix),'Baseline proof must be a fixed WinPE input')
+  if right.startswith('C:\\'):
+   kind=kinds.get(left[len(prefix):].split('\\',1)[0]);relative=right[3:].replace('\\','/')
+   require(kind is not None,'Unknown baseline check kind must be classified explicitly')
+  else:
+   require(right.startswith(prefix+'stage-proof\\'),'Unknown stage baseline destination')
+   kind='STAGE_SELF';relative=left[len(prefix):].replace('\\','/')
+  require(re.fullmatch(r'[A-Za-z0-9_./ -]+',relative) and not relative.startswith('/') and '..' not in relative.split('/'),'Unsafe report-relative path')
+  ordinal+=1
+  result+=['if errorlevel 1 (',
+           '>> "%A04_REPORT%" echo BASELINE_FAILURE_KIND='+kind,
+           '>> "%A04_REPORT%" echo BASELINE_FAILURE_RELATIVEPATH='+relative,
+           '>> "%A04_REPORT%" echo BASELINE_FAILURE_COMPARISON='+str(ordinal),
+           'goto baselinefail',')']
+ return result
+
 def bt_payload_prepare(directory,bt):
  # WIM staging alone does not deploy a normal-OS service input directory.
  names=[f['name'] for f in bt['files']]
@@ -162,6 +189,7 @@ def main():
   prepare+=['copy /b X:\\a04br3\\payload\\'+name+' C:\\Windows\\System32\\'+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail','X:\\a04br3\\compare-files.exe X:\\a04br3\\payload\\'+name+' C:\\Windows\\System32\\'+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
  # Last mutation only: main-selected capture-derived clean SYSTEM containing the one new service.
  prepare+=['copy /b /y X:\\a04br3\\payload\\SYSTEM.patched C:\\Windows\\System32\\config\\SYSTEM >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail','X:\\a04br3\\compare-files.exe X:\\a04br3\\payload\\SYSTEM.patched C:\\Windows\\System32\\config\\SYSTEM >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
+ prepare=baseline_failure_reports(prepare)
  cmd=stage_script((here/'run-mt8167-shared-io-update.cmd.in').read_text(),prepare,token[:16],p['backup_manifest_sha256']);(stage/'run-update-once.cmd').write_bytes(cmd.replace('\r','').replace('\n','\r\n').encode());files['run-update-once.cmd']=sha(stage/'run-update-once.cmd')
  (stage/'startnet.cmd').write_bytes(b'@echo off\r\nmountvol /N\r\nwpeinit\r\nif errorlevel 1 exit /b 2\r\nmountvol /N\r\nif errorlevel 1 exit /b 2\r\ncall X:\\a04br3\\run-update-once.cmd\r\n');files['startnet.cmd']=sha(stage/'startnet.cmd')
  image=out/'update.wim';shutil.copyfile(base/'maintenance-staged.wim',image);env=os.environ.copy();env.update(TMPDIR=str(stage),LD_LIBRARY_PATH=str(tools/'wimtools'),PYTHONPATH=str(tools/'python-fat'),PYTHONDONTWRITEBYTECODE='1')
