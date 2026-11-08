@@ -17,6 +17,9 @@
 #include <devpropdef.h>
 #include <newdev.h>
 #include "../../drivers/system/mt8167-toprgu/uart_screen.h"
+#if A04_RENDER_SINGLE_GPU
+#include "thermal-firmware-readonly.h"
+#endif
 
 #ifndef A04_HARDWARE_PROBE_ENGINE_PCM
 #define A04_HARDWARE_PROBE_ENGINE_PCM 0
@@ -600,6 +603,9 @@ static DWORD once(void)
   result=GetLastError();record(0,EV_POWER_SET,result);goto close_power;
  }
  record(0,EV_POWER_SET,0);
+#if A04_RENDER_SINGLE_GPU && A04_ENGINE_DEFERRED_UPDATE
+ if(diagnostic){DWORD observed=rt_collect_thermal_firmware(log_directory);record(0,0x14a,observed);}
+#endif
 #if A04_ENGINE_DEFERRED_UPDATE
  result=deferred_once(diagnostic);if(result||!diagnostic)goto clear_power;
  result=deferred_diagnostic_status; /* Keep observed CM failures while collecting fixed client logs. */

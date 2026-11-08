@@ -11,3 +11,5 @@ run115後のcaptured-unmounted fresh116を明示結合する。GPUは実選択3.
 保持nodeのメタデータ観測では、CM status/problemを先行して独立記録する。DevicePropertyのDriverInfPath/DriverVersion/DriverDateがERROR_NOT_FOUNDの場合だけ、同じHWID/service/classへ一意に一致したdevnodeのSetupDiOpenDevRegKey(DIREG_DRV, KEY_QUERY_VALUE)からInfPath/DriverVersion/DriverDateDataを読む。型・サイズ・期待値の検査は維持し、元APIの値不一致・型不正・アクセス拒否は代替経路へ逃がさない。レジストリへの書込みはない。run115のどのAPIが490を返したかは未確定なので、この経路利用と元API結果を別eventで記録する。
 
 MicrosoftのAPI契約: https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdiopendevregkey 。DIREG_DRVは対象deviceのsoftware keyを開く。native選択metadataも同じdriver class keyの値を読み、fresh116で各候補版・date・SYS hash一致を確認済み。API欠損を成功へ置換せず、同じ選択ドライバの別の公式読取り経路で固定値を検証する。
+
+同じdiagnostic起動でthermal-firmware-readonly.hを一度呼び、既存UEFIの校正・PIO handoff変数をread-onlyでprivate新規logへ保存する。16/72byte取得、API/権限/復元/サイズの結果を区別し、取得失敗をGPU終了コードへ接続しない。FW変数への書込み・IOCTL試験は行わない。校正rawはprivate回収だけとし公開Git/Notion/Discordへ掲載しない。
