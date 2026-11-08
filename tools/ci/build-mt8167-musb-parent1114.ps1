@@ -68,7 +68,7 @@ $thumb='BCBF6C456C6F0DD0818434763B189488FBF13570';$cert=Get-Item "Cert:\CurrentU
 if(!$cert.HasPrivateKey -or $cert.NotAfter -le (Get-Date)){throw 'Existing signer required'}
 & $SignTool sign /fd SHA256 /sha1 $thumb /s My $sys;if($LASTEXITCODE){throw 'SYS sign failed'}
 & $Inf2Cat "/driver:$out\package\parent" /os:6_3_ARM /uselocaltime;if($LASTEXITCODE){throw 'Inf2Cat failed'}
-$cat="$out\package\parent\mt8167-shared-hp1108.cat"
+$cat="$out\package\parent\mt8167-shared-usb1114.cat"
 & $SignTool sign /fd SHA256 /sha1 $thumb /s My $cat;if($LASTEXITCODE){throw 'CAT sign failed'}
 foreach($p in @($sys,$cat)){
  & $SignTool verify /pa /v $p

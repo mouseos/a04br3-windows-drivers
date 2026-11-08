@@ -44,7 +44,7 @@ static int Oc(void*p){(void)p;return (gp[0x210/4]&(1u<<5))?0:-1;}
 static int Source(void*p){(void)p;return 0;}
 static unsigned TopRead(void*p,unsigned o){(void)p;return top[o/4];}
 static void TopWrite(void*p,unsigned o,unsigned v){(void)p;if(o==0x84)top[0x24/4]&=~v;if(o==0x9c)top[0x3c/4]&=~v;}
-static uint32_t PmicRead(void*p,unsigned o){(void)p;(void)o;return pmicstage?(2u<<16)|pmic:0;}
+static uint32_t PmicRead(void*p,unsigned o){(void)p;if(o==0x9c)return 1;return pmicstage?(6u<<16)|pmic:0;}
 static void PmicWrite(void*p,unsigned o,uint32_t v){(void)p;if(o==0xa8){pmicstage=0;return;}if(v>>31)pmic=v&0xffff;else pmicstage=1;}
 static void PmicDelay(void*p){(void)p;}
 static void Setup(A04_PARENT_CONTEXT*c,struct a04_pmic_read *bus){RtlZeroMemory(c,sizeof(*c));RtlZeroMemory(gp,sizeof(gp));RtlZeroMemory(macmem,sizeof(macmem));RtlZeroMemory(phymem,sizeof(phymem));RtlZeroMemory(csr,sizeof(csr));depth=stuck=external_voltage=oc_trip=0;voltage=1;
