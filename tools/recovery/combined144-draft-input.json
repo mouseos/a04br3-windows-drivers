@@ -270,5 +270,21 @@
     "FILETIME_minus_uptime_is_boot_time_estimate_not_boot_GUID": true,
     "old_run143_PC_to_new_ASLRbase_allowed": false,
     "module_identity_is_not_rootfix_or_drawing_success": true
+  },
+  "observation_and_flush_policy": {
+    "UART_output_policy": "Retain existing short PB records; no new bulk UART or custom probe flood",
+    "snapshot_completion_policy": "Preserve existing bounded snapshot Complete/RegFlushKey and system-volume flush sequence before final terminal/SCM stop",
+    "install_result_event_0x206_is_not_finalization_or_SCM_stop": true,
+    "finalization_event": "0x288",
+    "terminal_event": "0x207",
+    "host_observation": {
+      "partialline_must_not_determine_terminal3010_or_phasefinalization": true,
+      "require_complete_CRC_valid_record_or_nativepost_saved_values": true,
+      "interleaved_MMA_SAMPLES_may_hide_UART_readmetadata": true,
+      "missing_UART_metadata_is_not_missing_snapshot_proof": true,
+      "nativepost_completed_snapshot_is_evidence_not_whole_functional_success": true
+    },
+    "avoid_new_large_inspection_framework": true,
+    "avoid_extra_device_trials": true
   }
 }
