@@ -1,0 +1,160 @@
+{
+  "schema": 1,
+  "status": "draft-only-awaiting-run147-result-and-fresh148",
+  "transaction": "combined-run149",
+  "post_capture_number": 150,
+  "source_tree": "windows-rt/a04br3-windows-combined148-peripheral",
+  "draft": true,
+  "normal_install_allowed": false,
+  "arm_allowed": false,
+  "media_generation_allowed": false,
+  "hardware_owner": "main",
+  "fresh": null,
+  "native_baseline": null,
+  "gpu_client_log_baseline": null,
+  "actual_installed_versions": null,
+  "prior_run147": {
+    "status": "auto-started-result-not-final",
+    "session": 54387,
+    "intended_scope_is_not_actual_state": true,
+    "frozen_source_commit": "a6548ee90c8adf786db22437c543962aaedfb37a",
+    "frozen_pins": 324,
+    "frozen_stage_files": 180
+  },
+  "candidate_packages": {
+    "msdc110": {
+      "selected": false,
+      "directory": "port/xnu/out/windows-rt-msdc-request-perf110/package",
+      "manifest": {
+        "path": "port/xnu/out/windows-rt-msdc-request-perf110/package/signed-manifest.json",
+        "sha256": "942d26add54e4a017210621f8da337288f2299644640f6996d00b44ea5ffc3f1"
+      },
+      "producer_pins": {
+        "path": "port/xnu/out/windows-rt-msdc-request-perf110/pins.json",
+        "sha256": "f0060a12175061ca7c3a97688eb5f4bafb430cef1666a3ea7311d3771e3997d1"
+      },
+      "source_commit": "47f6e233610d6f8d1a5858d441aa1b80f8611743",
+      "files": [
+        {
+          "sha256": "e6f1702e9775948f29bc1b027725324265c541e43a55b435369b4c4c00c2c357",
+          "path": "mt8167-msdc.cat"
+        },
+        {
+          "sha256": "62eb8d93a209935eda5c3ed02ceb1ce65bac003bf61bd22508682b4508819e06",
+          "path": "mt8167-msdc.inf"
+        },
+        {
+          "sha256": "4a8eff46ac5833b6cddb80c7985e0b05b70b97c70580945747f320045f719cf7",
+          "path": "mt8167-msdc.sys"
+        }
+      ],
+      "driver_rebuild_required": false,
+      "hardware_verified": false,
+      "main_seal": {
+        "path": "port/xnu/out/windows-rt-msdc-request-perf110/main-independent-seal.json",
+        "sha256": "c493ea6736cc951d6616ab081dd956872a85e20bbe36484aa77f2435cf198738"
+      },
+      "main_sealed": true,
+      "proposed_action": "DIF only after fresh148 actual selected-version/SYS and baseline are known",
+      "speed_measured": false,
+      "changes": [
+        "request-local QPC frequency query count8\u21921 for4KiB",
+        "nonoverlapping512B RtlCopyMemory"
+      ],
+      "preserved_contracts": [
+        "MDL lifetime",
+        "DMA/STOP/flush/cancel/sense",
+        "running counter/deadline",
+        "clock/voltage/write retry"
+      ],
+      "newer_O2_DMA_candidate_automatically_adopted": false
+    },
+    "hcd1017": {
+      "selected": false,
+      "directory": "port/xnu/out/windows-rt-musb-fair1017/package",
+      "manifest": {
+        "path": "port/xnu/out/windows-rt-musb-fair1017/package/signed-manifest.json",
+        "sha256": "66c0bce5da263ceb1ab7987d04255f041b70ed4fc33be8c37d50d3ddf5ec623b"
+      },
+      "producer_pins": {
+        "path": "port/xnu/out/windows-rt-musb-fair1017/pins.json",
+        "sha256": "99dd1ad429b717d5370305d1e400d82ceab54852fe1530a860eb1fd3d3c571cf"
+      },
+      "source_commit": "abb2db82c372cf3634e52e7ccd043a41153d237b",
+      "files": [
+        {
+          "sha256": "e2dfa5fa9e7ae5a04d680393772c5a18c3f1caf60e451eecc4735a2775405efe",
+          "path": "hcd-manifest.json"
+        },
+        {
+          "sha256": "33680a69f647193e7f7adcecf137db525262019c3a8f971ab3095d40f894d72a",
+          "path": "mt8167-development.cer"
+        },
+        {
+          "sha256": "0e636a677df13f139c9d4609158ba6bcb6de0ba55d048837e7d203f320bed5d4",
+          "path": "mt8167-musb-hcd.cat"
+        },
+        {
+          "sha256": "a612f233b1a787ea4ab5d82341e853ee2af6f4194fd9da13d94587a50a6d9db4",
+          "path": "mt8167-musb-hcd.inf"
+        },
+        {
+          "sha256": "2be5594e71de494b2b27a561b0e5d1b6e0e90c6f3a4cd514671224c7678f648d",
+          "path": "mt8167-musb-hcd.sys"
+        }
+      ],
+      "driver_rebuild_required": false,
+      "hardware_verified": false,
+      "main_seal": null,
+      "main_sealed": false,
+      "proposed_action": "store-only import; no absent-child DIF",
+      "stage_only": true,
+      "DIF": false,
+      "physical_5V_OTG_hub_BOT_verified": false
+    },
+    "thermal_rootfix": {
+      "selected": false,
+      "status": "source-work-in-progress-no-final-signed-set-bound",
+      "handoff": {
+        "path": "port/xnu/out/mt8167-thermal-run145-rootfix/HANDOFF-main.md",
+        "sha256": "18b934083cad2b6ce7895ef920d2de2943031c17ccc6ae7a26c245ca372aeb5e"
+      },
+      "artifact": null,
+      "main_seal": null,
+      "known_prior_observation": {
+        "started": true,
+        "problem": 0,
+        "readonly_error": 87,
+        "source_fresh_basis": "fresh146 evidence; not fresh148"
+      },
+      "proposed_contract": [
+        "Parent proof-consumption API correction requires completed exact parent/leaf tuple; never infer unchanged parent1115",
+        "Temperature IOCTL0x226810/28B unchanged",
+        "New readonly state IOCTL0x226814/64B observes only and must not measure or retry",
+        "Raw calibration/ADC/pointers must not be exposed",
+        "Preserve one-shot/proof consumption/failure guard; no successful-temperature stub"
+      ],
+      "complete_signed_tuple_and_main_seal_required": true
+    }
+  },
+  "install_targets": null,
+  "diagnostic_clients": null,
+  "GPU_client_execute": false,
+  "GPU_client_count": 0,
+  "same_GPU341_retest_allowed": false,
+  "GPU_new_rootfix_requires_completed_artifact_and_main_scope": true,
+  "proposed_restart_count": 1,
+  "final_restart_policy_not_fixed": true,
+  "capture_rules": [
+    "Use only main-confirmed latest fresh148 manifest/original files and Recovery binding",
+    "Do not relabel fresh146 originals or run147 intended policy as fresh148",
+    "Re-read native clone actual ROOT HardwareID including hidden/partial BT nodes before any first-install/update selection",
+    "Retained current SYS witnesses must come from actual capture or same-Recovery RO supplement with origin receipt"
+  ],
+  "blockers": [
+    "run147 result and fresh148 capture/native actual not yet received",
+    "final main-selected candidate tuple/scope/diagnostics not fixed",
+    "thermal final signed parent/leaf tuple pending",
+    "HCD1017 independent main seal not yet found; candidate only"
+  ]
+}
