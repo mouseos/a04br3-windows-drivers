@@ -14,7 +14,7 @@ static BOOLEAN GeoRenderTqPresent(const BLT_INFO *dst,const BLT_INFO *src,const 
 {
  PWSTR names=NULL;PFILE_OBJECT file=NULL;PDEVICE_OBJECT device=NULL;PIRP irp=NULL;
  UNICODE_STRING name;GeoTqQueryWait wait;geo_dod_tq_interface api={};geo_dod_tq_receipt receipt={};
- a04_present_surface source,dest;a04_present_tile tile;SIZE_T offset;
+ a04_present_surface source,dest;a04_present_tile tile;size_t offset;
  BYTE *bounce=NULL;NTSTATUS status=STATUS_NOT_SUPPORTED;BOOLEAN referenced=FALSE;
  if(!dst || !src || !rect || KeGetCurrentIrql()!=PASSIVE_LEVEL || KeAreAllApcsDisabled() ||
     !dst->pBits || !src->pBits || dst->BitsPerPel!=32 || src->BitsPerPel!=32 ||
