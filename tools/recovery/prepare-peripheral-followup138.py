@@ -45,7 +45,7 @@ def validate(root,path):
  require(baselines['render']['version_u64']==version('0.0.3.35') and baselines['render']['sys_sha256']=='8385ab35361b09b9b2dd51b6b52db8ae89e81bad60860735a29ccbec4b15ba6e','Exact installed335 package with retained332 KMD required')
  # Independent candidate/source and full baseline44 joins, never version-only.
  for role in m['install_targets']:
-  e=m['packages'][role];require(e.get('producer_pins') is not None,'Changed role needs completed producer pins');pin(e['producer_pins'])
+  e=m['packages'][role];require(e.get('producer_pins') is not None,'Changed role needs completed producer pins');pin(e['producer_pins']);pin(e['main_seal']) if role=='parent' else None
  gp=gpu=m['candidate_gpu_suite'];mp=rooted(root,gpu['manifest']);pm=read(mp)
  require(sha(mp)==gpu['manifest_sha256']=='2463c9cc1fd13d6530c28e2f324fdd591f5975d9ada053c7a706b76e236f3454' and pm['schema']=='lock-entire335-independent-sources-v1' and pm['package_source_commit']==pm['umd_source_commit']==gpu['binary_source']=='26b7c8ef2034bb41265dbd4347d952b7a838d7a8','Exact335 UMD package attribution required')
  require(pm['kernel_binary_source_commit']==pm['native_owner_source_commit']=='7c6ef6a83197b655f0f3fb27d4749102e8127940' and pm['new_client_source_commit']=='7c6ef6a83197b655f0f3fb27d4749102e8127940' and pm['adapter_contract_version']==7 and pm['driver_wire_version']==5 and pm['shader_draw_version']==4 and pm['texture_draw_version']==3 and pm['sampler_profile_version']==4 and pm['root_reset_fix_proven'] is False,'Retained332 KMD/native/client and same private ABI required')
@@ -73,6 +73,10 @@ def validate(root,path):
  v=m['diagnostics']['audio_consumer'];require(v['mode']=='silent-standard-pcm' and v['audible_output_allowed'] is False and v['phase']==0 and v['one_shot'] and 0 < v['timeout_ms'] <= 30000 and v['relative_directory']==SERVICE+'\\clients','Bounded existing standard audio consumer required')
  require(set(m['diagnostics']) >= set(CLIENT_NAMES) and set(CLIENT_NAMES).isdisjoint({'gpu_suite'}),'Fixed normal clients only')
  require(m['rotation_execute'] is False and m['wlan_scan_execute'] is False and m['planned_reboots']==1 and m['install_targets']==['parent','audio'],'No repeated scan/rotation/DIF/reboot')
+ companion=m['companion_packages']['hcd1014'];require(companion['stage_only'] and not companion['DIF'] and not companion['rebuilt'],'HCD1014 import-only contract required')
+ cp=rooted(root,companion['manifest']);cm=read(cp);require(sha(cp)==companion['manifest_sha256'] and cm['signed'] and cm['source_commit']=='ff9b5434e62d23381ebabd9dcc02c905dac74c4c','Retained signed1014 provenance required')
+ require([f['name'] for f in companion['files']]==['mt8167-musb-hcd.sys','mt8167-musb-hcd.inf','mt8167-musb-hcd.cat'],'Fixed HCD trio only')
+ for f in companion['files']:require(sha(rooted(root,Path(companion['directory'])/f['name']))==f['sha256'] and any(e['path']==f['name'] and e['sha256']==f['sha256'] for e in cm['files']),'HCD trio manifest mismatch')
  blockers=list(m['blockers'])
  return m,packages,baselines,blockers
 
@@ -82,6 +86,8 @@ def header(packages,baselines,policy=None):
   t=TARGETS[role];p=packages[role];b=baselines[role];lines.append('{'+','.join(cstr(x) for x in (t[0],t[1],t[2],role,p['names']['inf'],t[3],p['names']['cat']))+','+str(p['version_u64'])+'ULL,'+str(p['date_filetime'])+'ULL,{'+','.join(cbytes(p['hashes'][k]) for k in ('inf','sys','cat'))+'},'+str(b['version_u64'])+'ULL,'+str(b['date_filetime'])+'ULL,'+cbytes(b['sys_sha256'])+','+cstr(b['inf'])+'},')
  lines+=['};','#define A04_CANDIDATE_EXTRA_COUNT 2u','static const struct candidate_extra_file candidate_extras[2]={']
  for e in packages['render']['extra_members']:lines.append('{'+cstr(e['name'])+','+cstr(e['installed'])+','+cbytes(e['sha256'])+','+cbytes(e['baseline_sha256'])+'},')
+ lines+=['};','#define A04_AUX_HCD1014_IMPORT 1','#define A04_USB_PC_ROLE_OPTIONAL_LEGACY_NODE 1','static const struct preserved_file aux_hcd_files[3]={']
+ for f in policy['companion_packages']['hcd1014']['files'] if policy else CURRENT_COMPANION['hcd1014']['files']:lines.append('{'+cstr(f['name'])+','+cbytes(f['sha256'])+'},')
  lines+=['};','static const struct preserved_file preserved_files[]={']
  for name,h in CURRENT_PRESERVED.items():lines.append('{'+cstr(name[len('Windows/System32/'):].replace('/','\\'))+','+cbytes(h)+'},')
  lines+=['};','static const struct preserved_service preserved_services[]={']
@@ -93,8 +99,8 @@ def header(packages,baselines,policy=None):
 def build_policy(root,path,finalize=False):
  root=Path(root).resolve(strict=True);m,pkgs,base,blocks=validate(root,rooted(root,path))
  if finalize:require(COMBINED_GPU_ADAPTER_READY and not blocks and m['draft'] is False and m['normal_install_allowed'] is True and base['battery']['sys_sha256']!='0'*64 and m['diagnostics']['wifi_scan']['client_package'] is not None,'Finalization blocked by actual witness or final candidate validation')
- global CURRENT_PRESERVED,CURRENT_OLD_SERVICES,CURRENT_CLIENTS,CURRENT_INSTALL
- CURRENT_INSTALL=m['install_targets']
+ global CURRENT_PRESERVED,CURRENT_OLD_SERVICES,CURRENT_CLIENTS,CURRENT_INSTALL,CURRENT_COMPANION
+ CURRENT_INSTALL=m['install_targets'];CURRENT_COMPANION=m['companion_packages']
  fm=read(rooted(root,m['fresh']['path']));new_sys={TARGETS[k][3] for k in m['install_targets']}
  CURRENT_PRESERVED={e['source_path']:e['sha256'] for e in fm['files'] if (e['source_path'].startswith('Windows/System32/Drivers/') and e['source_path'].split('/')[-1] not in new_sys) or e['source_path']=='Windows/System32/MT8167EngineProbe.exe'}
  for name in ('Windows/System32/MT8167CombinedFollowup124.exe','Windows/System32/MT8167CombinedFollowup126.exe','Windows/System32/MT8167CombinedFollowup128.exe','Windows/System32/MT8167CombinedFollowup130.exe','Windows/System32/MT8167CombinedFollowup132.exe','Windows/System32/MT8167CombinedFollowup134.exe','Windows/System32/MT8167CombinedFollowup136.exe','Windows/System32/MT8167RenderSingleGpu.exe','Windows/System32/ge8300-umd.dll','Windows/System32/Drivers/ge8300-mips.fw'):
@@ -121,7 +127,7 @@ def build_policy(root,path,finalize=False):
  clients=[{**v,'relative_directory':v.get('relative_directory',SERVICE+'\\clients'),'dependencies':v.get('dependencies',[])} for v in CURRENT_CLIENTS]
  policy={'schema':1,'profile':PROFILE,'service':SERVICE,'data_directory':SERVICE,'draft':not finalize,'normal_install_allowed':bool(finalize),'backup_manifest':m['fresh']['path'],'backup_manifest_sha256':FRESH,'recovery_boot_id':BOOT,'capture_selection':{'schema':1,'profile':PROFILE,'capture_number':138,'manifest_sha256':FRESH,'recovery_boot_id':BOOT,'gpu_policy_sha256':m['gpu']['policy_sha256'],'unchanged_since_capture':True},'source_files':{n:{k:next(e for e in fm['files'] if e['source_path']=='Windows/System32/config/'+n)[k] for k in ('bytes','sha256')} for n in ('SYSTEM','SYSTEM.LOG1','SYSTEM.LOG2')},'packages':pkgs,'baselines':base,'service_preservation':CURRENT_OLD_SERVICES,'preserved_files':CURRENT_PRESERVED,'preserved_sources':preserved_sources,'planned_reboots':1,'install_targets':m['install_targets'],'stage_order':list(ROLES),'first_install_mask':0,'deferred_unbound_mask':0,'battery_baseline_sys_sha256':base['battery']['sys_sha256'],'diagnostic_clients':clients,'gpu_install':False,'diagnostic_only':False,'engine_retest':False,'device_verified':False,'boot_transition':{'mode':'adopt-stock-stop-v3-retain-rtc560cf','boot_path':m['matched_boot']['path'],'boot_sha256':m['matched_boot']['sha256'],'main_handoff_required':True,'boot_write_required':True,'gpt_written':False}}
  policy['observer_contract']=m['unified_execution'];policy['gpu_client_log_baseline']=m['gpu_client_log_baseline'];policy['gpu_new_log_contract']=m['gpu_new_log_contract'];policy['gpu_candidate']=m['candidate_gpu_suite'];policy['gpu_client_execute']=False;policy['gpu_client_count']=0;policy['rtc_adoption_seal']=m['rtc_adoption_seal'];policy['prior_rotation_log']=None;policy['reuse_rotation_directory_without_prior_active_log']=False;policy['wlan_fixed_log_directory']='MT8167CombinedFollowup124';policy['keypad_deferred_unbound']=False
- policy['parent_tuple']=m['parent_tuple'];policy['parent_tuple_pins']=m['parent_tuple_pins'];policy['prior_rotation_executables']=[];policy['gpu_delayed_log_collection']={'source_run':137,'baseline_count':53,'execute_new_client':False,'same_normal_mount':True,'preserve_prior_file_changes':baseline.get('prior_file_changes',{}),'binary_boundary_logs_require_GPR1_decoder':True};policy['normal_function_expectations']=m['normal_function_expectations']
+ policy['companion_packages']=m['companion_packages'];policy['usb_pc_role_legacy_absence_separate_result']=True;policy['parent_tuple']=m['parent_tuple'];policy['parent_tuple_pins']=m['parent_tuple_pins'];policy['prior_rotation_executables']=[];policy['gpu_delayed_log_collection']={'source_run':137,'baseline_count':53,'execute_new_client':False,'same_normal_mount':True,'preserve_prior_file_changes':baseline.get('prior_file_changes',{}),'binary_boundary_logs_require_GPR1_decoder':True};policy['normal_function_expectations']=m['normal_function_expectations']
  policy['baseline_witnesses']={'Windows/System32/ge8300-umd.dll':m['current_render_witnesses']['umd'],'Windows/System32/Drivers/ge8300-render.sys':m['current_render_witnesses']['sys']};require(sha(rooted(root,m['current_render_witnesses']['sys']['path']))==m['current_render_witnesses']['sys']['sha256']==base['render']['sys_sha256'],'Actual oldSYS witness required');require(sha(rooted(root,m['current_render_witnesses']['umd']['path']))==m['current_render_witnesses']['umd']['sha256']=='8982f9248cd2295ed77c326d41a08f798f5ff994f0eab090a4f4f55edfba84d9','Exact installed335 UMD witness required')
  files_lc=next(e for e in fm['files'] if e['source_path']=='Windows/System32/Drivers/lc709203f.sys')
  policy['baseline_witnesses']['Windows/System32/Drivers/lc709203f.sys']={'path':(Path(m['fresh']['path']).parent/files_lc['backup_path']).as_posix(),'sha256':base['battery']['sys_sha256']}
@@ -130,9 +136,9 @@ def build_policy(root,path,finalize=False):
 
 def load_map(path,root):return build_policy(root,path,True)[0]
 def generate(p):
- global CURRENT_PRESERVED,CURRENT_OLD_SERVICES,CURRENT_CLIENTS,CURRENT_INSTALL
+ global CURRENT_PRESERVED,CURRENT_OLD_SERVICES,CURRENT_CLIENTS,CURRENT_INSTALL,CURRENT_COMPANION
  require(p['profile']==PROFILE and p['service']==SERVICE and not p['draft'] and p['normal_install_allowed'],'Final fixed profile only')
- CURRENT_PRESERVED=p['preserved_files'];CURRENT_OLD_SERVICES=p['service_preservation'];CURRENT_CLIENTS=p['diagnostic_clients'];CURRENT_INSTALL=p['install_targets']
+ CURRENT_COMPANION=p['companion_packages'];CURRENT_PRESERVED=p['preserved_files'];CURRENT_OLD_SERVICES=p['service_preservation'];CURRENT_CLIENTS=p['diagnostic_clients'];CURRENT_INSTALL=p['install_targets']
  return header(p['packages'],p['baselines'],p)
 def assert_paths(image,capture=False):
  b=Path(image).read_bytes();require((SERVICE+'.exe').encode('utf-16le') in b and SERVICE.encode('utf-16le') in b,'Compiled service/data UTF16 identity missing')

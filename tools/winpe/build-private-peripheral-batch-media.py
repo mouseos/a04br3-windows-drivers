@@ -62,6 +62,9 @@ def main():
  copy(comp/'compare-files.exe','compare-files.exe');copy(service/(SERVICE+'.exe'),'payload/'+SERVICE+'.exe');copy(system,'payload/SYSTEM.patched')
  for role,v in p['packages'].items():
   for name in list(v['names'].values())+[e['name'] for e in v.get('extra_members',[])]:copy(root/v['directory']/name,'payload/'+role+'/'+name)
+ for key,v in p.get('companion_packages',{}).items():
+  require(a.combined138_profile and key=='hcd1014' and v['stage_only'] and not v['DIF'],'Fixed import-only companion')
+  for f in v['files']:copy(root/v['directory']/f['name'],'payload/'+key+'/'+f['name'])
  for client in p.get('diagnostic_clients',[]):
   copy(root/client['directory']/client['exe'],'payload/clients/'+client['exe'])
   for dep in client['dependencies']:copy(root/client['directory']/dep['exe'],'payload/clients/'+dep['exe'])
@@ -110,6 +113,11 @@ def main():
   dst='C:\\Windows\\System32\\'+DIRECTORY+'\\'+role;prepare+=['mkdir '+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
   for name in list(v['names'].values())+[e['name'] for e in v.get('extra_members',[])]:
    prepare+=['copy /b X:\\a04br3\\payload\\'+role+'\\'+name+' '+dst+'\\'+name+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail','X:\\a04br3\\compare-files.exe X:\\a04br3\\payload\\'+role+'\\'+name+' '+dst+'\\'+name+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
+ for key,v in p.get('companion_packages',{}).items():
+  dst='C:\\Windows\\System32\\'+DIRECTORY+'\\'+key;prepare+=['mkdir '+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
+  for f in v['files']:
+   name=f['name'];src='X:\\a04br3\\payload\\'+key+'\\'+name
+   prepare+=['copy /b '+src+' '+dst+'\\'+name+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail','X:\\a04br3\\compare-files.exe '+src+' '+dst+'\\'+name+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
  if p.get('diagnostic_clients'):
   sep=chr(92);system=sep.join(('C:','Windows','System32'))+sep
   for directory in sorted({c['relative_directory'] for c in p['diagnostic_clients']}):

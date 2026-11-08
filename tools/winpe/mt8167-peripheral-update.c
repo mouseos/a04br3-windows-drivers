@@ -48,6 +48,12 @@ struct diagnostic_client {const WCHAR *exe,*arguments,*name,*relative_directory;
 #ifndef A04_CANDIDATE_EXTRA_COUNT
 #define A04_CANDIDATE_EXTRA_COUNT 0u
 #endif
+#ifndef A04_AUX_HCD1014_IMPORT
+#define A04_AUX_HCD1014_IMPORT 0
+#endif
+#ifndef A04_USB_PC_ROLE_OPTIONAL_LEGACY_NODE
+#define A04_USB_PC_ROLE_OPTIONAL_LEGACY_NODE 0
+#endif
 #define PERIPHERAL_TARGET_COUNT (sizeof(targets)/sizeof(targets[0]))
 typedef char bounded_gpu_extras[(A04_CANDIDATE_EXTRA_COUNT<=2)?1:-1];
 typedef char bounded_target_count[(PERIPHERAL_TARGET_COUNT>0 && PERIPHERAL_TARGET_COUNT<=11)?1:-1];
@@ -390,6 +396,29 @@ static DWORD run_clients(DWORD peripheral_result)
  return first;
 }
 #endif
+/* Fixed auxiliary signed package: publish for future OTG PnP only, never DIF an absent child. */
+#if A04_AUX_HCD1014_IMPORT
+static DWORD import_aux_hcd1014(void){
+ WCHAR dir[MAX_PATH],paths_[3][MAX_PATH];const WCHAR *members[5];HANDLE files[5]={INVALID_HANDLE_VALUE,INVALID_HANDLE_VALUE,INVALID_HANDLE_VALUE,INVALID_HANDLE_VALUE,INVALID_HANDLE_VALUE},directory=INVALID_HANDLE_VALUE;
+ struct {DWORD schema,bytes,result,imported,no_dif;WCHAR published_inf[MAX_PATH];} proof;
+ DWORD e=0,i,saved;memset(&proof,0,sizeof(proof));proof.schema=1;proof.bytes=sizeof(proof);proof.no_dif=1;
+ e=path(dir,base_directory,L"hcd1014");if(!e)e=hold_directory(dir,&directory);
+ /* aux_hcd_files order is SYS, INF, CAT; membership helper expects INF, SYS, CAT. */
+ members[3]=members[4]=NULL;
+ for(i=0;!e&&i<3;i++){unsigned src=i==0?1:(i==1?0:2);e=path(paths_[i],dir,aux_hcd_files[src].name);members[i]=paths_[i];if(!e)e=deferred_file(paths_[i],aux_hcd_files[src].hash,&files[i]);}
+ if(!e)e=fixed_signer(paths_[2],files[2]);if(!e)e=deferred_members(2,paths_[2],members,files);
+ if(!e){if(!SetupCopyOEMInfW(paths_[0],dir,SPOST_PATH,0,proof.published_inf,MAX_PATH,NULL,NULL))e=GetLastError();else proof.imported=1;}
+ proof.result=e;saved=save_blob(L"hcd1014-import.bin",&proof,sizeof(proof));record(2,0x28a,e);if(saved&&!e)e=saved;
+ for(i=0;i<5;i++)if(files[i]!=INVALID_HANDLE_VALUE)CloseHandle(files[i]);if(directory!=INVALID_HANDLE_VALUE)CloseHandle(directory);return e;
+}
+#endif
+#if A04_USB_PC_ROLE_OPTIONAL_LEGACY_NODE
+static DWORD legacy_usb_node_observation(DWORD discovery){
+ struct {DWORD schema,bytes,discovery_error,legacy_node_absent,retained_sys_result,otg_functional_success;} proof;
+ DWORD e,saved;memset(&proof,0,sizeof(proof));proof.schema=1;proof.bytes=sizeof(proof);proof.discovery_error=discovery;proof.legacy_node_absent=discovery==ERROR_NOT_FOUND;
+ e=installed_sys(2,0);proof.retained_sys_result=e;saved=save_blob(L"usb-pc-role.bin",&proof,sizeof(proof));record(2,0x28b,discovery);return e?e:saved;
+}
+#endif
 static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_COUNT][5],directory_holds[PERIPHERAL_TARGET_COUNT];static WCHAR paths_[PERIPHERAL_TARGET_COUNT][3][MAX_PATH],extra_paths[2][MAX_PATH],folders[PERIPHERAL_TARGET_COUNT][MAX_PATH];SP_DEVINFO_DATA devs[PERIPHERAL_TARGET_COUNT];HDEVINFO set=INVALID_HANDLE_VALUE;DWORD i,j,e=0,first=0;const WCHAR *members[5];for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){directory_holds[i]=INVALID_HANDLE_VALUE;for(j=0;j<5;j++)held[i][j]=INVALID_HANDLE_VALUE;}
  /* Every candidate trio is held, byte-checked and CAT-verified before staging. */
  for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){e=path(folders[i],base_directory,targets[i].folder);if(!e)e=hold_directory(folders[i],&directory_holds[i]);if(e)goto done;for(j=0;j<3;j++){const WCHAR *n=j==0?targets[i].inf:(j==1?targets[i].sys:targets[i].cat);e=path(paths_[i][j],folders[i],n);if(!e)e=deferred_file(paths_[i][j],targets[i].hash[j],&held[i][j]);if(e)goto done;members[j]=paths_[i][j];}members[3]=members[4]=NULL;
@@ -402,7 +431,11 @@ static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_CO
  DWORD metadata,sys,inf_error=ERROR_NOT_READY;combined_nodes[i].observed=1;combined_nodes[i].discovery_error=0;cr=CM_Get_DevNode_Status(&status,&problem,devs[i].DevInst,0);record(i,0x202,(DWORD)cr);record(i,0x203,status);record(i,0x204,problem);
  metadata=selected_runtime(i,set,&devs[i],&inf_error);record(i,0x253,inf_error);record(i,0x219,metadata);sys=installed_sys(i,1);record(i,0x21a,sys);combined_nodes[i].cr=cr;combined_nodes[i].status=status;combined_nodes[i].problem=problem;combined_nodes[i].metadata_error=metadata;combined_nodes[i].sys_error=sys;combined_nodes[i].inf_location_error=inf_error;
  e=metadata?metadata:sys;if(!e&&(cr!=CR_SUCCESS||!(status&DN_STARTED)||problem))e=ERROR_NOT_READY;
-}else{combined_nodes[i].observed=1;combined_nodes[i].discovery_error=e;}if(PERIPHERAL_TARGET_COUNT==11&&i==10){combined_gpu_node_ready=e?0:1;}else if(e&&!first)first=e;}e=installed_gpu_extras(1);record(10,0x285,e);if(e)combined_gpu_node_ready=0;
+}else{combined_nodes[i].observed=1;combined_nodes[i].discovery_error=e;}
+#if A04_USB_PC_ROLE_OPTIONAL_LEGACY_NODE
+ if(i==2){DWORD seen=legacy_usb_node_observation(e);if(seen)e=seen;else if(e==ERROR_NOT_FOUND)e=0;}
+#endif
+ if(PERIPHERAL_TARGET_COUNT==11&&i==10){combined_gpu_node_ready=e?0:1;}else if(e&&!first)first=e;}e=installed_gpu_extras(1);record(10,0x285,e);if(e)combined_gpu_node_ready=0;
 #if !A04_DIAGNOSTIC_ONLY || A04_READONLY_PERIPHERAL_STATUS
  e=readonly_status();if(e&&!first)first=e;
 #endif
@@ -420,6 +453,9 @@ static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_CO
  for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){if(!(A04_PERIPHERAL_INSTALL_MASK&(1u<<i)))continue;e=deferred_find(i,set,&devs[i]);if(!e)e=selected(i,set,&devs[i],0);if(!e)e=installed_sys(i,0);if(e)goto done;}
  for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){if(!(A04_PERIPHERAL_DEFERRED_UNBOUND_MASK&(1u<<i)))continue;e=deferred_find(i,set,&devs[i]);if(!e)e=first_keypad_baseline(i,set,&devs[i]);if(!e)e=installed_sys(i,0);if(e)goto done;}
  e=installed_gpu_extras(0);if(e)goto done;
+#if A04_AUX_HCD1014_IMPORT
+ e=import_aux_hcd1014();if(e)goto done;
+#endif
  for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){if(!(A04_PERIPHERAL_INSTALL_MASK&(1u<<i)))continue;if(A04_PERIPHERAL_DEFERRED_UNBOUND_MASK&(1u<<i))continue;if(WaitForSingleObject(stop_event,0)==WAIT_OBJECT_0){e=ERROR_CANCELLED;goto done;}if(!SetupCopyOEMInfW(paths_[i][0],folders[i],SPOST_PATH,0,NULL,0,NULL,NULL)){e=GetLastError();goto done;}record(i,0x205,0);}
  for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){if(!(A04_PERIPHERAL_INSTALL_MASK&(1u<<i)))continue;if(WaitForSingleObject(stop_event,0)==WAIT_OBJECT_0){e=ERROR_CANCELLED;goto done;}e=deferred_install(i,set,&devs[i],paths_[i][0]);if(e)goto done;}
  e=preserved();if(e)goto done;e=deferred_marker(L"deferred-pending.bin",1);if(!e)e=deferred_arm_diagnostics();if(!e)e=ERROR_SUCCESS_REBOOT_REQUIRED;
