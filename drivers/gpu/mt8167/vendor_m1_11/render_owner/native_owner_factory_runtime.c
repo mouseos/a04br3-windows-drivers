@@ -50,6 +50,7 @@ NTSTATUS e_native_stop_locked(struct e_native_owner *c)
         c->receipt_valid=TRUE;c->job_state=E_JOB_NONE;return STATUS_SUCCESS;
     }
     if(!a->start.online || a->start.command_poisoned || a->render.poisoned)return STATUS_DEVICE_BUSY;
+    if(c->copy_transfer){status=a04_native_tq_transfer_drain_for_stop(c->copy_transfer,&a->start);if(!NT_SUCCESS(status))return status;}
     if(c->job_state==E_JOB_SUBMITTED && a->dispatch.state==A04_NATIVE_DISPATCH_SUBMITTED){
         status=a04_vendor_native_owner_finish_passive(a->native,&a->start,&a->dispatch.result);
         if(!NT_SUCCESS(status))return status;
@@ -149,7 +150,6 @@ NTSTATUS e_native_boot_locked(struct e_native_owner *c)
     if(!a04_vendor_m1_11_power_valid(&power))return STATUS_DEVICE_NOT_READY;
     uint64_t bvnc=(uint64_t)READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x24))<<32 |
         READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x20));
-    if(!c->copy_transfer){status=a04_native_mdl_set_direction_cpu(a->binding,FALSE);if(!NT_SUCCESS(status))return status;}
     status=a04_vendor_m1_11_windows_start(&a->start,&a->firmware,c->core,0x80000,bvnc,&power,A04_VENDOR_IRQ_MASKED);GeoFactoryCheckpoint(37,status,1,a->start.online,a->start.attempted,a->start.command_poisoned);
     if(!NT_SUCCESS(status))return status;
     status=a04_vendor_m1_11_windows_fence(&a->start,0,TRUE);GeoFactoryCheckpoint(37,status,2,0,0,0);if(!NT_SUCCESS(status))return status;

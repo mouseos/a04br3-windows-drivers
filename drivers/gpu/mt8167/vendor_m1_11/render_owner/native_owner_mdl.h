@@ -14,12 +14,12 @@ struct a04_native_mdl_lease {
     NTSTATUS (*acquire)(void *,PMDL);
     void (*release)(void *,PMDL);
 };
-/* PASSIVE serialized CPU-owned backing lease. DMA resource allocation is
- * deferred until sync_for_gpu; only that operation creates DMA/PT addresses.
- * V3 synchronous allocation rejects resource shortage without queued work. */
+/* PASSIVE serialized CPU-owned backing lease. Only WDDM1.x physical
+ * MAP_APERTURE backing is accepted; bind retains physical pages immediately.
+ * sync_for_gpu changes cache ownership, never allocates HAL packet DMA. */
 NTSTATUS a04_native_mdl_bind(struct a04_native_mdl_binding **,PDMA_ADAPTER,
     PDEVICE_OBJECT,PMDL,ULONG bytes,const struct a04_native_mdl_lease *);
-/* Input SG retains WriteToDevice=TRUE for the real DMA adapter. */
+/* Input and output use the same WDDM page-lifetime contract. */
 NTSTATUS a04_native_mdl_bind_input(struct a04_native_mdl_binding **,PDMA_ADAPTER,
  PDEVICE_OBJECT,PMDL,ULONG,const struct a04_native_mdl_lease *);
 ULONG a04_native_mdl_extent(const struct a04_native_mdl_binding *);
@@ -29,11 +29,14 @@ PDMA_ADAPTER a04_native_mdl_adapter(const struct a04_native_mdl_binding *);
 NTSTATUS a04_native_mdl_hold_cold(struct a04_native_mdl_binding *);
 NTSTATUS a04_native_mdl_drop_cold(struct a04_native_mdl_binding *);
 const uint64_t *a04_native_mdl_pages(const struct a04_native_mdl_binding *,ULONG *count);
+/* Metadata-only ownership check; caller holds the native owner serialization.
+ * TRUE requires retained physical backing, live exposure and GPU cache owner. */
+BOOLEAN a04_native_mdl_gpu_owned(const struct a04_native_mdl_binding *);
 void *a04_native_mdl_cpu(const struct a04_native_mdl_binding *);
 PMDL a04_native_mdl_original(const struct a04_native_mdl_binding *);
-/* CPU -> DMA: acquire real V3 registers/SG with unique contexts. DMA -> CPU:
- * explicit adapter flush + resource free, only after PTE/MMU retirement.
- * Never call CPU accessors while DMA-owned. Failure retains uncertain refs. */
+/* Exact locked-MDL CPU clean before GPU publication; invalidate only after
+ * real job/SLC/GP completion. Residency PTE/page references survive until
+ * WDDM UNMAP + real native retirement. No HAL SG/map-register lifetime. */
 NTSTATUS a04_native_mdl_sync_for_gpu(struct a04_native_mdl_binding *);
 NTSTATUS a04_native_mdl_sync_for_cpu(struct a04_native_mdl_binding *);
 /* Call BEFORE any GPU page-table root can expose these pages. One-way until
@@ -42,15 +45,11 @@ NTSTATUS a04_native_mdl_mark_exposed(struct a04_native_mdl_binding *);
 NTSTATUS a04_native_mdl_release_cold(struct a04_native_mdl_binding **);
 /* Provider-private retirement step. Caller must have completed the fixed
  * FW off/real IRQ drain/RGXStop/platform-off + callback gate/rundown contract.
- * This only drops the exposure marker; targets/SG/pages remain retained until
+ * This only drops the exposure marker; targets/pages remain retained until
  * ordered cold detach. Never call based only on idle, a mask, or CPU poll. */
 NTSTATUS a04_native_mdl_retire_after_gpu_off(struct a04_native_mdl_binding *);
 /* Identity-only addresses: comparisons/overlap checks, never CPU access or
- * GPU PTE construction. DMA PTEs must use pages() after successful acquire. */
+ * GPU PTE construction. GPU PTEs must use pages() while the WDDM lease remains retained. */
 const uint64_t *a04_native_mdl_physical_identity(const struct a04_native_mdl_binding *,ULONG *);
 const void *a04_native_mdl_cpu_identity(const struct a04_native_mdl_binding *);
-/* Native target transaction only, after zero-PTE write and real MMU ack. */
-NTSTATUS a04_native_mdl_detach_after_mmu_ack(struct a04_native_mdl_binding *);
-/* CPU-owned only; select actual transfer direction before next acquire. */
-NTSTATUS a04_native_mdl_set_direction_cpu(struct a04_native_mdl_binding *,BOOLEAN to_device);
 #endif

@@ -261,12 +261,9 @@ static int32_t prepare_copy(void *p,uint64_t source,uint64_t destination,uint64_
  s=wait_boundary_locked(c);if(!NT_SUCCESS(s))return leave(c,s);
  s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);
  if(NT_SUCCESS(s))s=e_native_build_graph_locked(c);
- if(NT_SUCCESS(s))s=a04_native_mdl_set_direction_cpu(c->allocation->binding,TRUE);
- if(NT_SUCCESS(s))s=a04_native_mdl_set_direction_cpu(dst->linear,FALSE);
  if(NT_SUCCESS(s))s=a04_native_copy_storage_create(&c->copy_storage,c->allocation->native,dst->linear,&dst->desc,a04_copy_usc_asset,sizeof(a04_copy_usc_asset));
  if(NT_SUCCESS(s))s=a04_native_tq_transfer_prepare(&c->copy_transfer,c->copy_storage);
  if(NT_SUCCESS(s))s=e_native_boot_locked(c);
- if(NT_SUCCESS(s))s=a04_native_copy_storage_validate_dma(c->copy_storage);
  if(NT_SUCCESS(s)){RGXFWIF_CCB_CTL k;
   if(a04_rgx_device_read_words(&k,c->allocation->firmware.runtime->kctl,sizeof(k))||k.ui32WrapMask!=127||k.ui32ReadOffset!=k.ui32WriteOffset)s=STATUS_DEVICE_BUSY;
   else{c->kick_write=k.ui32WriteOffset;c->job=++c->next_id;c->job_state=E_JOB_PREPARED;*job=c->job;}}
