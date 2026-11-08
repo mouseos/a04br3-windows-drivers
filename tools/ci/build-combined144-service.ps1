@@ -8,7 +8,7 @@ if(@(& git -C $root status --porcelain).Count -or (Test-Path $out) -or !$out.Sta
 $inc=[IO.Path]::GetFullPath($KitHeaderRoot);$lib=[IO.Path]::GetFullPath($LibraryRoot);$sign=[IO.Path]::GetFullPath($SigntoolPath)
 $cert=Get-Item "Cert:\CurrentUser\My\$thumb";if(!$cert.HasPrivateKey){throw 'Existing BCBF private identity required'}
 if($Mode -ne 'Service' -or !$PackageMap){throw 'Combined service-only final map required'}
-& python -B "$root\tools\recovery\prepare-peripheral-followup142.py" --workspace $Workspace --map $PackageMap --out $out --finalize
+& python -B "$root\tools\recovery\prepare-peripheral-followup144.py" --workspace $Workspace --map $PackageMap --out $out --finalize
 if($LASTEXITCODE){throw 'Final combined contract rejected'}
 $name='MT8167CombinedFollowup144';$source="$root\tools\winpe\mt8167-peripheral-update.c"
 $oldTmp=$env:TMP;$oldTemp=$env:TEMP
