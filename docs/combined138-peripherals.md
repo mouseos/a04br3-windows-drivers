@@ -1,0 +1,11 @@
+# fresh138 / run139 normal peripheral bundle
+
+This profile accepts only capture138 manifest db49ed4d7b1759541f6021acd4d1f03b531fe4919f97b4d701d7b329f09ccd15 and Recovery bb058389-f139-4728-b90a-47b2cbe20a8f. Original37 files and all SYSTEM trio hashes are verified. Only a clone is read/armed natively on the SSH host.
+
+Service/data MT8167CombinedFollowup138, DisplayName MediaTek combined peripherals138, profile combined-peripherals-fresh138-v1. Exactly parent1115 and unified audio1033 are DIF targets; one planned restart. Standalone1032 and HP1031 are distinct profiles and must never be staged together. Final1033 must retain HPv2/build1107 and all6 permanent subdevice names. Parent1115 retains thermalV3/build1104, HPv2/build1107, USB1014 producer and GPIO qualification. Boot f7f997105c11eb60142e1992867533f20dd009ff1dc2cd8f3b49c50e005bf53e is required with the parent, write_required=true.
+
+GPU335 UMD, KMD/native332, firmware, installed clients and all old SCM/provider/static state stay exact. No new GPU phase/client is allowed; count0. Read the retained53-file baseline and late run137 logs during the same next normal mount. Preserve the baseline prior_file_changes record, including appended run135 same-PID data. GPR1 binary boundaries need their decoder; filename/PID alone is not success.
+
+Five bounded normal clients: RTC clock comparison, LC temperature, ACCDET status, AFE current read, and the final signed silent standard PCM consumer. The existing SCM RTC/thermal readonly path is retained. Audio must submit silent buffers; stream/CUR/IRQ evidence is distinct from audible playback. No headphone connection or OTG success is asserted. PC-role USB evidence is passive and must not switch VBUS/role. No old tone client or GPU client may be substituted. Pending producer pins fail closed.
+
+Native reader validates schema2, 11 nodes, the sealed five-client count and fixed binary8-record client storage. Preserve all15 old services, graphics/GPU ledger, node selections and typed configuration; record WDF TimeOfLastSqmLog separately without changing preservation checks. SOFTWARE and user data must not be rolled back. The main owner seals and deploys; builder never operates hardware.
