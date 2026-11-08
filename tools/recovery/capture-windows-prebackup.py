@@ -29,7 +29,8 @@ DRIVERS = 'Windows/System32/Drivers/'
 ENGINE_STATE = ('Windows/System32/MT8167EngineProbe/attempted.bin',
                 'Windows/System32/MT8167EngineProbe/logs/service.log',
                 'Windows/System32/MT8167EngineProbe.exe')
-ENGINE_OPTIONAL_STATE = ('MT8167EngineProbe/brightness-native.log',
+ENGINE_OPTIONAL_STATE = ('Windows/System32/MT8167CombinedFollowup124.exe',
+                         'MT8167EngineProbe/brightness-native.log',
                          'Windows/System32/MT8167EngineProbe/logs/brightness-native.log',
                          'Windows/System32/MT8167CaptureProbe/capture.log',
                          'Windows/System32/MT8167EngineProbe/logs/capture.stdout.txt',
