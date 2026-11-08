@@ -2,7 +2,7 @@
 
 このprofileはGPU診断媒体と分離する。USB1009、MMA1.10、AJTD4R eMMC1.9、親1101を既存4nodeへ通常OSのDIFで延期installする。RTC5（DriverVerは0.0.1.0）とthermal17は先にstore stageするだけで、親更新後の起動時bindを待つ。既存Engine/renderの再試験、旧driverの再install、校正変更は含まない。
 
-現段階はsourceのみ。Cのcompile/link、専用serviceの署名、private hive replay、媒体生成、実機検証は未実施。既存候補の署名済みSYS/CATとは区別する。main指定のfresh114以降が未結合のdraftからはheader/build/arm/mediaを生成できない。
+4076878d時点はsourceのみ。Cのcompile/link、専用serviceの署名、private hive replay、媒体生成、実機検証は未実施。既存候補の署名済みSYS/CATとは区別する。main指定のfresh114以降が未結合のdraftからはheader/build/arm/mediaを生成できない。
 
 ## main指定captureの結合
 
@@ -67,3 +67,7 @@ collectorにはSYSTEM/DRIVERS各trio、4更新対象SYS、MMAのEnum選択、旧
 通常OSでは全候補を固定CAT/BCBF/hash検査→RTC/thermalを含む6候補stage→USB/MMA/eMMC/親の順でDIF→旧file/service保持確認→1回rebootを予定する。失敗後の自動再試行はない。次bootの選択版/date/service/class/SYS/OEM INF hash、DN_STARTED/problemを確認する。
 
 RTC/thermal status取得はread-only IOCTLだけ。stale、not-ready、unsupported、cancel不明は失敗で記録し、成功stubへ変換しない。thermalはboot測定のため収集時にstaleになる場合がある。status読取り成功と温度・時計の実機機能成功は区別する。PB UARTはbounded queue受付のログで、機能成功証拠ではない。
+
+## fresh114の補足保持capture
+
+原manifest hashは変更しない。固定Render service EXE/UMD/FWの不足時だけ、同Recovery bootで原capture全fileの前後hashを確認したread-only補足manifestを`fresh.supplement`と`supplement_sha256`に結合できる。補足schemaは固定3file以外を拒否し、manifest hash/boot IDを原captureへ結合する。最終media stageでは保持file全件の実capture witnessを現Windows bytesと比較してからSYSTEMをarmする。

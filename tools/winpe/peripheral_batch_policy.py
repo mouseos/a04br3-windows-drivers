@@ -74,7 +74,8 @@ def validate_selection(selection,manifest,manifest_sha,boot_id):
  hexpin(selection['gpu_policy_sha256'])
 
 def bind_capture(f,root):
- require(set(f)=={'manifest','sha256','bindings','bindings_sha256','main_selection','main_selection_sha256'},'明示main selectionとnative snapshotのpin必須')
+ base={'manifest','sha256','bindings','bindings_sha256','main_selection','main_selection_sha256'}
+ require(set(f) in (base,base|{'supplement','supplement_sha256'}),'明示main selectionとnative snapshotのpin必須')
  mf=rooted(root,f['manifest']);require(sha(mf)==hexpin(f['sha256']),'capture manifest pin不一致')
  b=read(mf);sp=rooted(root,f['main_selection']);require(sha(sp)==hexpin(f['main_selection_sha256']),'main selection pin不一致');selection=read(sp)
  validate_selection(selection,mf.relative_to(root).as_posix(),f['sha256'],b.get('recovery_boot_id'))
@@ -83,6 +84,14 @@ def bind_capture(f,root):
  for e in b['files']:
   p=rooted(root,mf.parent/e['backup_path']);name=e['source_path'].replace('\\','/').lower()
   require(name not in files and p.is_relative_to(mf.parent) and sha(p)==hexpin(e['sha256']) and p.stat().st_size==e['bytes'],'capture重複/byte不一致');files[name]=e
+ if 'supplement' in f:
+  supplement=rooted(root,f['supplement']);require(sha(supplement)==hexpin(f['supplement_sha256']),'補足capture pin不一致');extra=read(supplement)
+  require(set(extra)=={'schema','source_manifest_sha256','recovery_boot_id','status','read_only','unmounted','errors','files'} and extra['schema']==1 and extra['source_manifest_sha256']==f['sha256'] and extra['recovery_boot_id']==b['recovery_boot_id'] and extra['status']=='captured-unmounted' and extra['read_only'] is True and extra['unmounted'] is True and extra['errors']==[],'同boot read-only補足captureのみ許可')
+  allowed={'Windows/System32/MT8167RenderSingleGpu.exe','Windows/System32/ge8300-umd.dll','Windows/System32/Drivers/ge8300-mips.fw'}
+  require(len(extra['files'])==3 and {e['source_path'] for e in extra['files']}==allowed,'補足は固定GPU保持3fileだけ')
+  for e in extra['files']:
+   q=rooted(root,supplement.parent/e['backup_path']);name=e['source_path'].lower()
+   require(name not in files and q.is_relative_to(supplement.parent) and 0<e['bytes']<=16*1024*1024 and q.stat().st_size==e['bytes'] and sha(q)==hexpin(e['sha256']),'補足file重複/hash/size不一致');files[name]={**e,'absolute_capture_path':str(q)}
  bindings=rooted(root,f['bindings']);require(sha(bindings)==hexpin(f['bindings_sha256']),'bindings pin不一致');binding=read(bindings)
  require(binding.get('source_manifest_sha256')==f['sha256'] and binding.get('recovery_boot_id')==selection['recovery_boot_id'] and binding.get('gpu_policy_sha256')==selection['gpu_policy_sha256'] and binding.get('original_unchanged') is True and binding.get('errors')==[] and all(type(binding.get(k)) is int and binding[k]==0 for k in ('load_rc','unload_rc','privilege_restore_error')),'native capture/policy/boot出自不一致')
  for n in ('SYSTEM','SYSTEM.LOG1','SYSTEM.LOG2'):
@@ -120,8 +129,8 @@ def load_map(path,root):
  for e in s['preserved_files']:
   require(set(e)=={'path','sha256'} and re.fullmatch(r'Windows/System32/(?:Drivers/)?[A-Za-z0-9_.-]+',e['path']),'保持file path不正')
   actual=files.get(e['path'].lower());require(actual and actual['sha256']==hexpin(e['sha256']),'保持file capture不一致');require(e['path'].split('/')[-1] not in {TARGETS[x][4] for x in ('usb','mma','emmc','parent')},'更新対象を保持表へ混在禁止');preserved[e['path']]=e['sha256']
- require(len(preserved)>=7 and {'Windows/System32/MT8167EngineProbe.exe','Windows/System32/MT8167RenderSingleGpu.exe','Windows/System32/Drivers/mt8167-audio.sys','Windows/System32/Drivers/mt6630-runtime.sys','Windows/System32/Drivers/mt8167-display.sys','Windows/System32/Drivers/ge8300-render.sys','Windows/System32/Drivers/mt8167-toprgu.sys'}.issubset(preserved),'旧Engine/render EXE等の保持pinが必要')
- return {'schema':1,'profile':PROFILE,'service':SERVICE,'data_directory':DIRECTORY,'draft':False,'normal_install_allowed':True,'backup_manifest':mf.relative_to(root).as_posix(),'backup_manifest_sha256':f['sha256'],'recovery_boot_id':b['recovery_boot_id'],'capture_selection':selection,'capture_selection_sha256':f['main_selection_sha256'],'native_snapshot_sha256':f['bindings_sha256'],'source_files':{n:{k:files['windows/system32/config/'+n.lower()][k] for k in ('sha256','bytes')} for n in ('SYSTEM','SYSTEM.LOG1','SYSTEM.LOG2')},'packages':pkgs,'baselines':baselines,'parent_flags':flags,'preserved_files':preserved,'service_preservation':s['service_preservation'],'boot_transition':transition,'planned_reboots':1,'install_targets':['usb','mma','emmc','parent'],'stage_order':list(TARGETS),'post_reboot_required':list(TARGETS),'readonly_status':['rtc','thermal'],'gpu_install':False,'engine_retest':False,'device_verified':False}
+ require(len(preserved)>=7 and {'Windows/System32/MT8167EngineProbe.exe','Windows/System32/MT8167RenderSingleGpu.exe','Windows/System32/Drivers/mt8167-audio.sys','Windows/System32/Drivers/mt6630-runtime.sys','Windows/System32/Drivers/mt8167-display.sys','Windows/System32/Drivers/ge8300-render.sys','Windows/System32/Drivers/mt8167-toprgu.sys','Windows/System32/ge8300-umd.dll','Windows/System32/Drivers/ge8300-mips.fw','Windows/System32/Drivers/mt8167-ge8300.sys'}.issubset(preserved),'旧Engine/render EXE等の保持pinが必要')
+ return {'schema':1,'profile':PROFILE,'service':SERVICE,'data_directory':DIRECTORY,'draft':False,'normal_install_allowed':True,'backup_manifest':mf.relative_to(root).as_posix(),'backup_manifest_sha256':f['sha256'],'recovery_boot_id':b['recovery_boot_id'],'capture_selection':selection,'capture_selection_sha256':f['main_selection_sha256'],'native_snapshot_sha256':f['bindings_sha256'],'source_files':{n:{k:files['windows/system32/config/'+n.lower()][k] for k in ('sha256','bytes')} for n in ('SYSTEM','SYSTEM.LOG1','SYSTEM.LOG2')},'packages':pkgs,'baselines':baselines,'parent_flags':flags,'preserved_files':preserved,'preserved_sources':{n:Path(files[n.lower()].get('absolute_capture_path',mf.parent/files[n.lower()]['backup_path'])).relative_to(root).as_posix() for n in preserved},'supplement_sha256':f.get('supplement_sha256'),'service_preservation':s['service_preservation'],'boot_transition':transition,'planned_reboots':1,'install_targets':['usb','mma','emmc','parent'],'stage_order':list(TARGETS),'post_reboot_required':list(TARGETS),'readonly_status':['rtc','thermal'],'gpu_install':False,'engine_retest':False,'device_verified':False}
 
 def cstr(v):return 'L"'+v.replace('\\','\\\\')+'"'
 def cbytes(h):return '{'+','.join('0x'+h[i:i+2] for i in range(0,64,2))+'}'

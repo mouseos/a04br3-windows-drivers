@@ -35,6 +35,14 @@ class BatchContract(unittest.TestCase):
    bp=root/'bindings.json';bp.write_text(json.dumps(native))
    f={'manifest':str(mf),'sha256':policy.sha(mf),'bindings':str(bp),'bindings_sha256':policy.sha(bp),'main_selection':str(sp),'main_selection_sha256':policy.sha(sp)}
    policy.bind_capture(f,root)
+   extra=root/'supplement';extra.mkdir();rows=[]
+   for i,name in enumerate(('Windows/System32/MT8167RenderSingleGpu.exe','Windows/System32/ge8300-umd.dll','Windows/System32/Drivers/ge8300-mips.fw')):
+    q=extra/str(i);q.write_bytes(name.encode());rows.append({'source_path':name,'backup_path':str(i),'sha256':policy.sha(q),'bytes':q.stat().st_size})
+   sm=extra/'manifest.json';supp={'schema':1,'source_manifest_sha256':policy.sha(mf),'recovery_boot_id':boot,'status':'captured-unmounted','read_only':True,'unmounted':True,'errors':[],'files':rows}
+   sm.write_text(json.dumps(supp));sf={**f,'supplement':str(sm),'supplement_sha256':policy.sha(sm)};policy.bind_capture(sf,root)
+   for field,value in [('source_manifest_sha256','0'*64),('recovery_boot_id','other'),('unmounted',False),('read_only',False),('errors',['failure']),('files',rows[:2])]:
+    bad=dict(supp);bad[field]=value;sm.write_text(json.dumps(bad));sf['supplement_sha256']=policy.sha(sm)
+    with self.subTest(supplement=field),self.assertRaises(ValueError):policy.bind_capture(sf,root)
    for field,value in [('gpu_policy_sha256','3'*64),('recovery_boot_id','00000000-1234-1234-1234-123456789abc'),('original_unchanged',False),('unload_rc',5),('load_rc',False),('source_files',{})]:
     bad=dict(native);bad[field]=value;bp.write_text(json.dumps(bad));f['bindings_sha256']=policy.sha(bp)
     with self.subTest(field=field),self.assertRaises(ValueError):policy.bind_capture(f,root)

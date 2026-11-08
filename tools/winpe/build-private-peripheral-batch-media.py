@@ -48,6 +48,11 @@ def main():
   copy(backup.parent/e['backup_path'],'fresh-input/'+str(i)+'.bin')
   prepare+=['X:\\a04br3\\compare-files.exe X:\\a04br3\\fresh-input\\'+str(i)+'.bin "C:\\'+e['source_path'].replace('/','\\')+'" >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto baselinefail']
  require(len(prepare)==12,'SYSTEM/DRIVERSの実trio各3必須')
+ # Preserve exact current GPU/Engine/other bytes before arming SYSTEM.
+ for i,(name,want) in enumerate(p['preserved_files'].items()):
+  witness=rooted(root,p['preserved_sources'][name]);require(sha(witness)==want,'保持capture witness hash不一致')
+  copy(witness,'preserved-proof/'+str(i)+'.bin')
+  prepare+=['X:\\a04br3\\compare-files.exe X:\\a04br3\\preserved-proof\\'+str(i)+'.bin "C:\\'+name.replace('/','\\')+'" >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto baselinefail']
  # Duplicate immutable payload witnesses let the native EOF comparator check
  # every copied stage byte before SYSTEM arm; WIM and manifest remain sealed.
  payload=dict(files)
