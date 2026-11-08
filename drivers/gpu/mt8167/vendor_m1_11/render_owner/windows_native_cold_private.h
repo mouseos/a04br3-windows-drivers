@@ -61,6 +61,8 @@ void *a04_vendor_native_storage_pointer(struct a04_vendor_native_cold *,int,ULON
 uint64_t a04_vendor_native_storage_dma(struct a04_vendor_native_cold *,int,ULONG);
 int a04_vendor_native_storage_write(struct a04_vendor_native_cold *,int,ULONG,const void *,ULONG);
 int a04_vendor_native_storage_read(struct a04_vendor_native_cold *,int,ULONG,void *,ULONG);
+NTSTATUS a04_vendor_native_mdl_gpu_prepare(struct a04_vendor_native_cold *);
+NTSTATUS a04_vendor_native_mdl_cpu_complete(struct a04_vendor_native_cold *);
 void a04_vendor_native_diagnose(struct a04_vendor_native_cold *,ULONG,ULONG,ULONG);
 NTSTATUS a04_vendor_native_prepare_job_cold(struct a04_vendor_native_cold *);
 #if A04_GE8300_NATIVE_OWNER_MDL_TARGET

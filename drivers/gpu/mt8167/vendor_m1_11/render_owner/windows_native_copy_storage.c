@@ -39,7 +39,7 @@ static NTSTATUS check_binding(struct a04_vendor_native_cold *n,
 static int allocation_clashes(struct a04_vendor_uncached *a,struct a04_native_mdl_binding *b)
 {
  ULONG n,i;const uint64_t *p=a04_native_mdl_pages(b,&n);
- if(!p||a04_rgx_fw_alias(a->cpu,a->bytes,a04_native_mdl_cpu(b),a04_native_mdl_extent(b)))return 1;
+ if(!p||a04_rgx_fw_alias(a->cpu,a->bytes,a04_native_mdl_cpu_identity(b),a04_native_mdl_extent(b)))return 1;
  for(i=0;i<n;i++)if(intersects((uint64_t)a->logical.QuadPart,a->bytes,p[i],4096))return 1;
  return 0;
 }
@@ -156,3 +156,21 @@ const struct a04_native_copy_job_image *a04_native_copy_storage_image(const stru
 
 struct a04_vendor_native_cold *a04_native_copy_storage_parent(const struct a04_native_copy_storage *c)
 {return c&&c->prepared&&!c->quarantined?c->native:NULL;}
+
+/* Only the TQ completion path calls this after the actual task, SLC and GP
+ * receipts; CPU visibility does not release residency or the submit gate. */
+NTSTATUS a04_native_copy_storage_cpu_complete(struct a04_native_copy_storage *c)
+{
+ NTSTATUS status;
+ if(!c||!c->prepared||c->quarantined||!c->native||c->native->quarantined||
+    !c->native->render||c->native->render->poisoned||KeGetCurrentIrql()!=PASSIVE_LEVEL)
+  return STATUS_INVALID_DEVICE_STATE;
+ status=a04_native_mdl_sync_for_cpu(c->source);if(!NT_SUCCESS(status))return status;
+ return a04_native_mdl_sync_for_cpu(c->destination);
+}
+BOOLEAN a04_native_copy_storage_gpu_owned(const struct a04_native_copy_storage *c)
+{
+ return c&&c->prepared&&!c->quarantined&&
+  a04_native_mdl_cpu_identity(c->source)&&a04_native_mdl_cpu_identity(c->destination)&&
+  !a04_native_mdl_cpu(c->source)&&!a04_native_mdl_cpu(c->destination);
+}

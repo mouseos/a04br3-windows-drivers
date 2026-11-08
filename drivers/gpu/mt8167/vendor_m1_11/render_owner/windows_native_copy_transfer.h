@@ -8,7 +8,7 @@ struct a04_native_irq_core;
 struct a04_native_irq_receipt;
 struct a04_native_copy_gpu_result {ULONG phase,task_sequence,flush_sequence,client_write;};
 /* Internal low-level TQ half. Factory serializes and retains the graph,
- * storage and BOTH real GPU SG leases. This API is NOT wired to WDDM yet.
+ * storage and BOTH WDDM physical backing leases. This API is NOT wired to WDDM yet.
  * Prepare before FW starts; submit under actual registered Dxgk IRQ lock.
  * Existing single IRQ claims source; PASSIVE finish requires that claim.
  * No second IRQ, CPU pixel read, LockCb, or scheduler notification occurs. */
@@ -23,8 +23,9 @@ NTSTATUS a04_native_tq_transfer_begin_finish(struct a04_native_tq_transfer *,
 NTSTATUS a04_native_tq_transfer_finish_gpu(struct a04_native_tq_transfer *,
  struct a04_vendor_start *,struct a04_native_copy_gpu_result *);
 /* Only never-submitted cold objects can be freed here. Submitted/ambiguous
- * objects and command_busy remain retained until full CPU-ownership + fresh
+ * objects and command_busy remain retained until fresh
  * real IRQ/fence integration (or proven owner DMA-off retirement) is added.
- * GPU_RESULT is NOT CPU_VISIBLE and cannot complete a WDDM fence. */
+ * phase4 returns CPU cache ownership after real task/SLC/GP completion,
+ * but cannot complete a WDDM fence or drop the exclusive submit gate. */
 NTSTATUS a04_native_tq_transfer_release_unsubmitted(struct a04_native_tq_transfer **);
 #endif

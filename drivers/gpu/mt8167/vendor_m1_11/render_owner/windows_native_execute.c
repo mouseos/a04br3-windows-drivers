@@ -86,7 +86,7 @@ static NTSTATUS finish_published(struct a04_vendor_native_cold *n,
     }
     if(!NT_SUCCESS(status))goto poison;
 #if A04_GE8300_NATIVE_OWNER_MDL_TARGET
-    if(n->registered_target){status=a04_native_mdl_sync_for_cpu(n->registered_target);if(!NT_SUCCESS(status))goto poison;}
+    status=a04_vendor_native_mdl_cpu_complete(n);if(!NT_SUCCESS(status))goto poison;
 #endif
     c->scan.started=1;c->scan.frame_index=c->completed_frames;
     for(i=0;i<a04_vendor_native_output_bytes(n)/4u;i+=64u){
@@ -430,7 +430,7 @@ static NTSTATUS rearm_clear(struct a04_vendor_native_cold *n,struct a04_vendor_s
         for(j=0;j<64;j++)if(seen[j]!=words[j])goto done;
     }
 #if A04_GE8300_NATIVE_OWNER_MDL_TARGET
-    if(n->registered_target){status=a04_native_mdl_sync_for_gpu(n->registered_target);if(!NT_SUCCESS(status))goto done;}
+    status=a04_vendor_native_mdl_gpu_prepare(n);if(!NT_SUCCESS(status))goto done;
 #endif
     for(i=0;i<2;i++){
         if(a04_rgx_device_write_words((UCHAR *)r->buffer[0].cpu+r->layout.commands[i],c->rings+i*4096u,4096u))goto done;

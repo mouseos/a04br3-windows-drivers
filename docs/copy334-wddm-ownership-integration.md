@@ -1,0 +1,11 @@
+# copy334 WDDM physical backing ownership integration
+
+copy334 `0bfc91cf9a87c98b0ca1d540d00726159614072d` is the base; its real TQ/IRQ receipts and quarantine remain. The physical aperture ownership implementation is merged from `cea8a350d2d42b9de23a407bb6c4a8d146693f95`. The Ex packet-DMA experiment is not merged. UMD335 stays unchanged and is not rebuilt here.
+
+`pages()` describes resident WDDM physical pages; alias-only comparison uses `cpu_identity()` even during GPU ownership. CPU data access uses `cpu()` and is closed while GPU owned. Real completion returns RT/VB/linear CPU cache ownership; the next native render rearm now cleans/transfers **all** those bindings, not just RT. Physical PTE/lease retention is unchanged. Stop/destruction requires proven parent-off and IRQ rundown, not idle or a successful CPU mapping.
+
+For the cold copy graph, normal firmware exposure marks both source/destination GPU-owned. TQ submit rejects a source/destination not GPU owned before it acquires command_busy or writes a command. The existing real IRQ receipt → task read/write/UFO → SLC → GP value chain remains intact. Only after that chain, at PASSIVE, `a04_native_copy_storage_cpu_complete` returns both MDLs to CPU cache ownership. Phase4 means ownership return, not WDDM completion. Failure retains/quarantines the graph; command_busy remains held in all completion/failure paths. No CPU pixel copy is added.
+
+The final visibility IRQ/scheduler fence, copy lifetime integration and WDDM frontend invocation remain Huygens-owned and are **not yet connected** in this pinned copy334 base. This signed integration archive does not claim CopyResource works on the device. All low-level objects are included in the archive, but unused copy symbols may be excluded by the SYS linker; the SYS alone cannot prove that missing frontend wiring. Consumer must merge this branch forward into the latest copy implementation, not revert its whole branch.
+
+Validation: actual MDL TU 12 ASan/UBSan cases; actual TQ finish function 10 ASan/UBSan mocked-hardware cases (task/read/SLC/GP/cache failures, wrong IRQL/state and retained gate); existing native copy job/queue tests. Device reset resolution is unverified. Current device is main-owned; fresh138 is the baseline known at freeze, with no media/hardware change by this branch.

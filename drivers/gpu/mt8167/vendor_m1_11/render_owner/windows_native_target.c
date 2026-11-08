@@ -40,7 +40,7 @@ static int binding_clash(struct a04_native_mdl_binding *a,uint64_t ao,
 {
     ULONG na,nb,i,j;const uint64_t *pa=a04_native_mdl_pages(a,&na),*pb=a04_native_mdl_pages(b,&nb);
     if(!pa || !pb || a04_rgx_fw_overlap(ao,na*4096u,bo,nb*4096u) ||
-       a04_rgx_fw_alias(a04_native_mdl_cpu(a),na*4096u,a04_native_mdl_cpu(b),nb*4096u))return 1;
+       a04_rgx_fw_alias(a04_native_mdl_cpu_identity(a),na*4096u,a04_native_mdl_cpu_identity(b),nb*4096u))return 1;
     for(i=0;i<na;i++)for(j=0;j<nb;j++)if(pa[i]==pb[j])return 1;
     return 0;
 }
@@ -243,4 +243,28 @@ NTSTATUS a04_vendor_native_attach_linear_cold(struct a04_vendor_native_cold *n,
  status=STATUS_SUCCESS;goto done_linear;
  poison_linear:n->quarantined=TRUE;n->render->poisoned=TRUE;status=STATUS_IO_DEVICE_ERROR;
  done_linear:ExFreePoolWithTag(pt,TAG);return status;
+}
+
+/* Actual finish/SLC/GP receipt precedes this helper. Mapping/physical lease
+ * stays resident: UNMAP/normal retirement remains the only release path. */
+NTSTATUS a04_vendor_native_mdl_cpu_complete(struct a04_vendor_native_cold *n)
+{
+    NTSTATUS status;
+    if(!n || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+    if(n->registered_target){status=a04_native_mdl_sync_for_cpu(n->registered_target);if(!NT_SUCCESS(status))return status;}
+    if(n->registered_vertex){status=a04_native_mdl_sync_for_cpu(n->registered_vertex);if(!NT_SUCCESS(status))return status;}
+    for(ULONG i=0;i<n->linear_count;i++){status=a04_native_mdl_sync_for_cpu(n->linear[i].binding);if(!NT_SUCCESS(status))return status;}
+    return STATUS_SUCCESS;
+}
+
+/* Serialized after the previous real fence, before any subsequent GPU job.
+ * CPU handoff covered all bindings, so next publication must cover all too. */
+NTSTATUS a04_vendor_native_mdl_gpu_prepare(struct a04_vendor_native_cold *n)
+{
+    NTSTATUS status;
+    if(!n || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+    if(n->registered_target){status=a04_native_mdl_sync_for_gpu(n->registered_target);if(!NT_SUCCESS(status))return status;}
+    if(n->registered_vertex){status=a04_native_mdl_sync_for_gpu(n->registered_vertex);if(!NT_SUCCESS(status))return status;}
+    for(ULONG i=0;i<n->linear_count;i++){status=a04_native_mdl_sync_for_gpu(n->linear[i].binding);if(!NT_SUCCESS(status))return status;}
+    return STATUS_SUCCESS;
 }

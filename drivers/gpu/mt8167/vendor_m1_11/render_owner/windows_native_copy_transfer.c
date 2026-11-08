@@ -69,6 +69,7 @@ NTSTATUS a04_native_tq_transfer_submit(struct a04_native_tq_transfer *c,
  if(!c||!s||!irq||KeGetCurrentIrql()<=DISPATCH_LEVEL||c->state!=1||expected>127u||
     !(r=c->native->render)||r->native_owner!=c->native||r->poisoned||c->native->quarantined||
     !s->online||!s->core||s->command_poisoned||s->shutdown_started||
+    !a04_native_copy_storage_gpu_owned(c->storage)||
     !s->memory||s->memory!=r->firmware||!s->memory->hardware_owned||!s->memory->uncached||
     !(f=s->memory->runtime)||irq->core!=s->core||irq->runtime!=f||!irq->epoch||
     !irq->powered||irq->masked||irq->closed||irq->faulted||irq->draining)return STATUS_INVALID_DEVICE_STATE;
@@ -165,9 +166,12 @@ NTSTATUS a04_native_tq_transfer_finish_gpu(struct a04_native_tq_transfer *c,
   a04_gpu_dma_barrier();if(KeQueryInterruptTime()-began>=20000000u){status=STATUS_IO_TIMEOUT;goto fail;}
   (void)KeDelayExecutionThread(KernelMode,FALSE,&delay);
  }
- a04_gpu_dma_barrier();out->phase=3;out->flush_sequence=s->command_sequence;InterlockedExchange(&c->state,4);
- /* Still NOT CPU_VISIBLE. Leave command_busy retained for the ownership
-  * return + fresh real visibility IRQ/fence half, not implemented here. */
+ a04_gpu_dma_barrier();out->phase=3;out->flush_sequence=s->command_sequence;
+ status=a04_native_copy_storage_cpu_complete(c->storage);if(!NT_SUCCESS(status))goto fail;
+ out->phase=4;InterlockedExchange(&c->state,4);
+ /* Exact source/destination CPU cache ownership returned. command_busy is
+  * retained: fresh real visibility IRQ/fence + WDDM integration is separate.
+  * This function never notifies a scheduler fence or permits resubmission. */
  return STATUS_SUCCESS;
 fail:return poison(c,s,status);
 }
