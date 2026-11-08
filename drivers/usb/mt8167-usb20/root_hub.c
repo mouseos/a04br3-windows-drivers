@@ -64,7 +64,7 @@ int a04_hub_action_done(struct a04_hub *h,const struct a04_hub_action *a,int suc
  if(!h||!h->port||!a||!h->action||a->kind!=h->action||a->generation!=h->active_generation)return -1;
  kind=h->action;h->action=0;h->active_generation=0;
  if(!success||!o||!o->endpoints_quiesced)return -1;
- if(kind==A04_HUB_POWER_OFF)return o->vbus_off_verified?a04_port_power(h->port,0,0):-1;
+ if(kind==A04_HUB_POWER_OFF)return (o->vbus_off_verified||o->source_off_verified)?a04_port_power(h->port,0,0):-1;
  if(!o->qualified||!o->id_host||!o->overcurrent_clear||!o->vbus_verified)return -1;
  if(kind==A04_HUB_POWER_ON)return a04_port_power(h->port,1,1);
  if(kind!=A04_HUB_RESET||o->reset_asserted_ms<50||

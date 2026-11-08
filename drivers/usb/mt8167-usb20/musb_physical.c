@@ -69,7 +69,7 @@ static int Fresh(const MT_MUSB_OBSERVATION *o,ULONGLONG generation,int powered)
  return o->bytes==sizeof(*o)&&o->generation&&(!generation||generation==o->generation)&&
   (o->capabilities&MT_MUSB_REQUIRED)==MT_MUSB_REQUIRED&&
   (o->valid&MT_MUSB_REQUIRED)==MT_MUSB_REQUIRED&&o->host_role==1&&o->oc_clear==1&&
-  (powered?o->vbus_on==1:(o->devctl&0x18)==0)&&
+  (powered<0||(powered?o->vbus_on==1:(o->devctl&0x18)==0))&&
   (o->evidence&(MT_MUSB_OC_PIN21|MT_MUSB_VBUS_COMPARATOR|MT_MUSB_NO_FORCED_VBUS))==
    (MT_MUSB_OC_PIN21|MT_MUSB_VBUS_COMPARATOR|MT_MUSB_NO_FORCED_VBUS)&&o->observed_100ns<=now&&now-o->observed_100ns<=MT_FRESH;
 }
@@ -135,7 +135,7 @@ static int StopPhysical(struct mt_musb_runtime *r)
  r->lease=FALSE;r->started=FALSE;
  {KIRQL irql;KeAcquireSpinLock(&r->lock,&irql);r->proof=proof;
   RtlZeroMemory(&r->observation,sizeof(r->observation));
-  r->observation.vbus_off_verified=(proof.valid&MT_MUSB_VBUS)&&!(proof.devctl&0x18);r->observation.endpoints_quiesced=1;
+  r->observation.vbus_off_verified=(proof.valid&MT_MUSB_VBUS)&&!(proof.devctl&0x18);r->observation.endpoints_quiesced=1;r->observation.source_off_verified=1;
   KeReleaseSpinLock(&r->lock,irql);}
  return 0;
 }
@@ -187,8 +187,16 @@ static int RootAction(struct mt_musb_runtime *r,ULONG kind,struct a04_hub_observ
  if(r->hardware_job||Flush(r))return -1;
  if(kind==A04_HUB_POWER_OFF){
   Wr8(r,0x60,(UCHAR)(Rd8(r,0x60)&~1u));
-  if(Vbus(r,0)||Observe(r,0))return -1;
-  o->vbus_off_verified=1;o->endpoints_quiesced=1;return 0;
+  {MT_MUSB_OBSERVATION proof;KIRQL irql;
+   if(Vbus(r,0))return -1;
+   RtlZeroMemory(&proof,sizeof(proof));proof.bytes=sizeof(proof);
+   if(!NT_SUCCESS(r->owner.Observe(r->owner.Header.Context,&proof))||proof.bytes!=sizeof(proof)||
+      proof.generation!=r->proof.generation||!proof.source_off||!(proof.evidence&MT_MUSB_SOURCE_OFF)||
+      proof.observed_100ns>KeQueryInterruptTime()||KeQueryInterruptTime()-proof.observed_100ns>MT_FRESH)return -1;
+   KeAcquireSpinLock(&r->lock,&irql);r->proof=proof;KeReleaseSpinLock(&r->lock,irql);
+   o->source_off_verified=1;o->vbus_off_verified=(proof.valid&MT_MUSB_VBUS)&&!(proof.devctl&0x18);
+   o->endpoints_quiesced=1;return 0;
+  }
  }
  if(kind==A04_HUB_POWER_ON){if(A04UsbHostRun(&r->board)||ReleaseForces(r)||Observe(r,1))return -1;}
  else if(kind==A04_HUB_RESET){
@@ -222,7 +230,7 @@ static void Tick(PDEVICE_OBJECT device,PVOID context)
    /* An unexpected engine/IRQ invalidates our PIO write authority. Only the
     * parent's known isolation path may touch it; do not flush unknown DMA. */
    r->io_unsafe=TRUE;result=-1;proven=0;fault=TRUE;
-  }else if(Observe(r,r->proof.vbus_on!=0)){result=-1;proven=Flush(r)==0;fault=TRUE;}
+  }else if(Observe(r,r->proof.gpio22?1:-1)){result=-1;proven=Flush(r)==0;fault=TRUE;}
   else {
    usb=Rd8(r,0xa)&0xb0;if(usb)Wr8(r,0xa,(UCHAR)usb);
    if(usb&0x10)connected=1;if(usb&0x20)connected=0;

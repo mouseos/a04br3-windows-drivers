@@ -275,7 +275,7 @@
 #endif
 typedef struct {
 #if A04_SHARED_USBPORT_CHILD
- struct mt_musb_parent musb;WDFTIMER musbRoleTimer;WDFWORKITEM musbRoleWork;ULONG musbChildCreated;
+ struct mt_musb_parent musb;WDFDEVICE musbChild;WDFTIMER musbRoleTimer;WDFWORKITEM musbRoleWork;ULONG musbChildCreated;
 #endif
 #if A04_SHARED_SD_POWER
  struct a04_sd_power sdPower;
@@ -1282,6 +1282,7 @@ static void ParentStop(A04_PARENT_CONTEXT *c,int can_access)
     InterlockedExchange(&c->admissionClosed,1);
 #if A04_SHARED_USBPORT_CHILD
     if(c->musbRoleTimer)WdfTimerStop(c->musbRoleTimer,TRUE);
+    if(c->musbRoleWork)WdfWorkItemFlush(c->musbRoleWork);
 #endif
 #if A04_SHARED_HP_PCM
     c->adcProofValid=0;
@@ -1573,10 +1574,11 @@ done:
 #endif
 }
 #if defined(A04_SHARED_CHILD_PROBE) && A04_SHARED_CHILD_PROBE
-/* Compile-only topology. PnP arbitrates these exclusive child ranges; the
- * parent must not map them. Parent D0 remains gated, and legacy ACPI devices
+/* PnP arbitrates these exclusive child ranges. USBPORT opt-in delegates
+ * its assigned MAC/PHY to the single parent owner through the versioned lease;
+ * no second PnP claim is created. Other legacy children are unchanged. Parent D0 remains gated, and legacy ACPI devices
  * must be disabled in a future mutually exclusive firmware configuration. */
-typedef struct { ULONG base; } A04_CHILD_CONTEXT;
+typedef struct { ULONG base;WDFDEVICE parent; } A04_CHILD_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(A04_CHILD_CONTEXT,ChildContext)
 EVT_WDF_DEVICE_RESOURCE_REQUIREMENTS_QUERY ChildRequirements;
 NTSTATUS ChildRequirements(WDFDEVICE child,WDFIORESREQLIST requirements)
@@ -1665,6 +1667,14 @@ NTSTATUS ChildRequirements(WDFDEVICE child,WDFIORESREQLIST requirements)
     return status;
 }
 #if A04_SHARED_USBPORT_CHILD
+static VOID MusbChildCleanup(WDFOBJECT object)
+{
+ WDFDEVICE child=(WDFDEVICE)object;A04_CHILD_CONTEXT *x=ChildContext(child);
+ A04_PARENT_CONTEXT *c;if(!x->parent)return;c=ParentContext(x->parent);
+ ExAcquireFastMutex(&c->pwrapLock);
+ if(c->musbChild==child){c->musbChild=NULL;c->musbChildCreated=0;}
+ ExReleaseFastMutex(&c->pwrapLock);
+}
 static NTSTATUS MusbChildPrepare(WDFDEVICE child,WDFCMRESLIST raw,WDFCMRESLIST translated)
 {
  A04_PARENT_CONTEXT *c=ParentContext(WdfPdoGetParent(child));ULONG n,j=0,irqs=0;
@@ -1698,7 +1708,7 @@ static NTSTATUS MusbChildRelease(WDFDEVICE child,WDFCMRESLIST translated)
  ExReleaseFastMutex(&c->pwrapLock);return s;
 }
 static VOID MusbChildSurprise(WDFDEVICE child)
-{A04_PARENT_CONTEXT *c=ParentContext(WdfPdoGetParent(child));ExAcquireFastMutex(&c->pwrapLock);c->musb.accessible=0;c->musb.poisoned=1;ExReleaseFastMutex(&c->pwrapLock);}
+{A04_PARENT_CONTEXT *c=ParentContext(WdfPdoGetParent(child));ExAcquireFastMutex(&c->pwrapLock);if(!c->removed&&c->gpio&&c->musb.held){(void)A04Gpio22Vbus(&c->usb.gpio,0);c->musb.powered=0;}c->musb.accessible=0;c->musb.poisoned=1;ExReleaseFastMutex(&c->pwrapLock);}
 #endif
 static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance, ULONG base)
 {
@@ -1730,9 +1740,15 @@ static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance
     }
 #endif
     WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr,A04_CHILD_CONTEXT);
+#if A04_SHARED_USBPORT_CHILD
+    if(base==0x11100000u){attr.EvtCleanupCallback=MusbChildCleanup;attr.ExecutionLevel=WdfExecutionLevelPassive;}
+#endif
     status=WdfDeviceCreate(&init,&attr,&child);
     if(!NT_SUCCESS(status))goto fail;
-    ChildContext(child)->base=base;
+    ChildContext(child)->base=base;ChildContext(child)->parent=parent;
+#if A04_SHARED_USBPORT_CHILD
+    if(base==0x11100000u){A04_PARENT_CONTEXT *c=ParentContext(parent);ExAcquireFastMutex(&c->pwrapLock);c->musbChild=child;ExReleaseFastMutex(&c->pwrapLock);}
+#endif
 #if MT6392_RTC_CALENDAR
     if(base==0xfffffffdu) {
         WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&Mt6392RtcInterfaceGuid,NULL);
@@ -1812,15 +1828,21 @@ static VOID MusbRoleTimer(WDFTIMER timer)
 static VOID MusbRoleWork(WDFWORKITEM work)
 {
  WDFDEVICE dev=(WDFDEVICE)WdfWorkItemGetParentObject(work);A04_PARENT_CONTEXT *c=ParentContext(dev);
- struct mt_musb_board_sample sample;struct mt_musb_board_io io;NTSTATUS status;int ready=0;
+ struct mt_musb_board_sample sample;struct mt_musb_board_io io;NTSTATUS status;int ready=0;WDFDEVICE retire=NULL;
  if(ParentLock(c))return;io=MusbIo(c);
  if(!c->musbChildCreated&&c->usb.online&&!c->usb.leased&&!c->usb.poisoned&&c->gpio&&
-    !mt_musb_pin_candidate(&io,&sample)&&!sample.id&&sample.detect&&!sample.source){c->musbChildCreated=1;ready=1;}
+    !mt_musb_pin_candidate(&io,&sample)&&!sample.id&&sample.detect&&!sample.source&&(!sample.oc_valid||sample.oc)){c->musbChildCreated=1;ready=1;}
+ if(c->musbChildCreated==1&&c->musbChild&&!c->musb.held&&!c->usb.leased&&
+    !mt_musb_pin_candidate(&io,&sample)&&(sample.id||!sample.detect)){
+  c->musbChildCreated=2;retire=c->musbChild;WdfObjectReference(retire);
+ }
  ParentUnlock(c);
+ if(retire){(void)WdfPdoMarkMissing(retire);WdfObjectDereference(retire);}
  /* PC cable never creates a failing USBPORT devnode. A later host-role
   * cable is observed read-only and enumerates a fresh standard stack. */
  if(ready){status=ParentAddProbeChild(dev,L"MT8167\\USB20",L"0",0x11100000u);
   if(!NT_SUCCESS(status)){ExAcquireFastMutex(&c->pwrapLock);c->musbChildCreated=0;ExReleaseFastMutex(&c->pwrapLock);}}
+ if(!ParentLock(c)){WdfTimerStart(c->musbRoleTimer,WDF_REL_TIMEOUT_IN_MS(500));ParentUnlock(c);}
 }
 static NTSTATUS MusbRoleCreate(WDFDEVICE dev)
 {
@@ -1828,7 +1850,7 @@ static NTSTATUS MusbRoleCreate(WDFDEVICE dev)
  WDF_OBJECT_ATTRIBUTES_INIT(&a);a.ParentObject=dev;
  WDF_WORKITEM_CONFIG_INIT(&wc,MusbRoleWork);wc.AutomaticSerialization=FALSE;
  s=WdfWorkItemCreate(&wc,&a,&c->musbRoleWork);if(!NT_SUCCESS(s))return s;
- WDF_TIMER_CONFIG_INIT_PERIODIC(&tc,MusbRoleTimer,500);tc.AutomaticSerialization=FALSE;
+ WDF_TIMER_CONFIG_INIT(&tc,MusbRoleTimer);tc.AutomaticSerialization=FALSE;
  return WdfTimerCreate(&tc,&a,&c->musbRoleTimer);
 }
 #endif

@@ -9,7 +9,7 @@ static NTSTATUS Proof(PVOID p,MT_MUSB_OBSERVATION *o)
 {
  (void)p;RtlZeroMemory(o,sizeof(*o));o->bytes=sizeof(*o);o->generation=test_generation_change?2:1;o->observed_100ns=test_stale?test_now-1000001:test_now;
  o->evidence=MT_MUSB_QUERY_READY|MT_MUSB_OC_PIN21|MT_MUSB_VBUS_COMPARATOR|MT_MUSB_NO_FORCED_VBUS|MT_MUSB_SOURCE_OFF;
- o->source_off=!test_vbus;o->devctl=test_vbus?0x18:0;
+ o->source_off=!test_vbus;o->gpio22=test_vbus;o->devctl=test_vbus?0x18:0;
  o->capabilities=MT_MUSB_REQUIRED;o->valid=MT_MUSB_REQUIRED|MT_MUSB_STOP_PROOF;
  o->host_role=o->oc_clear=1;o->vbus_on=test_vbus;
  o->raw_mac.QuadPart=0x11100000;o->raw_phy.QuadPart=0x11110000;

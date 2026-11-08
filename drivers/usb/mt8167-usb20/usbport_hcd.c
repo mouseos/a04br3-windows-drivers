@@ -30,7 +30,7 @@ static void HarvestRoot(struct a04_hcd *h)
  if(!h->runtime)return;
  if(MtMusbObserve(h->runtime,&o,&connected,&done,&result)){
   h->fault=1;a04_hub_invalidate(&h->hub);(void)a04_port_connect(&h->port,0);
-  if(o.vbus_off_verified)(void)a04_port_power(&h->port,0,0);return;
+  if(o.vbus_off_verified||o.source_off_verified)(void)a04_port_power(&h->port,0,0);return;
  }
  if(done){
   if(done!=h->root_action.kind||a04_hub_action_done(&h->hub,&h->root_action,!result,&o))h->fault=1;

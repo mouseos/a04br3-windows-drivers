@@ -21,7 +21,7 @@ struct a04_hub_action { unsigned kind, generation; };
 /* Observations must come from the board owner, never from USB request data. */
 struct a04_hub_observation {
  int qualified, id_host, overcurrent_clear, vbus_verified, vbus_off_verified, endpoints_quiesced;
- unsigned reset_asserted_ms, speed;
+ unsigned reset_asserted_ms, speed;int source_off_verified;
 };
 int a04_hub_init(struct a04_hub *,struct a04_root_port *,unsigned power_good_2ms);
 int a04_hub_control(struct a04_hub *,const unsigned char setup[8],

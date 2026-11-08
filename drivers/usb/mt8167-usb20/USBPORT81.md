@@ -48,40 +48,50 @@ RT81 ABIとしてコピーしていない。特に同公開宣言はRegisterの�
 と突き合わせた。追加サービス領域0xe4以降はUSBPORTが埋め、登録後のComplete等を使う。
 version200を超える任意のtail callbackやUCX契約を推測していない。
 
-## HCD1013の実装と安全境界
+## HCD1014：board観測producerと単一親
 
-serviceは実ハード名の `MT8167MUSBHcd`、SYS/INF/CATは `mt8167-musb-hcd.*`。
-StartはPASSIVE_LEVELを確認し、下位stackへ新しい親owner interfaceをQueryする。
-親v1を上位資格へ読み替えない。Queryの資格・実OC clear・host role・VBUS off・
-停止能力・独占権・PnP割当memory pair・世代・観測鮮度100msを検査し、すべて成立してから
-Acquire、MAC/PHY map、8DMA channel/QMU/L1 maskの観測へ進む。
-既存 `pnp_resources.h` でraw MAC=0x11100000/raw PHY=0x11110000と実translated pairを検証する。
-アドレスの同一変換を仮定せず、parent producerは実割当resourceから報告する契約。
-未知のactive DMA/QMU/IRQを初期化で上書きしない。資格がなければroot-only Start成功にはしない。
+基点は親1104+HP1107 ABIを含むGPIO19後段1108 source607a10d2。
+旧1013親を丸ごと戻さず、この現行親へUSB差分だけを三者mergeし、RTC/HPの変更を保持した。
+serviceは `MT8167MUSBHcd`、HCD版1014、独立親package1114。
 
-`musb_physical.c` がboard_host/EP0/PIO/controllerへ接続する実consumer。
-Query/Acquire/Observe/VBUS/StopAndProve/Release、PHY校正、SESSION、POWER、50ms以上の
-reset、MAC status、Control/FS bulk/64byte以下interruptをPASSIVE owner経由で実行する。
-IRQは有効にせず、専有controllerのraw interrupt statusをworkerがpollする。
-全端点を直列化し、hardware EP1のTX/RX FIFO各64byte、EP0用64byteを使用。
-TT/split、isochronous、512byte HS bulk、高帯域転送は拒否。最大転送16KiB、期限5秒。
+`musb_parent.inc` のQuery/Acquire/Observe/SetVbus/StopAndProve/Releaseは実MMIOと
+既存 `usb_owner`/PWRAP/pwrapLockへ接続した。NOT_SUPPORTED固定stubではない。
+ABI2を使い、OCはGPIO21のactive-low入力をIES21..23実readback付きで観測する。
+stock mt8167.dtsiはoc_gpio21/IDDIG41、a04br3.dtsはGPIO22 source/34 detectを定義。
+Linux CONFIG_OCは無効であり、実OC保護回路の作動や電流閾値を観測したとは主張しない。
+unknown biasへpullを足さず、foreign mux/outputを拒否する。OC low/invalidなら給電しない。
 
-USBPORT callbackは待機せず、独立nonpaged runtimeへproperties/setup/OUTデータをコピーする。
-workerはHCD拡張・endpoint・parameters・SG・URB bufferのポインタを保持しない。
-INはshadowで受け、USBPORT自身のPollEndpoint内でだけ元bufferへコピーしてCompleteする。
-16KiBのshadow、単一slot、spinlock、ticket、cookie、epoch、closing、timer/work idle eventが
-転送の資格・競合・寿命をつなぐ。Cancel/Close/Stopは外部参照を切り離し、実flush確認まで
-新規slotを許可しない。取消し後のtoggleは同cookieの確認結果でのみ回復する。
-停止不能を0xE2/fastfailで扱う旧実装は削除した。
+QueryはGPIO読取りだけで候補資格を返す。PC接続（ID41 highまたは外部detect34 low）は
+副作用0で拒否する。親の500ms one-shot timer→PASSIVE workはhost-roleへの変化を
+読取りで観測し、その時だけ新USBPORT20子PDOを列挙する。PC時に失敗devnodeを常設せず、
+後からhost cableを挿すとPnPが標準HCDを開始できる経路。これは実機未検証。
+役割喪失時はconsumerがsourceを停止し、lease解放後だけ子をMarkMissingし、
+cleanup後に次のhost-roleを列挙する。D0終了はtimer取消し→work flush→親mutexでdrainする。
 
-Stopはclosingを公開→timer取消し→DPC drain→worker idle join→IRQ mask/PIO flush→
-実親StopAndProve→停止/IRQ off/DMA off/実VBUS offの同世代・鮮度検査→Release→unmap。
-DISPATCH Stopは独立cleanup work itemへ渡し、その戻りを停止成功とは扱わない。
-local flush失敗時も、親の実隔離証明だけを停止の代替根拠として認める。
-親隔離も未証明ならFAULT_RETAINEDでlease/mapping/shadow/FDO参照を保持する。
-再開・新規admission・unloadを許可せず、停止成功の状態を返さない。
-role/OC/health失効は直ちにadmissionを閉じ、確定停止を要求する。
-VBUS offが実証された場合だけroot POWERを落とす。失敗時はoffを捏造しない。
+子PDOのPrepareHardwareが実raw/translated memory2件+IRQ1件を検証・保存し、
+親producerはその実PnP割当だけをmapする。raw MAC11100000/PHY11110000、64KiB各、
+exclusive、GSIV104/levelの既存契約を検証。identity mappingの合成は禁止。
+Acquireは同世代・再観測→既存単一USB rail/clock/source lease→MAC/PHY map→
+GPIO21 IES/readback→HWVERS安定read→独立PIO停止・非強制VBUS観測まで実行。
+途中失敗はparent lease/mappingをretainし、unmapを拒否する。
+
+既存PHY準備は6d=3eの強制信号を設定するため、そのままDEVCTL=18を「5V」とは扱わない。
+consumerはPrepare/Runの後に同maskを解除し、producerもPHY6d&3e=0とMAC74のforce bit2=0を
+毎回検査する。DEVCTL[4:3]=3は比較器のVBUS-valid帯域であり、5.000V測定値ではない。
+GPIO22を上げた後、OC/role/error/非強制statusを検査しながら比較器validを5連続観測する。
+最大100msで未収束・OC low・role loss・VBUSERRORならsourceを落としてfaultにする。
+初回の実5Vはmainの実機確認まで未完了。
+
+StopAndProveはconsumerの停止申告に依存せず、親の別mappingからsource OFF、
+DMA8channel/QMU非稼働、IRQ mask、16 endpointのFIFO/REQ停止、SESSION offを確認する。
+未知active DMA/QMUにはcontrol/address/resetを書かず失敗・retain。
+停止が実証できない時は成功を返さず、driver-owned shadowも既存consumerが保持する。
+source latch OFFとconnector comparator OFFを分離し、PCから外部電圧がある場合に0Vを捏造しない。
+同世代stop証明と再確認が成立した時だけRelease/unmap。
+全power/GPIO/clockは同一pwrapLock下の既存usb_ownerを使い、v1のborrow/releaseを遮断する。
+
+1013の16KiB shadow、cookie/ticket/epoch、5秒deadline/100ms proof鮮度、USBPORT-owned
+async poll、Abort/Close/Stop detach/rundownを保持する。明示0xE2/fastfailは追加していない。
 
 ## 実RT81の非同期通知契約
 
@@ -121,10 +131,8 @@ IOCTL_ACPI_GET_DEVICE_INFORMATIONに対する合成bus自身の識別情報を�
 firmware ACPIの観測結果を装わず、silicon revisionも報告しない。
 実際の親busのGUID_BUS_INTERFACE_STANDARDを転送する。DMA/translateメソッドを
 捏造しない。WDFのQueryCapabilitiesは既存実装を使用する。
-新owner GUIDはopt-in子から親へ転送する。親側は現在、資格を一切発行せず
-Query/Acquire/VBUS/Stop/ReleaseをSTATUS_NOT_SUPPORTEDで拒否する。
-GPIO21をOCと推定せず、GPIO22/source healthやBQ24160のno-opを5V証明にしない。
-親producerの実5V/OC/独占・resource/隔離実装が未達であり、現親へ配備しても物理USBは起動しない。
+owner ABI2はopt-in子から親へ転送する。GPIO21 OC観測・unforced DEVCTL比較器・実割当・
+確定PIO停止のproducerを実装済み。電気的5V値・OC保護回路の定格/実作動は未確認。
 
 現main親や媒体をこのbranchの古い親で巻き戻さず、mainの新しい親sourceへこの差分を
 合流してから固定manifest付きで再ビルドする必要がある。
@@ -136,7 +144,7 @@ GPIO21をOCと推定せず、GPIO22/source healthやBQ24160のno-opを5V証明�
 10TU ARM compile/link、実WDK型x64 callback/物理backend合成試験、opt-in親TU compile、SYS/CAT署名を行う。
 親TUはcompileだけで、現親の置換・配備をしていない。
 
-consumerの全配線は実装済み。資格producer、標準hubへの実binding、実RT81登録成功、PnP start/stop、
+consumer/親producerを実装済み。実機上の電気的資格、標準hubへの実binding、実RT81登録成功、PnP start/stop、
 control/汎用転送の実機成功は未確認。回収manifestはこれらをfalseのまま記録する。
 
 実RT81媒体のWindows/inf/usbport.infでROOT_HUB20→ROOTHUB.Dev→usbhubサービス、ServiceBinary=usbhub.sysを確認した。usb.infのStandardHub.Devも同じセクションを参照する。root ID生成だけで標準hub起動成功とは扱わない。

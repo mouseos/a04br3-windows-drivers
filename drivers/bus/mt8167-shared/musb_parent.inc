@@ -23,7 +23,7 @@ static void MusbSnapshot(A04_PARENT_CONTEXT *c,MT_MUSB_OBSERVATION *o)
   o->host_role=!s.id;o->valid|=MT_MUSB_ROLE;
   if(s.oc_valid){o->valid|=MT_MUSB_OC;o->oc_clear=s.oc;o->evidence|=MT_MUSB_OC_PIN21;}
   o->source_off=!s.source;if(o->source_off)o->evidence|=MT_MUSB_SOURCE_OFF;
-  if(!s.id&&s.detect&&!s.source)o->evidence|=MT_MUSB_QUERY_READY;
+  if(!s.id&&s.detect&&!s.source&&(!s.oc_valid||s.oc))o->evidence|=MT_MUSB_QUERY_READY;
   if(s.id)o->reason=MT_MUSB_WAIT_ROLE;else if(!s.detect&&!c->musb.powered)o->reason=MT_MUSB_WAIT_PC;
  }
  if(!c->usb.leased||c->musb.held)o->valid|=MT_MUSB_EXCLUSIVE;
