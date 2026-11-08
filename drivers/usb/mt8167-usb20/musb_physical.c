@@ -235,7 +235,7 @@ static void Tick(PDEVICE_OBJECT device,PVOID context)
   cached_frame=Rd16(r,0xc);
   /* Role/OC/health loss is an immediate shutdown request, not just a flag.
    * No MMIO read is performed after a successful parent isolation/release. */
-  if(fault||!proven){if(StopPhysical(r))proven=0;else proven=1;}
+  if(fault||!proven){fault=TRUE;connected=0;if(StopPhysical(r))proven=0;else proven=1;}
  }
  KeAcquireSpinLock(&r->lock,&irql);
  r->fault=fault;r->connected=connected;r->frame=cached_frame;

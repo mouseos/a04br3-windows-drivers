@@ -52,6 +52,9 @@ typedef ULONG (*A04_MP_HUB_STATUS)(PVOID,PULONG);
 typedef ULONG (*A04_MP_PORT_FEATURE)(PVOID,USHORT);
 typedef VOID (*A04_PORT_INVALIDATE_RH)(PVOID);
 typedef VOID (*A04_PORT_INVALIDATE_EP)(PVOID,PVOID);
+typedef VOID (*A04_PORT_ASYNC_ROUTINE)(PVOID,PVOID);
+typedef NTSTATUS (*A04_PORT_ASYNC)(PVOID,ULONG,PVOID,ULONG,A04_PORT_ASYNC_ROUTINE);
+typedef VOID (*A04_PORT_INVALIDATE_CONTROLLER)(PVOID,ULONG);
 /* Third argument is the original USBPORT transfer-parameters pointer, not
  * the miniport-private transfer context passed as Submit's fourth argument. */
 typedef VOID (*A04_PORT_COMPLETE)(PVOID,PVOID,struct a04_mp_parameters *,USBD_STATUS,ULONG);
@@ -72,7 +75,7 @@ struct a04_mp_packet {
  PVOID send_one,end_one,passthru;
  PVOID port_debug,port_break,port_assert,port_registry;
  A04_PORT_INVALIDATE_RH invalidate_root;A04_PORT_INVALIDATE_EP invalidate_endpoint;
- A04_PORT_COMPLETE complete;PVOID complete_iso,log,mapped_va,async_callback,config,wait,invalidate_controller,bugcheck,notify;
+ A04_PORT_COMPLETE complete;PVOID complete_iso,log,mapped_va;A04_PORT_ASYNC async_callback;PVOID config,wait;A04_PORT_INVALIDATE_CONTROLLER invalidate_controller;PVOID bugcheck,notify;
  PVOID rebalance,flush,chirp,take_control;ULONG reserved_tail[2];
 };
 #if defined(_ARM_)

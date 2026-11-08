@@ -7,6 +7,10 @@ void *memcpy(void *p,const void*s,SIZE_T n){volatile UCHAR*d=p;const volatile UC
 static NTSTATUS admission=STATUS_NOT_SUPPORTED;static ULONG opens,cancels,closes,completed,done,fault;
 static ULONG root_kind,root_result,connected;static struct a04_hub_observation observation;
 static struct a04_mp_parameters *completed_parameters;
+static ULONG async_count,invalidations,epoch_copy;
+static NTSTATUS Schedule(PVOID h,ULONG ms,PVOID payload,ULONG bytes,A04_PORT_ASYNC_ROUTINE routine)
+{(void)h;(void)ms;(void)bytes;(void)routine;async_count++;epoch_copy=*(ULONG *)payload;return STATUS_SUCCESS;}
+static VOID InvalidateController(PVOID h,ULONG reason){(void)h;if(reason==3)invalidations++;}
 NTSTATUS MtMusbOpen(PDEVICE_OBJECT f,struct mt_musb_runtime **out)
 {(void)f;opens++;*out=NT_SUCCESS(admission)?(struct mt_musb_runtime *)1:NULL;return admission;}
 BOOLEAN MtMusbClose(struct mt_musb_runtime *r){if(r)closes++;return !fault;}
@@ -27,7 +31,7 @@ int main(void)
  struct a04_hcd h;struct a04_mp_resources r={0};struct a04_mp_endpoint ep;
  struct a04_mp_properties e={0};struct a04_mp_parameters p={0};struct a04_mp_transfer t;
  struct a04_mp_sg sg={0};ULONG actual,status;UCHAR data[8];
- r.fdo=(PDEVICE_OBJECT)1;r.pdo=(PDEVICE_OBJECT)2;FillPacket();Packet.complete=Complete;
+ r.fdo=(PDEVICE_OBJECT)1;r.pdo=(PDEVICE_OBJECT)2;FillPacket();Packet.complete=Complete;Packet.async_callback=Schedule;Packet.invalidate_controller=InvalidateController;
  CHECK(Packet.start(&h,&r)==A04_MP_UNSUPPORTED&&!h.started&&!h.runtime&&opens==1);
  admission=STATUS_SUCCESS;CHECK(!Packet.start(&h,&r));CHECK(!Packet.port_power(&h,1));
  CHECK(!(h.port.status&A04_PORT_POWER)); /* accepting command is not proof */
@@ -45,6 +49,10 @@ int main(void)
  RtlZeroMemory(&p,sizeof(p));RtlZeroMemory(&t,sizeof(t));Packet.poll_endpoint(&h,&ep);CHECK(completed==1);
  p.bytes=8;CHECK(!Packet.submit(&h,&ep,&p,&t,&sg));Packet.close(&h,&ep,FALSE);
  CHECK(cancels==2&&!h.active&&ep.state==A04_EP_CLOSED);
+ {ULONG prior=async_count;ULONG wrong=epoch_copy+1;
+ AsyncPoll(&h,&wrong);CHECK(async_count==prior&&!invalidations);
+ AsyncPoll(&h,&epoch_copy);CHECK(async_count==prior+1&&invalidations==1);}
  fault=1;Packet.stop(&h,FALSE);CHECK(closes==1&&!h.runtime&&!h.started&&h.fault);
+  {ULONG prior=async_count;AsyncPoll(&h,&epoch_copy);CHECK(async_count==prior);}
  return 0;
 }

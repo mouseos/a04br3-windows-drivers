@@ -8,11 +8,12 @@
 struct a04_mp_endpoint {struct a04_mp_properties p;ULONG state,status,toggle,cookie,toggle_unknown;};
 struct a04_mp_transfer {struct a04_mp_parameters *parameters;PVOID mapped;ULONG bytes,actual,state;};
 struct a04_hcd {
- KSPIN_LOCK lock;ULONG signature,started,irq_enabled,root_irq,fault,next_cookie;
+ KSPIN_LOCK lock;ULONG signature,started,irq_enabled,root_irq,fault,next_cookie,epoch;
  struct a04_root_port port;struct a04_hub hub;struct a04_hub_action root_action;
  struct mt_musb_runtime *runtime;struct a04_mp_endpoint *active_ep;struct a04_mp_transfer *active;
 };
 static struct a04_mp_packet Packet;
+static LONG EpochSeed;
 #define CTX(p) ((struct a04_hcd *)(p))
 #if defined(A04_HCD_CONTRACT_TEST)
 #define HINIT(h) ((void)(h))
@@ -74,15 +75,41 @@ FEATURE(RhClearEnableChange,0,17) FEATURE(RhClearConnectChange,0,16)
 FEATURE(RhClearResetChange,0,20) FEATURE(RhClearSuspendChange,0,18) FEATURE(RhClearOcChange,0,19)
 static VOID RhDisable(PVOID p){struct a04_hcd *h=CTX(p);KIRQL k;HLOCK(h,k);h->root_irq=0;HUNLOCK(h,k);}
 static VOID RhEnableIrq(PVOID p){struct a04_hcd *h=CTX(p);KIRQL k;HLOCK(h,k);h->root_irq=1;HUNLOCK(h,k);}
+/* Actual RT81 legacy async service copies its payload synchronously and
+ * invokes callbacks (also during cancellation) at DISPATCH. USBPORT retains
+ * the extension until its async timer rundown. This is NOT our worker. */
+static VOID Stop(PVOID p,BOOLEAN removed);
+static VOID AsyncPoll(PVOID p,PVOID copied_epoch)
+{
+ struct a04_hcd *h=CTX(p);KIRQL k;ULONG epoch=*(ULONG *)copied_epoch,run;
+ HLOCK(h,k);run=h->started&&h->epoch==epoch;HUNLOCK(h,k);
+ if(!run)return;
+ /* Reason 3 is observed to enqueue the simulated-interrupt DPC, which
+  * schedules USBPORT's own endpoint poll under its normal serialization. */
+ Packet.invalidate_controller(h,3);
+ if(!NT_SUCCESS(Packet.async_callback(h,10,&epoch,sizeof(epoch),AsyncPoll))){
+  HLOCK(h,k);h->fault=1;HUNLOCK(h,k);Stop(h,FALSE);
+ }
+}
 static ULONG Start(PVOID p,struct a04_mp_resources *r)
 {
  struct a04_hcd *h=CTX(p);NTSTATUS s;
- if(!r||!r->fdo||!r->pdo)return A04_MP_ERROR;
+ if(!r||!r->fdo||!r->pdo||!Packet.async_callback||!Packet.invalidate_controller)return A04_MP_ERROR;
  RtlZeroMemory(h,sizeof(*h));HINIT(h);h->signature=0x34484344;
  a04_port_init(&h->port);if(a04_hub_init(&h->hub,&h->port,50))return A04_MP_ERROR;
  s=MtMusbOpen(r->fdo,&h->runtime);
  if(!NT_SUCCESS(s)){h->fault=1;return s==STATUS_NOT_SUPPORTED?A04_MP_UNSUPPORTED:A04_MP_HARDWARE;}
- h->started=1;return 0;
+#if defined(A04_HCD_CONTRACT_TEST)
+ h->epoch=(ULONG)++EpochSeed;
+#else
+ h->epoch=(ULONG)InterlockedIncrement(&EpochSeed);
+#endif
+ h->started=1;
+ if(!NT_SUCCESS(Packet.async_callback(h,10,&h->epoch,sizeof(h->epoch),AsyncPoll))){
+  struct mt_musb_runtime *runtime=h->runtime;h->runtime=NULL;h->started=0;h->fault=1;
+  (void)MtMusbClose(runtime);return A04_MP_RESOURCES;
+ }
+ return 0;
 }
 static VOID Stop(PVOID p,BOOLEAN removed)
 {

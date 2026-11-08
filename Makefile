@@ -1616,3 +1616,9 @@ test-mt8167-usb-generic-pio:
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/usb/mt8167-usb20 tests/usb/pio_transfer_test.c drivers/usb/mt8167-usb20/pio_transfer.c -o build/mt8167_usb_generic_pio_test
 	./build/mt8167_usb_generic_pio_test
+
+.PHONY: test-mt8167-musb-async
+test-mt8167-musb-async:
+	mkdir -p build
+	$(CC) $(CFLAGS) tests/usb/musb_async_test.c drivers/usb/mt8167-usb20/musb_async.c -o build/mt8167_musb_async_test
+	./build/mt8167_musb_async_test

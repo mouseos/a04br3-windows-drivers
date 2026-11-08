@@ -87,6 +87,15 @@ int main(void)
  Fixture();CHECK(NT_SUCCESS(MtMusbOpen((PDEVICE_OBJECT)1,&r)));Work();test_health_fail=1;
  TimerDpc(NULL,r,NULL,NULL);Work();CHECK(r->fault);CHECK(MtMusbSubmit(r,5,&e,0,&p,data));
  test_health_fail=0;CHECK(MtMusbClose(r));
+ /* A failed local flush with a successful isolation fallback remains a
+  * controller fault. Never schedule another tick after clocks were released. */
+ Fixture();CHECK(NT_SUCCESS(MtMusbOpen((PDEVICE_OBJECT)1,&r)));Work();
+ CHECK(!MtMusbRootQueue(r,A04_HUB_POWER_ON));Work();MtMusbObserve(r,&observation,&c,&done,&result);
+ test_mac[0xa]=0x10;TimerDpc(NULL,r,NULL,NULL);Work();
+ CHECK(!MtMusbSubmit(r,14,&e,0,&p,data));Work();test_stuck=1;test_mac[0x12]=1;
+ MtMusbCancel(r,14);TimerDpc(NULL,r,NULL,NULL);Work();
+ CHECK(r->fault&&!r->lease&&MtMusbSubmit(r,15,&e,0,&p,data));
+ test_stuck=0;CHECK(MtMusbClose(r));
  /* Admission rejection must precede all writes, including unknown DMA/QMU. */
  Fixture();test_stale=1;{ULONG maps=test_maps,acquires=test_acquires,writes=test_writes;
  CHECK(MtMusbOpen((PDEVICE_OBJECT)1,&r)==STATUS_NOT_SUPPORTED&&test_maps==maps&&test_acquires==acquires&&test_writes==writes);}
