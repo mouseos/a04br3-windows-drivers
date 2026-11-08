@@ -61,7 +61,7 @@ main=r'''
 int main(void){SP_DEVINFO_DATA d;unsigned step;targets[7].version=8;targets[7].date=10;targets[7].cls=(const WCHAR*)L"{745a17a0-74d3-11d0-b6fe-00a0c90f57da}";
 reset();memset(&d,0,sizeof(d));assert(!deferred_install(7,0,&d,(const WCHAR*)L"keypad.inf"));assert(selected&&dif_install_calls==1&&destroyed==1&&deferred_reboot_needed&&baseline_calls==1&&emitted_step==19);
 /* Every external boundary retains its exact error and failure step. No live restart APIs exist in this fixture. */
-for(step=2;step<=18;step++){if(step==7||step==10||step==11||step==16)continue;reset();memset(&d,0,sizeof(d));fail_at=step;assert(deferred_install(7,0,&d,(const WCHAR*)L"keypad.inf")==ERROR_ACCESS_DENIED || step==6);assert(emitted_step==step&&deferred_failure_step==step);assert(dif_install_calls==(step==18));}
+for(step=2;step<=18;step++){if(step==7||step==10||step==11||step==16)continue;reset();memset(&d,0,sizeof(d));fail_at=step;assert(deferred_install(7,0,&d,(const WCHAR*)L"keypad.inf")==ERROR_ACCESS_DENIED);assert(emitted_step==step&&deferred_failure_step==step);assert(dif_install_calls==(step==18));}
 reset();memset(&d,0,sizeof(d));baseline_error=ERROR_REVISION_MISMATCH;assert(deferred_install(7,0,&d,(const WCHAR*)L"keypad.inf")==ERROR_REVISION_MISMATCH&&emitted_step==1&&!selected);
 reset();memset(&d,0,sizeof(d));badversion=1;assert(deferred_install(7,0,&d,(const WCHAR*)L"keypad.inf")==ERROR_REVISION_MISMATCH&&emitted_step==7&&!selected);
 reset();memset(&d,0,sizeof(d));duplicate=1;assert(deferred_install(7,0,&d,(const WCHAR*)L"keypad.inf")==ERROR_DUP_NAME&&emitted_step==6&&!selected);

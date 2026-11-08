@@ -173,7 +173,8 @@ static DWORD deferred_install(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,const
  deferred_current_step=5;
  if(!SetupDiEnumDriverInfoW(set,dev,list_type,0,&driver)){error=GetLastError();goto done;}
  deferred_current_step=6;
- if(SetupDiEnumDriverInfoW(set,dev,list_type,1,&extra)||GetLastError()!=ERROR_NO_MORE_ITEMS){error=ERROR_DUP_NAME;goto done;}
+ if(SetupDiEnumDriverInfoW(set,dev,list_type,1,&extra)){error=ERROR_DUP_NAME;goto done;}
+ error=GetLastError();if(error!=ERROR_NO_MORE_ITEMS)goto done;error=0;
  deferred_current_step=7;
  if(driver.DriverVersion!=deferred_pins[i].version||(((ULONGLONG)driver.DriverDate.dwHighDateTime<<32)|driver.DriverDate.dwLowDateTime)!=deferred_pins[i].date){error=ERROR_REVISION_MISMATCH;goto done;}
  {
