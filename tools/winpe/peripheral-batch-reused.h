@@ -170,18 +170,23 @@ static DWORD deferred_install(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,const
  if(list_type==SPDIT_COMPATDRIVER){
   /* Device-install applications call the DIF dispatcher, not its default
    * SetupDiSelectBestCompatDrv handler. Only one fixed signed node exists. */
-  if(!SetupDiCallClassInstaller(DIF_SELECTBESTCOMPATDRV,set,dev)){error=GetLastError();goto done;}
+  if(!SetupDiCallClassInstaller(DIF_SELECTBESTCOMPATDRV,set,dev)){error=GetLastError();pnp_record(i,0x2a0,error);goto done;}pnp_record(i,0x2a0,0);
   memset(&chosen,0,sizeof(chosen));chosen.cbSize=sizeof(chosen);
-  if(!SetupDiGetSelectedDriverW(set,dev,&chosen)){error=GetLastError();goto done;}
-  if(chosen.DriverType!=SPDIT_COMPATDRIVER||chosen.DriverVersion!=driver.DriverVersion||
-     chosen.DriverDate.dwHighDateTime!=driver.DriverDate.dwHighDateTime||chosen.DriverDate.dwLowDateTime!=driver.DriverDate.dwLowDateTime||
-     lstrcmpW(chosen.Description,driver.Description)||lstrcmpW(chosen.MfgName,driver.MfgName)||lstrcmpW(chosen.ProviderName,driver.ProviderName)){
-   error=ERROR_REVISION_MISMATCH;goto done;
+  if(!SetupDiGetSelectedDriverW(set,dev,&chosen)){error=GetLastError();pnp_record(i,0x2a1,error);goto done;}pnp_record(i,0x2a1,0);
+  pnp_record(i,0x2a3,(DWORD)chosen.DriverVersion);pnp_record(i,0x2a4,(DWORD)(chosen.DriverVersion>>32));pnp_record(i,0x2a5,chosen.DriverDate.dwLowDateTime);pnp_record(i,0x2a6,chosen.DriverDate.dwHighDateTime);
+  {DWORD mismatch=0;
+   if(chosen.DriverType!=SPDIT_COMPATDRIVER)mismatch|=1;
+   if(chosen.DriverVersion!=driver.DriverVersion)mismatch|=2;
+   if(chosen.DriverDate.dwHighDateTime!=driver.DriverDate.dwHighDateTime||chosen.DriverDate.dwLowDateTime!=driver.DriverDate.dwLowDateTime)mismatch|=4;
+   if(lstrcmpW(chosen.Description,driver.Description))mismatch|=8;
+   if(lstrcmpW(chosen.MfgName,driver.MfgName))mismatch|=16;
+   if(lstrcmpW(chosen.ProviderName,driver.ProviderName))mismatch|=32;
+   pnp_record(i,0x2a2,mismatch);if(mismatch){error=ERROR_REVISION_MISMATCH;goto done;}
   }
   /* Selection updates SP_DEVINFO_DATA.ClassGuid before first installation;
    * SPDRP_CLASSGUID reads persisted devnode state and can still be absent.
    * Compare SetupAPI's selected GUID; never write class registry keys. */
-  {WCHAR guid[39];static const WCHAR hx[]=L"0123456789abcdef";const BYTE *v=(const BYTE *)&dev->ClassGuid;static const BYTE order[16]={3,2,1,0,5,4,7,6,8,9,10,11,12,13,14,15};unsigned k,n=0;guid[n++]=L'{';for(k=0;k<16;k++){BYTE c=v[order[k]];if(k==4||k==6||k==8||k==10)guid[n++]=L'-';guid[n++]=hx[c>>4];guid[n++]=hx[c&15];}guid[n++]=L'}';guid[n]=0;if(lstrcmpiW(guid,targets[i].cls)){error=ERROR_REVISION_MISMATCH;goto done;}}
+  {WCHAR guid[39];static const WCHAR hx[]=L"0123456789abcdef";const BYTE *v=(const BYTE *)&dev->ClassGuid;static const BYTE order[16]={3,2,1,0,5,4,7,6,8,9,10,11,12,13,14,15};unsigned k,n=0;guid[n++]=L'{';for(k=0;k<16;k++){BYTE c=v[order[k]];if(k==4||k==6||k==8||k==10)guid[n++]=L'-';guid[n++]=hx[c>>4];guid[n++]=hx[c&15];}guid[n++]=L'}';guid[n]=0;pnp_record(i,0x2a7,lstrcmpiW(guid,targets[i].cls)?ERROR_REVISION_MISMATCH:0);if(lstrcmpiW(guid,targets[i].cls)){error=ERROR_REVISION_MISMATCH;goto done;}}
   deferred_current_step=3;
   if(!SetupDiCallClassInstaller(DIF_REGISTER_COINSTALLERS,set,dev)){error=GetLastError();goto done;}
   deferred_current_step=4;

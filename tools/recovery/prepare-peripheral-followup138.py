@@ -29,6 +29,17 @@ def validate_boot_adoption(root,m,pin):
  require(state['hardware_owner']=='main' and state['status'] in ('fresh-state-identical-rebind-verified','actual-state-baseline-verified') and state['recovery_confirmed'] is True and state['fresh_manifest_sha256']==m['fresh']['sha256'] and state['recovery_boot_id']==m['fresh']['recovery_boot_id'],'Main Recovery/fresh state proof required; never infer unapplied Windows from no output')
  return mb
 
+def inf_class_guid(text):
+ section=None;values=[]
+ for raw in text.splitlines():
+  line=raw.split(';',1)[0].strip()
+  if line.startswith('[') and line.endswith(']'):section=line[1:-1].strip().lower();continue
+  if section=='version' and '=' in line:
+   name,value=line.split('=',1)
+   if name.strip().lower()=='classguid':values.append(value.strip())
+ require(len(values)==1 and re.fullmatch(r'\{[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}\}',values[0]),'One literal Version ClassGuid required')
+ return values[0]
+
 def paths():
  b='C:\\Windows\\System32\\'+SERVICE
  return '\n'.join('#define '+k+' '+cstr(v) for k,v in [('A04_PERIPHERAL_SERVICE',SERVICE),('A04_PERIPHERAL_DIRECTORY',SERVICE),('A04_CAPTURE_DIRECTORY',b+'\\capture'),('A04_CAPTURE_LOG_PATH',b+'\\capture\\capture.log'),('A04_CAPTURE_MUTEX',SERVICE+'CaptureOnce'),('A04_WLAN_SCAN_LOG_PATH',b+'\\logs\\wlan-scan.txt'),('A04_WLAN_WIFI_ENUM_PATH','SYSTEM\\CurrentControlSet\\Enum\\A04BR3\\MT6630SDIO\\3&7ce9159&0&0')])+'\n'
@@ -51,7 +62,7 @@ def validate(root,path):
   require(pm.get('package_source_commit')==e['source_commit'] if role=='render' else pm['source_commit']==e['source_commit'],'Package/source mismatch');members={x['sha256'].lower() for x in pm.get('files',pm.get('outputs',[]))};hs={}
   for kind,n in e['names'].items():require(kind in ('inf','sys','cat') and re.fullmatch('[A-Za-z0-9_.-]+',n),'Fixed trio leaves only');hs[kind]=sha(d/n);require(hs[kind] in members,'Package member absent from signed manifest')
   require(e['names']['sys']==TARGETS[role][3],'Exact role SYS leaf required');inf=inftext(d/e['names']['inf']);require('DriverVer='+e['driver_date']+','+e['driver_version'] in inf and TARGETS[role][0].lower() in inf.lower(),'Exact INF version/date/HWID required')
-  require(set(hs)=={'inf','sys','cat'},'Exact trio required');packages[role]={**e,'hashes':hs,'version_u64':version(e['driver_version']),'date_filetime':datevalue(e['driver_date'])}
+  require(inf_class_guid(inf).lower()==TARGETS[role][2].lower(),'Signed INF ClassGuid differs from exact role target');require(set(hs)=={'inf','sys','cat'},'Exact trio required');packages[role]={**e,'hashes':hs,'version_u64':version(e['driver_version']),'date_filetime':datevalue(e['driver_date'])}
   if role=='render':
    require([x['name'] for x in e['extra_members']]==['ge8300-umd.dll','ge8300-mips.fw'] and [x['installed'] for x in e['extra_members']]==['ge8300-umd.dll','Drivers\\ge8300-mips.fw'],'Exact327 extra files only')
    for x in e['extra_members']:require(sha(d/x['name'])==x['sha256'] and x['sha256'] in members,'Extra CAT package member hash mismatch')

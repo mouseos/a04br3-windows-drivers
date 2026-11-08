@@ -1,0 +1,11 @@
+# run141 AFE selection1306
+
+id9/step2で1306、id6 parent DIF完了、planned restart0、finalization0。選択前version/date guardはstep1であり通過。step2はselected driver metadataと選択ClassGuidのいずれかが不一致なら拒否する。現telemetryだけでstep2内の特定branchを実観測したとは扱わない。
+
+署名済み1033 INFのVersion/ClassGuidが誤って{4d36e96c-e325-11ce-bfc1-08002be10338}。実fresh140/142 native MEDIA nodeとtargetは{4d36e96c-e325-11ce-bfc1-08002be10318}。setupapiのoem146 store importにも誤GUIDが明示される。親DIF成功後にAFEはDIF_INSTALLDEVICEへ未到達、native142も旧1027選択を示す。署名/CAT所属・store import成功はclass整合性を保証しない。
+
+runtime拒否は正しいので削除・緩和しない。INFの誤GUIDだけを直し、既署名SYS1408e608をbyte保持してInf2CatとCAT署名のみ実行。audio/parent/client/SDKは再buildしない。旧bad INF/CATとrun141失敗receiptは保持。正本修正INFと再現helperはこのbranch内、binary/object出自a07dee3f/950f0a3fとINF修正sourceを分離する。
+
+生成validatorはVersion sectionのClassGuidを1個のliteralとして読み、targetと一致しない署名packageをcompile/arm前に拒否。runtimeのselected type/version/date/description/manufacturer/provider/ClassGuid比較は全て維持し、0x2a0-0x2a7のtelemetryを追加。0x2a2 mismatch mask=type1/version2/date4/description8/manufacturer16/provider32。0x2a3/4は選択version低/高DWORD、0x2a5/6はdate低/高、0x2a7は選択ClassGuidの比較結果。文字列や校正RAWは出さない。
+
+この修正は実機AFE適用成功を意味しない。mainのfresh142 actual stateを次基点とし、親1115は再DIFせず保持する。未知差の1306は引き続き拒否する。実機非接触。
