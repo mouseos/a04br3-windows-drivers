@@ -241,6 +241,7 @@ static int RootAction(struct mt_musb_runtime *r,ULONG kind,struct a04_hub_observ
 static int ServiceLane(struct mt_musb_runtime *r,unsigned n)
 {
  struct mt_musb_lane *l=&r->lanes[n];KIRQL k;ULONG state,ticket,actual=0,toggle=0;int claim=0,result=0,proven=1;
+ if(EnginesIdle(r)||IrqOff(r)){r->io_unsafe=TRUE;return -1;}
  KeAcquireSpinLock(&r->lock,&k);state=l->job.state;ticket=l->job.ticket;
  if(state==MT_JOB_QUEUED){claim=!mt_musb_claim(&l->job,&ticket);if(mt_musb_expired(&l->job,KeQueryInterruptTime()))result=-1;}
  else if(state==MT_JOB_CANCEL&&!l->hardware_job){
@@ -263,7 +264,13 @@ static int ServiceLane(struct mt_musb_runtime *r,unsigned n)
  KeReleaseSpinLock(&r->lock,k);
  if(l->hardware_job){
   if(state==MT_JOB_CANCEL||result){result=-1;proven=FlushLane(r,n)==0;}
-  else result=DataEvent(r,n);
+  else {
+   /* Cancellation and packet re-issue share the same lock. A DISPATCH
+    * Cancel published before this point cannot trigger another packet. */
+   KeAcquireSpinLock(&r->lock,&k);
+   if(r->closing||l->job.state==MT_JOB_CANCEL)result=-1;else result=DataEvent(r,n);
+   KeReleaseSpinLock(&r->lock,k);
+  }
   actual=!n?l->ep0.transfer.actual:l->pio.actual;toggle=!n?0:l->pio.ep.toggle;
   if(result){if(FlushLane(r,n))proven=0;else if(n)toggle=l->pio.ep.toggle;}
  }
