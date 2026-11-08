@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include <assert.h>
-#include "../drivers/input/mt8167-accdet/socket.h"
+#include "../drivers/input/mt8167-accdet/status.h"
 struct fixture {uint32_t dir,mode,ies,pull,select,din;unsigned calls,fail,change;};
 static int read32(void *p,unsigned off,uint32_t *v)
 {
@@ -23,5 +23,25 @@ int main(void){
  f=good();f.dir=~(1u<<3);f.mode=~(7u<<12);f.ies=f.pull=f.select=f.din=~0u;
  assert(mt8167_accdet_read_socket(&io,&s)==MT8167_ACCDET_OK&&!s.inserted); /* unrelated pins ignored */
  assert(mt8167_accdet_read_socket(0,&s)==MT8167_ACCDET_INVALID&&!s.qualified);
+ struct mt8167_accdet_status diagnostic;
+ assert(sizeof(diagnostic)==68);
+ for(unsigned bad=0;bad<5;bad++){
+  f=good();if(bad==0)f.dir=8;if(bad==1)f.mode=1u<<12;if(bad==2)f.ies=0;if(bad==3)f.pull=0;if(bad==4)f.select=0;
+  mt8167_accdet_read_status(&io,&diagnostic);
+  assert(diagnostic.result==MT8167_ACCDET_NOT_READY&&diagnostic.reasons==(1u<<bad)&&diagnostic.valid==0xfff);
+ }
+ for(unsigned bad=1;bad<=12;bad++){
+  f=good();f.fail=bad;mt8167_accdet_read_status(&io,&diagnostic);
+  assert(diagnostic.result==MT8167_ACCDET_IO&&diagnostic.reasons==MT8167_ACCDET_REASON_IO&&diagnostic.valid==(0xfffu^(1u<<(bad-1))));
+ }
+ for(unsigned change=7;change<=12;change++){
+  f=good();f.change=change;mt8167_accdet_read_status(&io,&diagnostic);
+  assert(diagnostic.result==MT8167_ACCDET_CHANGED&&diagnostic.reasons==MT8167_ACCDET_REASON_CHANGED);
+ }
+ f=good();f.dir=~8u;f.mode=~(7u<<12);f.ies=f.pull=f.select=f.din=~0u;
+ mt8167_accdet_read_status(&io,&diagnostic);
+ assert(diagnostic.result==MT8167_ACCDET_OK&&!diagnostic.reasons&&diagnostic.valid==0xfff);
+ assert(!diagnostic.first[0]&&!diagnostic.first[1]&&diagnostic.first[2]==(1u<<10)&&diagnostic.first[3]==8&&diagnostic.first[4]==8&&diagnostic.first[5]==8);
+ mt8167_accdet_read_status(0,&diagnostic);assert(diagnostic.result==MT8167_ACCDET_INVALID&&!diagnostic.valid);
  return 0;
 }

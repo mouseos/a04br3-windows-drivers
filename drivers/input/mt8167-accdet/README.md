@@ -19,3 +19,13 @@ WDF sequential power-managed queue/PASSIVE callbackから既存ParentLockを使�
 この変更を既存parent1101のINF/署名へ混ぜて再包装しない。検証はcompile-onlyとし、最終profileで採用する場合は他の親差分と合わせ新source/上位INF版/SYS/CATを1回build/signする。親1026/旧6rangeへ戻さない。既定OFFではqueue/interface/readは追加されない。
 
 Bluetoothは別branchの[採取RT8.1契約](https://github.com/mouseos/a04br3-windows-drivers/blob/f7a1208b/docs/mt6630-rt81-bthx-contract.md)とsideband sourceを参照する。採取RT8.1 BthMiniはMaxAcl>=0x103/ScoSupportHCIBypass/MaxScoChannels1を必須にする。最新1019/2011/3003もPCM bit/clock、方向別latency、独立DMA drainが未確定のためNone/0を保持し、OS radio開始を成功化していない。Linuxのnative HCI_SDIOが動くことだけからBTHXの能力要件を満たしたとは扱わない。
+
+## 読取り専用理由照会（1103後段候補）
+
+既存READ_SOCKETのschema1/16byte・資格・失敗statusはそのまま保持する。STATUS_DEVICE_NOT_READYはadmission/資源/資格の複数条件で共用され、Win32 ERROR_NOT_READY(21)だけでは原因を区別できない。CM Started/Problem0もGPIO資格を証明しない。既存clientが失敗した段階を出力しないため、既存ERROR行だけでCreateFile/IOCTLのどちらかを断定しない。
+
+新しい `IOCTL_MT8167_ACCDET_QUERY_STATUS` (0x00226558) は同じinterface・FILE_READ_DATA・power-managed queueで、固定68byte/schema1の診断envelopeを返す。GPIO19のDIR/MODE/IES/PULLEN/PULLSEL/DINの固定6fieldを2回読むだけで、GPIO19以外はmaskする。valid bit0..5がfirst、bit6..11がlastの有効read。resultはsocket enumで、成功診断envelopeをsocket/挿入成功と混同しない。reasons bit0=inputでない、1=mode0でない、2=IESなし、3=pullなし、4=pull-up selectなし、5=二重read変化、6=read失敗、7=admission拒否、8=mappingなし、9=offline、10=poison、11=removed。admission/資源NGならMMIOは読まない。
+
+`mt8167-accdet-status.exe --status` は唯一のinterfaceを選び、この固定照会を1回だけ行う。ACCDET_STAGE 1=args/2=interface set/3=enumeration/4=detail・uniqueness/5=open/6=IOCTL/7=ABI validationを出力し、result/reasons/valid/fieldを記録する。未準備resultではERROR21で終了し、Connectedを出さない。2秒timeout→cancel→2秒join、join不能ならERROR_TIMEOUTを出してprocess終了する。通常READ_SOCKETとの自動反復や、資格不足を解消するmux/pull/PMIC writeはない。
+
+親1103は1102にこの診断だけを追加した独立候補であり、AFE jack1027は1102でも使える。未確定の資格を緩めず、RTC/thermal/USB/Audio ownerと既存flagsを保持する。次の主担当の一括更新へsource単位で統合する。現在の親を旧基点へ巻き戻さない。

@@ -2,11 +2,30 @@
 #include "ioctl.h"
 static int ParentAccdetRead32(void *context,unsigned off,uint32_t *value)
 {return ParentRegRead(context,A04_SHARED_GPIO,off,value);}
+static VOID ParentAccdetStatus(A04_PARENT_CONTEXT *c,WDFREQUEST request)
+{
+ struct mt8167_accdet_status *s=NULL;struct mt8167_accdet_io io={c,ParentAccdetRead32};
+ NTSTATUS status=WdfRequestRetrieveOutputBuffer(request,sizeof(*s),(PVOID *)&s,NULL);
+ if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
+ mt8167_accdet_status_init(s);
+ if(ParentLock(c))s->reasons=MT8167_ACCDET_REASON_ADMISSION;
+ else{
+  if(!c->gpio)s->reasons|=MT8167_ACCDET_REASON_MAPPING;
+  if(!c->regs.online)s->reasons|=MT8167_ACCDET_REASON_OFFLINE;
+  if(c->regs.poisoned)s->reasons|=MT8167_ACCDET_REASON_POISON;
+  if(InterlockedCompareExchange(&c->removed,0,0))s->reasons|=MT8167_ACCDET_REASON_REMOVED;
+  if(!s->reasons)mt8167_accdet_read_status(&io,s);
+  ParentUnlock(c);
+ }
+ /* This is a diagnostic result envelope, never a successful socket sample. */
+ WdfRequestCompleteWithInformation(request,STATUS_SUCCESS,sizeof(*s));
+}
 static VOID ParentAccdetControl(WDFQUEUE queue,WDFREQUEST request,size_t outBytes,size_t inBytes,ULONG code)
 {
  A04_PARENT_CONTEXT *c=ParentContext(WdfIoQueueGetDevice(queue));struct mt8167_accdet_socket *s=NULL;
  NTSTATUS status;enum mt8167_accdet_result result;struct mt8167_accdet_io io={c,ParentAccdetRead32};
  UNREFERENCED_PARAMETER(outBytes);
+ if(!inBytes&&code==IOCTL_MT8167_ACCDET_QUERY_STATUS){ParentAccdetStatus(c,request);return;}
  if(code!=IOCTL_MT8167_ACCDET_READ_SOCKET||inBytes){WdfRequestComplete(request,STATUS_INVALID_DEVICE_REQUEST);return;}
  status=WdfRequestRetrieveOutputBuffer(request,sizeof(*s),(PVOID *)&s,NULL);
  if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
