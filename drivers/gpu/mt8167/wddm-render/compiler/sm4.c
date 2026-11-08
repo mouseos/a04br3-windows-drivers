@@ -23,6 +23,42 @@ static int operand(struct geo_sm2_operand *o,const uint32_t *t,uint32_t *at,uint
  else return 0;
  return 1;
 }
+/* SM4 IMMEDIATE32 has no index dimension. Lower the exact IEEE bits to
+ * the existing DEF/NIR constant path, disjoint from runtime cb0 registers.
+ * Do not place literal values in shared/preamble storage or a fixed shader. */
+static int source_operand(struct geo_sm2_program *p,struct geo_sm2_operand *o,
+ const uint32_t *t,uint32_t *at,uint32_t end,uint32_t cb_count) {
+ uint32_t v,n,i,j,bits[4],slot;
+ if(*at>=end)return 0;
+ v=t[*at];
+ if(((v>>12)&255u)!=4u)return operand(o,t,at,end,0);
+ if(v!=0x4001u&&v!=0x4002u)return 0;
+ n=v==0x4001u?1u:4u;
+ if(end-*at-1u<n)return 0;
+ ++*at;
+ for(i=0;i<4;i++)bits[i]=t[*at+(n==1u?0u:i)];
+ *at+=n;
+ /* Reuse equal literal vectors. Runtime cb0[0..cb_count) is never reused. */
+ for(i=0;i<p->count;i++)if(p->instructions[i].opcode==81u) {
+  for(j=0;j<4u&&p->instructions[i].immediate[j]==bits[j];j++);
+  if(j==4u){slot=p->instructions[i].dst.index;goto found;}
+ }
+ for(slot=32u;slot>cb_count;) {
+  --slot;
+  if(!(p->immediate_mask&(1u<<slot))) {
+   struct geo_sm2_instruction *def;
+   if(p->count>=GEO_SM2_MAX_INSNS-1u)return 0;
+   def=&p->instructions[p->count++];memset(def,0,sizeof(*def));
+   def->opcode=81u;def->dst.file=2u;def->dst.index=slot;def->dst.mask=15u;
+   memcpy(def->immediate,bits,sizeof(bits));p->immediate_mask|=1u<<slot;
+   goto found;
+  }
+ }
+ return 0;
+ found:
+ memset(o,0,sizeof(*o));o->file=2u;o->index=slot;o->swizzle=0xe4u;
+ return 2;
+}
 int32_t geo_sm4_decode(struct geo_sm2_program *p,uint32_t stage,const uint32_t *t,uint32_t bytes,
  const struct geo_sm4_signatures *sig,struct geo_sm2_error *error) {
  uint32_t at=2u,words=bytes/4u,i,k,used=0u,outputs=0u,declared=0u,cb_count=0u,temps=0u,out_declared=0u;
@@ -37,7 +73,7 @@ int32_t geo_sm4_decode(struct geo_sm2_program *p,uint32_t stage,const uint32_t *
  memset(p,0,sizeof(*p));p->stage=stage;
  while(at<words) {
   uint32_t start=at,v=t[at++],op=v&0x7ffu,len=(v>>24)&127u,end,srcs=0u,lower=0u;
-  struct geo_sm2_instruction *ins;
+  struct geo_sm2_instruction decoded,*ins=&decoded;
   if(error){error->word=start;error->opcode=op;}
   if(!len||len>words-start)return GEO_INVALID;
   end=start+len;if(v&0x80000000u)return GEO_UNSUPPORTED;
@@ -72,24 +108,25 @@ int32_t geo_sm4_decode(struct geo_sm2_program *p,uint32_t stage,const uint32_t *
    case 56u:srcs=2u;lower=5u;break;case 50u:srcs=3u;lower=4u;break;
    case 16u:srcs=2u;lower=8u;break;case 17u:srcs=2u;lower=9u;break;default:return GEO_UNSUPPORTED;}
   if((v&0x00ffd800u)||p->count==GEO_SM2_MAX_INSNS||!out_declared)return GEO_UNSUPPORTED;
-  ins=&p->instructions[p->count];ins->opcode=lower;
+  memset(ins,0,sizeof(*ins));ins->opcode=lower;
   if(!operand(&ins->dst,t,&at,end,1))return GEO_UNSUPPORTED;
   ins->dst.saturate=(v>>13)&1u;
   if(ins->dst.file==0u){if(ins->dst.index>=temps)return GEO_INVALID;}
   else if(ins->dst.file==8u){if(ins->dst.index)return GEO_UNSUPPORTED;ins->dst.file=stage?8u:4u;}
   else return GEO_UNSUPPORTED;
   for(i=0;i<srcs;i++) {
-   struct geo_sm2_operand *s=&ins->src[i];uint32_t reads=0u;
-   if(!operand(s,t,&at,end,0))return GEO_UNSUPPORTED;
+   struct geo_sm2_operand *s=&ins->src[i];uint32_t reads=0u;int source_kind;
+   source_kind=source_operand(p,s,t,&at,end,cb_count);if(!source_kind)return GEO_UNSUPPORTED;
    for(k=0;k<4u;k++)reads|=1u<<((s->swizzle>>(2u*k))&3u);
    if(s->file==0u){if(s->index>=temps||(defined[s->index]&reads)!=reads)return GEO_INVALID;}
    else if(s->file==1u){if(stage||s->index||!declared)return GEO_UNSUPPORTED;p->input_mask|=1u;}
-   else if(s->file==2u){if(s->index>=cb_count)return GEO_INVALID;p->constant_mask|=1u<<s->index;}
+   else if(s->file==2u){if(source_kind==1){if(s->index>=cb_count)return GEO_INVALID;p->constant_mask|=1u<<s->index;}}
    else return GEO_UNSUPPORTED;
   }
   if(at!=end)return GEO_INVALID;
   if(ins->dst.file==0u)defined[ins->dst.index]|=ins->dst.mask;else outputs|=ins->dst.mask;
-  p->count++;used=1u;
+  if(p->count==GEO_SM2_MAX_INSNS)return GEO_UNSUPPORTED;
+  p->instructions[p->count++]=decoded;used=1u;
  }
  return GEO_INVALID;
 }
