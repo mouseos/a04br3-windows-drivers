@@ -18,7 +18,8 @@ static HRESULT compile(struct geo_shader_compiler *compiler,uint32_t stage,const
  s->tokens=HeapAlloc(GetProcessHeap(),0,s->token_bytes);
  if(!s->tokens){HeapFree(GetProcessHeap(),0,s);return E_OUTOFMEMORY;}
  memcpy(s->tokens,code,s->token_bytes);
- status=geo_pco_compile_tokenized(compiler->context,stage,s->tokens,s->token_bytes,&s->signatures,&s->compiled,&error);
+ status=geo_pco_compile_tokenized_witness(compiler->context,stage,s->tokens,s->token_bytes,&s->signatures,&s->compiled,&error,(void **)&s->witness,&s->witness_bytes);
+ if(status!=GEO_OK)status=geo_pco_compile_tokenized(compiler->context,stage,s->tokens,s->token_bytes,&s->signatures,&s->compiled,&error);
  if(status!=GEO_OK&&stage==1u){struct geo_texture2d_program binding;status=geo_pco_compile_texture2d(compiler->context,s->tokens,s->token_bytes,&s->signatures,&s->compiled,&binding);if(status==GEO_OK)s->texture_profile=1;}
  if(status!=GEO_OK&&geo_pco_pair_validate_stage(stage,s->tokens,s->token_bytes,&s->signatures)==GEO_OK){
   s->pair_stage=stage+1u;s->compiled.stage=stage;s->compiled.input_mask=stage?1u:3u;status=GEO_OK;

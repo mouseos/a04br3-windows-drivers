@@ -10,6 +10,6 @@ struct geo_adapter_memory_info {
  uint32_t size,version,magic,owner_ops_version,control_version,format,max_allocation_bytes,texture_draw_version;
  struct geo_aperture_config aperture;
  uint64_t compiler_bvnc; /* selected fixed compiler target, not a register readback */
- uint32_t draw_version,vertex_max_bytes;
+ uint32_t draw_version,vertex_max_bytes,shader_draw_version;
 };
 #endif

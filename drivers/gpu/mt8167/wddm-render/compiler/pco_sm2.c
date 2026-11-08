@@ -2,10 +2,13 @@
 /* Real compiler adapter. Build with the same reviewed patched Mesa PCO/NIR
  * source as the native shader producer, never with a generated USC lookup. */
 #include "shader_compiler.h"
+#include "../frontend/shader_witness.h"
+
 #include "../clear_protocol.h"
 #include "pco/pco.h"
 #include "pco/pco_data.h"
 #include "pco/pco_internal.h"
+int32_t geo_pco_process_witness_ir(pco_ctx *,pco_shader *,uint32_t,void **,uint32_t *);
 #include "util/ralloc.h"
 #include <string.h>
 #include <stdlib.h>
@@ -22,7 +25,7 @@ static nir_def *source(nir_builder *b,const struct geo_sm2_operand *s,nir_def **
  for(i=0;i<4;i++)swizzle[i]=(s->swizzle>>(2*i))&3;
  value=nir_swizzle(b,value,swizzle,4);return s->negate?nir_fneg(b,value):value;
 }
-static int32_t compile_program(void *context,uint32_t stage,const uint32_t *tokens,uint32_t bytes,const struct geo_sm4_signatures *signatures,struct geo_compiled_shader *out,struct geo_sm2_error *error) {
+static int32_t compile_program(void *context,uint32_t stage,const uint32_t *tokens,uint32_t bytes,const struct geo_sm4_signatures *signatures,struct geo_compiled_shader *out,struct geo_sm2_error *error,void **witness,uint32_t *witness_bytes) {
  pco_ctx *ctx=context;pco_shader *shader;struct geo_sm2_program *program;nir_builder b;
  nir_def *temp[32]={0},*constants[32]={0},*output,*value,*s[3]={0};
  pco_data data={0};unsigned i,j,shareds=0,vtxins=0;int32_t status;
@@ -70,7 +73,9 @@ static int32_t compile_program(void *context,uint32_t stage,const uint32_t *toke
  pco_preprocess_nir(ctx,b.shader,&data);pco_lower_nir(ctx,b.shader,&data);pco_postprocess_nir(ctx,b.shader,&data);
  shader=pco_trans_nir(ctx,b.shader,&data,NULL);
  if(!shader){ralloc_free(b.shader);ralloc_free(program);return GEO_UNSUPPORTED;}
- pco_process_ir(ctx,shader);pco_encode_ir(ctx,shader);
+ if(witness){status=geo_pco_process_witness_ir(ctx,shader,stage,witness,witness_bytes);if(status){ralloc_free(shader);ralloc_free(b.shader);ralloc_free(program);return status;}}
+ else pco_process_ir(ctx,shader);
+ pco_encode_ir(ctx,shader);
  out->size=sizeof(*out);out->version=1;out->stage=stage;out->code_bytes=pco_shader_binary_size(shader);
  out->code=pco_shader_binary_data(shader);out->storage=shader;
  out->temps=pco_shader_data(shader)->common.temps;out->shareds=pco_shader_data(shader)->common.shareds;
@@ -82,12 +87,39 @@ static int32_t compile_program(void *context,uint32_t stage,const uint32_t *toke
  return GEO_OK;
 }
 static int32_t compile_sm2(void *context,uint32_t stage,const uint32_t *tokens,uint32_t bytes,struct geo_compiled_shader *out,struct geo_sm2_error *error) {
- return compile_program(context,stage,tokens,bytes,NULL,out,error);
+ return compile_program(context,stage,tokens,bytes,NULL,out,error,NULL,NULL);
 }
 int32_t geo_pco_compile_tokenized(void *context,uint32_t stage,const uint32_t *tokens,uint32_t bytes,
  const struct geo_sm4_signatures *signatures,struct geo_compiled_shader *out,struct geo_sm2_error *error) {
  if(!signatures)return GEO_INVALID;
- return compile_program(context,stage,tokens,bytes,signatures,out,error);
+ return compile_program(context,stage,tokens,bytes,signatures,out,error,NULL,NULL);
+}
+int32_t geo_pco_compile_tokenized_witness(void *context,uint32_t stage,const uint32_t *tokens,uint32_t bytes,
+ const struct geo_sm4_signatures *sig,struct geo_compiled_shader *out,struct geo_sm2_error *error,void **witness,uint32_t *witness_bytes) {
+ if(!sig||!witness||!witness_bytes)return GEO_INVALID;
+ *witness=NULL;*witness_bytes=0;
+ int32_t status=compile_program(context,stage,tokens,bytes,sig,out,error,witness,witness_bytes);
+ if(!status){
+  /* Physical lowered references are the authoritative bound for the new
+   * contract; native independently checks the same immutable witness. */
+  const struct geo_shader_witness *w=*witness;const struct geo_shader_insn *rows=(const void *)(w+1);
+  uint32_t temps=0,vtxins=0,shareds=0;
+  for(uint32_t n=0;n<w->count;n++)for(uint32_t j=0;j<5;j++){
+   const struct geo_shader_ref *r=j<2?&rows[n].dest[j]:&rows[n].src[j-2];
+   if(r->type!=PCO_REF_TYPE_REG)continue;
+   uint32_t width=r->channels+1u;const struct pco_op_info *info=&pco_op_info[rows[n].opcode];
+   if(info->mods&(UINT64_C(1)<<PCO_OP_MOD_RPT)){uint32_t repeat=rows[n].modifiers[info->mod_map[PCO_OP_MOD_RPT]-1];if(repeat>width)width=repeat;}
+   uint32_t end=r->value+width;
+   if(r->bank==PCO_REG_CLASS_TEMP&&end>temps)temps=end;
+   if(r->bank==PCO_REG_CLASS_VTXIN&&end>vtxins)vtxins=end;
+  }
+  for(uint32_t mask=out->constant_mask;mask;mask>>=1)shareds+=4;
+  out->temps=temps;out->vtxins=vtxins;out->shareds=shareds;
+  struct geo_shader_metadata m={stage,out->temps,out->shareds,out->vtxins,out->vtxouts,out->input_mask,out->constant_mask};
+  status=geo_shader_witness_validate(*witness,*witness_bytes,out->code,out->code_bytes,&m);
+  if(status){ralloc_free(out->storage);memset(out,0,sizeof(*out));*witness=NULL;*witness_bytes=0;}
+ }
+ return status;
 }
 static void release_sm2(void *context,struct geo_compiled_shader *p) {
  (void)context;if(p){ralloc_free(p->storage);memset(p,0,sizeof(*p));}

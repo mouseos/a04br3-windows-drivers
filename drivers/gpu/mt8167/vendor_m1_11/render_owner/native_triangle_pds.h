@@ -12,4 +12,5 @@ int a04_m111_build_triangle_vertex_pds(struct a04_m111_triangle_vertex_pds *out,
  * actual compiler USC temporary count (DWORD, rounded to groups of4). */
 int a04_m111_build_linked_vertex_pds(struct a04_m111_triangle_vertex_pds *out,
     uint64_t usc_gpu,uint64_t vertex_gpu,uint32_t usc_temps);
+int a04_m111_build_program_vertex_pds(struct a04_m111_triangle_vertex_pds *,uint64_t,uint64_t,uint32_t);
 #endif

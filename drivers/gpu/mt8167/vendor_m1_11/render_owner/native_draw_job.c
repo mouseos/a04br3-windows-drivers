@@ -42,7 +42,7 @@ static int overlap(uintptr_t a,size_t n,uintptr_t b,size_t m)
 {return n>UINTPTR_MAX-a || m>UINTPTR_MAX-b || (a<b+m && b<a+n);}
 static int32_t build(struct a04_m111_draw_job *out,
  const struct a04_m111_clear_job_input *in,uint64_t vertex,const struct geo_draw_request *r,
- const void *blob,uint32_t bytes,void *scratch,size_t scratch_bytes,const struct geo_draw_request_v2 *linked,const struct geo_draw_request_v3 *sampled,uint64_t texture)
+ const void *blob,uint32_t bytes,void *scratch,size_t scratch_bytes,const struct geo_draw_request_v2 *linked,const struct geo_draw_request_v3 *sampled,uint64_t texture,const struct geo_draw_request_v4 *general)
 {
  /* Exact source-generated semantic programs from H63bbe0b official SM4->PCO
   * output. This finite allowlist admits no arbitrary memory/texture ISA. */
@@ -51,16 +51,16 @@ static int32_t build(struct a04_m111_draw_job *out,
  static const uint32_t viewport[6]={0,0,0x44480000u,0x44160000u,0,0x3f800000u};
  const uint8_t *vc=linked?a04_native_color_vs:vs,*pc=linked?a04_native_color_fs:ps;
  uint32_t vn=linked?sizeof(a04_native_color_vs):sizeof(vs),pn=linked?sizeof(a04_native_color_fs):sizeof(ps);
- uint32_t ps_at=linked?0x100u:0xc0u,vertex_bytes=linked?96u:48u,vp_words[6];
+ uint32_t ps_at=general?0x140u:linked?0x100u:0xc0u,vertex_bytes=linked?96u:48u,vp_words[6];
  struct a04_m111_draw_job *m=scratch;struct a04_m111_triangle_suite *base;
  struct a04_m111_triangle_vertex_pds vp;uint32_t po;uint64_t bg[3];const uint8_t *b=blob;
  struct a04_texture2d_state texstate;
  if(!out || !in || !scratch || ((uintptr_t)scratch&7) || scratch_bytes<A04_M111_DRAW_SCRATCH ||
     overlap((uintptr_t)scratch,scratch_bytes,(uintptr_t)out,sizeof(*out)) ||
     overlap((uintptr_t)scratch,scratch_bytes,(uintptr_t)in,sizeof(*in)) ||
-    overlap((uintptr_t)scratch,scratch_bytes,(uintptr_t)r,sampled?sizeof(*sampled):linked?sizeof(*linked):sizeof(*r)) ||
+    overlap((uintptr_t)scratch,scratch_bytes,(uintptr_t)r,general?sizeof(*general):sampled?sizeof(*sampled):linked?sizeof(*linked):sizeof(*r)) ||
     overlap((uintptr_t)scratch,scratch_bytes,(uintptr_t)blob,bytes))return GEO_INVALID;
- int32_t status=sampled?geo_draw_validate_capture_v3(sampled,blob,bytes):linked?geo_draw_validate_capture_v2(linked,blob,bytes):geo_draw_validate_capture(r,blob,bytes);if(status)return status;
+ int32_t status=general?geo_draw_validate_capture_v4(general,blob,bytes):sampled?geo_draw_validate_capture_v3(sampled,blob,bytes):linked?geo_draw_validate_capture_v2(linked,blob,bytes):geo_draw_validate_capture(r,blob,bytes);if(status)return status;
  if(sampled){
   struct a04_texture2d_storage t={sizeof(t),1,sampled->texture_desc.width,sampled->texture_desc.height,sampled->texture_desc.pitch,sampled->texture_desc.pitch*sampled->texture_desc.height,A04_TEXTURE2D_BGRA8,1,1,1,0,texture};
   status=a04_m111_texture2d_program(&r->ps,blob,bytes);if(status)return status;
@@ -72,7 +72,8 @@ static int32_t build(struct a04_m111_draw_job *out,
      (texture<in->pds_page_gpu+4096&&in->pds_page_gpu<texture+t.bytes))return GEO_INVALID;
   pc=b+r->ps.usc.offset;pn=r->ps.usc.bytes;
  }
- if(!sm4_profile(&r->vs,b,linked!=NULL) || (!sampled&&!sm4_profile(&r->ps,b,linked!=NULL)))return GEO_UNSUPPORTED;
+ if(general){vc=b+r->vs.usc.offset;pc=b+r->ps.usc.offset;vn=r->vs.usc.bytes;pn=r->ps.usc.bytes;}
+ else if(!sm4_profile(&r->vs,b,linked!=NULL) || (!sampled&&!sm4_profile(&r->ps,b,linked!=NULL)))return GEO_UNSUPPORTED;
  if(linked) {
   struct a04_m111_varying_pds cp;
   status=a04_m111_build_varying_pds(&cp,&linked->link);if(status)return status;
@@ -85,10 +86,10 @@ static int32_t build(struct a04_m111_draw_job *out,
  } else if(!same(r->state.viewport,viewport,sizeof(viewport)))return GEO_UNSUPPORTED;
  if(r->target_desc.width!=800 || r->target_desc.height!=600 || r->target_desc.pitch!=3200 ||
     r->state.vertex_count!=3 ||
-    r->vs.temps || r->vs.shareds || r->vs.vtxins!=(linked?8u:4u) || r->vs.vtxouts!=(linked?8u:4u) || r->vs.input_mask!=(linked?3u:1u) || r->vs.constant_mask ||
+    (!general&&(r->vs.temps || r->vs.shareds || r->vs.vtxins!=(linked?8u:4u) || r->vs.vtxouts!=(linked?8u:4u) || r->vs.input_mask!=(linked?3u:1u) || r->vs.constant_mask ||
     r->ps.temps!=(sampled?0u:5u) || r->ps.shareds!=(sampled?12u:linked?0u:4u) || r->ps.vtxins || r->ps.vtxouts || r->ps.input_mask!=(linked?1u:0u) || r->ps.constant_mask!=(linked?0u:1u) ||
     r->vs.usc.bytes!=vn || r->ps.usc.bytes!=pn ||
-    !same(b+r->vs.usc.offset,vc,vn) || !same(b+r->ps.usc.offset,pc,pn))return GEO_UNSUPPORTED;
+    !same(b+r->vs.usc.offset,vc,vn) || !same(b+r->ps.usc.offset,pc,pn))))return GEO_UNSUPPORTED;
  if(vertex<4096 || vertex>=(UINT64_C(1)<<40)-vertex_bytes || (vertex&3) ||
     (vertex<in->output_gpu+1920000u && in->output_gpu<vertex+vertex_bytes) ||
     (vertex<in->data_page_gpu+4096 && in->data_page_gpu<vertex+vertex_bytes) ||
@@ -101,12 +102,13 @@ static int32_t build(struct a04_m111_draw_job *out,
  copy(m->data,base->data,sizeof(base->data));copy(m->usc,base->usc,sizeof(base->usc));copy(m->pds,base->pds,sizeof(base->pds));
  copy(m->usc+0x80,vc,vn);copy(m->usc+ps_at,pc,pn);
  copy(m->usc+0x200,a04_native_load_usc,sizeof(a04_native_load_usc));
- if(linked?a04_m111_build_linked_vertex_pds(&vp,in->usc_page_gpu+0x80,vertex,r->vs.temps):
+ if(general?a04_m111_build_program_vertex_pds(&vp,in->usc_page_gpu+0x80,vertex,r->vs.temps):linked?a04_m111_build_linked_vertex_pds(&vp,in->usc_page_gpu+0x80,vertex,r->vs.temps):
     a04_m111_build_triangle_vertex_pds(&vp,in->usc_page_gpu+0x80,vertex,4,16))return GEO_INVALID;
  copy(m->pds+0x140,vp.data,32);copy(m->pds+0x160,vp.code,12);
  if(a04_m111_patch_background_pds(m->pds+0x180,36,in->usc_page_gpu+ps_at,r->ps.temps) ||
     a04_m111_patch_background_pds(m->pds+0x300,36,in->usc_page_gpu+0x200,A04_NATIVE_LOAD_TEMPS))return GEO_INVALID;
- if(sampled){copy(m->data+0x4a0,&texstate,sizeof(texstate));copy(m->data+0x4c0,b+r->ps.constants.offset,16);put(m->pds,0x208,0x9000000cu,4);}
+ if(general){copy(m->data+0x4a0,b+r->ps.constants.offset,64);put(m->pds,0x208,0x90000000u|(r->ps.shareds?r->ps.shareds:4u),4);}
+ else if(sampled){copy(m->data+0x4a0,&texstate,sizeof(texstate));copy(m->data+0x4c0,b+r->ps.constants.offset,16);put(m->pds,0x208,0x9000000cu,4);}
  else{copy(m->data+0x4a0,b+r->ps.constants.offset,16);put(m->pds,0x208,0x90000004u,4);}
  if(linked) {
   struct a04_m111_varying_pds cp;
@@ -144,16 +146,19 @@ static int32_t build(struct a04_m111_draw_job *out,
 int32_t a04_m111_build_draw_job(struct a04_m111_draw_job *out,
  const struct a04_m111_clear_job_input *in,uint64_t vertex,const struct geo_draw_request *r,
  const void *blob,uint32_t bytes,void *scratch,size_t scratch_bytes)
-{ return build(out,in,vertex,r,blob,bytes,scratch,scratch_bytes,NULL,NULL,0); }
+{ return build(out,in,vertex,r,blob,bytes,scratch,scratch_bytes,NULL,NULL,0,NULL); }
 int32_t a04_m111_build_draw_job_v2(struct a04_m111_draw_job *out,
  const struct a04_m111_clear_job_input *in,uint64_t vertex,const struct geo_draw_request_v2 *r,
  const void *blob,uint32_t bytes,void *scratch,size_t scratch_bytes)
 {
  if(!r)return GEO_INVALID;
- return build(out,in,vertex,&r->base,blob,bytes,scratch,scratch_bytes,r,NULL,0);
+ return build(out,in,vertex,&r->base,blob,bytes,scratch,scratch_bytes,r,NULL,0,NULL);
 }
 
 int32_t a04_m111_build_draw_job_v3(struct a04_m111_draw_job *out,const struct a04_m111_clear_job_input *in,uint64_t vertex,uint64_t texture,const struct geo_draw_request_v3 *r,const void *blob,uint32_t bytes,void *scratch,size_t capacity) {
  if(!r)return GEO_INVALID;
- return build(out,in,vertex,&r->base,blob,bytes,scratch,capacity,NULL,r,texture);
+ return build(out,in,vertex,&r->base,blob,bytes,scratch,capacity,NULL,r,texture,NULL);
 }
+
+int32_t a04_m111_build_draw_job_v4(struct a04_m111_draw_job *out,const struct a04_m111_clear_job_input *in,uint64_t vertex,const struct geo_draw_request_v4 *r,const void *blob,uint32_t bytes,void *scratch,size_t capacity)
+{if(!r)return GEO_INVALID;return build(out,in,vertex,&r->base,blob,bytes,scratch,capacity,NULL,NULL,0,r);}

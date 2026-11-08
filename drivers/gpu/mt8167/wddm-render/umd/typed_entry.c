@@ -193,7 +193,7 @@ __declspec(dllexport) HRESULT APIENTRY OpenAdapter10_2(D3D10DDIARG_OPENADAPTER *
  a=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*a));if(!a)return E_OUTOFMEMORY;a->runtime=p->hRTAdapter;a->trace=trace_open();trace_value(a,"OPEN_INTERFACE",p->Interface);trace_value(a,"OPEN_VERSION",p->Version);trace_value(a,"DEVELOPMENT_PROFILE",development_enabled());
  memset(&q,0,sizeof(q));q.pPrivateDriverData=&a->info;q.PrivateDriverDataSize=sizeof(a->info);hr=p->pAdapterCallbacks->pfnQueryAdapterInfoCb(p->hRTAdapter.handle,&q);trace_value(a,"QUERY_ADAPTER_HRESULT",(UINT)hr);
  if(FAILED(hr)){if(a->trace&&a->trace!=INVALID_HANDLE_VALUE)CloseHandle(a->trace);HeapFree(GetProcessHeap(),0,a);return hr;}
- if(a->info.size!=sizeof(a->info)||a->info.version!=4||a->info.texture_draw_version!=3||a->info.magic!=GEO_ADAPTER_INFO_MAGIC||a->info.compiler_bvnc!=GEO_COMPILER_BVNC||a->info.draw_version!=1){trace_value(a,"ADAPTER_CONTRACT_FAILURE",1);if(a->trace&&a->trace!=INVALID_HANDLE_VALUE)CloseHandle(a->trace);HeapFree(GetProcessHeap(),0,a);return E_UNEXPECTED;}
+ if(a->info.size!=sizeof(a->info)||a->info.version!=5||a->info.shader_draw_version!=4||a->info.texture_draw_version!=3||a->info.magic!=GEO_ADAPTER_INFO_MAGIC||a->info.compiler_bvnc!=GEO_COMPILER_BVNC||a->info.draw_version!=1){trace_value(a,"ADAPTER_CONTRACT_FAILURE",1);if(a->trace&&a->trace!=INVALID_HANDLE_VALUE)CloseHandle(a->trace);HeapFree(GetProcessHeap(),0,a);return E_UNEXPECTED;}
  memset(&table,0,sizeof(table));table.pfnCalcPrivateDeviceSize=device_size;table.pfnCreateDevice=create_device;table.pfnCloseAdapter=close_adapter;table.pfnGetSupportedVersions=versions;table.pfnGetCaps=caps;
  *p->pAdapterFuncs_2=table;p->hAdapter.pDrvPrivate=a;return S_OK;
 }

@@ -15,7 +15,7 @@ while i<len(argv):
     if v.startswith('-I'):args.append('-I'+str((build/v[2:]).resolve()))
     elif v!='-Werror=missing-prototypes':args.append(v)
     i+=1
-units=['drivers/gpu/mt8167/wddm-render/compiler/'+n+'.c' for n in ('sm2','sm4','pco_sm2')]+['tests/ge8300_sm4_literals_codegen.c'];objects=[]
+units=['drivers/gpu/mt8167/wddm-render/compiler/'+n+'.c' for n in ('sm2','sm4','pco_sm2','witness_producer','witness_codec')]+['tests/ge8300_sm4_literals_codegen.c'];objects=[]
 for u in units:
     o=out/(Path(u).stem+'.o');subprocess.run(['cc',*args,'-UNDEBUG','-c',str(root/u),'-o',str(o)],check=True);objects.append(str(o))
 libs=['src/imagination/pco/libpowervr_compiler.a','src/imagination/common/libpowervr_common.a','src/compiler/nir/libnir.a','src/compiler/libcompiler.a','src/util/libmesa_util.a','src/util/libmesa_util_clflush.a','src/util/libmesa_util_clflushopt.a','src/util/libmesa_util_simd.a','src/c11/impl/libmesa_util_c11.a','src/util/blake3/libblake3.a'];paths=[str(build/n) for n in libs]

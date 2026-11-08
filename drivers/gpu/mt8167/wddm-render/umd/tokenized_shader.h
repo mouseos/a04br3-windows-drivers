@@ -14,6 +14,7 @@ struct geo_umd_tokenized_shader {
  struct geo_sm4_signatures signatures;
  struct geo_compiled_shader compiled;
  uint32_t texture_profile;
+ const void *witness;uint32_t witness_bytes;
  uint32_t pair_stage; /* 0=independent; 1/2=validated deferred pair VS/PS */
 };
 HRESULT geo_umd_compile_shader10(struct geo_shader_compiler *,uint32_t stage,const UINT *,

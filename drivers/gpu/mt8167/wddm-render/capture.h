@@ -5,6 +5,7 @@
 #include "clear_protocol.h"
 #include "frontend/draw_link_abi.h"
 #include "frontend/texture_draw_abi.h"
+#include "frontend/shader_draw_abi.h"
 /* Fixed semantic packet only; source is the runtime's untouched USER address.
  * Output is a caller-owned kernel packet. No direct user dereference. */
 NTSTATUS GeoCaptureClearPacket(struct geo_clear_packet *output,const void *user_source);

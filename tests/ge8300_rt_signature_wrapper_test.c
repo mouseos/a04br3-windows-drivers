@@ -79,3 +79,7 @@ int main(void)
  * unsupported in this mock and is tested by its separate real PCO test. */
 struct geo_texture2d_program;
 int32_t geo_pco_compile_texture2d(void *c,const uint32_t *t,uint32_t bytes,const struct geo_sm4_signatures *s,struct geo_compiled_shader *o,struct geo_texture2d_program *p){(void)c;(void)t;(void)bytes;(void)s;(void)o;(void)p;return GEO_UNSUPPORTED;}
+
+/* This signature-only regression does not construct executable witnesses. */
+int32_t geo_pco_compile_tokenized_witness(void *c,uint32_t s,const uint32_t *t,uint32_t b,const struct geo_sm4_signatures *sig,struct geo_compiled_shader *o,struct geo_sm2_error *e,void **w,uint32_t *n)
+{(void)c;(void)s;(void)t;(void)b;(void)sig;(void)o;(void)e;*w=NULL;*n=0;return GEO_UNSUPPORTED;}

@@ -38,3 +38,7 @@ int a04_m111_build_triangle_vertex_pds(struct a04_m111_triangle_vertex_pds *out,
 int a04_m111_build_linked_vertex_pds(struct a04_m111_triangle_vertex_pds *out,
     uint64_t usc,uint64_t vertex,uint32_t temps)
 { return build(out,usc,vertex,8,32,temps); }
+
+/* ABI4: actual validated compiler temp allocation, same bounded real VB fetch. */
+int a04_m111_build_program_vertex_pds(struct a04_m111_triangle_vertex_pds *out,uint64_t usc,uint64_t vertex,uint32_t temps)
+{return build(out,usc,vertex,4,16,temps);}
