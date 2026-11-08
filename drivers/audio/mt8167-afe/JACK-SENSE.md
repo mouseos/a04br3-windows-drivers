@@ -35,3 +35,9 @@ host fixture: `g++ -std=c++14 -fsanitize=address,undefined tests/afe_jack_test.c
 - 実GPIO19資格/極性は既存 `drivers/input/mt8167-accdet/README.md` と固定CT3 GPL7c478212のa04br3.dts/accdet_eint_func/pinctrl。ABI/資格を本consumerで変更しない。
 
 この候補の物理動作・Windows実ロード・抜挿し・headphone audioは未検証。主担当の実機確認まで完了扱いしない。
+
+## run129後段client修正
+
+実機fixed-filter1はstatic topology interfaceの検索成功であり、続くERROR490は旧clientがCreateFileWの全失敗をERROR_NOT_FOUNDへ置き換えていたため原因を示さない。親1104/AFE1027 NativeStart完了を未開始扱いしない。新clientは唯一のMT8167 AFE・末尾reference Mt8167Topologyを正確一致させ、選択INF/versionとinterfaceをbounded UTF16行で記録し、filter-openの実Win32 errorを保持する。original basenameとoem名はいずれもmetadataとして記録し、INF名でfilterを選択しない。標準pin2 GET2回、任意path/SET/streaming/再試行無し。driver/INFを再buildせず1TU clientだけ署名可能。
+
+GPIO19のrun129実測はDIR0/MODE0/IES0x400/PULL0/SELECT0/DIN8、VALID0xFFF/reasons0x18で、全12readは成功している。現在の契約ではbias資格不足として正しくNOT_READY。CT3 accdet_setup_eintとpinctrl irq_request_resourcesはinput/mode0/IESのみを設定し、内蔵pullを設定しない。しかし外付けbiasの有無はこのsourceと安定DIN8だけでは証明できないので、Connectedを出すためにGPIO writeや資格緩和をしない。HP producerも同じsense資格が成立するまでfail-closed。現1104/媒体/実機へ変更なし。
