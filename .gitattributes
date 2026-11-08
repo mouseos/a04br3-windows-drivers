@@ -1,2 +1,21 @@
 # Windows driver INF bytes must agree with the catalog produced on Windows.
 *.inf text eol=crlf
+
+# Fixed source snapshots must retain their manifest bytes on Windows.
+third_party/mesa-pco/** -text
+drivers/gpu/mt8167/vendor_m1_11/render_owner/** -text
+drivers/gpu/mt8167/wddm-render/compiler/*.[ch] text eol=lf
+tools/ci/ge8300-native-source-map.json -text
+
+# Canonical source identities used by the public GPU origin gate.
+drivers/gpu/mt8167/wddm-render/**/*.[ch] text eol=lf
+drivers/gpu/mt8167/wddm-render/*.[ch] text eol=lf
+drivers/bus/mt8167-shared/gpu_platform_interface.h text eol=lf
+tests/fixtures/tokenized_shader_before323.c -text
+tools/ci/ge8300-fullsource-origins.json -text
+drivers/gpu/mt8167/wddm-render/**/*.cpp text eol=lf
+drivers/gpu/mt8167/vendor_m1_11/**/*.[ch] -text
+drivers/gpu/mt8167/vendor_m1_11/*.[ch] -text
+drivers/gpu/mt8167/wddm-display/*.[ch] -text
+drivers/gpu/mt8167/wddm-display/*.cxx -text
+drivers/gpu/mt8167/wddm-display/*.hxx -text

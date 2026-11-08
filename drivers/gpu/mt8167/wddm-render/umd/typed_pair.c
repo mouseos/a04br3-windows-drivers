@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include "typed_device.h"
+void geo_typed_device_trace(struct geo_typed_device *,const char *,UINT);
 #include "../compiler/pair_compiler.h"
 #include "../memory.h"
 static void pair_shader(BYTE *blob,UINT *at,struct geo_draw_shader *dst,const struct geo_umd_tokenized_shader *tokens,const struct geo_compiled_shader *code) {
@@ -37,7 +38,7 @@ HRESULT geo_typed_submit_pair(D3D10DDI_HDEVICE h,const FLOAT vertices[3][8]) {
  memcpy(d->backend.commands,p,p->size);memset(d->backend.allocations,0,2*sizeof(*d->backend.allocations));
  d->backend.allocations[0].hAllocation=ta;d->backend.allocations[0].WriteOperation=1;d->backend.allocations[1].hAllocation=va;
  memset(&q,0,sizeof(q));q.hContext=d->backend.context;q.CommandLength=p->size;q.NumAllocations=2;
- hr=d->backend.cb.pfnRenderCb(d->backend.runtime,&q);
+ hr=d->backend.cb.pfnRenderCb(d->backend.runtime,&q);geo_typed_device_trace(d,"PAIR_RENDER_HRESULT",(UINT)hr);
  if(SUCCEEDED(hr)){d->pending=1;d->backend.commands=q.pNewCommandBuffer;d->backend.command_bytes=q.NewCommandBufferSize;d->backend.allocations=q.pNewAllocationList;d->backend.allocation_count=q.NewAllocationListSize;d->backend.patches=q.pNewPatchLocationList;d->backend.patch_count=q.NewPatchLocationListSize;}
  done:
  /* RenderCb has synchronously captured tokens/USC; E owns independent job

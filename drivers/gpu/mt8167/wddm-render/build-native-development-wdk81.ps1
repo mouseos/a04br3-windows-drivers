@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # UMD/client only. Never build or install a kernel driver.
-param([switch]$EnableCandidate,[switch]$EnableLimitedDevelopmentProfile,
+param([switch]$EnableCandidate,[switch]$EnableLimitedDevelopmentProfile,[switch]$SourceCompiler,
  [Parameter(Mandatory=$true)][string]$CompilerDirectory,
  [Parameter(Mandatory=$true)][string]$CompilerManifestSha256,
  [Parameter(Mandatory=$true)][string]$PairDirectory,
@@ -13,14 +13,16 @@ if($LASTEXITCODE -or @(& git -C $root status --porcelain).Count){throw 'Clean fi
 function Verify($path,$sha){if($sha -notmatch '^[a-fA-F0-9]{64}$' -or (Get-FileHash $path -Algorithm SHA256).Hash -ne $sha){throw "Input hash mismatch: $path"}}
 $cp=Join-Path $CompilerDirectory 'link-manifest.json';Verify $cp $CompilerManifestSha256
 $cm=Get-Content -Raw $cp|ConvertFrom-Json
-if($cm.source_dirty -or $cm.exit_code -ne 0 -or $cm.crt_entry -ne '_DllMainCRTStartup'){throw 'Incomplete compiler/CRT provenance'}
+if($SourceCompiler){
+ if($cm.schema -cne 'compiler-source-closure-v1' -or $cm.source_dirty -or !$cm.source_built -or !$cm.all_compile_exit_codes_zero -or $cm.source_commit -cne (& git -C $root rev-parse HEAD) -or $cm.compiled_units -ne 370 -or $cm.source_plan_sha256 -cne (Get-FileHash "$root\third_party\mesa-pco\source-plan.json" -Algorithm SHA256).Hash.ToLowerInvariant()){throw 'Source-built compiler closure mismatch'}
+}else{if($cm.source_dirty -or $cm.exit_code -ne 0 -or $cm.crt_entry -ne '_DllMainCRTStartup'){throw 'Incomplete compiler/CRT provenance'}}
 $libs=@()
 foreach($l in $cm.inputs){
  if($l.role -eq 'verified standard UMD module'){continue}
  $path=Join-Path $CompilerDirectory ([IO.Path]::GetFileName($l.path));Verify $path $l.sha256;$libs+=$path
 }
 if($libs.Count -ne 10){throw 'Incomplete compiler closure'}
-$pp=Join-Path $PairDirectory 'manifest.json';Verify $pp $PairManifestSha256
+$pp=Join-Path $PairDirectory $(if($SourceCompiler){'pair-manifest.json'}else{'manifest.json'});Verify $pp $PairManifestSha256
 $pair=Get-Content -Raw $pp|ConvertFrom-Json
 if($pair.source_dirty -or !$pair.user_mode_fp -or $pair.kernel_no_fp_applied){throw 'Invalid ARM pair provenance'}
 Verify (Join-Path $PairDirectory 'pco_pair.obj') $pair.object_sha256

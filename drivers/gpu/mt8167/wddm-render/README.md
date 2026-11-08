@@ -1,5 +1,17 @@
 # PowerVR GE8300 WDDM render sidecar（既定無効）
 
+## 公開単一checkout 3.23 source候補（2026-11-08）
+
+KMD320(f73da1e3)・native322(f9694853)・実UMD基点3f8291d0＋shader323(eb4dca0e)を
+一つのtreeへ統合した。[公開source build手順](../../../../tools/ci/README-ge8300-source-build.md)はshallow cloneから通常fullbuildし、
+旧driver cache/private hive/別checkout/過去Git履歴を要求しない。元DOD/legacyは保持する。
+
+主担当の実3.22では標準D3D2色連続Clear/readbackが各480000画素一致・不一致0・bugcheck無し。
+続くTRIANGLE_VS作成は失敗し、323はruntime未初期化signature型fieldの読取りを除く候補である。
+**この公開fullsource treeの生成物は実機未検証**で、既存署名package323のbyte同一再包装ではない。
+一般shader/三角形/UI全描画・全ドライバ完成とはしない。以下の初期説明は各時点の履歴として保持する。
+
+
 Windows RT 8.1 / ARM32向けの既定オフrender candidateです。H c1e21caのKMD/UMDとE d13ce50の実native factoryを最終SYS/DLLへリンクし、8472244のpackage recipeでINF 0.0.3.1、既存FW5c1、CATと合わせ署名Valid・3件CAT membershipを確認しました。これは**source結合と署名の成果物**です。標準D3D runtimeでの列挙・CreateDevice・描画、WDDM必須caps、NoDMA停止は未qualifiedで、既存KMDF baselineを置換する実機候補にはまだ不適格です。過去の経過記録よりこの段落と[RUNTIME-ENTRY.md](RUNTIME-ENTRY.md)を優先します。
 
 標準entryは出力なしadapterの列挙を公式に保証するDXGIを基準とします。D3D9 flat clientのordinal/LUID一致はrender-only選択を保証しません。現在の有限flat profileはFL9_1に必要なPS2.0、Gouraud、texture/filter/depth等を実装していないため、clientだけD3D11 FL9_1へ切り替えても完成にはなりません。未対応capsを成功として広告しません。DOD/GPU provider/vendor_m1_11/main媒体4fileには変更を加えていません。

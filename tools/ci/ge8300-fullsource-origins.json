@@ -1,0 +1,918 @@
+{
+  "schema": "ge8300-fullsource323-origins-v1",
+  "package_side_base_commit": "50974a3cd35336c57d151020feef20471968ab13",
+  "native_source_commit": "f96948533601f9fdcdcc22b9700aacd96dbf7204",
+  "kmd_source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+  "umd_base_source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+  "shader_source_commit": "eb4dca0ee3134c9a9baea4021325f4a924872444",
+  "client_source_commit": "f4f1b4f94ade6f59efef042f680c2c3e363442f8",
+  "files": [
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/adapter_info.h",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "b237c9491db6f49fbfd4467c6f17cc5f65e1b027afefb1c6c9da814071f2325a"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/aperture.h",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "704d81362f40893931985e551f73d9bcd6af2db951941a3d27c919717bb7aaa2"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/capture.c",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "0efac6b5ea75704e65bd02daefe7d37dbf5b9a8c1cc21c01ebe64911e331fe32"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/capture.h",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "0f5d66cdea50f97a09de00909e415e8a0cd3a3b05d0aadd0a6de3faddf39f8c1"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/clear_engine.c",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "6b1913391ff0df09f6c1a2804daf769261d04e509dff06b71238b563a7bafea7"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/clear_engine.h",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "33f332b87e9dabe65fcd46a52d8542b18f51ae7944566b1cf72ce676cbe6aa1c"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/clear_protocol.c",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "1cb3180c988615cc673812c3bcce327efc914c84dcc6544fba0d5bd5e28050f5"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/clear_protocol.h",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "d0d0b56d961f54419bd1e9b03e919b7926dafa1f14abfc9f81924e4a9f8ce7a3"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/frontend/draw_abi.h",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "923beffc558f5d00b6bca23a7125e000560268021c2996423656ffe531d890c7"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/frontend/draw_link_abi.h",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "c59dec3c4374ed9fac60a20938eb4e9fc81632fcba1d2518941f88c8f598b805"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/frontend/draw_link_protocol.c",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "c82bf073ba5a59bb4b8821f3d736974476d47fee8cdc324b24ec430cedf1e676"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/frontend/draw_protocol.c",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "1907c34fab878a95906dbb6f7299b91b21ddf68797d517e382072894a9282ad5"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/frontend/draw_validation_private.h",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "b0b165f72b5c9b09628f5ff90424dfeca04e91587c16c47b9929e8f3777b15b9"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/frontend_memory.c",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "18fd9bfd0e4c5b3621b9ecdc21ab38dd9cf9f74041e614534f5f449b83d2e93c"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/frontend_memory.h",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "ad19500b1eff6b9df526d9457a3b797224f6fddefb70055ed4560b62301334a0"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/init_checkpoint.h",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "a1e40a6cac71a19bd7dca81a2d30cb5363d63344a913d9124311160f5a359f24"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/kmd_clear.c",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "d1fefc7c9c914f8c76a372bc0014303eea19f4b24be73a7c7bafe03ae6fe2d44"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/kmd_clear.h",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "425fcb0c95e5d1d447fc9d25931a88bb0b9af377b26f68e1fd439034e903c1e6"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/kmd_objects.c",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "df36442ece9a816166ca2a3c3262538ca1240a21e57ba8a0d4808f1aaf65b084"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/kmd_objects.h",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "f7f7ef5d9d8f81d5b07103725803eb7cc1edb4ffce618c6237c26b8cb223116b"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/lifecycle.c",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "ee36fe35451cf7d6179260e177f7871a8a84b19323dbc2ee12e19b82eadefa90"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/lifecycle.h",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "c10815f519f901dde219b1a186c910428a170fba1030b9863ee63ccc90940a2c"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/mdl_pin.c",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "f63edf4565b1ef4176b1f6d7e84fd02be492319b5ebf265ecb1936e3d0426b97"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/memory.h",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "ab711d86133dc2bceca74e37912d6a44f6e1cdf5ef045d105f65dd1452b4db29"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "80618126c546ec4acf80f6bde31a53518bd153ffe981912d2f5283064d5ee93a"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/native_binding.h",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "3e3bf2aa747155df81fd144cbb9f86b8b61eb18ca862cd3168ff1d56ee1967ee"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/owner_abi.h",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "0fcd6790f0649a8404559fef719cc54c415e9d558fd259c0c3d7f6db50b11a1c"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/owner_control.h",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "edf99ae8eed24471ac0f5f6b42e71ca6d7fecf5c052900fc8f4dff69460ce510"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/owner_interface.h",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "e6205040a15bea3ddb3111e7724de1770b6974a83df2a8312835cc3aad9923b1"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/preempt.c",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "d52fb94316c1307a3ff6cb1241fd0adb0944e00985bfc4ca485b4a0f95ea2f00"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/query_adapter.c",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "9354923984cbe4d8095a076b8d9fd502b783b7a7d76ba946f74d82b83b24b250"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/query_adapter.h",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "571b9e0d6d583eb809b5356df49f732b94d2a62ec7c51d0575ba536ee34764b3"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/render_contract.c",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "527087ee77ebfe49f521006294bfb0acbb38aa1fed0a61be0747aa0891b112e8"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/tests/lifecycle.c",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "d2ef58033d16ae2b7ea92b371f90e107c187f4336d18cef8f144917e873d5f96"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/ticket_io.h",
+      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+      "role": "KMD320",
+      "sha256": "3d5281701e798ab2d25a7d8fe05e6b38fcf5623b524c09ab3056beeba6e35136"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/umd/bootstrap.c",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "f41240addd300d0cdbb9f330e99ad519a9f8995699d37575d2c7ad35c0a43619"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/umd/bootstrap.h",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "0a4f7e0eb94e75ca72bb6efdf70bbe77feca28f4e66f04c619353bf6e084eb92"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/umd/clear_ddi.c",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "878b533be2285e193fa2875e6d68a1d374396f871a1082e8f50db065f4f1046e"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/umd/clear_ddi.h",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "de28cd355cef8ccd382eae835f38e2a9d89fc3d17b9a70055d457fe8179e27b5"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/umd/entry.c",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "130109b5fb08b76eb7af24949c1afccaaca73c342334f07f724acdb726e30764"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/umd/frontend.c",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "5ac771752dea68852d9f25e61576c92fa48eb706b409888bd69009ebf34a05d1"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/umd/shader_state.c",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "e0e3299208ea8e32847fbc84dc2208d688db0e1a9736e312aa47e477e46e9753"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/umd/shader_state.h",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "0c8a69de161423a7475b32077ddc07fb5978b137f9a04f090ee8bd26bb264bb3"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/umd/tokenized_shader.c",
+      "source_commit": "eb4dca0ee3134c9a9baea4021325f4a924872444",
+      "role": "UMD323",
+      "sha256": "4defae5f2b34bf1660923d7a79870c367cb7400bad275545c843bf2e4d1db0e4"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/umd/tokenized_shader.h",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "e64d11097a8c32fc45fddf33dc65a27aaf90f380de1bdff31fa9cff31bab3dc1"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/umd/typed_device.h",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "572bc0e6aba8c18d0b8195dac0cb0cd70dbdabc6f561b8e1d29d97d55068e1da"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/umd/typed_draw.c",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "345677e57675770691ae11d202132f661e45e6cbd34800b7cd2d1f1a830b0ed8"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/umd/typed_dxgi.c",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "898f963d14228357bd34296e623573c2ea41ad4ffb01e428148c3f329a4b8cc1"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/umd/typed_entry.c",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "58a5e236736f5c542c720b80782fd750dd3f69e532e171a9f8bbd3e3746b37f4"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/umd/typed_pair.c",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "6e08078953918df970446f24380d6c30af39150867307df05416c469effee19d"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/umd/typed_resource.c",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "9b424c12395725829818faa03b85a378040ffae314148bdbf3e3213352303790"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/umd/typed_runtime.c",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "d38a9b750ea0fd3d79eb1d281b21595f3ac04f9df6f5cc628b21c4e930fa83a5"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/umd/typed_shader.c",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "d0ba9354d3b317747aed84e4ce94e98ccf119c2488a3964ad5ca90f39a241c65"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/umd/typed_state.c",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "b116097a69a447911f815346059a2208a086b60f1876455616e1431bd41310de"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/umd/typed_state.h",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "381850fc11755904d8e9b65202b22a00c0de36ef5a1419edd8f24841691823a7"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/umd/typed_view.c",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "d989a225e9e1170ed1271b7eb0b000215971f95687dfbea093e4427468b17075"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/compiler/color_sm4.h",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "a63bda76e83791f6e14730effa5d1df39028aecab0e4e777c5599351c15010c0"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/compiler/crt_stdio.cpp",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "4546b7c69cd2667cf974379c7ae175fb94763fd18160e167aaeccae48776ea57"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/compiler/offline.c",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "d52256ec814d75c93a3efcd4bf4dd0a6fb162a9ab27e781e6f7d45ad0d18026b"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/compiler/pair_compiler.h",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "bbffa8aef11e6e532a04f2ef60d43b096bb086104b12384703e073d9151ca585"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/compiler/pair_offline.c",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "6592655fe3bf11133d6ab23e1cb57e836a35b800b3a09eb332c070083f143da1"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/compiler/pco_pair.c",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "e67d31c4942ad294a1e889cc2e2390ff96d4a0cdb68d5ae1be5ffa153e5cc426"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/compiler/pco_sm2.c",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "d58e4daea8b54cdfe0153c375cb4fd36cc65a9c9432d12910410470381468f0a"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/compiler/shader_compiler.h",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "04251b758a5504d6e867e4302bfc1f65b43d17518b9617c86ad5a9d3e89ce4ec"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/compiler/sm2.c",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "251e3d5c99e404250810b69a8f72492473a95930b4ea57a498437299c934c872"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/compiler/sm2.h",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "eb9f36c978ff565644770c0083beca591bca20a1e55eda2ab2301990949b2eef"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/compiler/sm4.c",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "d64e11415a59389a56bf1027c531b88f932b940318f241ed4887b28b5a6a0072"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/compiler/sm4.h",
+      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "role": "UMD-base3f829",
+      "sha256": "5895afa0f8b5b82ff524ed676756bf57770c66dcd919100ce6bfa1d29eee5fc0"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/testclient/color_shaders.h",
+      "source_commit": "f4f1b4f94ade6f59efef042f680c2c3e363442f8",
+      "role": "client-f4f1",
+      "sha256": "c6b19a3754cd8af4b6aabd5c7c2a7bb387977bd255dc86cb897d6a95c2096b3c"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/testclient/d3d-clear.c",
+      "source_commit": "f4f1b4f94ade6f59efef042f680c2c3e363442f8",
+      "role": "client-f4f1",
+      "sha256": "2db5c4583d1f9b7d0ecafc2adb8e05424c277cdfff6da3501883573f5d7bf484"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/testclient/d3d9-flat.c",
+      "source_commit": "f4f1b4f94ade6f59efef042f680c2c3e363442f8",
+      "role": "client-f4f1",
+      "sha256": "0365c72535be12a657a7a5f32e3f70f824355db3317836b73adb229f8eded4c8"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/testclient/fixed_shaders.h",
+      "source_commit": "f4f1b4f94ade6f59efef042f680c2c3e363442f8",
+      "role": "client-f4f1",
+      "sha256": "fa6530c61383f6c76bbb30860b578d9887dd6650196593e78e1c9af4b8daea76"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/testclient/memory.c",
+      "source_commit": "f4f1b4f94ade6f59efef042f680c2c3e363442f8",
+      "role": "client-f4f1",
+      "sha256": "3eb20e9c612fe2e5515f2c8e55d57b47dbb0113d8f9d579684b41eb629b6fe94"
+    },
+    {
+      "path": "drivers/bus/mt8167-shared/gpu_platform_interface.h",
+      "source_commit": "f96948533601f9fdcdcc22b9700aacd96dbf7204",
+      "role": "native322-external-interface",
+      "sha256": "310d408ebb637db7f3bad9e53888a34b35ca98080013ce0554f02782b7d51965"
+    }
+  ],
+  "legacy_files_preserved": [
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueCommand.h",
+      "sha256": "0af7b452b7fc7ff0e55fd15189b2d00313b3bb38b775059531f44902a3a96312"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueDDKABI.h",
+      "sha256": "c851320cff2624851b3c5f51a9f67a0dd738373197052aea7e17e8e818df1c04"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueDeviceWords.h",
+      "sha256": "1dea5796e724743b34bb9672af24e102bd926bd43d241d38b1fca8f3c0076b93"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueFirmware.h",
+      "sha256": "2b36c5d958750b3544a63e11c70f76f9aa6e83bac575ffe956f71b07f7582f8a"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueFirmwareRequests.h",
+      "sha256": "ced63f6de419c25e11e64b855e289964992f8522a87d97fe0a9ea588a44174d2"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueMipsMMU.h",
+      "sha256": "d51eea1bb621999b2c210aff185fba90d0594f4ba8a54090aa3872693d3c9f31"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueRuntimeLayout.h",
+      "sha256": "326a94b3a85809c46719757cee202e415c32b95d386bd1bc5b7204b420ed997d"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueRuntimeRebase.h",
+      "sha256": "71f39d919fd81bf7b08877a2aaae03b76635cc0881ffe43eef01222b8b551315"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueStartupExecutor.h",
+      "sha256": "5c223b7f86cf48aca4ba41839a2c35f3160454052b74e6eb3f078c88c4b0b856"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueStartupPlan.h",
+      "sha256": "1da158370d4f9c827cf7d384b97b3b3f786e841ac067b0b9ca545a113671c075"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueStop.h",
+      "sha256": "7cbc9b3e0a6d16b5254691a3426b2ac1fe42a747e5ead725290366df1b0a0099"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/clear_image.c",
+      "sha256": "e06cdf23a8355ff3f8168bcaa11cc2c49034cbe3bf224a3fa131cd62cf7430ff"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/clear_image.h",
+      "sha256": "1403fba09f4b486aede36d6ef169b17f908a2e11be5035d77a77432b8fa57a35"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/clear_tile.c",
+      "sha256": "345b35cde35cd20e6bcab20afbed7096b4fb7ad7ce135a207b8ee88f902cffc3"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/clear_tile.h",
+      "sha256": "c23a2d39ba3fccb7bc6a2de877a831324b956f7a03f69c562a73ce0f6af9dbdc"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/clear_validate.h",
+      "sha256": "2e9dfd68a97530d1e165ba07b107f25667c52cd4ae0293c30c57f82c2568bafd"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/native_ccb.c",
+      "sha256": "bb91492e08b193c45d87e610030051e1a6a9a670e6a2abf808f2579cec7c7200"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/native_ccb.h",
+      "sha256": "9bcb97a3e0ffdc69c0154aee0011a8e7ca7da94d75cd70fdfb4cfaca2504a72a"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/native_clear_codespace.c",
+      "sha256": "aba8c6b039541c994b9216c9b79b76f6458ba1f55529137cf4f7457b9c960de6"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/native_clear_codespace.h",
+      "sha256": "5f9b578e98381d297ece6493519583789799954fc79aa2677572418b1ef9aed7"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/native_clear_pds.c",
+      "sha256": "c50506fb2fc6a93ed8042569c711a5dbe69b1669013f5acee448008e15b0fc5c"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/native_clear_pds.h",
+      "sha256": "3f7601c985c0010bd3bb9093556e105232c8b437ae2b388b122b383c939fd374"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/native_clear_surface.c",
+      "sha256": "89d4e587d4d54ae8d7b4b0f65fdf5fef3d38bb7d17a62b9087049bfe950678c7"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/native_clear_surface.h",
+      "sha256": "78409fe41e679134b4896cc13c8dbb9e78378f2dcf487f6181506438d209cc0e"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/native_copy_state.c",
+      "sha256": "95f932fa2a7357223d45bca2d57548e93dc6ddd9b72988416bceeb8986f4d670"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/native_copy_state.h",
+      "sha256": "e7afa05c526b9524748601945bdfe80a994b3a922914651f7eea1604bac4d159"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/native_copy_usc.c",
+      "sha256": "ab8244120be968673e95ca9b697a38ad3b9c089c7490bb0c87c7fb566bba049d"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/native_copy_usc.h",
+      "sha256": "b6563e5fe75c054a22d9c3ab8df3c9f6108f252e784cd61c28cab9a612cf01b1"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/native_eot_program.c",
+      "sha256": "55daf700302d332e0126a8379e0df0151ef58c1f01a3b09842b76b394692e52d"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/native_eot_program.h",
+      "sha256": "4c6bd93e261b654440da4afc64bb11cd56d902aa458b9df38dbdf951657af2d1"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/native_factory_checkpoint.h",
+      "sha256": "4a984233ab61c0fb3038b73f9b07c93b819ffff2461d86b38e6c36d1e37db119"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/native_hwrt_profile.c",
+      "sha256": "d9983b610d80219ccbb4d18d779b4bde3fd5f71cebee1cb47bd0298ac76ea253"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/native_hwrt_profile.h",
+      "sha256": "b0f6ae98931f9ae639ea46b34fecee65f6d78a1d08b75969b64d51c311e47ec5"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/native_pair.c",
+      "sha256": "11a114bb31b6810e283ffb4edf54e93ebcd54f6a9e72f81c2533619aaccada8d"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/native_pair.h",
+      "sha256": "c28792fdef7c631855aaccfc9d654c306fdd5ae04973b93ccace16e7bc389226"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/native_record_fields.c",
+      "sha256": "9f5131430df5f64a56afcd2e25ddac3fe716693e05d50f663b920087d97a7719"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/native_record_fields.h",
+      "sha256": "da6d76d4e374edf397b042b1225179be4a36377b5d84c425d854cc5a538837ab"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/native_resources.c",
+      "sha256": "8c7df0ff753a93690b58b260c77f7a2d4fc72fbc64913d2a96ed76782e7c6ef2"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/native_resources.h",
+      "sha256": "e517e38514f0a196ea2476405db6b2804431d37f5ec6730577df32689788954f"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/native_terminate_stream.c",
+      "sha256": "3183297998a9f49973396a12d897afa1dc5e51b17b1e08c4931945dc0f338c0a"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/native_terminate_stream.h",
+      "sha256": "ba1e0462f5d619116cd526eb82f646b292feace3003931bc6411897234ba285d"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/render_resources.c",
+      "sha256": "e1735a4049c851e5a551ee8de3171d98f471ba7ade299acf735263976794d9e9"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/render_resources.h",
+      "sha256": "22b775aaea965e434e5346eae3f7e3c576e9399244c59ee30e5bafe03fc1d112"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/scanout_candidate.h",
+      "sha256": "0390d43e4ce448d1671fd03d76ad5cf539ea6be46e7de623dcdafacbe405bdfc"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/scanout_lifetime.h",
+      "sha256": "65ac88c60b27462b03f00f30c1bd61d274deefbdf79b06d060a64a99c1c6f273"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/shared_frame_plan.h",
+      "sha256": "943fbf45840a7127a824bc3e797b565ce1eee2eb64c4ae77dc7b919b20b91c19"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/shared_frame_sequence.h",
+      "sha256": "2ec7dbf7f7f7f684933e77765ee29050145a60ac36a6a5dc91b136e68fab383e"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/shared_lease.h",
+      "sha256": "3d204adb1ad4dd028049da67a9fbfec5fc5af10301039b602b60b9f0a68c5bd8"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/stage.c",
+      "sha256": "18ce38d1546899e26a5ec70704dfbf9b8081cc5d047c76ef2f001fd6a7f4f858"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/stage.h",
+      "sha256": "8949c9c49159ee007d90c398199d4b19355f815b4bf32e452e8d4b948a434d16"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_clock.h",
+      "sha256": "94445593163a86f2bde08a8a1ddb3d2026cf5e793a215ca7fba663b5193a8b19"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_command.c",
+      "sha256": "2a7a4a25e280d30ada782160b2f125d75922aea0b1039f6140e7d1bab3023a51"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_command.h",
+      "sha256": "2bb70933a7fbeb179618d9f49ab17c374bba30dbfddfbbaabfb2d6073fdf8954"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_copy_scratch.c",
+      "sha256": "d65378ce4184079dfeb6a62056ad2642a7882609751c70a1e4487f1ff58322a9"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_copy_scratch.h",
+      "sha256": "13acc6f4791665fdff2aab1802841511c17b4ce85b64a89eed10d4f94260f494"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_display_scanout.c",
+      "sha256": "1e9b2c5f1499ca6b70078610bd7908987461df3ec0e3bf8778c727a3c85616fe"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_display_scanout.h",
+      "sha256": "1e2ec5aa369bef82610856a6c0c92a65f9a0986d65d6c424b5bdd3ed22cbd08a"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_irq.c",
+      "sha256": "621d5979b9475c201d1366645f1732d27c61890a6bf4c2f545b31adae3ff48bf"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_irq.h",
+      "sha256": "51ff31945efc8db269a24ab5ac7efc0ff6d17d92d49a82777fe64327fcc0e488"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_irq_snapshot.h",
+      "sha256": "4baffe0949dd901a96af88f5b4d4991cce8f48cbe679378b2c6f1dfbd6b15f04"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_native_backing.c",
+      "sha256": "0964df192d33f423bcf2a0a8bf5db2103a4cdc532eda4d512626afc2e9178ba5"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_native_code.c",
+      "sha256": "fdf5da84d69261d4fa9079639b76947fc7c51749d37e61020580791333387713"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_native_cold.c",
+      "sha256": "40e1cb676883c9997bf8ceeb09c8ad76851dd07c381ca92b4714e520b3796712"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_native_cold.h",
+      "sha256": "3a9aac56cf79a7b6bd0eab9e22872138b3049a92e40cfb7cbd307a14b0839dd4"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_native_cold_private.h",
+      "sha256": "2457f9b7a4b3a3c03c7b51b95893ed4c5ea6318a010f68ac334874480cfd6956"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_power_acpi.c",
+      "sha256": "d6ef7192e5e1a7c47018698cbfa63d5d20a071af3ebebf0060ddc7c75702e3f3"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_power_acpi.h",
+      "sha256": "cca4383aa10015b8676e3c8db761c1fa6a4fdc1077088acd219085023217c715"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_render_clear.c",
+      "sha256": "cfe6df9cc08a666a33418affa2d1934986b3824ae699e6154c2877f287ae8e4e"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_render_cold.c",
+      "sha256": "0bcabf5c395aebf341deaf3ee5a867dd63d80bc9ae410910c216a4bc8034c221"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_render_cold.h",
+      "sha256": "3a06a993b8dda50a89b04e66302a16a5e91108e52b20faf5efa9f6d210fadd52"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_render_context.c",
+      "sha256": "3e18038e27cf76ad9f1c046262460c5f382560beb7ab1cdc89c7ca2b9b5d2ce1"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_shared_ovl.c",
+      "sha256": "b8f75542f979409d5f0d61ff2d16155bf182aceb204b1a774630e50ec8519f89"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_shared_ovl.h",
+      "sha256": "81002984174c8d228a474989cbbc20f4f6189996af9cc4620f0164ea1785016e"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_shared_publish.c",
+      "sha256": "afb48531841703be39216e30e4a5ed9bbb1d911ecdee951cb68100d3f6133892"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_shared_scanout.c",
+      "sha256": "a8dc3fae98a21248c1c113ab430307d21ba1789848b6a604a51032217f4f7d5a"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_shared_scanout.h",
+      "sha256": "a066598fae9512c760ab86af116b781d718d1e49d52fce88c18f65727f781073"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_shared_tables.c",
+      "sha256": "d0fc2081c1ccca4361c1483fee12b73d5c2bc96bc03e6f34f1d28fe8d873665f"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_shared_tables.h",
+      "sha256": "5cd0333179a688f88d8d78b1a5da4d2a62b06662c23bea0b211ed6b9710983fe"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_stage.c",
+      "sha256": "9d513709f7e6846d3b74ac0d00f18ec53d7e618f4bac1061b3741ab0f05ea814"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_stage.h",
+      "sha256": "cb308af0d997845579654f4e2063e3abfa4016ebe7fccab46b71d90f56f9baa6"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_stage_uncached.c",
+      "sha256": "206eb20d4928e985cd7f4bf108b6dc20ace66b4c6dc3323307b4a3cb9258ef29"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_start.c",
+      "sha256": "7e1829f5cff416dc5218bdfb6d6aa5de66c64861c598ff3942792af81f3aee67"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_start.h",
+      "sha256": "b71316c930361b1c46985e090fe7eb57245876700bae883eeef5b056edd7c850"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_stop.c",
+      "sha256": "72c449ab6ddd9871d1cb7b46b075ff515792db1e113a8caa7760cd47a3abadb7"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_stop.h",
+      "sha256": "21a83f1ef4cc54c1542b5891a64b275da6f07a5422c38f7641ee88f3ec3d6846"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_surface.c",
+      "sha256": "be702cb17932a93060b347883565bbc516d09e36f8213ae8c2ae3fe261ca9f5a"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_surface.h",
+      "sha256": "29fa431754dade7ca2760de3b82a2c94f5b28036c1f26db47b550f3e674ef915"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_uncached.c",
+      "sha256": "c479b612f87a2293074417ee12f189898a7bd74bbec85b8d5d7e27891eb94e9e"
+    },
+    {
+      "path": "drivers/gpu/mt8167/vendor_m1_11/windows_uncached.h",
+      "sha256": "37239d4a7b23cfa55d68f2080fca4677375a49259e59e43f7103d7b554ae8fcf"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/bdd.cxx",
+      "sha256": "68f919b9af09c708e8bb3ae7e3e41d16141dcf50b3233bec75a14942a2723684"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/bdd.hxx",
+      "sha256": "526107b6424f4c46768416393af34d427b167bf6b817f1c146dae7bd74b2b73a"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/bdd_ddi.cxx",
+      "sha256": "8369a47f031f1f5eb153a2859384181c92beb794afd933487f1a640435166f58"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/bdd_dmm.cxx",
+      "sha256": "e515c1849314b5eeff2a525c945d8cecc56963a30ce21294e2f01f480cf28517"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/bdd_errorlog.hxx",
+      "sha256": "c3695c5781d2e212366e455d6158e1981a494118ad56e1550e9555f900208a85"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/bdd_util.cxx",
+      "sha256": "a52ea7c76b67354dc3510a9d3c615e846d5fcae36151e1e4a404024d012675c8"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/bltfuncs.cxx",
+      "sha256": "60639c64a73bef5c94ef2e66cf3fb561ced296cf93b6722c989a2ae4b19f8feb"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/blthw.cxx",
+      "sha256": "c485a17aaec426fabbd8ed3e9692ec8a3dfd2198d5a46cbc342387e58999f84d"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/ge8300_display_resource_check.h",
+      "sha256": "852947e9b23eb6ce9a9fa686ff69a20f9c5e8f51e5812d6658d96b97d4dc9e68"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/ge8300_display_resources.cxx",
+      "sha256": "604c81667b777f4773310d53bd5f72cc06c423c7109e4423777ec51bfaee1c1f"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/ge8300_display_resources.hxx",
+      "sha256": "ff6787b22859cfd6a63f3f56436141374ad6b18e8008a794ebf9482082f47ca0"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/ge8300_present.cxx",
+      "sha256": "d3b94c27fbc5f83810202568e917e40eaeda8929329654d9be27d4a506c10ad3"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/ge8300_present.hxx",
+      "sha256": "9406061c22b170abdaf605874d0d942c10b7c9f50b4d4a97f255f165cf9e60bf"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/ge8300_trace.cxx",
+      "sha256": "0d8736f637291e2fb5f1c8fd09aadd1f006870dadf4c4d666f27f2eb52e2d479"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/ge8300_trace.hxx",
+      "sha256": "a3805014e39514ca6d79a605f34cb8211fd3b05ca98ad6fdcc6decb1690966e4"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/gpu_post_pattern.h",
+      "sha256": "08b53c65c17732185d037d2e425a220843966f24455b20dc8c94518dbf44b9a0"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/memory.cxx",
+      "sha256": "988ee8269f3f80ac354369089bf312c503ada0e0ec49ebdde2cc4f525e526fd0"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/mt8167_brightness.cxx",
+      "sha256": "be54d7ec012a45de782634f0070f68b575df92bf71f1a1fc06604069c2352ea6"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/mt8167_brightness.hxx",
+      "sha256": "b434e87b07ecae3c5bdb32e7c32a0396124a6921f32b087932f95b3710099d1f"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/mt8167_cmdq_packet.h",
+      "sha256": "024374f99468ed6f5a40e93dd2ca75be98d9f3e439cac2f9f579fe04f1c1ad76"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/mt8167_ovl_saved.h",
+      "sha256": "c2a009393af7aba11054dd2e7a4f2ab6d2b48038a3d7547513d87b2332c8094e"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/present_bounds.h",
+      "sha256": "20b14a6d83f89ef783615740d3ce003cd2f90f4292c0db0af8a60707883f2ce0"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/present_copy_fence.h",
+      "sha256": "230789cdc37ca50c1a99755e6779ba40cc08678d3ab893763d2ae8f699b7d35a"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/present_tile.h",
+      "sha256": "8a22480b94ca2672264cc9392e5cfce50e2bf09d4f1695531d60d1af7e30f40e"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/shared_common_policy.h",
+      "sha256": "4c991fe32b1b5a6ffe47b01f2b1dac3f1afa1547e8a2ab93702d06808d5099f1"
+    }
+  ],
+  "compiler_source_plan_sha256": "d6af6d75a632429d207c6093bc4c0a819c25031aa3e8493aac3ba8819164c3e7",
+  "old_driver_cache_required": false,
+  "git_history_required": false,
+  "hardware_verified": false,
+  "signed_package_byte_identity_claimed": false
+}

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include "typed_device.h"
+void geo_typed_device_trace(struct geo_typed_device *,const char *,UINT);
 #include "../memory.h"
 struct geo_typed_layout {struct geo_typed_layout *next;struct geo_typed_device *device;UINT refs,deleted,offset[2],elements;};
 static UINT bits(FLOAT f){UINT v;memcpy(&v,&f,4);return v;}
@@ -101,7 +102,7 @@ HRESULT geo_typed_submit_draw(D3D10DDI_HDEVICE h,const FLOAT vertices[3][4]) {
  p->request.target=1;p->request.vertex=2;hr=geo_draw_validate_capture(&p->request,blob,total)==GEO_OK?S_OK:E_INVALIDARG;p->request.target=p->request.vertex=0;
  if(FAILED(hr)){HeapFree(GetProcessHeap(),0,p);return hr;}
  memcpy(d->backend.commands,p,p->size);memset(d->backend.allocations,0,2*sizeof(*d->backend.allocations));d->backend.allocations[0].hAllocation=ta;d->backend.allocations[0].WriteOperation=1;d->backend.allocations[1].hAllocation=va;
- memset(&q,0,sizeof(q));q.hContext=d->backend.context;q.CommandLength=p->size;q.NumAllocations=2;hr=d->backend.cb.pfnRenderCb(d->backend.runtime,&q);HeapFree(GetProcessHeap(),0,p);
+ memset(&q,0,sizeof(q));q.hContext=d->backend.context;q.CommandLength=p->size;q.NumAllocations=2;hr=d->backend.cb.pfnRenderCb(d->backend.runtime,&q);geo_typed_device_trace(d,"DRAW_RENDER_HRESULT",(UINT)hr);HeapFree(GetProcessHeap(),0,p);
  if(SUCCEEDED(hr)){d->pending=1;d->backend.commands=q.pNewCommandBuffer;d->backend.command_bytes=q.NewCommandBufferSize;d->backend.allocations=q.pNewAllocationList;d->backend.allocation_count=q.NewAllocationListSize;d->backend.patches=q.pNewPatchLocationList;d->backend.patch_count=q.NewPatchLocationListSize;}
  return hr;
 }

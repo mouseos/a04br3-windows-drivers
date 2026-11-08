@@ -1,0 +1,35 @@
+name: GE8300 323 single-checkout source build
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-build:
+    # Preinstalled licensed WDK8.1 + MSVC ARM32 + LLVM + Python; no device.
+    runs-on: [self-hosted, Windows, X64, wdk81-arm32]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Build KMD, native owner, compiler, UMD and client from source
+        shell: powershell
+        run: ./tools/ci/build-ge8300-from-source.ps1 -EnableCandidate -RunHostTests
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ge8300-source-build-${{ github.sha }}
+          path: |
+            build/ge8300-source/*.sys
+            build/ge8300-source/*.dll
+            build/ge8300-source/*.exe
+            build/ge8300-source/*.json
+            build/ge8300-source/compiler/*manifest.json
+            build/ge8300-source/native/build-manifest.json
+            build/ge8300-source/modules/build-manifest.json
+            build/ge8300-source/umd/build-manifest.json
+            build/ge8300-source/umd/*.pe.txt
+            build/ge8300-source/host-tests/host-tests.json
+            build/ge8300-source/host-tests/stdout.txt
+            build/ge8300-source/host-tests/signature323/host-manifest.json
+            build/ge8300-source/source-origins.json
+          if-no-files-found: error

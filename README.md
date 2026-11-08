@@ -1,5 +1,17 @@
 # TAB-A04-BR3 Windows ドライバ
 
+## 公開単一checkout 3.23 source候補（2026-11-08）
+
+KMD320(f73da1e3)・native322(f9694853)・実UMD基点3f8291d0＋shader323(eb4dca0e)を
+一つのtreeへ統合した。[公開source build手順](tools/ci/README-ge8300-source-build.md)はshallow cloneから通常fullbuildし、
+旧driver cache/private hive/別checkout/過去Git履歴を要求しない。元DOD/legacyは保持する。
+
+主担当の実3.22では標準D3D2色連続Clear/readbackが各480000画素一致・不一致0・bugcheck無し。
+続くTRIANGLE_VS作成は失敗し、323はruntime未初期化signature型fieldの読取りを除く候補である。
+**この公開fullsource treeの生成物は実機未検証**で、既存署名package323のbyte同一再包装ではない。
+一般shader/三角形/UI全描画・全ドライバ完成とはしない。以下の初期説明は各時点の履歴として保持する。
+
+
 TAB-A04-BR3のWindows RT 8.1 ARM32向けドライバをまとめるリポジトリです。ストレージ、入力、USBなどを機能別のディレクトリに置き、ドライバごとにリポジトリは分けません。UEFIの共通コードやWindowsのバイナリは含めません。
 
 2026-11-04現在、Windows RTの初期設定は完了し、ROHM BU21025タッチは操作できることを確認しています。タッチの長期安定性、電源管理、その他の周辺機器は引き続き検証中です。ドライバの公開名はBU21025、MediaTek MT8167 MSDC、MT8167/MT6392ボタンなど実際のコントローラに合わせます。
