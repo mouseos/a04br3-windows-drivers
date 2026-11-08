@@ -1931,7 +1931,7 @@
   ],
   "viewport_source_commit": "1e4ca5d11701a809653c518e07b75aa6c8cfb409",
   "texture_source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
-  "copy_integration_source_commit": "403f8803be6c8305f8a2c1c11bf05004599b153a",
+  "copy_integration_source_commit": "363c302433da839c1102a3bc356b06cb74126314",
   "SG_source_commit": "51cbe2d47df4bef5e915cf7f5bff1d51fd94bec8",
   "copy_usc_input_sha256": "5c68917faa051238b23674b64c6b137ef7ff75425dbde9dbc5e1e5a36e02c4a3",
   "HAL_packet_DMA_operations": 0
