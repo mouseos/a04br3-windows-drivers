@@ -39,8 +39,8 @@ try {
  $b=[IO.File]::ReadAllBytes("$p\mt8167-keypad.sys");$at=[BitConverter]::ToInt32($b,0x3c)
  if([BitConverter]::ToUInt16($b,$at+4) -ne 0x1c4){throw 'Not ARMNT'}
  $m.status='cross-built-WDK81-signed-catalog-verified-not-device-tested'
- $m|Add-Member signer $CertificateThumbprint
- $m|Add-Member outputs @(Get-ChildItem $p -File|ForEach-Object {@{path=('package/'+$_.Name);bytes=$_.Length;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}})
+ $m|Add-Member -NotePropertyName signer -NotePropertyValue $CertificateThumbprint
+ $m|Add-Member -NotePropertyName outputs -NotePropertyValue @(Get-ChildItem $p -File|ForEach-Object {@{path=('package/'+$_.Name);bytes=$_.Length;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}})
  $m|ConvertTo-Json -Depth 12|Set-Content -Encoding UTF8 "$OutputDirectory\signed-manifest.json"
  Compress-Archive -Path $p,"$OutputDirectory\signed-manifest.json","$OutputDirectory\unsigned-manifest.json" -DestinationPath "$OutputDirectory\mt8167-keypad-signed.zip"
  Get-FileHash "$OutputDirectory\mt8167-keypad-signed.zip" -Algorithm SHA256|Format-List
