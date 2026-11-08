@@ -302,7 +302,7 @@ function Related-Fingerprints($Root,$Plan) {
         try {
             $result.single_gpu_ledger=Engine-DiagnosticFingerprint $sg $Plan $true
             if($result.single_gpu_ledger -cne $Plan.engine_preserve.single_gpu_rearm.previous_ledger_fingerprint){throw 'Pinned ten-generation ledger changed'}
-            $previous=$sg.OpenSubKey(('Parameters\LastDiagnostic'+$Plan.engine_preserve.single_gpu_rearm.previous_policy))
+            $previous=$sg.OpenSubKey(('Parameters\LastDiagnostic\'+$Plan.engine_preserve.single_gpu_rearm.previous_policy))
             if(!$previous){throw 'Pinned previous119 generation absent'}
             try {foreach($phase in @('Install','Diagnostic')){
                 $leaf=$previous.OpenSubKey($phase);if(!$leaf){throw 'Previous119 phase absent'}
