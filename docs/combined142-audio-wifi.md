@@ -9,3 +9,5 @@ service/data MT8167CombinedFollowup142、DisplayName MediaTek combined audio142�
 55GPUlogsはfresh142の新baselineを全件保持。旧137text append/遅延UMD2本を原情報のまま扱い、新GPUclientは実行しない。更新audio/WiFiのruntime出力は旧subtree byte保持へ入れず、静的設定/未更新旧SCM/GPUledgerを保持。原hiveはcloneでのみnative read/arm、SOFTWARE/userdata巻戻しなし。
 
 mainが独立sealし実機を所有する。workerは実機操作せず、既host入力closureをhash/size照合して小deltaだけ転送する。SDK/WDK/PCO全setupなし。署名・source・媒体完成と実機機能成功は別。
+
+後続scope変更: run143でrenderもDIFし、周辺5clientsの後にGPU boundary1client900秒を最後に実行する。diag1500/install900、同restart1を保持。337正常経路packet/mainsealは保持するが、Copy予約後error gate修正338最終署名package待ちのため現mapはdraft/非arm。UMD保持・版pinを338へ更新しmain seal受領後にだけ最終SCMを生成する。6clientsは既8record上限内、target11/schema2不変。GPRstage15/detailGOP1はRenderCbreturnでCPU unlock/GPU完了ではない。最新boot1fefを保持し、旧HANDOFFの4b67保持指示は採用しない。
