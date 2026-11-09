@@ -267,9 +267,9 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
-      "source_commit": "e4108dafe82745ba58af20245bf891b9feebd32f",
-      "role": "Windows PASSIVE firmware acknowledgement/drain waits345; previous origins preserved",
-      "sha256": "d84e0edc5a413a96cfec87e2e6af0c0bd136fbf0631b5b05ae2e3ec534d767fd",
+      "source_commit": "eb0b870c9be6f824703d0c62e41de5488994f942",
+      "role": "MASKED startup346 runtime identity; previous origins preserved",
+      "sha256": "ae343db6ba440f4be53e7af871356fdb15d50fd27052073ba835f1aee49cf2ea",
       "previous_origins": [
         {
           "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
@@ -303,6 +303,12 @@
           "source_commit": "5b5649e0",
           "role": "Durable PASSIVE existing progress344; previous origins preserved",
           "sha256": "8f46d7210cfbfea70baa47a30c7df343309ee5cfc28d6522df4f45cb27c991af"
+        },
+        {
+          "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
+          "source_commit": "e4108dafe82745ba58af20245bf891b9feebd32f",
+          "role": "Windows PASSIVE firmware acknowledgement/drain waits345; previous origins preserved",
+          "sha256": "d84e0edc5a413a96cfec87e2e6af0c0bd136fbf0631b5b05ae2e3ec534d767fd"
         }
       ]
     },
