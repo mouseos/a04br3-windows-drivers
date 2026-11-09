@@ -1028,7 +1028,7 @@
       "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_factory_runtime.c",
       "source_commit": "f96948533601f9fdcdcc22b9700aacd96dbf7204",
       "source_sha256": "77e75bdfa5488e5ce242254e7d79e94b0f6111019823e22acc0abf51d62d9a0a",
-      "sha256": "422ad699c88711a55133db97ee56f3799cb8ff86fb97eed264280c09e1fee7c4",
+      "sha256": "d132ca32fe76635aee26e6568e1c7d78da5cde802921e1dc498dc66a7bb9e5db",
       "include_rewrites": [
         [
           "native_owner_factory_private.h",
@@ -1057,23 +1057,30 @@
       ],
       "rewrite_includes_only": false,
       "reviewed_delta": {
-        "source_commit": "2b8e3474850c21341bd2c857caa4c2651c2cbb26",
+        "source_commit": "e4108dafe82745ba58af20245bf891b9feebd32f",
         "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_factory_runtime.c",
-        "sha256": "422ad699c88711a55133db97ee56f3799cb8ff86fb97eed264280c09e1fee7c4",
-        "baseline_destination_sha256": "fe00fe41d61d72b97f0e9d073be7f6c351e0a30de6139b438d5a91e137b70b90",
-        "role": "Resident cold/live341, immutable Draw reuse and TQ Clear342",
+        "sha256": "d132ca32fe76635aee26e6568e1c7d78da5cde802921e1dc498dc66a7bb9e5db",
+        "baseline_destination_sha256": "422ad699c88711a55133db97ee56f3799cb8ff86fb97eed264280c09e1fee7c4",
+        "role": "Windows PASSIVE firmware acknowledgement/drain waits345",
         "previous_reviewed_delta": {
-          "source_commit": "403f8803be6c8305f8a2c1c11bf05004599b153a",
+          "source_commit": "2b8e3474850c21341bd2c857caa4c2651c2cbb26",
           "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_factory_runtime.c",
-          "sha256": "ebd05f0130c5120c88702db7c91a4339eff229a61bb00902623bf12aa59f9d6f",
+          "sha256": "422ad699c88711a55133db97ee56f3799cb8ff86fb97eed264280c09e1fee7c4",
           "baseline_destination_sha256": "fe00fe41d61d72b97f0e9d073be7f6c351e0a30de6139b438d5a91e137b70b90",
-          "role": "Final51cbe WDDM physical aperture/cache ownership + real Copy337 scheduler retirement",
+          "role": "Resident cold/live341, immutable Draw reuse and TQ Clear342",
           "previous_reviewed_delta": {
-            "source_commit": "ab744bc6278fc1ed099e42f31b07444a2c860b61",
+            "source_commit": "403f8803be6c8305f8a2c1c11bf05004599b153a",
             "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_factory_runtime.c",
-            "sha256": "fe00fe41d61d72b97f0e9d073be7f6c351e0a30de6139b438d5a91e137b70b90",
-            "baseline_destination_sha256": "985ea83b4dc147e4525730b67f5288ea89128a4ae1ebac6e9927233417225956",
-            "role": "Copy336 + SG ef0d all-consumer lifetime/IRQ/PT integration"
+            "sha256": "ebd05f0130c5120c88702db7c91a4339eff229a61bb00902623bf12aa59f9d6f",
+            "baseline_destination_sha256": "fe00fe41d61d72b97f0e9d073be7f6c351e0a30de6139b438d5a91e137b70b90",
+            "role": "Final51cbe WDDM physical aperture/cache ownership + real Copy337 scheduler retirement",
+            "previous_reviewed_delta": {
+              "source_commit": "ab744bc6278fc1ed099e42f31b07444a2c860b61",
+              "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_factory_runtime.c",
+              "sha256": "fe00fe41d61d72b97f0e9d073be7f6c351e0a30de6139b438d5a91e137b70b90",
+              "baseline_destination_sha256": "985ea83b4dc147e4525730b67f5288ea89128a4ae1ebac6e9927233417225956",
+              "role": "Copy336 + SG ef0d all-consumer lifetime/IRQ/PT integration"
+            }
           }
         }
       }
@@ -1630,7 +1637,7 @@
       "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_command.c",
       "source_commit": "f96948533601f9fdcdcc22b9700aacd96dbf7204",
       "source_sha256": "2a7a4a25e280d30ada782160b2f125d75922aea0b1039f6140e7d1bab3023a51",
-      "sha256": "02d088314ffa281f3b7ffe10ec24d1d73429a6a530fc0e636b3a8b611aa5c225",
+      "sha256": "e856fe9ae0efcad4fc2b09899b2f513845e46cb705c2f745755963307e5b62ea",
       "include_rewrites": [
         [
           "windows_command.h",
@@ -1649,7 +1656,14 @@
           "../../windows_hw.h"
         ]
       ],
-      "rewrite_includes_only": true
+      "rewrite_includes_only": true,
+      "reviewed_delta": {
+        "source_commit": "e4108dafe82745ba58af20245bf891b9feebd32f",
+        "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_command.c",
+        "sha256": "e856fe9ae0efcad4fc2b09899b2f513845e46cb705c2f745755963307e5b62ea",
+        "baseline_destination_sha256": "02d088314ffa281f3b7ffe10ec24d1d73429a6a530fc0e636b3a8b611aa5c225",
+        "role": "Windows PASSIVE firmware acknowledgement/drain waits345"
+      }
     },
     {
       "source": "drivers/gpu/mt8167/vendor_m1_11/windows_command.h",
