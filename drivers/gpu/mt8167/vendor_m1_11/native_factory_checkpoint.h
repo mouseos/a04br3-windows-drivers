@@ -14,6 +14,12 @@ static void GeoFactoryCheckpoint(ULONG stage,NTSTATUS status,ULONG a,ULONG b,ULO
  InitializeObjectAttributes(&oa,&path,OBJ_KERNEL_HANDLE|OBJ_CASE_INSENSITIVE,NULL,NULL);
  if(!NT_SUCCESS(ZwCreateKey(&key,KEY_SET_VALUE,&oa,0,NULL,REG_OPTION_NON_VOLATILE,&disposition)))return;
  (void)ZwSetValueKey(key,&name,0,REG_BINARY,&r,sizeof(r));
- if(!NT_SUCCESS(status)||stage==5)(void)ZwFlushKey(key);ZwClose(key);
+ /* First-copy watchdog evidence must survive a reset. These existing
+  * PASSIVE-only phase records otherwise remain solely in the hive cache.
+  * No register operation, timeout, ownership proof or success status changes.
+  * Render/Paging/Patch and native drain/rebuild boundaries are the only
+  * added flush sites; query/caps and ISR/DPC paths remain unflushed. */
+ if(!NT_SUCCESS(status)||stage==5||stage==20||stage==21||stage==22||
+    (stage>=34&&stage<=39))(void)ZwFlushKey(key);ZwClose(key);
 }
 #endif

@@ -1,0 +1,9 @@
+# GE8300 344：最初のコピー停止の既存記録を永続化
+
+343実機は全初期化段階0・ReachedMask2047・D3D CreateDevice成功後、最初のCopy RenderCb内でwatchdog再起動した。完了画素記録はない。Factory R20/R22/R34以降の旧記録を今回の失敗証拠にしない。
+
+344は既存のPASSIVE FactoryCheckpointのうちRender/Paging/Patch（20/21/22）とnative境界34〜39を明示的にflushする。対象の翻訳単位はkmd_clear、native_owner_factory、native_owner_factory_runtimeとidentity miniportの4つ。IRQ/DPCへのI/O追加、GPUレジスター/CCB/shader/PTE/時間制限の変更、完了や成功の偽装はない。署名candidateは既343の80objectから4つだけ増分置換し、MSVCリンク条件を維持する。
+
+これは再起動で失われた処理段階を保存するための候補であり、GPU停止の修正・描画成功を主張しない。flushによる待ち時間が加わるので、その影響も実機で区別する。今回の停止を特定後は本修正と必要な記録へ整理する。既343/155媒体は変更しない。
+
+同起動の実kernel配置とREAではCPU0 PCはReadTimeStampCounter内。PCの一時点だけから無限ループ・呼出し元・GPU停止原因を断定しない。FP32/SP32とFP64の記録をLRへ読み替えない。
