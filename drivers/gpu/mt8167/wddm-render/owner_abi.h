@@ -7,6 +7,10 @@
  * Reference/dereference, D0 and revoke/rundown are supplied by the binding.
  * All tokens are private kernel handles, never supplied by a user process. */
 #define GEO_OWNER_OPS_VERSION 3u
+/* Internal captured-submit continuation only: a real IRQ was claimed before
+ * publication and needs PASSIVE service. No command was published and the
+ * same prepared token/fence must be retained; this is not DMA completion. */
+#define GEO_SUBMIT_WAIT_IRQ ((int32_t)0x00000103)
 #define GEO_OWNER_REGISTERED_MDL 1u
 #define GEO_OWNER_PACKED_CLEAR 2u
 #define GEO_OWNER_PREPARE_PASSIVE 4u

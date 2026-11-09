@@ -330,6 +330,19 @@ static int32_t submit(void *p,uint64_t job,uint32_t fence,uint32_t generation)
     if(!c || KeGetCurrentIrql()!=c->irq_level || c->closing || !c->leased || !c->irq_gate ||
        c->state!=E_OWNER_ACTIVE || c->power!=PowerDeviceD0 || !job || job!=c->job ||
        c->job_state!=E_JOB_PREPARED || !generation)return STATUS_INVALID_DEVICE_STATE;
+    /* FW startup may interrupt after PASSIVE prepare while this very worker
+     * is still running. The ISR has claimed/masked a real source, but its
+     * queued service cannot run on our occupied work item. Keep the prepared
+     * job intact and let the caller service that receipt before publishing.
+     * Inspect under the same real IRQ lock as submit; a cold mask/invalid
+     * epoch/fault never qualifies as a continuation. */
+    if(c->allocation->irq.masked && c->allocation->irq.serial &&
+       c->allocation->irq.powered && !c->allocation->irq.closed &&
+       !c->allocation->irq.faulted && !c->allocation->irq.draining &&
+       c->allocation->irq.epoch==c->hardware_epoch &&
+       (c->allocation->dispatch.state==A04_NATIVE_DISPATCH_READY ||
+        c->allocation->dispatch.state==A04_NATIVE_DISPATCH_COMPLETE))
+        return GEO_SUBMIT_WAIT_IRQ;
     s=c->job_is_copy?a04_native_tq_transfer_submit(c->copy_transfer,&c->allocation->start,&c->allocation->irq,c->kick_write,job,generation):a04_native_dispatch_submit(&c->allocation->dispatch,job,generation,c->kick_write);
     if(NT_SUCCESS(s)){c->generation=generation;c->job_state=E_JOB_SUBMITTED;}
     else{c->state=E_OWNER_FAILED;InterlockedExchange(&c->closing,1);}

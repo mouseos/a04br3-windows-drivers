@@ -210,7 +210,7 @@ C_ASSERT(sizeof(struct geo_module_identity_v1)==144);
 static void module_identity(PDRIVER_OBJECT driver)
 {
  static const CHAR source[]="eb2bc820c3b67168b16f50dbe3fbf27f513ddfae";
- static const CHAR build[]="GPU348-submit-worker-v1";
+ static const CHAR build[]="GPU349-submit-irq-v1";
  struct geo_module_identity_v1 r={0};HANDLE key=NULL;UNICODE_STRING path,name;
  OBJECT_ATTRIBUTES oa;ULONG disposition;NTSTATUS status;
  if(!driver||KeGetCurrentIrql()!=PASSIVE_LEVEL||!driver->DriverStart||!driver->DriverSize)return;

@@ -192,6 +192,7 @@ int geo_submitted_prepare_ready(const struct geo_engine *e) {
 int32_t geo_finish_submitted_prepare(struct geo_engine *e,const struct geo_dma_ticket *t,int32_t status,uint64_t token) {
  struct geo_job *j=job(e,t);
  if(!j||j->state!=8)return GEO_NOT_FOUND;
+ if(j->owner_job && j->owner_job!=token)return GEO_INVALID;
  if(status!=GEO_OK||!token||e->poisoned) {
   j->owner_job=token;j->state=3;j->allocation->poisoned=1;e->poisoned=1;
   return status!=GEO_OK?status:GEO_POISONED;
@@ -201,6 +202,7 @@ int32_t geo_finish_submitted_prepare(struct geo_engine *e,const struct geo_dma_t
   * Finish its real submission and acknowledge preemption only at its actual
   * IRQ completion. Unclaimed state7 buffers never start past that request. */
  status=e->owner.submit(e->owner.context,token,j->fence,j->generation);
+ if(status==GEO_SUBMIT_WAIT_IRQ)return status; /* state8/token/fence/refs retained */
  if(status!=GEO_OK){j->state=3;j->allocation->poisoned=1;e->poisoned=1;return status;}
  j->state=2;return GEO_OK;
 }
