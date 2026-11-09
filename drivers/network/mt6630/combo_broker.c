@@ -147,6 +147,9 @@ void a04_combo_worker(struct a04_ndis_runtime *a)
   if(b->file){s=STATUS_SHARING_VIOLATION;goto done;}
   ULONG sequence=start_status.sequence==MAXULONG?MAXULONG:start_status.sequence+1;
   RtlZeroMemory(&start_status,sizeof(start_status));start_status.version=1;start_status.bytes=sizeof(start_status);start_status.generation=a->session.generation;start_status.sequence=sequence;start_file=sp->FileObject;
+  {LARGE_INTEGER wall;ULONGLONG ticks=KeQueryInterruptTime();KeQuerySystemTime(&wall);
+   start_status.start_filetime_low=wall.LowPart;start_status.start_filetime_high=(ULONG)wall.HighPart;
+   start_status.start_interrupttime_low=(ULONG)ticks;start_status.start_interrupttime_high=(ULONG)(ticks>>32);}
   start_nt(A04_BT_START_ADMISSION,0,STATUS_PENDING);
   if(!a->power||!a->radio.initialized||a->radio.failed||a->uncertain){s=STATUS_DEVICE_NOT_READY;start_nt(A04_BT_START_ADMISSION,1,s);goto open_done;}
   start_nt(A04_BT_START_ADMISSION,1,STATUS_SUCCESS);start_nt(A04_BT_START_NVRAM,0,STATUS_PENDING);
@@ -159,7 +162,6 @@ void a04_combo_worker(struct a04_ndis_runtime *a)
     a->radio.bridge->service_context=a;a->radio.bridge->service_other=service;s=STATUS_SUCCESS;}
   }
 open_done:
- if(cleanup&&start_file==sp->FileObject)start_file=NULL;
   RtlSecureZeroMemory(record,sizeof(record));start_status.broker_ntstatus=(ULONG)s;start_status.flags|=A04_BT_START_RETURNED|A04_BT_START_NT_VALID;
  }else if(!b->file||b->file!=sp->FileObject){s=cleanup?STATUS_SUCCESS:STATUS_DEVICE_NOT_READY;}
  else if(code==A04_BT_BROKER_CLOSE){

@@ -80,6 +80,8 @@ static void RecordBrokerOpen(CLIENT *c,NTSTATUS actual_open_status)
     receipt.broker_ntstatus==(ULONG)actual_open_status&&!(receipt.entered_mask&~0x1fffeu)&&
     !(receipt.returned_mask&~receipt.entered_mask)&&!(receipt.succeeded_mask&~receipt.returned_mask)&&
     receipt.last_stage<=A04_BT_START_READY)BrokerStartCheckpoint(c->device,&receipt);
+ else if(NT_SUCCESS(s))s=STATUS_DATA_ERROR;
+ StartCheckpoint(c->device,&c->start_mask,16,s);
  /* Unknown/old provider or failed observation never changes the real OPEN. */
  RtlSecureZeroMemory(&receipt,sizeof(receipt));
 }

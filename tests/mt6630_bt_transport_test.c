@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "../drivers/bluetooth/mt6630/transport.h"
+#include "../drivers/bluetooth/mt6630/start_status.h"
 struct fixture {struct a04_wmt_bridge bridge;uint8_t response[2560],nvram[36];unsigned length,step,received,tx_done;uint64_t now;int reject;};
 static struct fixture f;
 static struct a04_bt_transport bt;
@@ -72,9 +73,19 @@ static void inject(const uint8_t *event,unsigned bytes)
  memset(f.response,0,sizeof(f.response));unsigned off=4+frame(f.response+4,0,event,bytes);
  a04_wmt_put16(f.response,off);f.length=off;assert(!a04_bt_poll(&bt));
 }
+struct observation {unsigned entered,returned,succeeded,last,opcode;int result;};
+static void observed(void *p,unsigned stage,unsigned returned,int result,unsigned opcode)
+{
+ struct observation *o=p;assert(stage>=A04_BT_START_ADDRESS_VALID&&stage<=A04_BT_START_READY);
+ o->entered|=1u<<stage;o->last=stage;o->opcode=opcode;
+ if(returned){o->returned|=1u<<stage;if(!result)o->succeeded|=1u<<stage;o->result=result;}
+ assert(!(o->returned&~o->entered)&&!(o->succeeded&~o->returned));
+}
 int main(void)
 {
- init();assert(!a04_bt_initialize(&bt,f.nvram));assert(bt.ready&&f.step==8&&!f.received);
+ struct observation o={0};_Static_assert(sizeof(struct a04_bt_start_status)==64,"fixed kernel receipt");
+ init();assert(!a04_bt_initialize_observed(&bt,f.nvram,observed,&o));assert(bt.ready&&f.step==8&&!f.received);
+ assert(o.entered==0x1fff0u&&o.returned==o.entered&&o.succeeded==o.entered&&o.last==A04_BT_START_READY);
  assert(bt.version_sent&&bt.version_complete&&bt.version_status==0&&bt.version_length==9&&bt.version_valid);
  assert(bt.version.hci_revision==0x1234&&bt.version.manufacturer==0x46&&bt.version.lmp_subversion==0x5678);
  assert(bt.pcm_command_applied&&!bt.queue_stopped);
@@ -92,7 +103,8 @@ int main(void)
  init();assert(!a04_bt_initialize(&bt,f.nvram));bt.hci_used=1;
  assert(a04_bt_disable(&bt)==-2&&!bt.queue_stopped); /* partial packet is NOT a drained queue */
  init();f.reject=1;assert(a04_bt_initialize(&bt,f.nvram)&&!bt.ready&&bt.failed&&!bt.version_sent);
- init();f.reject=2;assert(a04_bt_initialize(&bt,f.nvram)&&!bt.version_valid&&bt.version_sent&&bt.version_complete&&bt.version_status==0x0c);
+ init();f.reject=2;memset(&o,0,sizeof(o));assert(a04_bt_initialize_observed(&bt,f.nvram,observed,&o)&&!bt.version_valid&&bt.version_sent&&bt.version_complete&&bt.version_status==0x0c);
+ assert(o.last==A04_BT_START_VERSION&&o.opcode==0x1001&&o.result<0&&!(o.succeeded&(1u<<A04_BT_START_VERSION))&&!(o.entered&(1u<<A04_BT_START_READY)));
  init();f.reject=3;assert(a04_bt_initialize(&bt,f.nvram)&&bt.failed==-2&&!bt.ready&&!bt.version_sent);
  for(int rejected=4;rejected<=6;rejected++){
   init();f.reject=rejected;assert(a04_bt_initialize(&bt,f.nvram)&&!bt.ready&&bt.failed&&bt.version_valid);

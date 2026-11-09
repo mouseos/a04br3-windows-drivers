@@ -7,7 +7,7 @@ enum a04_bt_start_stage {A04_BT_START_NONE=0,A04_BT_START_ADMISSION=1,A04_BT_STA
 #define A04_BT_START_RETURNED 1u
 #define A04_BT_START_BACKEND_VALID 2u
 #define A04_BT_START_NT_VALID 4u
-struct a04_bt_start_status {uint32_t version,bytes,generation,sequence,entered_mask,returned_mask,succeeded_mask,last_stage,broker_ntstatus;int32_t backend_status;uint32_t last_opcode,flags,reserved[4];};
+struct a04_bt_start_status {uint32_t version,bytes,generation,sequence,entered_mask,returned_mask,succeeded_mask,last_stage,broker_ntstatus;int32_t backend_status;uint32_t last_opcode,flags,start_filetime_low,start_filetime_high,start_interrupttime_low,start_interrupttime_high;};
 /* Include broker_abi.h/ntddk.h before using this private kernel-only IOCTL. */
 #define A04_BT_BROKER_START_STATUS CTL_CODE(FILE_DEVICE_UNKNOWN,0x949,METHOD_BUFFERED,FILE_READ_DATA|FILE_WRITE_DATA)
 struct a04_bt_transport;
