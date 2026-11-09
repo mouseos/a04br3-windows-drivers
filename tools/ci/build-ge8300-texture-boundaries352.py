@@ -41,12 +41,18 @@ all_rows=load(t/'all-units.json');all_units={Path(x['source']).name:x for x in a
 changed_paths=set(load(t/'changed-sources.json'));dependencies=[];wanted=set();(out/'dependencies').mkdir()
 for u in all_rows:
  args=[relocate(x)for x in u['arguments']];src=root/u['source'];log=out/'dependencies'/(u['object']+'.txt')
- result=subprocess.run([str(llvm/'clang.exe'),*args,'-H','-E',str(src),'-o','NUL'],capture_output=True,text=True)
- log.write_text(result.stderr)
+ if src.name=='mdl_pin.c':
+  # SEH source explicitly rejects Clang. Use its actual MSVC compiler for
+  # preprocessing only; no object/source recompilation is requested here.
+  pp=[str(link.with_name('cl.exe')),'/nologo','/EP','/showIncludes','/TC']+[('/D'+x[2:]) for x in args if x.startswith('-D')]+[('/I'+x[2:]) for x in args if x.startswith('-I')]+[str(src)]
+  result=subprocess.run(pp,capture_output=True,text=True);deptext=result.stdout+'\n'+result.stderr
+ else:
+  result=subprocess.run([str(llvm/'clang.exe'),*args,'-H','-E',str(src),'-o','NUL'],capture_output=True,text=True);deptext=result.stderr
+ log.write_text(deptext)
  if result.returncode:raise ValueError('Preprocessor dependency scan failed '+u['source']+' '+result.stderr[-1000:])
  included={u['source']}
- for line in result.stderr.splitlines():
-  hit=re.match(r'^\.+ (.+)$',line)
+ for line in deptext.splitlines():
+  hit=re.match(r'^\.+ (.+)$',line) or re.match(r'^Note: including file:\s*(.+)$',line)
   if hit:
    path=Path(hit.group(1).strip())
    try:included.add(path.resolve().relative_to(root.resolve()).as_posix())
