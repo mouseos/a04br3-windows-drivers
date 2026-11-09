@@ -21,6 +21,7 @@ run(['python',r/'tools/ci/verify-ge8300-fullsource.py'])
 pin(link,'f8b2e9c5341419525f915b61b87d1bc8aa307adca6e1e022071175912e965938')
 pin(base/'package355/signed-manifest.json','43f49646379a79900e78279ed34484c71a59f9b02a78de986aab2410485a08a0')
 m=load(base/'package355/signed-manifest.json')
+for x in load(cache/'cache-input-pins.json'):pin(cache/x['name'],x['sha256'])
 for x in m['outputs']:pin(base/'package355'/x['name'],x['sha256'])
 stage=None
 if o.exists():
@@ -63,14 +64,33 @@ for src,role,name in [('wddm-render/display_adapter356.c','bridge','display_adap
  f=list(rows[0]['arguments'])
  if 'windows_shared_scanout'in src:f+=['-DA04_SHARED_SCANOUT_VIDMM_ONLY=1','-ffunction-sections']
  rows.append(dict(source='drivers/gpu/mt8167/'+src,object=name,role=role,arguments=f))
+plan=load(r/'third_party/mesa-pco/source-plan.json')
+vc_include=link.parents[3].as_posix()+'/include'
+ucrt_dir=next(x/'ucrt'for x in sorted(Path('C:/Program Files (x86)/Windows Kits/10/Include').iterdir(),reverse=True)if(x/'ucrt/stddef.h').exists())
+macros={'REPO':r.as_posix(),'VC_INCLUDE':vc_include,'UCRT_INCLUDE':ucrt_dir.as_posix(),'SDK_SHARED':'C:/mt8167-minimal-service-host/cache/kit81/Include/shared','SDK_UM':'C:/mt8167-minimal-service-host/cache/kit81/Include/um'}
+pco_names={'pco_sm2.c':'pco_sm2_adapter.obj','sm2.c':'sm2_adapter.obj','sm4.c':'sm4_adapter.obj','witness_producer.c':'witness_producer.obj','witness_codec.c':'witness_codec.obj','witness_info.c':'witness_info.obj'}
+for index,u in enumerate(plan['units']):
+ f=list(u['arguments'])
+ for k,v in macros.items():f=[x.replace('${'+k+'}',v)for x in f]
+ if any('${'in x for x in f):raise ValueError('Unresolved compiler closure argument')
+ name=Path(u['source']).name;role='compiler-check';obj='compiler_check_'+str(index)+'.obj'
+ if u['source'].startswith('drivers/')and name in pco_names:role='pco';obj=pco_names[name]
+ elif u['component']=='pair':role='pair';obj='pco_pair.obj'
+ # UMD-owned texture adapter is already scanned under its actual link role.
+ if name in ['texture2d_sm4.c','pco_texture2d.c']and u['source'].startswith('drivers/'):continue
+ rows.append(dict(source=u['source'],object=obj,role=role,arguments=f))
 archives=[];objects={};records=[];closure=[]
+
 for arc in m['archives']:
- if arc['role']not in ['native','kmd','umd']:archives.append(arc);continue
- path=(ub/'ge8300-native-umd.lib')if arc['role']=='umd'else base/arc['file'];pin(path,arc['sha256']);d=o/(arc['role']+'-objects');d.mkdir(exist_ok=True)
- if not stage:run([llvm/'llvm-ar.exe','x','--output='+str(d),path])
+ if arc['role']not in ['native','kmd','umd','pco']:archives.append(arc);continue
+ path=(ub/'ge8300-native-umd.lib')if arc['role']=='umd'else(cache/'baseline'/arc['file']if arc['role']=='pco'else base/arc['file']);pin(path,arc['sha256']);d=o/(arc['role']+'-objects');d.mkdir(exist_ok=True)
+ fresh_archive=not stage or not all((d/x['name']).exists()for x in arc['members'])
+ if fresh_archive:run([llvm/'llvm-ar.exe','x','--output='+str(d),path])
  for x in arc['members']:
-  if not stage:pin(d/x['name'],x['sha256'])
+  if fresh_archive:pin(d/x['name'],x['sha256'])
   objects[(arc['role'],x['name'])]=d/x['name']
+if not(o/'pco_pair.obj').exists():shutil.copyfile(cache/'pair/pco_pair.obj',o/'pco_pair.obj')
+objects[('pair','pco_pair.obj')]=o/'pco_pair.obj'
 prior={x['object']:x for x in load(t/'compile-check/result.json')if x.get('sha256')}
 for u in rows:
  src=r/u['source'];args=[fix(x)for x in u['arguments']]+['-DA04_GE8300_UNIFIED_DISPLAY356=1'];name=u['object'];role=u['role'];obj=objects.get((role,name),o/name)
@@ -90,6 +110,7 @@ for u in rows:
    except ValueError:pass
  hashes={n:sha(r/n)for n in sorted(local)};affected=sorted(local&changed)
  needed=bool(affected)or role in ['bridge','transport','umd-entry'];recovered=False
+ if role=='compiler-check'and needed:raise ValueError('Unexpected Mesa core include impact; expand explicit compilation map '+u['source'])
  if needed:
   from_stage=bool(stage and obj.exists()and stage['objects'].get(obj.relative_to(o).as_posix())==sha(obj)and all(stage['source_files'].get(n)==h for n,h in hashes.items()))
   before=prior.get(name)
@@ -98,11 +119,11 @@ for u in rows:
    pin(t/'compile-check'/name,before['sha256']);shutil.copyfile(t/'compile-check'/name,obj);recovered=True
   else:run([llvm/'clang.exe',*args,'-c',src,'-o',obj],o/'logs'/(name+'.log'))
   records.append(dict(source=u['source'],object=name,role=role,arguments=args,source_sha256=sha(src),object_sha256=sha(obj),recovered_identical_compile_snapshot=recovered,recovered_stage_source_commit=stage['source_commit']if from_stage else None))
- elif not obj.exists():raise ValueError('Missing retained object '+name)
+ elif role!='compiler-check'and not obj.exists():raise ValueError('Missing retained object '+name)
  closure.append(dict(source=u['source'],object=name,role=role,local_closure=hashes,changed_includes=affected,compile_required=needed))
  objects[(role,name)]=obj
 for arc in m['archives']:
- if arc['role']not in ['native','kmd','umd']:continue
+ if arc['role']not in ['native','kmd','umd','pco']:continue
  role=arc['role'];members=[]
  for x in arc['members']:
   q=objects[(role,x['name'])];h=sha(q);compiled=any(u['object']==x['name']and u['role']==role for u in records)
@@ -127,9 +148,12 @@ run([link,*kernel,o/'transport356.obj',o/'scanout_vidmm356.obj',*libs,'/out:'+st
 cm=load(cache/'compiler/link-manifest.json');ul=[]
 for x in cm['inputs']:
  if x['role']=='verified standard UMD module':continue
- n=ntpath.basename(x['path']);q=(cache/'baseline'/n)if n=='ge8300-pco-arm32.lib'else cache/'compiler'/n;pin(q,x['sha256']);ul.append(q)
+ n=ntpath.basename(x['path']);q=(o/n)if n=='ge8300-pco-arm32.lib'else cache/'compiler'/n
+ if n=='ge8300-pco-arm32.lib':pin(q,next(arc['sha256']for arc in archives if arc['role']=='pco'))
+ else:pin(q,x['sha256'])
+ ul.append(q)
 if len(ul)!=10:raise ValueError('Compiler closure10')
-run([llvm/'lld-link.exe','/dll','/machine:arm','/subsystem:windows,6.03','/entry:_DllMainCRTStartup','/nodefaultlib',objects[('umd-entry','umd_entry.obj')],objects[('umd-entry','umd_typed_entry.obj')],o/'ge8300-native-umd.lib',cache/'pair/pco_pair.obj',*ul,'/out:'+str(pkg/'ge8300-umd.dll'),'/map:'+str(o/'ge8300-umd.map')],o/'logs/link-umd.log')
+run([llvm/'lld-link.exe','/dll','/machine:arm','/subsystem:windows,6.03','/entry:_DllMainCRTStartup','/nodefaultlib',objects[('umd-entry','umd_entry.obj')],objects[('umd-entry','umd_typed_entry.obj')],o/'ge8300-native-umd.lib',objects[('pair','pco_pair.obj')],*ul,'/out:'+str(pkg/'ge8300-umd.dll'),'/map:'+str(o/'ge8300-umd.map')],o/'logs/link-umd.log')
 client=r/'drivers/gpu/mt8167/wddm-render/testclient';cf=[fix(x)for x in uf if x not in ['-D_D3D10_CONSTANTS','-D_D3D10_1_CONSTANTS']]
 for name in ['dxgi-present356','memory']:run([llvm/'clang.exe',*cf,'-c',client/(name+'.c'),'-o',o/(name+'.obj')],o/'logs'/('client-'+name+'.log'))
 ulib=Path('C:/Program Files (x86)/Windows Kits/10/Lib/10.0.17763.0/um/arm')
@@ -144,7 +168,7 @@ for d,cat in [(pkg,'ge8300-render.cat'),(transport,'mt8167-display-transport.cat
  run(['C:/mt8167-hp1033/inputs/signing/bin/Inf2Cat.exe','/driver:'+str(d),'/os:6_3_ARM','/uselocaltime'],o/'logs'/(cat+'.log'));run([sign,'sign','/fd','SHA256','/sha1',thumb,d/cat]);run([sign,'verify','/pa',d/cat])
 for q in ['ge8300-render.sys','ge8300-render.inf','ge8300-umd.dll','ge8300-mips.fw']:run([sign,'verify','/pa','/c',pkg/'ge8300-render.cat',pkg/q])
 for q in ['mt8167-display-transport.sys','mt8167-display-transport.inf']:run([sign,'verify','/pa','/c',transport/'mt8167-display-transport.cat',transport/q])
-manifest=dict(schema='ge8300-unified-present356-v1',package_source_commit=a.source_commit,kernel_binary_source_commit=a.source_commit,native_owner_source_commit=a.source_commit,umd_source_commit=a.source_commit,runtime_build_id='GPU356-unified-present-v1',inf_driverver='11/09/2026,0.0.3.56',compiled_units=records,archives=archives,actual_include_closure=closure,compiler_link_inputs=[dict(file=str(q),sha256=sha(q))for q in ul],baseline_manifest_sha256=sha(base/'package355/signed-manifest.json'),SDK_rebuilt=False,PCO375_rebuilt=False,hardware_verified=False,normal_Windows_display_verified=False,root_reset_fix_proven=False,install_authorized=False,matched_firmware_required=True,display_mode=[800,1280,3200],dma_contract='retained VidMm PFNs; independent DIS0 SG; every page equal; contiguous32; no POST GPU DMA assumption; no CPU render-copy',diagnostic_contract=load(r/'tools/recovery/ge8300-present356-contract.json'))
+manifest=dict(schema='ge8300-unified-present356-v1',package_source_commit=a.source_commit,kernel_binary_source_commit=a.source_commit,native_owner_source_commit=a.source_commit,umd_source_commit=a.source_commit,runtime_build_id='GPU356-unified-present-v1',inf_driverver='11/09/2026,0.0.3.56',compiled_units=records,archives=archives,actual_include_closure=closure,compiler_link_inputs=[dict(file=str(q),sha256=sha(q))for q in ul],baseline_manifest_sha256=sha(base/'package355/signed-manifest.json'),SDK_rebuilt=False,PCO375_rebuilt=False,compiler_plan_units_checked=len(plan['units']),compiler_project_adapter_units=[u for u in records if u['role']in ['pco','pair']],hardware_verified=False,normal_Windows_display_verified=False,root_reset_fix_proven=False,install_authorized=False,matched_firmware_required=True,display_mode=[800,1280,3200],dma_contract='retained VidMm PFNs; independent DIS0 SG; every page equal; contiguous32; no POST GPU DMA assumption; no CPU render-copy',diagnostic_contract=load(r/'tools/recovery/ge8300-present356-contract.json'))
 manifest['unchanged_linked_object_count']=sum(x['sha256']==x['before_sha256']for arc in archives if arc['role']in ['native','kmd']for x in arc['members'])
 manifest['outputs']=[dict(name=f.relative_to(pkg).as_posix(),sha256=sha(f))for f in sorted(pkg.rglob('*'))if f.is_file()]
 write(o/'build-manifest.json',manifest);shutil.copyfile(o/'build-manifest.json',pkg/'present356-build-manifest.json');manifest['build_manifest_sha256']=sha(pkg/'present356-build-manifest.json');write(pkg/'signed-manifest.json',manifest)
