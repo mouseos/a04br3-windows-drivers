@@ -66,7 +66,7 @@ run([sign,'sign','/fd','SHA256','/sha1',thumb,pkg/'ge8300-render.cat'],'render35
 for d,cat,names in [(pkg,'ge8300-render.cat',['ge8300-render.sys','ge8300-render.inf','ge8300-umd.dll','ge8300-mips.fw']),(transport,'mt8167-display-transport.cat',['mt8167-display-transport.sys','mt8167-display-transport.inf'])]:
  run([sign,'verify','/pa',d/cat],cat+'.verify358.log')
  for name in names:run([sign,'verify','/pa','/c',d/cat,d/name],name+'.CAT358.log')
-for name in ['ge8300-render.sys','ge8300-render.cat','ge8300-umd.dll','ge8300-mips.fw','display-transport/mt8167-display-transport.sys','display-transport/mt8167-display-transport.cat']:run([sign,'verify','/pa',pkg/name],Path(name).name+'.signature358.log')
+for name in ['ge8300-render.sys','ge8300-render.cat','ge8300-umd.dll','mt8167-dxgi-present356.exe','display-transport/mt8167-display-transport.sys','display-transport/mt8167-display-transport.cat']:run([sign,'verify','/pa',pkg/name],Path(name).name+'.signature358.log')
 changed_out={'ge8300-render.sys','ge8300-render.inf','ge8300-render.cat'}
 for x in old['outputs']:
  if x['name']not in changed_out:assert sha(pkg/x['name'])==x['sha256']
