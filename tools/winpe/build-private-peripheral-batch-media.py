@@ -206,6 +206,9 @@ def main():
  for i,(n,h) in enumerate(sorted(payload.items())):
   copy(stage/n,'stage-proof/'+str(i)+'.bin');prepare+=['X:\\a04br3\\compare-files.exe "X:\\a04br3\\'+n.replace('/','\\')+'" X:\\a04br3\\stage-proof\\'+str(i)+'.bin >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto baselinefail']
  for directory in sorted({c['relative_directory'] for c in p.get('diagnostic_clients',[]) if not (a.combined176_profile and c['relative_directory']=='.') and not c['relative_directory'].startswith(DIRECTORY+chr(92)) and not ((rotation or reuse_rotation) and c['name']=='rotation')}):prepare+=['if exist '+chr(92).join(('C:','Windows','System32',directory))+' goto baselinefail']
+ if a.combined176_profile:
+  require(len(p['diagnostic_clients'])==1 and p['diagnostic_clients'][0]['relative_directory']=='.','177 exact System32 assets only')
+  for name in ['mt8167-dxgi-console-launch356.exe','mt8167-dxgi-present356.exe']:prepare+=['if exist C:\\Windows\\System32\\'+name+' goto baselinefail']
  prepare+=['if exist C:\\Windows\\System32\\'+DIRECTORY+' goto baselinefail','if exist C:\\Windows\\System32\\'+SERVICE+'.exe goto baselinefail','set "A04_CANDIDATE_STARTED=1"','> "%A04_BK%\\JOURNAL.txt" echo STATE=CANDIDATE_WRITE_STARTED','mkdir C:\\Windows\\System32\\'+DIRECTORY+'\\logs >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
  if rotation:
   prepare+=['move "'+old+'" "'+archive+'" >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail','X:\\a04br3\\compare-files.exe X:\\a04br3\\rotation-proof\\log.bin "'+archive+'" >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail','if exist "'+old+'" goto candidatefail']
@@ -220,9 +223,6 @@ def main():
    prepare+=['copy /b '+src+' '+dst+'\\'+name+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail','X:\\a04br3\\compare-files.exe '+src+' '+dst+'\\'+name+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
  if p.get('bt_first_install') and p.get('bt_first_install_execute',True):
   prepare+=bt_payload_prepare(DIRECTORY,p['bt_first_install'])
- if a.combined176_profile:
-  require(len(p['diagnostic_clients'])==1 and p['diagnostic_clients'][0]['relative_directory']=='.','177 exact System32 assets only')
-  for name in ['mt8167-dxgi-console-launch356.exe','mt8167-dxgi-present356.exe']:prepare+=['if exist C:\\Windows\\System32\\'+name+' goto baselinefail']
  if p.get('diagnostic_clients'):
   sep=chr(92);system=sep.join(('C:','Windows','System32'))+sep
   for directory in sorted({c['relative_directory'] for c in p['diagnostic_clients']}):

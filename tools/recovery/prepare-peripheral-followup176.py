@@ -109,6 +109,7 @@ def build_policy(root,spec):
  witnesses={}
  for e in packages['render']['extra_members']:
   name='Windows/System32/'+e['installed'].replace('\\','/');q=rooted(root,Path(spec['diagnostics'])/'fixed'/name);require(sha(q)==e['baseline_sha256'],'Actual UMD/FW baseline')
+  pins[q.relative_to(root).as_posix()]=sha(q)
   if e['sha256']==e['baseline_sha256']:preserved[name]=sha(q);sources[name]=q.relative_to(root).as_posix()
   else:witnesses[name]={'path':q.relative_to(root).as_posix(),'sha256':sha(q)}
  baseline=pin(spec['mutable_baseline']);require(baseline['source_transaction']=='run175','Latest176 logs');mutable=[]

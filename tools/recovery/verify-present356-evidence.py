@@ -23,7 +23,7 @@ def verify(root,launcher_pid):
   return vals
  def single(v,k):assert len(v[k])==1,k;return v[k][0]
  launch=one(r'launch356-%08x-[0-9a-f]{8}\.log'%launcher_pid);l=log(launch);assert single(l,'LAUNCHER_PID')==launcher_pid
- assert single(l,'FIXED_EVALUATOR_SHA256_MATCH')==1 and single(l,'EVALUATOR_EXIT')==0
+ assert single(l,'FIXED_EVALUATOR_SHA256_MATCH')==1 and single(l,'EVALUATOR_EXIT')==0 and single(l,'LAUNCH_RESULT')==0 and single(l,'CHILD_WAIT')==0
  pid=single(l,'EVALUATOR_PID');session=single(l,'EVALUATOR_SESSION');assert session!=0
  name=one(r'present356-%08x-[0-9a-f]{8}\.log'%pid);v=log(name);assert single(v,'PID')==pid and int(name.split('-')[2].split('.')[0],16)==single(v,'TICK')
  assert single(v,'RESULT')==1 and single(v,'RESULT_HRESULT')==0

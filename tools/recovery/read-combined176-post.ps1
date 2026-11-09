@@ -88,6 +88,13 @@ if(!$matches){$r.errors+=@('Post178 module identity mismatch; installboot GPU354
  foreach($key in @('ROOT\MT6630COMBO','A04BR3\MT6630HCI')){
   $k=[MT8167OfflineHive.Native]::OpenPath($root,"$cs\Enum\$key",$false);$row=@{present=$false;instances=@()};if($k){try{$row.present=$true;$names=@($k.GetSubKeyNames());if($names.Count -gt 8){throw 'BT instance bound exceeded'};foreach($name in $names){$leaf=[MT8167OfflineHive.Native]::OpenPath($root,"$cs\Enum\$key\$name",$false);try{$row.instances+=@(@{instance=$name;values=(Values $leaf @('Service','ClassGUID','Driver','HardwareID','CompatibleIDs','ConfigFlags'))})}finally{$leaf.Dispose()}}}finally{$k.Dispose()}};$r.nodes[$key]=$row
  }
+ $r.unified_display_bindings=[ordered]@{}
+ foreach($binding in @(@{id='ACPI\MOU0007';service='MT8167DisplayTransport';class='{4d36e97d-e325-11ce-bfc1-08002be10318}';version='0.0.3.56'},@{id='ACPI\MOU0006';service='GE8300Render';class='{4d36e968-e325-11ce-bfc1-08002be10318}';version='0.0.3.56'})){
+  $row=$r.nodes[$binding.id];$same=$row.present -and @($row.instances).Count -eq 1
+  if($same){$v=$row.instances[0];$same=$v.instance -ceq '0' -and $v.values.Service.value -ieq $binding.service -and $v.values.ClassGUID.value -ieq $binding.class -and $v.selected_present -and $v.selected.DriverVersion.value -ceq $binding.version}
+  $r.unified_display_bindings[$binding.id]=@{matches=$same;expected=$binding;observation=$row}
+  if(!$same){$r.errors+=@('Post178 unified binding mismatch: '+$binding.id+'; installboot baseline is not diagnostic proof')}
+ }
  $matches=@();$rk=[MT8167OfflineHive.Native]::OpenPath($root,"$cs\Enum\ROOT",$false)
  if($rk){try{$devices=@($rk.GetSubKeyNames());if($devices.Count -gt 256){throw 'ROOT device bound exceeded'};foreach($device in $devices){$dk=[MT8167OfflineHive.Native]::OpenPath($root,("$cs\Enum\ROOT\"+$device),$false);try{$instances=@($dk.GetSubKeyNames());if($instances.Count -gt 32){throw 'ROOT instance bound exceeded'};foreach($instance in $instances){$path="$cs\Enum\ROOT\"+$device+'\'+$instance;$leaf=[MT8167OfflineHive.Native]::OpenPath($root,$path,$false);try{$hw=$leaf.GetValue('HardwareID');if($hw -and @($hw|Where-Object{$_ -ieq 'ROOT\MT6630COMBO'}).Count){$matches+=@(@{instance=($device+'\'+$instance);registry_path=$path;values=(Values $leaf @('Service','ClassGUID','Driver','HardwareID','CompatibleIDs','ConfigFlags'))})}}finally{$leaf.Dispose()}}}finally{$dk.Dispose()}}}finally{$rk.Dispose()}}
  if($matches.Count -gt 1){throw 'Duplicate BT root hardware identity'}
