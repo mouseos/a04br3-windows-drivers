@@ -1303,9 +1303,9 @@
     },
     {
       "path": "drivers/gpu/mt8167/display-transport/mt8167-display-transport.inf",
-      "source_commit": "14ac163b9e579d91f72a99e321da292412bf1f4c",
-      "role": "357 bounded startup predicates; existing functional return/control unchanged",
-      "sha256": "ea14ac96a2073b87d982349a10ff8bbb7ed62eaae02790f00e1c9e34b8c473bc",
+      "source_commit": "c19c5b05358c194cf49928c110728cc8114a3ab8",
+      "role": "357 optional diagnostic key-only parent; binary/control unchanged",
+      "sha256": "e2cc28e52c9fee0b920d24eb5b99d243701d7919cf1b1523659bbd36312580ef",
       "previous_origins": [
         {
           "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
@@ -1317,6 +1317,13 @@
           "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
           "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8",
           "sha256": "fd4c64f65bdfe269194cf61c9b24f11e2909d64730feb9d696ae2f51141b3cd1",
+          "materialized_eol": "CRLF per repository .gitattributes"
+        },
+        {
+          "path": "drivers/gpu/mt8167/display-transport/mt8167-display-transport.inf",
+          "source_commit": "14ac163b9e579d91f72a99e321da292412bf1f4c",
+          "role": "357 bounded startup predicates; existing functional return/control unchanged",
+          "sha256": "ea14ac96a2073b87d982349a10ff8bbb7ed62eaae02790f00e1c9e34b8c473bc",
           "materialized_eol": "CRLF per repository .gitattributes"
         }
       ],
