@@ -8,7 +8,7 @@
 
 main155報告は温度first sample44.9/41.1/41.7℃・phase7全0成功。GPU343は全init成功したがPID2536 firstCopyでBOOT_REASON9予定外reset。描画全体成功としない。157は親1117/boot2e6/thermal1.10を保持、GPU344だけDIF(mask0x400)・予定restart1。温度/status/Audio/WLAN/BT/benchmark/他機能再試験0、BT2014候補も混載しない。
 
-GPU344は既存PASSIVE registry進行記録の永続化4TU差分で、payload変更やGPU根因修正ではない。main recipe81b49ee9を参照するが未完成artifact/main seal/BuildIDはnullとしarm不可。正式化は最終manifest/main seal後。
+GPU344は既存PASSIVE registry進行記録の永続化4TU差分で、payload変更やGPU根因修正ではない。採用recipeは0feb67ff、registry helper guard差分17af96fe（PASSIVEに加えKeAreAllApcsDisabled()ならskip）。正本はport/xnu/out/windows-rt-durable-progress344-guarded。初版81b49ee9署名物は非採用履歴・未実機。未完成artifact/main seal/BuildIDはnullとしarm不可。正式化は最終manifest/main seal後。
 
 GPU9934 --hardware=PowerVRだけをphase1最後1回/900秒。157では**client index0 / PB target0,event0x220**（155のindex1から戻る）。install900、boot180→最初phase1 PB286から180→現GPU PB220から900秒へ各一度だけ更新。繰返しで延長しない。
 
