@@ -41,6 +41,12 @@ import ntpath
 all_units={}
 for row in load(old/'copy337-build-manifest.json')['compiled_units']+m['reused_342_compiled_units']+m['compiled_units']:all_units[ntpath.basename(row['source'])]=row
 wanted={'miniport.c','windows_start.c'}
+if 'windows_start.c' not in all_units:
+ template=dict(all_units['native_owner_factory_runtime.c'])
+ template.update(source='drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_start.c',
+                 object='vendor_m1_11-windows_start.obj',
+                 arguments_template_source='native_owner_factory_runtime.c from sealed345; identical native target, macros and include closure')
+ all_units['windows_start.c']=template
 units=[];archives=[]
 for archive in m['archives']:
  updated=dict(archive)
