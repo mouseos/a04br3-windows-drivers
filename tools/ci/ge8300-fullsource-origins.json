@@ -1294,7 +1294,15 @@
       "path": "drivers/gpu/mt8167/display-transport/mt8167-display-transport.inf",
       "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
       "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8",
-      "sha256": "9fd447e990e97e564ff126b93cc72ea808a1914a0235f42655048a2b991a9864"
+      "sha256": "fd4c64f65bdfe269194cf61c9b24f11e2909d64730feb9d696ae2f51141b3cd1",
+      "previous_origins": [
+        {
+          "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+          "sha256": "9fd447e990e97e564ff126b93cc72ea808a1914a0235f42655048a2b991a9864",
+          "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8"
+        }
+      ],
+      "materialized_eol": "CRLF per repository .gitattributes"
     },
     {
       "path": "drivers/gpu/mt8167/display-transport/transport356.c",
@@ -1420,7 +1428,15 @@
       "path": "drivers/gpu/mt8167/wddm-display/mt8167-display.inf",
       "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
       "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8",
-      "sha256": "73277e33ae7c410f5b93e19d5062d15eee02786b636596a5dd112342e76e18d0"
+      "sha256": "eed1d29be5eaa09df0a6292d3c4b85fc95595dafd10a8da9682a48d4a29f76ea",
+      "previous_origins": [
+        {
+          "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+          "sha256": "73277e33ae7c410f5b93e19d5062d15eee02786b636596a5dd112342e76e18d0",
+          "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8"
+        }
+      ],
+      "materialized_eol": "CRLF per repository .gitattributes"
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/unified_display.cxx",
