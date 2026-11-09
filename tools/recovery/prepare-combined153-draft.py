@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+"""fresh152/151実結果待ちのGPU342契約模板。媒体・native armを作らない。"""
+import argparse,hashlib,json
+from pathlib import Path
+
+PACKAGE_SOURCE='e395c3a6af64c82fdc56eec07a74592e5aa51504'
+RUNTIME_SOURCE='59ded879bab1c4c54abac73bd2b673adada33d4c'
+CLOSURE_SOURCE='e2d8d58bea0ba25595feb2566fbf2e455f435c32'
+PACKAGE=Path('port/xnu/out/windows-rt-tq-clear342/build/package342')
+
+def require(value,message):
+ if not value:raise ValueError(message)
+def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
+def read(path):return json.loads(path.read_text(encoding='utf-8-sig'))
+def rooted(root,relative):
+ p=(root/relative).resolve(strict=True);require(p.is_relative_to(root),'Root-local existing input required');return p
+
+def inspect_candidate(root):
+ manifest=root/PACKAGE/'signed-manifest.json'
+ if not manifest.exists():return {'status':'awaiting-final-signed-package','manifest':None,'main_seal':None,'files':None}
+ p=rooted(root,PACKAGE/'signed-manifest.json');m=read(p);files=[]
+ for entry in m.get('outputs',[])+m.get('retained_provenance',[]):
+  name=entry['name'];require(Path(name).name==name,'Fixed package leaf required')
+  f=rooted(root,PACKAGE/name);require(sha(f)==entry['sha256'],'Candidate member byte mismatch')
+  files.append({'name':name,'sha256':entry['sha256'],'bytes':f.stat().st_size})
+ require(files,'Completed manifest must list real output bytes')
+ return {'status':'member-bytes-verified-not-adopted-not-signature-verification',
+         'manifest':{'path':(PACKAGE/'signed-manifest.json').as_posix(),'sha256':sha(p)},
+         'main_seal':None,'files':files,
+         'reported_provenance':{k:m.get(k) for k in ('schema','package_source_commit','kernel_binary_source_commit','native_owner_source_commit','inf_driverver','build_manifest_file','build_manifest_sha256','hardware_verified','root_reset_fix_proven')},
+         'build_manifest':None if not m.get('build_manifest_file') else {'path':(PACKAGE/m['build_manifest_file']).as_posix(),'sha256':sha(rooted(root,PACKAGE/m['build_manifest_file']))}}
+
+def sealed342(root):
+ candidate=inspect_candidate(root)
+ require(candidate['manifest'] is not None and candidate['manifest']['sha256']=='d167f2e56ae363341c778fa3ddde4a48200d62284132b7eea2caffe30056fb7b','Exact completed342 manifest required')
+ m=read(rooted(root,PACKAGE/'signed-manifest.json'))
+ require(m['package_source_commit']==m['kernel_binary_source_commit']==m['native_owner_source_commit']==RUNTIME_SOURCE and m['inf_driverver']=='11/08/2026,0.0.3.42','Actual runtime/date provenance required')
+ require(sha(rooted(root,PACKAGE/'ge8300-render.sys'))=='431c06ade452b0ca00a920419bb39fe5261080469750a0bdf9f61670cccbec52','Exact342 SYS required')
+ require(candidate['build_manifest']['sha256']==m['build_manifest_sha256'],'Build receipt byte pin mismatch')
+ sealpath=Path('port/xnu/out/windows-rt-tq-clear342/main-independent-seal.json');sp=rooted(root,sealpath);seal=read(sp)
+ require(seal['status']=='main-independent-final-GPU342-artifact-seal' and seal['manifest_sha256']==candidate['manifest']['sha256'] and seal['SYS_sha256']=='431c06ade452b0ca00a920419bb39fe5261080469750a0bdf9f61670cccbec52' and seal['runtime_source_commit']==RUNTIME_SOURCE and seal['package_recipe_commit']==PACKAGE_SOURCE[:8] and seal['compiled_TUs_verified']==8 and seal['archive_members_verified']=={'native':67,'kmd':13} and seal['BCBF_valid_signatures']==6 and seal['RT81_imports_equal_actual341'] and seal['linked_objects_reused_without_recompile'],'Main342 artifact seal mismatch')
+ require(seal['hardware_verified'] is False and seal['root_reset_fix_proven'] is False,'Build seal must not claim hardware result')
+ gatepath=Path('port/gsi/logs/ios-feasibility/windows-rt-tq-clear342/fullsource-gate.log');gp=rooted(root,gatepath);gate=read(gp)
+ require(seal['public_fullsource_closure_commit'] in (CLOSURE_SOURCE,CLOSURE_SOURCE[:8]) and seal['public_fullsource_gate_passed'] is True and seal['full_source_binary_built'] is False,'Separate public source closure proof required; not a full-source binary build')
+ require(sha(gp)==seal['public_fullsource_gate_log_sha256']=='58f098acbcf30215e9b8308e7841c5726e3ab6111ddf8958a581f4f5297509a5' and gate['native_units']==67 and gate['compiler_units']==375 and gate['old_git_history_used'] is False and gate['driver_cache_used'] is False and gate['hardware_verified'] is False,'Exact normal source gate receipt required')
+ candidate.update(status='main-sealed342-artifact-not-adopted-awaiting-fresh152',main_seal={'path':sealpath.as_posix(),'sha256':sha(sp)},
+                  public_fullsource_closure={'source_commit':CLOSURE_SOURCE,'gate_log':{'path':gatepath.as_posix(),'sha256':sha(gp)},'native_units':67,'compiler_units':375,'reviewed_literal_and_previous_origins_retained':True,'full_source_binary_built':False,'signed_binary_source_unchanged':RUNTIME_SOURCE,'signed_recipe_source_unchanged':PACKAGE_SOURCE})
+ return candidate
+
+def fixed_client(root):
+ prior=read(rooted(root,Path('port/xnu/out/windows-rt-combined146-peripheral/package-map.json')))
+ client=prior['diagnostics']['gpu_suite'].copy()
+ require(client['sha256']=='9934ba6bf9741630a544bf096ea3261c717d45873f91b899cc7e3eae62466add' and client['arguments']==['--hardware=PowerVR'] and client['one_shot'] and client['phase']==1 and client['timeout_ms']==900000,'Exact one-shot GPR2 client required')
+ require(sha(rooted(root,Path(client['directory'])/client['exe']))==client['sha256'] and sha(rooted(root,Path(client['manifest'])))==client['manifest_sha256'],'Signed client member/manifest mismatch')
+ sealref=prior['pixel_client_seal'];require(sha(rooted(root,Path(sealref['path'])))==sealref['sha256'],'Existing main client seal mismatch')
+ seal=read(rooted(root,Path(sealref['path'])));require(seal['client_sha256']==client['sha256'],'Client seal identity mismatch')
+ client.update(relative_directory='MT8167CombinedFollowup152\\clients',main_seal=sealref)
+ return client
+
+def make_draft(root):
+ prior=Path('port/xnu/out/windows-rt-combined151-fresh150/main-deployment-contract.json');p=rooted(root,prior);c=read(p)
+ require(c['transaction']=='combined-run151' and c['gpu_client_execute'] is False,'Exact frozen151 reference required')
+ return {'schema':1,'profile':'combined-features-fresh152-DRAFT','transaction':'combined-run153',
+ 'status':'GPU342-client9934-sealed-scope-fixed-awaiting151-result-fresh152-native-actual',
+ 'draft':True,'normal_install_allowed':False,'arm_allowed':False,'media_generation_allowed':False,
+ 'hardware_owner':'main','hardware_operations_allowed':False,
+ 'source_basis':'frozen151 source; not a claim of installed152 actual',
+ 'prior151_reference_only':{'contract':{'path':prior.as_posix(),'sha256':sha(p)},'source_commit':c['source_commit'],'fresh_capture_number':150,'actual_state_must_not_be_inferred_from_planned_tuple':True},
+ 'capture_selection':{'required_capture_number':152,'fresh':None,'recovery_boot_id':None,'same_recovery_unchanged_proof':None,'native_actual':None,'actual_selected_versions':None,'original_files':None},
+ 'prior151_result':None,'approved_scope':{'status':'main-source-scope-confirmed-actual152-binding-pending','install_targets':['render'],'GPU_client_last_once':True,'non_GPU_clients':[],'prior151_success_not_inferred':True},
+ 'service_template':{'service':'MT8167CombinedFollowup152','data_directory':'MT8167CombinedFollowup152','profile':'combined-features-fresh152-v1','targets':12,'render_target':{'role':'render','hardware_id':'ACPI\\MOU0006','sys':'ge8300-render.sys','index':10},'native_arm':None,'signed_service':None},
+ 'candidate_GPU342':{'selected':False,'directory':PACKAGE.as_posix(),'requested_package_recipe_source':PACKAGE_SOURCE,'reported_runtime_source':RUNTIME_SOURCE,'sign_only_date_fix_must_not_be_described_as_new_runtime_compile':True,**sealed342(root)},
+ 'execution_template':{'armed_GPU_client_execute':False,'armed_GPU_client_count':0,'planned_GPU_client_count_after_approval':1,'GPU_client_must_be_last':True,'GPU_phase':1,'client':fixed_client(root),'non_GPU_clients':[],'temperature_retest':False,'audio_retest':False,'WLAN_retest':False,'BT_retest':False,'rotation_retest':False,'benchmark_execute':False,'BT_first_install_execute':False,'successful_unchanged_functions_should_not_be_repeated':True,'planned_reboots':1,'timeouts':{'install_seconds':900,'boot_wait_seconds':180,'service_phase_seconds':180,'GPU_client_seconds':900,'deadline_start_events':{'service':'first phase1 PB target0/event0x286; once','GPU_client':'first current client PB target0/event0x220; once','repeated_events_extend':False,'observer_binding_pending':True}}},
+ 'runtime_opt_in_template':{'A04_GPU_PHASE1_ENABLED':1,'A04_RUN_THERMAL_READ':0,'A04_RUN_WLAN_READ':0,'A04_RUN_BT_READ':0,'values_require_final_main_scope':True,'legacy_and_frozen151_defaults_unchanged':True},
+ 'mutable_diagnostics':{'fresh152_baseline':None,'count':None,'source_correlation':None,'live_log_full_equality_is_install_gate':False,'archived_prefixes_hash_pinned':True,'live_overwrite_or_delete':False,'comparison':'saved exact prefix/append/truncation/replacement/missing observation only','tool':'tools/recovery/compare-mutable-diagnostic-logs.py'},
+ 'preservation_template':{'boot_required_sha256':'1fef20aa28be71ae0bd826ec91619df3b492abd23631632d5b0d679e38ca560a','boot_write_required':False,'gpt_written':False,'current_UEFI8range_retained':True,'service_fingerprints':None,'named_values':None,'prior_combined150_stopped_values':None,'failed149_service148_absence_requires_actual_evidence':True,'BT_existing_ROOT_retained':True,'driver_versions_and_SYS_require_actual152':True,'SystemRequired_existing_implementation_retained':True},
+ 'post_capture_number':154,
+ 'required_adoption_checks':['main confirms151 result and actual152 source; never relabel150 as152',
+ 'fresh152 manifest, all actual files, RecoveryID, clean native observations, stopped previous service and any hidden BT ROOT joined',
+ '342 completed manifest/member hashes, UTC INF/CAT date consistency, BCBF signatures and CAT membership independently sealed',
+ 'package recipe/date source and actual linked runtime/object source identified separately; exactly8 compiled TUs is build evidence, not hardware success',
+ 'latest mutable diagnostic snapshot archived/prefix-compared separately from immutable installation inputs',
+ 'formal main-selected client artifact/arguments/timeout/phase fixed; one final GPU client only',
+ 'skip unchanged successful function tests only after151 outcome; no guessed success or blanket reuse of planned1116/1.10/110',
+ 'final152 validator/native preparation/postreader and service/header are finalized together before any arm'],
+ 'limitations':['4 Clear/Copy factory cycles and64 Copy regression are owner-reported mock evidence; no real342 result yet',
+ '147 first Clear/Copy/Map/Unmap HRESULT0/PASS1 then second Clear did not return; do not relabel as Unmap failure',
+ 'this draft produces no native hive, signed service or media']}
+
+def reject_arm(draft):
+ require(draft.get('draft') is True and draft.get('normal_install_allowed') is False and draft.get('arm_allowed') is False and draft.get('media_generation_allowed') is False,'Draft state altered')
+ raise ValueError('fresh152/151 actual/signed342/main scope未結合:153模板はarm・媒体生成不可')
+
+def main():
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--workspace',type=Path,required=True);p.add_argument('--out',type=Path,required=True);a=p.parse_args();root=a.workspace.resolve(strict=True);out=a.out.resolve();require(out.is_relative_to(root) and not out.exists(),'New root-local draft output required')
+ d=make_draft(root);out.mkdir(parents=True);(out/'contract-DRAFT.json').write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n');print(json.dumps({'status':d['status'],'arm':False,'media':False,'GPU342':d['candidate_GPU342']['status']},ensure_ascii=False))
+if __name__=='__main__':main()

@@ -1,0 +1,13 @@
+# run177 unified356候補
+
+fresh176原41/18full/75named専用。旧174は実Start4、旧70namedに原本由来5値を加える。GPU356-r2、DIS0 transport356、matched firmware0943ab8aを同updateとして結合する。旧355/356r1/旧bootとの診断混在は禁止。
+
+DIS0 ACPI\MOU0007\0は旧Displayクラス/MT8167Display/1.7からSystemクラス/MT8167DisplayTransport/3.56へ、GPU0 ACPI\MOU0006\0は354から356へ、固定INFの標準DIFで順に選択する。DI_DONOTCALLCONFIGMG|DI_NEEDREBOOTによりlive再起動を要求しない。旧loaded DODの退役は予定OS restartに委ね、manual SCM停止や旧SYS削除で退役を偽装しない。_DEP DIS0とQUERY_INTERFACEが同adapterの所有権を構成する。新firmwareは最初のnormal bootより前にmainがpin照合する。installbootの旧loaded driverは診断成功ではない。postでDIS0新service/class/INFと同boot GPU356を照合できなければ失敗である。9Fは未解決。
+
+System32にlauncherと固定EAA評価EXEを同時stage。SCMの診断client0はlauncher1回/900sであり、GPU実評価child1回のPIDとは別。console SYSTEM自身のtokenだけを使用する。launch356 logからEVALUATOR_PIDとlauncherが設定したsessionを取り、同PID/TICKのpresent356 logと2binsへjoinする。sessionはchild自己申告ではない。固定9934/BT/温度/音声等の追加試験は0。
+
+collect-combined178.shはmain専用。argv1=main独立seal後contract、argv2=controller result。既collect176のRecovery原41採取とmanaged回収を保持し、DIS0provider SYSと2EXEを追加し、read-only mounted volume上でcollect-present356.pyを一度呼ぶ。旧clear/umdは比較用historyとして保持し、新Present証拠とは混同しない。helperは最大64files/64MiB、log128KiB、bin4096064bytes以下。短いbinは失敗証拠として保存。capture-indexにsize/SHAを固定。
+
+verify-present356-evidence.pyはオフラインjoinと全1024000pix×2を検証する。実samebootのModuleIdentity/actual3SYS/firmware/CombinedRunId/PB220はmainが別照合する。PresentHRESULT/launcher exitだけを画面成功にしない。実GPU完了fenceと後続realRDMA_DONEと同selectedbacking観測を分離する。一般DWM完成/任意shader対応は未主張。
+
+source: https://github.com/mouseos/a04br3-windows-drivers branch work/combined177-fresh176。GPU署名recipe c3fc95e6/GPU実compile683c9d20、provider c3fc95e6、launcher bafdc2d8、FW37129f1bを分離する。GPU/UMD/FW/BT再compile0、SCMだけ1TU。

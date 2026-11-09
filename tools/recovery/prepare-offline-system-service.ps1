@@ -5,7 +5,7 @@ param(
     [string]$ExpectedSystemSha256,
     [string]$ExpectedLog1Sha256,
     [string]$ExpectedLog2Sha256,
-    [ValidateSet('MT8167DeviceInstall','MT8167HardwareProbe','MT8167EngineProbe')][string]$ServiceName='MT8167DeviceInstall',
+    [ValidateSet('MT8167DeviceInstall','MT8167HardwareProbe','MT8167EngineProbe','MT8167RenderProbe','MT8167RenderStage','MT8167RenderSingleGpu','MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130','MT8167CombinedFollowup132','MT8167CombinedFollowup134','MT8167CombinedFollowup136','MT8167CombinedFollowup138','MT8167CombinedFollowup140','MT8167CombinedFollowup142','MT8167CombinedFollowup144','MT8167CombinedFollowup146','MT8167CombinedFollowup148','MT8167CombinedFollowup150','MT8167CombinedFollowup152','MT8167CombinedFollowup154','MT8167CombinedFollowup156','MT8167CombinedFollowup158','MT8167CombinedFollowup160','MT8167CombinedFollowup162','MT8167CombinedFollowup164','MT8167CombinedFollowup166','MT8167CombinedFollowup168','MT8167CombinedFollowup170','MT8167CombinedFollowup172','MT8167CombinedFollowup174','MT8167CombinedFollowup176')][string]$ServiceName='MT8167DeviceInstall',
     [switch]$IncludeHardwareProbe,
     [switch]$RearmFixedGpuDeviceInstall,
     [switch]$InspectFixedGpuDeviceInstall,
@@ -15,6 +15,10 @@ param(
     [string]$ExpectedGpuPolicySha256,
     [string]$GpuRearmPlanPath,
     [string]$ExpectedGpuRearmPlanSha256,
+    [string]$PeripheralPreservationPlanPath,
+    [string]$ExpectedPeripheralPreservationPlanSha256,
+    [string]$EnginePreservationPlanPath,
+    [string]$ExpectedEnginePreservationPlanSha256,
     [switch]$RearmEngineProbe,
     [string]$EngineRearmPlanPath,
     [string]$ExpectedEngineRearmPlanSha256,
@@ -27,6 +31,7 @@ param(
     [string]$MountName
 )
 $ErrorActionPreference='Stop'
+. (Join-Path $PSScriptRoot 'Read-SingleGpuLastDiagnostic.ps1')
 $nativeSource=Join-Path $PSScriptRoot 'OfflineSystemHiveNative.cs'
 function Save-Json($Path,$Value) {
     $json=$Value | ConvertTo-Json -Depth 12
@@ -61,7 +66,39 @@ function Fixed-ServiceSpec([string]$Name) {
         'MT8167DeviceInstall' { return [ordered]@{name='MT8167DeviceInstall';display_name='MediaTek MT8167 Device Installation';image_path='"C:\Windows\System32\MT8167DeviceInstall.exe"'} }
         'MT8167HardwareProbe' { return [ordered]@{name='MT8167HardwareProbe';display_name='MediaTek MT8167 Hardware Probe';image_path='"C:\Windows\System32\MT8167HardwareProbe.exe"'} }
         'MT8167EngineProbe' { return [ordered]@{name='MT8167EngineProbe';display_name='MediaTek MT8167 Engine Probe';image_path='"C:\Windows\System32\MT8167EngineProbe.exe"'} }
-        default { throw 'Unknown service name; only three fixed one-shot services are allowed' }
+        'MT8167RenderProbe' { return [ordered]@{name='MT8167RenderProbe';display_name='PowerVR GE8300 Render Probe';image_path='"C:\Windows\System32\MT8167RenderProbe.exe"'} }
+        'MT8167RenderStage' { return [ordered]@{name='MT8167RenderStage';display_name='PowerVR GE8300 Driver Update';image_path='"C:\Windows\System32\MT8167RenderStage.exe"'} }
+        'MT8167PeripheralNext122' { return [ordered]@{name='MT8167PeripheralNext122';display_name='MediaTek next peripheral batch';image_path='"C:\Windows\System32\MT8167PeripheralNext122.exe"'} }
+        'MT8167CombinedFollowup176' { return [ordered]@{name='MT8167CombinedFollowup176';display_name='MediaTek GPU356 verification';image_path='"C:\Windows\System32\MT8167CombinedFollowup176.exe"'} }
+        'MT8167CombinedFollowup174' { return [ordered]@{name='MT8167CombinedFollowup174';display_name='MediaTek GPU354 verification';image_path='"C:\Windows\System32\MT8167CombinedFollowup174.exe"'} }
+        'MT8167CombinedFollowup172' { return [ordered]@{name='MT8167CombinedFollowup172';display_name='MediaTek GPU353 verification';image_path='"C:\Windows\System32\MT8167CombinedFollowup172.exe"'} }
+        'MT8167CombinedFollowup170' { return [ordered]@{name='MT8167CombinedFollowup170';display_name='MediaTek GPU352 verification';image_path='"C:\Windows\System32\MT8167CombinedFollowup170.exe"'} }
+        'MT8167CombinedFollowup168' { return [ordered]@{name='MT8167CombinedFollowup168';display_name='MediaTek GPU351 verification';image_path='"C:\Windows\System32\MT8167CombinedFollowup168.exe"'} }
+        'MT8167CombinedFollowup166' { return [ordered]@{name='MT8167CombinedFollowup166';display_name='MediaTek GPU349 verification';image_path='"C:\Windows\System32\MT8167CombinedFollowup166.exe"'} }
+        'MT8167CombinedFollowup164' { return [ordered]@{name='MT8167CombinedFollowup164';display_name='MediaTek GPU348 MT6630 verification';image_path='"C:\Windows\System32\MT8167CombinedFollowup164.exe"'} }
+        'MT8167CombinedFollowup162' { return [ordered]@{name='MT8167CombinedFollowup162';display_name='MediaTek GPU347 verification';image_path='"C:\Windows\System32\MT8167CombinedFollowup162.exe"'} }
+        'MT8167CombinedFollowup160' { return [ordered]@{name='MT8167CombinedFollowup160';display_name='MediaTek GPU346 MT6630 Bluetooth verification';image_path='"C:\Windows\System32\MT8167CombinedFollowup160.exe"'} }
+        'MT8167CombinedFollowup158' { return [ordered]@{name='MT8167CombinedFollowup158';display_name='MediaTek GPU345 passive waits verification';image_path='"C:\Windows\System32\MT8167CombinedFollowup158.exe"'} }
+        'MT8167CombinedFollowup156' { return [ordered]@{name='MT8167CombinedFollowup156';display_name='MediaTek GPU344 durable progress verification';image_path='"C:\Windows\System32\MT8167CombinedFollowup156.exe"'} }
+        'MT8167CombinedFollowup154' { return [ordered]@{name='MT8167CombinedFollowup154';display_name='MediaTek matched thermal1117 GPU343 verification';image_path='"C:\Windows\System32\MT8167CombinedFollowup154.exe"'} }
+        'MT8167CombinedFollowup152' { return [ordered]@{name='MT8167CombinedFollowup152';display_name='MediaTek GPU342 verification';image_path='"C:\Windows\System32\MT8167CombinedFollowup152.exe"'} }
+        'MT8167CombinedFollowup150' { return [ordered]@{name='MT8167CombinedFollowup150';display_name='MediaTek combined features150';image_path='"C:\Windows\System32\MT8167CombinedFollowup150.exe"'} }
+        'MT8167CombinedFollowup148' { return [ordered]@{name='MT8167CombinedFollowup148';display_name='MediaTek combined features148';image_path='"C:\Windows\System32\MT8167CombinedFollowup148.exe"'} }
+        'MT8167CombinedFollowup146' { return [ordered]@{name='MT8167CombinedFollowup146';display_name='MediaTek combined features146';image_path='"C:\Windows\System32\MT8167CombinedFollowup146.exe"'} }
+        'MT8167CombinedFollowup144' { return [ordered]@{name='MT8167CombinedFollowup144';display_name='MediaTek combined features144';image_path='"C:\Windows\System32\MT8167CombinedFollowup144.exe"'} }
+        'MT8167CombinedFollowup142' { return [ordered]@{name='MT8167CombinedFollowup142';display_name='MediaTek combined audio142';image_path='"C:\Windows\System32\MT8167CombinedFollowup142.exe"'} }
+        'MT8167CombinedFollowup140' { return [ordered]@{name='MT8167CombinedFollowup140';display_name='MediaTek combined peripherals140';image_path='"C:\Windows\System32\MT8167CombinedFollowup140.exe"'} }
+        'MT8167CombinedFollowup138' { return [ordered]@{name='MT8167CombinedFollowup138';display_name='MediaTek combined peripherals138';image_path='"C:\Windows\System32\MT8167CombinedFollowup138.exe"'} }
+        'MT8167CombinedFollowup136' { return [ordered]@{name='MT8167CombinedFollowup136';display_name='MediaTek GPU335 UMD update';image_path='"C:\Windows\System32\MT8167CombinedFollowup136.exe"'} }
+        'MT8167CombinedFollowup134' { return [ordered]@{name='MT8167CombinedFollowup134';display_name='MediaTek GPU332 combined update';image_path='"C:\Windows\System32\MT8167CombinedFollowup134.exe"'} }
+        'MT8167CombinedFollowup132' { return [ordered]@{name='MT8167CombinedFollowup132';display_name='MediaTek RTC AFE readonly followup';image_path='"C:\Windows\System32\MT8167CombinedFollowup132.exe"'} }
+        'MT8167CombinedFollowup130' { return [ordered]@{name='MT8167CombinedFollowup130';display_name='MediaTek combined followup batch';image_path='"C:\Windows\System32\MT8167CombinedFollowup130.exe"'} }
+        'MT8167CombinedFollowup128' { return [ordered]@{name='MT8167CombinedFollowup128';display_name='MediaTek combined followup batch';image_path='"C:\Windows\System32\MT8167CombinedFollowup128.exe"'} }
+        'MT8167CombinedFollowup126' { return [ordered]@{name='MT8167CombinedFollowup126';display_name='MediaTek combined followup batch';image_path='"C:\Windows\System32\MT8167CombinedFollowup126.exe"'} }
+        'MT8167CombinedFollowup124' { return [ordered]@{name='MT8167CombinedFollowup124';display_name='MediaTek combined followup batch';image_path='"C:\Windows\System32\MT8167CombinedFollowup124.exe"'} }
+        'MT8167PeripheralBatch' { return [ordered]@{name='MT8167PeripheralBatch';display_name='MediaTek fixed peripheral batch';image_path='"C:\Windows\System32\MT8167PeripheralBatch.exe"'} }
+        'MT8167RenderSingleGpu' { return [ordered]@{name='MT8167RenderSingleGpu';display_name='PowerVR GE8300 Single GPU Update';image_path='"C:\Windows\System32\MT8167RenderSingleGpu.exe"'} }
+        default { throw 'Unknown fixed one-shot service name' }
     }
 }
 function Service-Values($Spec) {
@@ -73,6 +110,105 @@ function Service-Values($Spec) {
         ObjectName=@('String','LocalSystem'); DisplayName=@('String',[string]$fixed.display_name)
         DependOnService=@('MultiString',[string[]]@('DeviceInstall','RpcSs'))
     }
+}
+# Read ONLY this fixed service's known logger subtree. Never mutate its values.
+# Raw value fingerprints include names/types/data; directory shape is bounded.
+function Engine-DiagnosticFingerprint($ServiceKey,$Plan,[bool]$SingleGpu=$false) {
+    $context=if($SingleGpu){$Plan.engine_preserve.single_gpu_rearm}elseif($Plan.engine_rearm){$Plan.engine_rearm}elseif($Plan.engine_preserve){$Plan.engine_preserve}else{throw 'Explicit Engine preservation context required'}
+    $allowed=@($context.diagnostic_policies)
+    $partialPolicies=@()
+    if($SingleGpu){
+        if($context.partial_diagnostic_policy){throw 'Use explicit partial_diagnostic_policies array instead of singular policy'}
+        if($null -ne $context.partial_diagnostic_policies){
+            if($context.partial_diagnostic_policies -isnot [Array]){throw 'Partial diagnostic policy pins must be an array'}
+            $partialPolicies=@($context.partial_diagnostic_policies)
+        }
+    }
+    Assert-Mt8167SingleGpuPartialPolicies $partialPolicies $allowed
+    $parts=New-Object 'Collections.Generic.List[string]'
+    $serviceChildren=@($ServiceKey.GetSubKeyNames())
+    if($serviceChildren.Count -eq 0) { return 'absent' }
+    if($serviceChildren.Count -ne 1 -or $serviceChildren[0] -cne 'Parameters') { throw 'Unexpected Engine subkey outside fixed Parameters' }
+    $parameters=$ServiceKey.OpenSubKey('Parameters',$false)
+    try {
+        if($parameters.GetValueNames().Count -or @($parameters.GetSubKeyNames()).Count -ne 1 -or $parameters.GetSubKeyNames()[0] -cne 'LastDiagnostic') { throw 'Unexpected Engine Parameters shape' }
+        $last=$parameters.OpenSubKey('LastDiagnostic',$false)
+        try {
+            if($last.GetValueNames().Count) { throw 'Unexpected LastDiagnostic root values' }
+            $policies=@($last.GetSubKeyNames()|Sort-Object)
+            if(!$policies.Count -or $policies.Count -gt 16) { throw 'Bounded diagnostic history exceeded' }
+            foreach($policy in $policies) {
+                if($policy -cnotmatch '^[0-9a-f]{64}$' -or $policy -cnotin $allowed) { throw 'Unpinned Engine diagnostic generation' }
+                $generation=$last.OpenSubKey($policy,$false)
+                try {
+                    if($generation.GetValueNames().Count) { throw 'Unexpected diagnostic generation values' }
+                    $phases=@($generation.GetSubKeyNames()|Sort-Object)
+                    if(!$phases.Count -or $phases.Count -gt 2 -or @($phases|Where-Object {$_ -cnotin @('Install','Diagnostic')}).Count) { throw 'Unknown diagnostic phase' }
+                    foreach($phase in $phases) {
+                        $leaf=$generation.OpenSubKey($phase,$false)
+                        try {
+                            if($leaf.GetSubKeyNames().Count -or $leaf.GetValueNames().Count -gt 64) { throw 'Diagnostic leaf bound exceeded' }
+                            if($SingleGpu) {
+                                $partial=Read-Mt8167SingleGpuPartialHeader $leaf $phase $policy $partialPolicies $allowed
+                                if($null -ne $partial) {
+                                    $parts.Add($policy+'/'+$phase+'='+$partial.raw_fingerprint)
+                                    continue
+                                }
+                            }
+                            $schema=[int]$leaf.GetValue('Schema',-1);$count=[int]$leaf.GetValue('TargetCount',-1);$clients=[int]$leaf.GetValue('ClientCount',-1)
+                            $singleRender=$SingleGpu -and $schema -eq 2 -and $count -eq 1 -and $clients -eq 1
+                            $codecRender=$schema -eq 2 -and $count -eq 4 -and $clients -eq 2
+                            $legacyEngine=$schema -in @(1,2) -and $count -ge 5 -and $count -le $(if($schema -eq 1){6}else{7}) -and $clients -in @(2,3)
+                            if(($SingleGpu -and !$singleRender) -or (!$SingleGpu -and !$codecRender -and !$legacyEngine) -or $leaf.GetValue('PolicyHash') -cne $policy) { throw 'Diagnostic schema/count/policy mismatch' }
+                            if($singleRender) {
+                                if($leaf.GetValueKind('Node0HardwareId') -ne [Microsoft.Win32.RegistryValueKind]::String -or $leaf.GetValue('Node0HardwareId') -cne 'ACPI\MOU0006'){throw 'Fixed single GPU identity required'}
+                            }
+                            if($codecRender) {
+                                $codecIds=@('ACPI\BEN0001','MT8167\AFE','ACPI\MOU0001','ACPI\MOU0006')
+                                for($codecIndex=0;$codecIndex -lt 4;$codecIndex++) {
+                                    $codecName="Node${codecIndex}HardwareId"
+                                    if($leaf.GetValueKind($codecName) -ne [Microsoft.Win32.RegistryValueKind]::String -or $leaf.GetValue($codecName) -cne $codecIds[$codecIndex]) { throw 'Diagnostic fixed codec/render node mismatch' }
+                                }
+                            }
+                            foreach($name in $leaf.GetValueNames()) {
+                                $kind=$leaf.GetValueKind($name);$v=$leaf.GetValue($name,$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+                                if($name -cmatch '^(Schema|Complete|RunId|Phase|TargetCount|ClientCount|ServiceResult|FileLogError|UartError|SnapshotWriteError)$' -or ($schema -eq 2 -and $name -cmatch '^(SystemVolumeFlushError|CompletionResult|PnpBatchResult|InstallFailureValid|InstallFailureTarget|InstallFailureStep|AllInstallStepsSucceeded|DiagnosticArmed|RebootPending|DeferredPendingStatus|DiagnosticAttemptedStatus|RebootAttemptedStatus)$')) {
+                                    if($kind -ne [Microsoft.Win32.RegistryValueKind]::DWord) { throw 'Diagnostic DWORD type mismatch' }
+                                } elseif($codecRender -and $name -cmatch '^(Mt8167MsdcFileReadBytes|Mt8167MsdcFileReadDigest|Mt8167MsdcFileReadElapsedMs|Mt8167MsdcFileReadError|PhysicalEmmcThroughputMeasured|UartErrorPathExercised)$') {
+                                    if($kind -ne [Microsoft.Win32.RegistryValueKind]::DWord) { throw 'Codec MSDC DWORD type mismatch' }
+                                } elseif($codecRender -and $name -cmatch '^Retained([0-2])HardwareId$') {
+                                    $retainIds=@('MT8167\USB20','A04BR3\MT6630SDIO','ACPI\MOU0007')
+                                    if($kind -ne [Microsoft.Win32.RegistryValueKind]::String -or $v -cne $retainIds[[int]$Matches[1]]) { throw 'Fixed retained identity/type mismatch' }
+                                } elseif($name -ceq 'PolicyHash') {
+                                    if($kind -ne [Microsoft.Win32.RegistryValueKind]::String -or $v -cne $policy) { throw 'Diagnostic policy value mismatch' }
+                                } elseif($name -cmatch '^Node([0-6])HardwareId$') {
+                                    $index=[int]$Matches[1]
+                                    if($index -ge $count -or $kind -ne [Microsoft.Win32.RegistryValueKind]::String) { throw 'Diagnostic node ID bound/type mismatch' }
+                                    $ids=@('ACPI\BEN0001','MT8167\AFE','MT8167\USB20','A04BR3\MT6630SDIO','ACPI\MOU0007')
+                                    if($singleRender) { if($index -ne 0 -or $v -cne 'ACPI\MOU0006'){throw 'Single GPU node mismatch'} }
+                                    elseif($codecRender) { if($v -cne $codecIds[$index]) { throw 'Diagnostic fixed codec/render node mismatch' } }
+                                    elseif($index -lt 5) { if($v -cne $ids[$index]) { throw 'Diagnostic fixed node mismatch' } }
+                                    elseif($index -eq 5) { if($v -cnotin @('ACPI\MOU0006','ACPI\MOU0013') -or ($schema -eq 1 -and $v -cne 'ACPI\MOU0006')) { throw 'Diagnostic optional node mismatch' } }
+                                    elseif($v -cne 'ACPI\MOU0013' -or $leaf.GetValue('Node5HardwareId') -cne 'ACPI\MOU0006') { throw 'Diagnostic GPU/SD order mismatch' }
+                                } else {
+                                    $size=-1
+                                    if($name -cmatch '^Node([0-6])(Before|After)$') { if([int]$Matches[1] -ge $count) { throw 'Node bound exceeded' };$size=44 }
+                                    elseif($name -cmatch '^Client([0-2])$') { if([int]$Matches[1] -ge $clients) { throw 'Client bound exceeded' };$size=28 }
+                                    elseif($name -cmatch '^Client([0-2])(Stdout|Stderr)Info$') { if([int]$Matches[1] -ge $clients) { throw 'Stream bound exceeded' };$size=20 }
+                                    elseif($name -cmatch '^Client([0-2])(Stdout|Stderr)$') { if([int]$Matches[1] -ge $clients) { throw 'Stream bound exceeded' };$size=-2 }
+                                    elseif($schema -eq 2 -and $name -ceq 'SystemVolumeFlush') { $size=28 }
+                                    if($size -eq -1 -or $kind -ne [Microsoft.Win32.RegistryValueKind]::Binary -or $v.Length -gt 65536 -or ($size -ge 0 -and $v.Length -ne $size)) { throw 'Unknown diagnostic value/type/size' }
+                                }
+                            }
+                            $parts.Add($policy+'/'+$phase+'='+[MT8167OfflineHive.Native]::ValueFingerprint($leaf))
+                        } finally { $leaf.Dispose() }
+                    }
+                } finally { $generation.Dispose() }
+            }
+        } finally { $last.Dispose() }
+    } finally { $parameters.Dispose() }
+    $hash=[Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($hash.ComputeHash([Text.Encoding]::UTF8.GetBytes(($parts -join "`n"))))).Replace('-','').ToLowerInvariant() } finally { $hash.Dispose() }
 }
 function Inspect-Services($Root,$Plan,[bool]$Patch) {
     $select=[MT8167OfflineHive.Native]::OpenPath($Root,'Select',$false)
@@ -94,7 +230,11 @@ function Inspect-Services($Root,$Plan,[bool]$Patch) {
         foreach($spec in $Plan.services) {
             $values=Service-Values $spec
             $key=[MT8167OfflineHive.Native]::OpenPath($Root,($control+'\'+$spec.name),$true)
-            $beforeFingerprint=$null
+            if($spec.name -cin @('MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130','MT8167CombinedFollowup132','MT8167CombinedFollowup134','MT8167CombinedFollowup136','MT8167CombinedFollowup138','MT8167CombinedFollowup140','MT8167CombinedFollowup142') -and $Patch -and $key){$key.Dispose();throw 'Dedicated peripheral service must be absent before initial arm'}
+            if($spec.name -ceq 'MT8167RenderSingleGpu' -and (!$key -or !$Plan.engine_preserve.single_gpu_rearm)){if($key){$key.Dispose()};throw 'Pinned existing single GPU registration required'}
+            $beforeFingerprint=$null;$diagnosticFingerprint=$null
+            $singleRearm=$Patch -and $spec.name -ceq 'MT8167RenderSingleGpu'
+            if($singleRearm -and $key.GetValueNames().Count -ne 7){$key.Dispose();throw 'Single GPU exact seven values required'}
             $gpuInspect=[bool]$Plan.gpu_inspect
             if($gpuInspect) {
                 if($Patch -or $spec.name -cne 'MT8167DeviceInstall' -or !$key -or $key.GetValueNames().Count -ne 7) {
@@ -127,7 +267,7 @@ function Inspect-Services($Root,$Plan,[bool]$Patch) {
                 # Accept an absent or compatible partial registration only; do not rearm disabled services.
                 foreach($name in $key.GetValueNames()) {
                     if(!$values.Contains($name)) { $key.Dispose();throw 'Unexpected existing one-shot service value' }
-                    $expected=$values[$name];if(($rearm -or $gpuRearm) -and $name -eq 'Start') { $expected=@('DWord',4) };$kind=[Microsoft.Win32.RegistryValueKind]$expected[0]
+                    $expected=$values[$name];if(($rearm -or $gpuRearm -or $singleRearm) -and $name -eq 'Start') { $expected=@('DWord',4) };$kind=[Microsoft.Win32.RegistryValueKind]$expected[0]
                     $actual=$key.GetValue($name,$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
                     $compatible=$key.GetValueKind($name) -eq $kind
                     if($kind -eq [Microsoft.Win32.RegistryValueKind]::MultiString) {
@@ -137,7 +277,12 @@ function Inspect-Services($Root,$Plan,[bool]$Patch) {
                     } else { $compatible=$compatible -and ($actual -ceq $expected[1]) }
                     if(!$compatible) { $key.Dispose();throw ('Conflicting existing service value: '+$spec.name+'/'+$name) }
                 }
-                if($key.GetSubKeyNames().Count -ne 0) { $key.Dispose();throw 'Unexpected one-shot service subkeys' }
+                if($spec.name -ceq 'MT8167EngineProbe' -and $Plan.engine_rearm) {
+                    try { $diagnosticFingerprint=Engine-DiagnosticFingerprint $key $Plan } catch { $key.Dispose();throw }
+                    if($Plan.engine_diagnostic_fingerprint -and $diagnosticFingerprint -cne $Plan.engine_diagnostic_fingerprint) { $key.Dispose();throw 'Engine diagnostics changed on clean reload' }
+                } elseif($spec.name -ceq 'MT8167RenderSingleGpu') {
+                    try {$diagnosticFingerprint=Engine-DiagnosticFingerprint $key $Plan $true} catch {$key.Dispose();throw}
+                } elseif($key.GetSubKeyNames().Count -ne 0) { $key.Dispose();throw 'Unexpected one-shot service subkeys' }
             } elseif($Patch) { $key=$services.CreateSubKey([string]$spec.name) }
             else { throw 'One-shot service absent after clean-hive reload' }
             try {
@@ -154,11 +299,38 @@ function Inspect-Services($Root,$Plan,[bool]$Patch) {
                     elseif($actual -cne $expected[1]) { throw ('Service value mismatch: '+$name) }
                     $actualValues[$name]=@{kind=[string]$key.GetValueKind($name);value=$actual}
                 }
-                $report+=@{name=$spec.name;values=$actualValues;before_fingerprint=$beforeFingerprint}
+                $report+=@{name=$spec.name;values=$actualValues;before_fingerprint=$beforeFingerprint;diagnostic_fingerprint=$diagnosticFingerprint}
             } finally { $key.Dispose() }
         }
         return ,$report
     } finally { $services.Dispose() }
+}
+# Fixed old-service subtrees only. Keep every raw value; no whole-hive traversal.
+function Peripheral-ServiceSnapshot($Root,[string]$Path) {
+    $key=[MT8167OfflineHive.Native]::OpenPath($Root,$Path,$false)
+    if(!$key){return [ordered]@{present=$false;root_sha256=$null;subtree_sha256=$null}}
+    $parts=New-Object 'Collections.Generic.List[string]';$count=0
+    function Visit($current,[string]$relative,[int]$depth){
+        if($depth -gt 6 -or $parts.Count -ge 128 -or $current.GetValueNames().Count -gt 64 -or $current.GetSubKeyNames().Count -gt 32){throw 'Bounded preserved-service subtree exceeded'}
+        foreach($n in $current.GetValueNames()){
+            $kind=$current.GetValueKind($n);if($kind -notin @('String','ExpandString','Binary','DWord','MultiString','QWord','None')){throw 'Unexpected preserved-service value type'}
+            $v=$current.GetValue($n,$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+            $size=if($v -is [byte[]]){$v.Length}elseif($v -is [string]){2*($v.Length+1)}elseif($v -is [string[]]){2*(($v -join '').Length+$v.Count+1)}else{8}
+            if($size -gt 65536){throw 'Preserved-service value size exceeded'}
+        }
+        $parts.Add($relative+'='+[MT8167OfflineHive.Native]::ValueFingerprint($current))
+        foreach($n in @($current.GetSubKeyNames()|Sort-Object)){
+            $child=[MT8167OfflineHive.Native]::OpenPath($Root,($Path+$(if($relative){'\'+$relative}else{''})+'\'+$n),$false)
+            if(!$child){throw 'Preserved subtree changed during read'}
+            try{Visit $child $(if($relative){$relative+'\'+$n}else{$n}) ($depth+1)}finally{$child.Dispose()}
+        }
+    }
+    try{
+        $rootHash=[MT8167OfflineHive.Native]::ValueFingerprint($key);Visit $key '' 0
+        $hash=[Security.Cryptography.SHA256]::Create()
+        try{$digest=([BitConverter]::ToString($hash.ComputeHash([Text.Encoding]::UTF8.GetBytes(($parts -join "`n"))))).Replace('-','').ToLowerInvariant()}finally{$hash.Dispose()}
+        return [ordered]@{present=$true;root_sha256=$rootHash;subtree_sha256=$digest}
+    }finally{$key.Dispose()}
 }
 function Related-Fingerprints($Root,$Plan) {
     $control='ControlSet{0:D3}\Services\' -f [int]$Plan.control_set
@@ -170,10 +342,91 @@ function Related-Fingerprints($Root,$Plan) {
         try { $result[$name]=[MT8167OfflineHive.Native]::ValueFingerprint($key) }
         finally { $key.Dispose() }
     }
+    if($Plan.engine_preserve){
+        $engine=[MT8167OfflineHive.Native]::OpenPath($Root,($control+'MT8167EngineProbe'),$false)
+        if(!$engine){throw 'Preserved Engine absent'}
+        try {
+            if($engine.GetValueNames().Count -ne 7 -or [MT8167OfflineHive.Native]::ValueFingerprint($engine) -cne 'dbbe363d2401dfc022606aba010c0e4888c5feab67c748ea5030b0eb3ba484c1'){throw 'Preserved Engine is not the known disabled registration'}
+            $result.engine_service=[MT8167OfflineHive.Native]::ValueFingerprint($engine)
+            $result.engine_ledger=Engine-DiagnosticFingerprint $engine $Plan
+        } finally {$engine.Dispose()}
+    }
+    if($Plan.engine_preserve.single_gpu_rearm){
+        $sg=[MT8167OfflineHive.Native]::OpenPath($Root,($control+'MT8167RenderSingleGpu'),$false)
+        if(!$sg){throw 'Single GPU registration missing'}
+        try {$result.single_gpu_ledger=Engine-DiagnosticFingerprint $sg $Plan $true}finally{$sg.Dispose()}
+    }
+    if($Plan.peripheral_preserve){
+        $old=[ordered]@{}
+        $oldNames=@('MT8167EngineProbe','MT8167RenderSingleGpu','MT8167RenderStage','MT8167DeviceInstall','RpcSs')
+        if($Plan.peripheral_preserve.service -cin @('MT8167PeripheralNext122','MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130','MT8167CombinedFollowup132','MT8167CombinedFollowup134','MT8167CombinedFollowup136','MT8167CombinedFollowup138','MT8167CombinedFollowup140','MT8167CombinedFollowup142','MT8167CombinedFollowup144','MT8167CombinedFollowup146','MT8167CombinedFollowup148','MT8167CombinedFollowup150','MT8167CombinedFollowup152','MT8167CombinedFollowup154','MT8167CombinedFollowup156','MT8167CombinedFollowup158','MT8167CombinedFollowup160','MT8167CombinedFollowup162','MT8167CombinedFollowup164','MT8167CombinedFollowup166','MT8167CombinedFollowup168','MT8167CombinedFollowup170','MT8167CombinedFollowup172','MT8167CombinedFollowup174','MT8167CombinedFollowup176')){$oldNames+='MT8167PeripheralBatch'}
+        if($Plan.peripheral_preserve.service -cin @('MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130','MT8167CombinedFollowup132','MT8167CombinedFollowup134','MT8167CombinedFollowup136','MT8167CombinedFollowup138','MT8167CombinedFollowup140','MT8167CombinedFollowup142','MT8167CombinedFollowup144','MT8167CombinedFollowup146','MT8167CombinedFollowup148','MT8167CombinedFollowup150','MT8167CombinedFollowup152','MT8167CombinedFollowup154','MT8167CombinedFollowup156','MT8167CombinedFollowup158','MT8167CombinedFollowup160','MT8167CombinedFollowup162','MT8167CombinedFollowup164','MT8167CombinedFollowup166','MT8167CombinedFollowup168','MT8167CombinedFollowup170','MT8167CombinedFollowup172','MT8167CombinedFollowup174','MT8167CombinedFollowup176')){$oldNames+='MT8167PeripheralNext122'}
+        if($Plan.peripheral_preserve.service -cin @('MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130','MT8167CombinedFollowup132','MT8167CombinedFollowup134','MT8167CombinedFollowup136','MT8167CombinedFollowup138','MT8167CombinedFollowup140','MT8167CombinedFollowup142','MT8167CombinedFollowup144','MT8167CombinedFollowup146','MT8167CombinedFollowup148','MT8167CombinedFollowup150','MT8167CombinedFollowup152','MT8167CombinedFollowup154','MT8167CombinedFollowup156','MT8167CombinedFollowup158','MT8167CombinedFollowup160','MT8167CombinedFollowup162','MT8167CombinedFollowup164','MT8167CombinedFollowup166','MT8167CombinedFollowup168','MT8167CombinedFollowup170','MT8167CombinedFollowup172','MT8167CombinedFollowup174','MT8167CombinedFollowup176')){$oldNames+='MT8167CombinedFollowup124'}
+        if($Plan.peripheral_preserve.service -cin @('MT8167CombinedFollowup128','MT8167CombinedFollowup130','MT8167CombinedFollowup132','MT8167CombinedFollowup134','MT8167CombinedFollowup136','MT8167CombinedFollowup138','MT8167CombinedFollowup140','MT8167CombinedFollowup142','MT8167CombinedFollowup144','MT8167CombinedFollowup146','MT8167CombinedFollowup148','MT8167CombinedFollowup150','MT8167CombinedFollowup152','MT8167CombinedFollowup154','MT8167CombinedFollowup156','MT8167CombinedFollowup158','MT8167CombinedFollowup160','MT8167CombinedFollowup162','MT8167CombinedFollowup164','MT8167CombinedFollowup166','MT8167CombinedFollowup168','MT8167CombinedFollowup170','MT8167CombinedFollowup172','MT8167CombinedFollowup174','MT8167CombinedFollowup176')){$oldNames+=@('MT8167CombinedFollowup126','Mt6392Keys')}
+        if($Plan.peripheral_preserve.service -cin @('MT8167CombinedFollowup130','MT8167CombinedFollowup132','MT8167CombinedFollowup134','MT8167CombinedFollowup136','MT8167CombinedFollowup138','MT8167CombinedFollowup140','MT8167CombinedFollowup142','MT8167CombinedFollowup144','MT8167CombinedFollowup146','MT8167CombinedFollowup148','MT8167CombinedFollowup150','MT8167CombinedFollowup152','MT8167CombinedFollowup154','MT8167CombinedFollowup156','MT8167CombinedFollowup158','MT8167CombinedFollowup160','MT8167CombinedFollowup162','MT8167CombinedFollowup164','MT8167CombinedFollowup166','MT8167CombinedFollowup168','MT8167CombinedFollowup170','MT8167CombinedFollowup172','MT8167CombinedFollowup174','MT8167CombinedFollowup176')){$oldNames+='MT8167CombinedFollowup128'}
+        if($Plan.peripheral_preserve.service -cin @('MT8167CombinedFollowup132','MT8167CombinedFollowup134','MT8167CombinedFollowup136','MT8167CombinedFollowup138','MT8167CombinedFollowup140','MT8167CombinedFollowup142','MT8167CombinedFollowup144','MT8167CombinedFollowup146','MT8167CombinedFollowup148','MT8167CombinedFollowup150','MT8167CombinedFollowup152','MT8167CombinedFollowup154','MT8167CombinedFollowup156','MT8167CombinedFollowup158','MT8167CombinedFollowup160','MT8167CombinedFollowup162','MT8167CombinedFollowup164','MT8167CombinedFollowup166','MT8167CombinedFollowup168','MT8167CombinedFollowup170','MT8167CombinedFollowup172','MT8167CombinedFollowup174','MT8167CombinedFollowup176')){$oldNames+='MT8167CombinedFollowup130'}
+        if($Plan.peripheral_preserve.service -cin @('MT8167CombinedFollowup134','MT8167CombinedFollowup136','MT8167CombinedFollowup138','MT8167CombinedFollowup140','MT8167CombinedFollowup142','MT8167CombinedFollowup144','MT8167CombinedFollowup146','MT8167CombinedFollowup148','MT8167CombinedFollowup150','MT8167CombinedFollowup152','MT8167CombinedFollowup154','MT8167CombinedFollowup156','MT8167CombinedFollowup158','MT8167CombinedFollowup160','MT8167CombinedFollowup162','MT8167CombinedFollowup164','MT8167CombinedFollowup166','MT8167CombinedFollowup168','MT8167CombinedFollowup170','MT8167CombinedFollowup172','MT8167CombinedFollowup174','MT8167CombinedFollowup176')){$oldNames+='MT8167CombinedFollowup132'}
+        if($Plan.peripheral_preserve.service -cin @('MT8167CombinedFollowup136','MT8167CombinedFollowup138','MT8167CombinedFollowup140','MT8167CombinedFollowup142','MT8167CombinedFollowup144','MT8167CombinedFollowup146','MT8167CombinedFollowup148','MT8167CombinedFollowup150','MT8167CombinedFollowup152','MT8167CombinedFollowup154','MT8167CombinedFollowup156','MT8167CombinedFollowup158','MT8167CombinedFollowup160','MT8167CombinedFollowup162','MT8167CombinedFollowup164','MT8167CombinedFollowup166','MT8167CombinedFollowup168','MT8167CombinedFollowup170','MT8167CombinedFollowup172','MT8167CombinedFollowup174','MT8167CombinedFollowup176')){$oldNames+='MT8167CombinedFollowup134'}
+        if($Plan.peripheral_preserve.service -cin @('MT8167CombinedFollowup138','MT8167CombinedFollowup140','MT8167CombinedFollowup142','MT8167CombinedFollowup144','MT8167CombinedFollowup146','MT8167CombinedFollowup148','MT8167CombinedFollowup150','MT8167CombinedFollowup152','MT8167CombinedFollowup154','MT8167CombinedFollowup156','MT8167CombinedFollowup158','MT8167CombinedFollowup160','MT8167CombinedFollowup162','MT8167CombinedFollowup164','MT8167CombinedFollowup166','MT8167CombinedFollowup168','MT8167CombinedFollowup170','MT8167CombinedFollowup172','MT8167CombinedFollowup174','MT8167CombinedFollowup176')){$oldNames+='MT8167CombinedFollowup136'}
+        if($Plan.peripheral_preserve.service -cin @('MT8167CombinedFollowup142','MT8167CombinedFollowup144','MT8167CombinedFollowup146','MT8167CombinedFollowup148','MT8167CombinedFollowup150','MT8167CombinedFollowup152','MT8167CombinedFollowup154','MT8167CombinedFollowup156','MT8167CombinedFollowup158','MT8167CombinedFollowup160','MT8167CombinedFollowup162','MT8167CombinedFollowup164','MT8167CombinedFollowup166','MT8167CombinedFollowup168','MT8167CombinedFollowup170','MT8167CombinedFollowup172','MT8167CombinedFollowup174','MT8167CombinedFollowup176')){$oldNames+='MT8167CombinedFollowup140'}
+        if($Plan.peripheral_preserve.service -cin @('MT8167CombinedFollowup144','MT8167CombinedFollowup146','MT8167CombinedFollowup148','MT8167CombinedFollowup150','MT8167CombinedFollowup152','MT8167CombinedFollowup154','MT8167CombinedFollowup156','MT8167CombinedFollowup158','MT8167CombinedFollowup160','MT8167CombinedFollowup162','MT8167CombinedFollowup164','MT8167CombinedFollowup166','MT8167CombinedFollowup168','MT8167CombinedFollowup170','MT8167CombinedFollowup172','MT8167CombinedFollowup174','MT8167CombinedFollowup176')){$oldNames+='MT8167CombinedFollowup142'}
+        if($Plan.peripheral_preserve.service -cin @('MT8167CombinedFollowup146','MT8167CombinedFollowup148','MT8167CombinedFollowup150','MT8167CombinedFollowup152','MT8167CombinedFollowup154','MT8167CombinedFollowup156','MT8167CombinedFollowup158','MT8167CombinedFollowup160','MT8167CombinedFollowup162','MT8167CombinedFollowup164','MT8167CombinedFollowup166','MT8167CombinedFollowup168','MT8167CombinedFollowup170','MT8167CombinedFollowup172','MT8167CombinedFollowup174','MT8167CombinedFollowup176')){$oldNames+='MT8167CombinedFollowup144'}
+        foreach($n in $oldNames){
+            $snapshot=Peripheral-ServiceSnapshot $Root ($control+$n)
+            $expected=$Plan.peripheral_preserve.service_preservation.$n
+            if($snapshot.present -ne $expected.present -or $snapshot.root_sha256 -cne $expected.root_sha256 -or $snapshot.subtree_sha256 -cne $expected.subtree_sha256){throw 'Old service snapshot differs from explicitly pinned fresh input'}
+            $old[$n]=$snapshot
+        }
+        $result.peripheral_old_services=($old|ConvertTo-Json -Depth 8 -Compress)
+        if($Plan.peripheral_preserve.service -cin @('MT8167CombinedFollowup148','MT8167CombinedFollowup150','MT8167CombinedFollowup152','MT8167CombinedFollowup154','MT8167CombinedFollowup156','MT8167CombinedFollowup158','MT8167CombinedFollowup160','MT8167CombinedFollowup162','MT8167CombinedFollowup164','MT8167CombinedFollowup166','MT8167CombinedFollowup168','MT8167CombinedFollowup170','MT8167CombinedFollowup172','MT8167CombinedFollowup174','MT8167CombinedFollowup176')){
+            $result.peripheral_captured_values=(Peripheral-CapturedValues $Root $Plan.control_set $Plan.peripheral_preserve.captured_registry_values | ConvertTo-Json -Depth 8 -Compress)
+        }
+        if($Plan.peripheral_preserve.service -cin @('MT8167CombinedFollowup150','MT8167CombinedFollowup152','MT8167CombinedFollowup154','MT8167CombinedFollowup156','MT8167CombinedFollowup158','MT8167CombinedFollowup160','MT8167CombinedFollowup162','MT8167CombinedFollowup164','MT8167CombinedFollowup166','MT8167CombinedFollowup168','MT8167CombinedFollowup170','MT8167CombinedFollowup172','MT8167CombinedFollowup174','MT8167CombinedFollowup176')){
+            $failed=[MT8167OfflineHive.Native]::OpenPath($Root,($control+'MT8167CombinedFollowup148'),$false)
+            if($failed){$failed.Dispose();throw 'Rejected149 service must remain absent, not armed'}
+            $result.peripheral_failed149_service_absent='MT8167CombinedFollowup148=absent'
+        }
+        if($Plan.peripheral_preserve.service -cin @('MT8167CombinedFollowup124','MT8167CombinedFollowup126')){
+            $key=[MT8167OfflineHive.Native]::OpenPath($Root,('ControlSet{0:D3}\Enum\MT6392\Buttons\3&7ce9159&0&0' -f [int]$Plan.control_set),$false)
+            if(!$key){throw 'Pinned fresh124 Buttons child missing'}
+            try{
+                if($key.GetValueNames().Count -gt 64 -or $key.GetValueKind('ConfigFlags') -ne [Microsoft.Win32.RegistryValueKind]::DWord -or $key.GetValue('ConfigFlags') -ne $(if($Plan.peripheral_preserve.service -ceq 'MT8167CombinedFollowup126'){96}else{64}) -or $key.GetValueKind('HardwareID') -ne [Microsoft.Win32.RegistryValueKind]::MultiString){throw 'Unknown unbound keypad shape'}
+                $ids=@($key.GetValue('HardwareID'));if($ids.Count -ne 1 -or $ids[0] -cne 'MT6392\Buttons'){throw 'Unknown keypad identity'}
+                foreach($name in @('Service','ClassGUID','Driver')){if($name -cin $key.GetValueNames()){throw 'Pinned keypad is already selected; never reinstall'}}
+                $result.followup_keypad=[MT8167OfflineHive.Native]::ValueFingerprint($key)
+            }finally{$key.Dispose()}
+            $legacy=[MT8167OfflineHive.Native]::OpenPath($Root,($control+'Mt6392Keys'),$false);if($legacy){$legacy.Dispose();throw 'Old keypad provider must be absent, never overlap scanner owners'}
+        }
+
+    }
+    return $result
+}
+# Named observations remain distinct from full root/subtree fingerprints.
+function Peripheral-CapturedValues($Root,$ControlSet,$Expected) {
+    if(@($Expected).Count -notin @(10,15,20,25,30,35,40,45,50,55,60,65,70,75)){throw 'Exactly10 or15 captured named values required'}
+    $result=[ordered]@{};$seen=@{}
+    foreach($v in $Expected){
+        if($v.key -ceq 'SYSTEM\CurrentControlSet\Services\MT8167CombinedFollowup146' -or (@($Expected).Count -in @(15,20,25,30,35,40,45,50,55,60,65,70,75) -and $v.key -ceq 'SYSTEM\CurrentControlSet\Services\MT8167CombinedFollowup150') -or (@($Expected).Count -in @(20,25,30,35,40,45,50,55,60,65,70,75) -and $v.key -ceq 'SYSTEM\CurrentControlSet\Services\MT8167CombinedFollowup152') -or (@($Expected).Count -in @(25,30,35,40,45,50,55,60,65,70,75) -and $v.key -ceq 'SYSTEM\CurrentControlSet\Services\MT8167CombinedFollowup154') -or (@($Expected).Count -in @(30,35,40,45,50,55,60,65,70,75) -and $v.key -ceq 'SYSTEM\CurrentControlSet\Services\MT8167CombinedFollowup156') -or (@($Expected).Count -in @(35,40,45,50,55,60,65,70,75) -and $v.key -ceq 'SYSTEM\CurrentControlSet\Services\MT8167CombinedFollowup158') -or (@($Expected).Count -in @(40,45,50,55,60,65,70,75) -and $v.key -ceq 'SYSTEM\CurrentControlSet\Services\MT8167CombinedFollowup160') -or (@($Expected).Count -in @(45,50,55,60,65,70,75) -and $v.key -ceq 'SYSTEM\CurrentControlSet\Services\MT8167CombinedFollowup162') -or (@($Expected).Count -in @(50,55,60,65,70,75) -and $v.key -ceq 'SYSTEM\CurrentControlSet\Services\MT8167CombinedFollowup164') -or (@($Expected).Count -in @(55,60,65,70,75) -and $v.key -ceq 'SYSTEM\CurrentControlSet\Services\MT8167CombinedFollowup166') -or (@($Expected).Count -in @(60,65,70,75) -and $v.key -ceq 'SYSTEM\CurrentControlSet\Services\MT8167CombinedFollowup168') -or (@($Expected).Count -in @(65,70,75) -and $v.key -ceq 'SYSTEM\CurrentControlSet\Services\MT8167CombinedFollowup170') -or (@($Expected).Count -in @(70,75) -and $v.key -ceq 'SYSTEM\CurrentControlSet\Services\MT8167CombinedFollowup172') -or (@($Expected).Count -eq 75 -and $v.key -ceq 'SYSTEM\CurrentControlSet\Services\MT8167CombinedFollowup174')){
+            if($v.name -cnotin @('Start','ImagePath','Type','ObjectName','DependOnService')){throw 'Unknown prior-service value'}
+        }elseif($v.key -ceq 'SYSTEM\CurrentControlSet\Enum\ROOT\SYSTEM\0001'){
+            if($v.name -cnotin @('Service','ClassGUID','Driver','HardwareID','ConfigFlags')){throw 'Unknown BT-root value'}
+        }else{throw 'Unknown captured registry key'}
+        $identity=$v.key+'\'+$v.name;if($seen.ContainsKey($identity)){throw 'Duplicate named observation'};$seen[$identity]=$true
+        if($v.type -notin @(1,2,4,7) -or $v.raw_hex -cnotmatch '^([0-9a-f]{2}){1,4096}$'){throw 'Unknown named observation type/length'}
+        $path=('ControlSet{0:D3}\' -f [int]$ControlSet)+$v.key.Substring('SYSTEM\CurrentControlSet\'.Length)
+        $k=[MT8167OfflineHive.Native]::OpenPath($Root,$path,$false);if(!$k){throw 'Captured key missing'}
+        try{$hex=[MT8167OfflineHive.Native]::ReadFixedRawValue($k,$v.name,[uint32]$v.type,[uint32]($v.raw_hex.Length/2)).ToLowerInvariant();if($hex -cne $v.raw_hex){throw 'Captured named value changed'};$result[$identity]=[ordered]@{type=$v.type;bytes=($hex.Length/2);raw_hex=$hex}}finally{$k.Dispose()}
+    }
     return $result
 }
 function Check-RelatedFingerprints($Actual,$Expected) {
-    foreach($name in @('select','device_install','rpc_ss')) {
+    $relatedNames=@('select','device_install','rpc_ss');if($Expected.engine_service){$relatedNames+=@('engine_service','engine_ledger')}
+    if($Expected.single_gpu_ledger){$relatedNames+='single_gpu_ledger'}
+    if($Expected.peripheral_old_services){$relatedNames+='peripheral_old_services'}
+    if($Expected.peripheral_failed149_service_absent){$relatedNames+='peripheral_failed149_service_absent'}
+    if($Expected.peripheral_captured_values){$relatedNames+='peripheral_captured_values'}
+    if($Expected.followup_keypad){$relatedNames+='followup_keypad'}
+    foreach($name in $relatedNames) {
         if($Actual.$name -cne $Expected.$name) { throw ('Related existing settings changed: '+$name) }
     }
 }
@@ -294,6 +547,7 @@ if($InternalMode) {
             $root=[MT8167OfflineHive.Native]::OpenRoot($MountName)
             $state.audit_scope='Select and raw values of Services/DeviceInstall and Services/RpcSs only; no subkeys or whole-SYSTEM audit'
             $state.whole_system_audit=$false
+            if($plan.peripheral_preserve){$state.audit_scope='Select/DeviceInstall/RpcSs + dedicated peripheral service; fixed old service bounded subtree fingerprints'}
             $before=Related-Fingerprints $root $plan
             if($plan.gpu_candidate_binding) {
                 $state.audit_scope='Select + DeviceInstall/RpcSs + exact selected service seven values; fixed MOU0006 Enum and selected System-class key read-only'
@@ -336,6 +590,196 @@ if($InternalMode) {
     if($state.status -ne 'success') { exit 1 };exit 0
 }
 if($ServiceName -eq 'MT8167EngineProbe' -and $IncludeHardwareProbe) { throw 'EngineProbe cannot register or rearm the legacy HardwareProbe service' }
+$peripheralPreserve=$null
+if($ServiceName -cin @('MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130','MT8167CombinedFollowup132','MT8167CombinedFollowup134','MT8167CombinedFollowup136','MT8167CombinedFollowup138','MT8167CombinedFollowup140','MT8167CombinedFollowup142','MT8167CombinedFollowup144','MT8167CombinedFollowup146','MT8167CombinedFollowup148','MT8167CombinedFollowup150','MT8167CombinedFollowup152','MT8167CombinedFollowup154','MT8167CombinedFollowup156','MT8167CombinedFollowup158','MT8167CombinedFollowup160','MT8167CombinedFollowup162','MT8167CombinedFollowup164','MT8167CombinedFollowup166','MT8167CombinedFollowup168','MT8167CombinedFollowup170','MT8167CombinedFollowup172','MT8167CombinedFollowup174','MT8167CombinedFollowup176')){
+    if($IncludeHardwareProbe -or $RearmEngineProbe -or $RearmFixedGpuDeviceInstall -or $InspectFixedGpuDeviceInstall -or $EnginePreservationPlanPath -or !$PeripheralPreservationPlanPath -or $ExpectedPeripheralPreservationPlanSha256 -cnotmatch '^[0-9a-f]{64}$'){throw 'Peripheral-only explicit preservation plan required'}
+    if((Hash-File $PeripheralPreservationPlanPath) -cne $ExpectedPeripheralPreservationPlanSha256){throw 'Peripheral preservation plan pin mismatch'}
+    $peripheralPreserve=Get-Content $PeripheralPreservationPlanPath -Raw|ConvertFrom-Json
+    if($ServiceName -ceq 'MT8167CombinedFollowup176'){
+        if($peripheralPreserve.profile -cne 'combined-features-fresh176-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne 'd0e0c86eaf67ee1b2ccc487fa6e84e8a6fc40760c34df9b5a8c8062323d6bb0b' -or $peripheralPreserve.recovery_boot_id -cne '24173199-6ef6-4826-8390-45171dc24451' -or $peripheralPreserve.capture_selection.capture_number -ne 176 -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.deferred_unbound_mask -ne 0){throw 'Exact sealed fresh176 run177 contract required'}
+        if((@($peripheralPreserve.stage_order) -join ',') -cne 'rtc,thermal,usb,wifi,sd,display,parent,keypad,battery,audio,render,msdc,bt' -or (@($peripheralPreserve.install_targets) -join ',') -cne 'display,render' -or $peripheralPreserve.gpu_client_execute -ne $true -or $peripheralPreserve.gpu_client_count -ne 1 -or $peripheralPreserve.bt_first_install_execute -ne $false -or @($peripheralPreserve.diagnostic_clients).Count -ne 1 -or $peripheralPreserve.diagnostic_clients[0].name -cne 'gpu_present' -or $peripheralPreserve.diagnostic_clients[0].phase -ne 1 -or $peripheralPreserve.bt_readonly_execute -ne $false -or (@($peripheralPreserve.captured_registry_values).Count -ne 75)){throw '13 retained snapshots/GPU0 only/70 named values required'}
+        if(@($peripheralPreserve.service_preservation.PSObject.Properties).Count -ne 18){throw '18 original full service fingerprints required'}
+        if($peripheralPreserve.boot_transition.boot_write_required -ne $true -or $peripheralPreserve.boot_transition.boot_sha256 -cne '0943ab8a6008942d9701140542da6ecaa902f750bf34b864bb6a66808c08df42' -or $peripheralPreserve.packages.parent.hashes.sys -cne 'bbced952c499ba0588c77b861b20141043929773d703cdd327ffa92e61990979' -or $peripheralPreserve.packages.render.hashes.sys -cne '4ed03c9866c2f2bf7468e6b70aba07fc6d5f51f19e12e03975fe4ca9eef4157e'){throw 'Matched parent1117 boot2e6 GPU354 tuple required'}
+
+        if($peripheralPreserve.packages.bt.hashes.sys -cne 'f20336f91a1951b9e4515b006788e500ad11c5d70deca810e9c0b729dd3a90f6' -or $peripheralPreserve.packages.wifi.hashes.sys -cne '97dcede955d813a7d72ba8d6e950ceae1215c94351187cf18c73cc15d3f47334'){throw 'Exact signed2018/1027 tuple required'}
+
+
+        if($peripheralPreserve.packages.display.hashes.sys -cne '1bf2d1b3c115b43bad9c6654071fd6c89d9426994a2826476e86028971d387b2' -or $peripheralPreserve.diagnostic_clients[0].sha256 -cne '1bb21b6157e674ab1cde10eac9aff7d5c7bfd5f63e568ad02fe3049838396497' -or $peripheralPreserve.diagnostic_clients[0].dependencies[0].sha256 -cne 'eaa30760ebc38a1955ccb3bbd834ee5c3972ce8842b90e6a58bc5084109ef8d5'){throw 'Exact DIS0/console/evaluator177 tuple required'}
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup174'){
+        if($peripheralPreserve.profile -cne 'combined-features-fresh174-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne '96d9f3b0fca95bd4350a769a2540b9fedce36f6b3118e11b540dac4fb564d31b' -or $peripheralPreserve.recovery_boot_id -cne '0aa89d01-8476-43c2-9a1a-ef393ef5458f' -or $peripheralPreserve.capture_selection.capture_number -ne 174 -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.deferred_unbound_mask -ne 0){throw 'Exact sealed fresh174 run175 contract required'}
+        if((@($peripheralPreserve.stage_order) -join ',') -cne 'rtc,thermal,usb,wifi,sd,display,parent,keypad,battery,audio,render,msdc,bt' -or (@($peripheralPreserve.install_targets) -join ',') -cne 'render' -or $peripheralPreserve.gpu_client_execute -ne $true -or $peripheralPreserve.gpu_client_count -ne 1 -or $peripheralPreserve.bt_first_install_execute -ne $false -or @($peripheralPreserve.diagnostic_clients).Count -ne 1 -or $peripheralPreserve.diagnostic_clients[0].name -cne 'gpu_suite' -or $peripheralPreserve.diagnostic_clients[0].phase -ne 1 -or $peripheralPreserve.bt_readonly_execute -ne $false -or (@($peripheralPreserve.captured_registry_values).Count -ne 70)){throw '13 retained snapshots/GPU0 only/70 named values required'}
+        if(@($peripheralPreserve.service_preservation.PSObject.Properties).Count -ne 18){throw '18 original full service fingerprints required'}
+        if($peripheralPreserve.boot_transition.boot_write_required -ne $false -or $peripheralPreserve.boot_transition.boot_sha256 -cne '2e6cba6ab96cd5b586cefbd4bd004c6cee0484866ca6710ea454144da568c451' -or $peripheralPreserve.packages.parent.hashes.sys -cne 'bbced952c499ba0588c77b861b20141043929773d703cdd327ffa92e61990979' -or $peripheralPreserve.packages.render.hashes.sys -cne '221e8c430b9cdff0c6d237ec777f19224cb41d8f05565799995158ce58e7e2dc'){throw 'Matched parent1117 boot2e6 GPU354 tuple required'}
+
+        if($peripheralPreserve.packages.bt.hashes.sys -cne 'f20336f91a1951b9e4515b006788e500ad11c5d70deca810e9c0b729dd3a90f6' -or $peripheralPreserve.packages.wifi.hashes.sys -cne '97dcede955d813a7d72ba8d6e950ceae1215c94351187cf18c73cc15d3f47334'){throw 'Exact signed2018/1027 tuple required'}
+
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup172'){
+        if($peripheralPreserve.profile -cne 'combined-features-fresh172-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne '1b31a2f0ee15f25f8f2dda963b02dddda73af48370481c20f5011c04e0e58d6b' -or $peripheralPreserve.recovery_boot_id -cne 'e8031e96-eb9c-4fbe-95a6-f8b8a98a92e7' -or $peripheralPreserve.capture_selection.capture_number -ne 172 -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.deferred_unbound_mask -ne 0){throw 'Exact sealed fresh172 run173 contract required'}
+        if((@($peripheralPreserve.stage_order) -join ',') -cne 'rtc,thermal,usb,wifi,sd,display,parent,keypad,battery,audio,render,msdc,bt' -or (@($peripheralPreserve.install_targets) -join ',') -cne 'render' -or $peripheralPreserve.gpu_client_execute -ne $true -or $peripheralPreserve.gpu_client_count -ne 1 -or $peripheralPreserve.bt_first_install_execute -ne $false -or @($peripheralPreserve.diagnostic_clients).Count -ne 1 -or $peripheralPreserve.diagnostic_clients[0].name -cne 'gpu_suite' -or $peripheralPreserve.diagnostic_clients[0].phase -ne 1 -or $peripheralPreserve.bt_readonly_execute -ne $false -or (@($peripheralPreserve.captured_registry_values).Count -ne 65)){throw '13 retained snapshots/GPU0 only/65 named values required'}
+        if(@($peripheralPreserve.service_preservation.PSObject.Properties).Count -ne 18){throw '18 original full service fingerprints required'}
+        if($peripheralPreserve.boot_transition.boot_write_required -ne $false -or $peripheralPreserve.boot_transition.boot_sha256 -cne '2e6cba6ab96cd5b586cefbd4bd004c6cee0484866ca6710ea454144da568c451' -or $peripheralPreserve.packages.parent.hashes.sys -cne 'bbced952c499ba0588c77b861b20141043929773d703cdd327ffa92e61990979' -or $peripheralPreserve.packages.render.hashes.sys -cne '11e6f05f6d164168ec5e93b101187b6aaca481b2f6a9f29eed1b83ccd3ca0d53'){throw 'Matched parent1117 boot2e6 GPU353 tuple required'}
+
+        if($peripheralPreserve.packages.bt.hashes.sys -cne 'f20336f91a1951b9e4515b006788e500ad11c5d70deca810e9c0b729dd3a90f6' -or $peripheralPreserve.packages.wifi.hashes.sys -cne '97dcede955d813a7d72ba8d6e950ceae1215c94351187cf18c73cc15d3f47334'){throw 'Exact signed2018/1027 tuple required'}
+
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup170'){
+        if($peripheralPreserve.profile -cne 'combined-features-fresh170-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne 'de83190c6ff5a88f547c9f757b226c6e3be892aacdd585687650dfcce84cef37' -or $peripheralPreserve.recovery_boot_id -cne 'c3234a04-7a4e-4614-aca1-e21cee6f7a61' -or $peripheralPreserve.capture_selection.capture_number -ne 170 -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.deferred_unbound_mask -ne 0){throw 'Exact sealed fresh170 run171 contract required'}
+        if((@($peripheralPreserve.stage_order) -join ',') -cne 'rtc,thermal,usb,wifi,sd,display,parent,keypad,battery,audio,render,msdc,bt' -or (@($peripheralPreserve.install_targets) -join ',') -cne 'wifi,bt,render' -or $peripheralPreserve.gpu_client_execute -ne $true -or $peripheralPreserve.gpu_client_count -ne 1 -or $peripheralPreserve.bt_first_install_execute -ne $false -or @($peripheralPreserve.diagnostic_clients).Count -ne 2 -or $peripheralPreserve.diagnostic_clients[0].name -cne 'bt_status' -or $peripheralPreserve.diagnostic_clients[1].name -cne 'gpu_suite' -or $peripheralPreserve.diagnostic_clients[0].phase -ne 0 -or $peripheralPreserve.diagnostic_clients[1].phase -ne 1 -or (@($peripheralPreserve.captured_registry_values).Count -ne 60)){throw '13 targets/BT0+GPU1/60 named values required'}
+        if(@($peripheralPreserve.service_preservation.PSObject.Properties).Count -ne 18){throw '18 original full service fingerprints required'}
+        if($peripheralPreserve.boot_transition.boot_write_required -ne $false -or $peripheralPreserve.boot_transition.boot_sha256 -cne '2e6cba6ab96cd5b586cefbd4bd004c6cee0484866ca6710ea454144da568c451' -or $peripheralPreserve.packages.parent.hashes.sys -cne 'bbced952c499ba0588c77b861b20141043929773d703cdd327ffa92e61990979' -or $peripheralPreserve.packages.render.hashes.sys -cne '09439875a24b86d6f055eb61dd978e609061c4cbc7a8088beb08fd04c68309da'){throw 'Matched parent1117 boot2e6 GPU352 tuple required'}
+
+        if($peripheralPreserve.packages.bt.hashes.sys -cne 'f20336f91a1951b9e4515b006788e500ad11c5d70deca810e9c0b729dd3a90f6' -or $peripheralPreserve.packages.wifi.hashes.sys -cne '97dcede955d813a7d72ba8d6e950ceae1215c94351187cf18c73cc15d3f47334'){throw 'Exact signed2018/1027 tuple required'}
+
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup168'){
+        if($peripheralPreserve.profile -cne 'combined-features-fresh168-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne '27f34c676ccc5d684b186f05c2a831b5ba80f944be4bbaa6baf66d66498316bc' -or $peripheralPreserve.recovery_boot_id -cne 'bcbdc7c0-9b83-422c-83fc-c0d205544b90' -or $peripheralPreserve.capture_selection.capture_number -ne 168 -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.deferred_unbound_mask -ne 0){throw 'Exact sealed fresh168 run159 contract required'}
+        if((@($peripheralPreserve.stage_order) -join ',') -cne 'rtc,thermal,usb,wifi,sd,display,parent,keypad,battery,audio,render,msdc,bt' -or (@($peripheralPreserve.install_targets) -join ',') -cne 'render' -or $peripheralPreserve.gpu_client_execute -ne $true -or $peripheralPreserve.gpu_client_count -ne 1 -or $peripheralPreserve.bt_first_install_execute -ne $false -or @($peripheralPreserve.diagnostic_clients).Count -ne 2 -or $peripheralPreserve.diagnostic_clients[0].name -cne 'bt_status' -or $peripheralPreserve.diagnostic_clients[1].name -cne 'gpu_suite' -or $peripheralPreserve.diagnostic_clients[0].phase -ne 0 -or $peripheralPreserve.diagnostic_clients[1].phase -ne 1 -or (@($peripheralPreserve.captured_registry_values).Count -ne 55)){throw '12 targets/GPU0/retained BT/30 named values required'}
+        if(@($peripheralPreserve.service_preservation.PSObject.Properties).Count -ne 18){throw '18 original full service fingerprints required'}
+        if($peripheralPreserve.boot_transition.boot_write_required -ne $false -or $peripheralPreserve.boot_transition.boot_sha256 -cne '2e6cba6ab96cd5b586cefbd4bd004c6cee0484866ca6710ea454144da568c451' -or $peripheralPreserve.packages.parent.hashes.sys -cne 'bbced952c499ba0588c77b861b20141043929773d703cdd327ffa92e61990979' -or $peripheralPreserve.packages.render.hashes.sys -cne '0bc927c43d2f7ed61954c2d2e392537d1aca0f735465d92aa5223d63298cd1e8'){throw 'Matched parent1117 boot2e6 GPU345 tuple required'}
+
+        if($peripheralPreserve.packages.bt.hashes.sys -cne '57c5dc4aa85b9793d9b1ae3dcab8567f65c7767c55bba162299e3cf2a318a31e' -or $peripheralPreserve.packages.wifi.hashes.sys -cne 'dd10ca907a7e9104871564103b6a75182e2ca1f64cc2aafdbbde850f81d74749'){throw 'Exact signed2017/1026 tuple required'}
+
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup166'){
+        if($peripheralPreserve.profile -cne 'combined-features-fresh166-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne 'e53d4c13df2cbba7a744c49ba345f9d6acbaa33146f1d97a4101b6d92e009a3e' -or $peripheralPreserve.recovery_boot_id -cne '910c5a11-562e-4fe3-a1ee-e3ea31e2eef7' -or $peripheralPreserve.capture_selection.capture_number -ne 166 -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.deferred_unbound_mask -ne 0){throw 'Exact sealed fresh166 run159 contract required'}
+        if((@($peripheralPreserve.stage_order) -join ',') -cne 'rtc,thermal,usb,wifi,sd,display,parent,keypad,battery,audio,render,msdc,bt' -or (@($peripheralPreserve.install_targets) -join ',') -cne 'wifi,bt,render' -or $peripheralPreserve.gpu_client_execute -ne $true -or $peripheralPreserve.gpu_client_count -ne 1 -or $peripheralPreserve.bt_first_install_execute -ne $false -or @($peripheralPreserve.diagnostic_clients).Count -ne 2 -or $peripheralPreserve.diagnostic_clients[0].name -cne 'bt_status' -or $peripheralPreserve.diagnostic_clients[1].name -cne 'gpu_suite' -or $peripheralPreserve.diagnostic_clients[0].phase -ne 0 -or $peripheralPreserve.diagnostic_clients[1].phase -ne 1 -or (@($peripheralPreserve.captured_registry_values).Count -ne 50)){throw '12 targets/GPU0/retained BT/30 named values required'}
+        if(@($peripheralPreserve.service_preservation.PSObject.Properties).Count -ne 18){throw '18 original full service fingerprints required'}
+        if($peripheralPreserve.boot_transition.boot_write_required -ne $false -or $peripheralPreserve.boot_transition.boot_sha256 -cne '2e6cba6ab96cd5b586cefbd4bd004c6cee0484866ca6710ea454144da568c451' -or $peripheralPreserve.packages.parent.hashes.sys -cne 'bbced952c499ba0588c77b861b20141043929773d703cdd327ffa92e61990979' -or $peripheralPreserve.packages.render.hashes.sys -cne '18be3d3ed13545ed58b0e4518278e6c9b5a5125ba0d2bcd98f238e7e6e79274b'){throw 'Matched parent1117 boot2e6 GPU345 tuple required'}
+
+        if($peripheralPreserve.packages.bt.hashes.sys -cne '57c5dc4aa85b9793d9b1ae3dcab8567f65c7767c55bba162299e3cf2a318a31e' -or $peripheralPreserve.packages.wifi.hashes.sys -cne 'dd10ca907a7e9104871564103b6a75182e2ca1f64cc2aafdbbde850f81d74749'){throw 'Exact signed2017/1026 tuple required'}
+
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup164'){
+        if($peripheralPreserve.profile -cne 'combined-features-fresh164-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne 'd71ad4abf3425f345b993eab4da7f91261870348ab9b42fba82adb8e41dbba6c' -or $peripheralPreserve.recovery_boot_id -cne '9bfb3e9b-2837-4250-a5df-c8a08ff05ba2' -or $peripheralPreserve.capture_selection.capture_number -ne 164 -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.deferred_unbound_mask -ne 0){throw 'Exact sealed fresh164 run159 contract required'}
+        if((@($peripheralPreserve.stage_order) -join ',') -cne 'rtc,thermal,usb,wifi,sd,display,parent,keypad,battery,audio,render,msdc,bt' -or (@($peripheralPreserve.install_targets) -join ',') -cne 'wifi,bt,render' -or $peripheralPreserve.gpu_client_execute -ne $true -or $peripheralPreserve.gpu_client_count -ne 1 -or $peripheralPreserve.bt_first_install_execute -ne $false -or @($peripheralPreserve.diagnostic_clients).Count -ne 2 -or $peripheralPreserve.diagnostic_clients[0].name -cne 'bt_status' -or $peripheralPreserve.diagnostic_clients[1].name -cne 'gpu_suite' -or $peripheralPreserve.diagnostic_clients[0].phase -ne 0 -or $peripheralPreserve.diagnostic_clients[1].phase -ne 1 -or (@($peripheralPreserve.captured_registry_values).Count -ne 45)){throw '12 targets/GPU0/retained BT/30 named values required'}
+        if(@($peripheralPreserve.service_preservation.PSObject.Properties).Count -ne 18){throw '18 original full service fingerprints required'}
+        if($peripheralPreserve.boot_transition.boot_write_required -ne $false -or $peripheralPreserve.boot_transition.boot_sha256 -cne '2e6cba6ab96cd5b586cefbd4bd004c6cee0484866ca6710ea454144da568c451' -or $peripheralPreserve.packages.parent.hashes.sys -cne 'bbced952c499ba0588c77b861b20141043929773d703cdd327ffa92e61990979' -or $peripheralPreserve.packages.render.hashes.sys -cne 'e267b43f4bd5c3b161b7212385f2b277102aec8e32de3c719488cd3f839d3aa4'){throw 'Matched parent1117 boot2e6 GPU345 tuple required'}
+
+        if($peripheralPreserve.packages.bt.hashes.sys -cne '1b72260c4d0cf34ad58d8593a90691e0fed54862797a74cd1812fd825288bfdf' -or $peripheralPreserve.packages.wifi.hashes.sys -cne 'e7d412949b873ef7b7efd79ab6ad771d02cdb47f4ff6c6bc3c6da15a01e44868'){throw 'Exact signed2016/1025 tuple required'}
+
+        if($peripheralPreserve.diagnostic_clients[0].timeout_ms -ne 45000 -or $peripheralPreserve.BT_admission_observation.software_wait_ms -ne 35000){throw 'One bounded software arrival observation required'}
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup162'){
+        if($peripheralPreserve.profile -cne 'combined-features-fresh162-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne 'dd53e778ebd0340cd75f4d4a715693a110c356e56541f12bba017a073d8463cf' -or $peripheralPreserve.recovery_boot_id -cne '064c914b-966b-4543-a6fd-ae8247d30917' -or $peripheralPreserve.capture_selection.capture_number -ne 162 -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.deferred_unbound_mask -ne 0){throw 'Exact sealed fresh162 run159 contract required'}
+        if((@($peripheralPreserve.stage_order) -join ',') -cne 'rtc,thermal,usb,wifi,sd,display,parent,keypad,battery,audio,render,msdc,bt' -or (@($peripheralPreserve.install_targets) -join ',') -cne 'render' -or $peripheralPreserve.gpu_client_execute -ne $true -or $peripheralPreserve.gpu_client_count -ne 1 -or $peripheralPreserve.bt_first_install_execute -ne $false -or @($peripheralPreserve.diagnostic_clients).Count -ne 1 -or $peripheralPreserve.diagnostic_clients[0].name -cne 'gpu_suite' -or $peripheralPreserve.diagnostic_clients[0].phase -ne 1 -or (@($peripheralPreserve.captured_registry_values).Count -ne 40)){throw '12 targets/GPU0/retained BT/30 named values required'}
+        if(@($peripheralPreserve.service_preservation.PSObject.Properties).Count -ne 18){throw '18 original full service fingerprints required'}
+        if($peripheralPreserve.boot_transition.boot_write_required -ne $false -or $peripheralPreserve.boot_transition.boot_sha256 -cne '2e6cba6ab96cd5b586cefbd4bd004c6cee0484866ca6710ea454144da568c451' -or $peripheralPreserve.packages.parent.hashes.sys -cne 'bbced952c499ba0588c77b861b20141043929773d703cdd327ffa92e61990979' -or $peripheralPreserve.packages.render.hashes.sys -cne '0fe45c9dc893aa5dfa5f1537224964601efaa1eabe7823fad5ee61863aba5964'){throw 'Matched parent1117 boot2e6 GPU345 tuple required'}
+
+        if($peripheralPreserve.packages.bt.hashes.sys -cne 'db66f54a15bdfd62a29042bb536ab91055d5301742a891b5286643e956bd367f' -or $peripheralPreserve.packages.wifi.hashes.sys -cne '8564ee8ef75a9d274e07e9ed4659781b4585e7c5cd604a6d87facd9bc344e926'){throw 'Exact signed2015/1024 tuple required'}
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup160'){
+        if($peripheralPreserve.profile -cne 'combined-features-fresh160-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne '9b26fbda2aa0dbbebed13b35d2b568c5a2337b3c47e57c565285f7b8cc70c675' -or $peripheralPreserve.recovery_boot_id -cne '3189cd9e-7cc8-41e7-bf31-de7d8e351aff' -or $peripheralPreserve.capture_selection.capture_number -ne 160 -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.deferred_unbound_mask -ne 0){throw 'Exact sealed fresh160 run159 contract required'}
+        if((@($peripheralPreserve.stage_order) -join ',') -cne 'rtc,thermal,usb,wifi,sd,display,parent,keypad,battery,audio,render,msdc,bt' -or (@($peripheralPreserve.install_targets) -join ',') -cne 'wifi,bt,render' -or $peripheralPreserve.gpu_client_execute -ne $true -or $peripheralPreserve.gpu_client_count -ne 1 -or $peripheralPreserve.bt_first_install_execute -ne $false -or @($peripheralPreserve.diagnostic_clients).Count -ne 2 -or $peripheralPreserve.diagnostic_clients[0].name -cne 'bt_status' -or $peripheralPreserve.diagnostic_clients[1].name -cne 'gpu_suite' -or $peripheralPreserve.diagnostic_clients[0].phase -ne 0 -or $peripheralPreserve.diagnostic_clients[1].phase -ne 1 -or (@($peripheralPreserve.captured_registry_values).Count -ne 35)){throw '12 targets/GPU0/retained BT/30 named values required'}
+        if(@($peripheralPreserve.service_preservation.PSObject.Properties).Count -ne 18){throw '18 original full service fingerprints required'}
+        if($peripheralPreserve.boot_transition.boot_write_required -ne $false -or $peripheralPreserve.boot_transition.boot_sha256 -cne '2e6cba6ab96cd5b586cefbd4bd004c6cee0484866ca6710ea454144da568c451' -or $peripheralPreserve.packages.parent.hashes.sys -cne 'bbced952c499ba0588c77b861b20141043929773d703cdd327ffa92e61990979' -or $peripheralPreserve.packages.render.hashes.sys -cne '89d12160ec865ca06852c0dda2bb0fd63505c9de13b27e492d7dd45d7aaa5984'){throw 'Matched parent1117 boot2e6 GPU345 tuple required'}
+
+        if($peripheralPreserve.packages.bt.hashes.sys -cne 'db66f54a15bdfd62a29042bb536ab91055d5301742a891b5286643e956bd367f' -or $peripheralPreserve.packages.wifi.hashes.sys -cne '8564ee8ef75a9d274e07e9ed4659781b4585e7c5cd604a6d87facd9bc344e926'){throw 'Exact signed2015/1024 tuple required'}
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup158'){
+        if($peripheralPreserve.profile -cne 'combined-features-fresh158-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne 'c89c8d67d6b914588dc51893c04323ebf36273840c3383cc0486c733637fd80c' -or $peripheralPreserve.recovery_boot_id -cne '6b05be55-9b69-4544-a786-359023f3f283' -or $peripheralPreserve.capture_selection.capture_number -ne 158 -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.deferred_unbound_mask -ne 0){throw 'Exact sealed fresh158 run159 contract required'}
+        if((@($peripheralPreserve.stage_order) -join ',') -cne 'rtc,thermal,usb,wifi,sd,display,parent,keypad,battery,audio,render,msdc' -or (@($peripheralPreserve.install_targets) -join ',') -cne 'render' -or $peripheralPreserve.gpu_client_execute -ne $true -or $peripheralPreserve.gpu_client_count -ne 1 -or $peripheralPreserve.bt_first_install_execute -ne $false -or @($peripheralPreserve.diagnostic_clients).Count -ne 1 -or $peripheralPreserve.diagnostic_clients[0].name -cne 'gpu_suite' -or $peripheralPreserve.diagnostic_clients[0].phase -ne 1 -or (@($peripheralPreserve.captured_registry_values).Count -ne 30)){throw '12 targets/GPU0/retained BT/30 named values required'}
+        if(@($peripheralPreserve.service_preservation.PSObject.Properties).Count -ne 18){throw '18 original full service fingerprints required'}
+        if($peripheralPreserve.boot_transition.boot_write_required -ne $false -or $peripheralPreserve.boot_transition.boot_sha256 -cne '2e6cba6ab96cd5b586cefbd4bd004c6cee0484866ca6710ea454144da568c451' -or $peripheralPreserve.packages.parent.hashes.sys -cne 'bbced952c499ba0588c77b861b20141043929773d703cdd327ffa92e61990979' -or $peripheralPreserve.packages.render.hashes.sys -cne '7a5bb17fc86a342bfb4217770b5ad80bbbb0c420fccb716d237aae1771147cc0'){throw 'Matched parent1117 boot2e6 GPU345 tuple required'}
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup156'){
+        if($peripheralPreserve.profile -cne 'combined-features-fresh156-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne '9f41dccf1052fb0401b76acb94d14cb70c05c9c94d9c25736c3960f5106ddb0a' -or $peripheralPreserve.recovery_boot_id -cne '1fc923b6-71b1-46e4-862a-b729086e2f4f' -or $peripheralPreserve.capture_selection.capture_number -ne 156 -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.deferred_unbound_mask -ne 0){throw 'Exact sealed fresh148 run149 contract required'}
+        if((@($peripheralPreserve.stage_order) -join ',') -cne 'rtc,thermal,usb,wifi,sd,display,parent,keypad,battery,audio,render,msdc' -or (@($peripheralPreserve.install_targets) -join ',') -cne 'render' -or $peripheralPreserve.gpu_client_execute -ne $true -or $peripheralPreserve.gpu_client_count -ne 1 -or $peripheralPreserve.bt_first_install_execute -ne $false -or @($peripheralPreserve.diagnostic_clients).Count -ne 1 -or $peripheralPreserve.diagnostic_clients[0].name -cne 'gpu_suite' -or $peripheralPreserve.diagnostic_clients[0].phase -ne 1 -or (@($peripheralPreserve.captured_registry_values).Count -ne 25)){throw '12 targets/GPU0/retained BT/5+5 named values required'}
+        if(@($peripheralPreserve.service_preservation.PSObject.Properties).Count -ne 18){throw '18 original full service fingerprints required'}
+        if($peripheralPreserve.boot_transition.boot_write_required -ne $false -or $peripheralPreserve.boot_transition.boot_sha256 -cne '2e6cba6ab96cd5b586cefbd4bd004c6cee0484866ca6710ea454144da568c451' -or $peripheralPreserve.packages.parent.hashes.sys -cne 'bbced952c499ba0588c77b861b20141043929773d703cdd327ffa92e61990979' -or $peripheralPreserve.packages.render.hashes.sys -cne '4aad24d88e4ea659a35dc4299405658231e91a2e7f5b6c49617ae4dfcbeca456'){throw 'Matched parent1117 boot2e6 GPU343 tuple required'}
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup154'){
+        if($peripheralPreserve.profile -cne 'combined-features-fresh154-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne 'a26e82c937733617d932bb92201a593885575f27e89f26791612f791ca17b8da' -or $peripheralPreserve.recovery_boot_id -cne '9d795d5d-8d58-47a2-b208-e5c0149ecd19' -or $peripheralPreserve.capture_selection.capture_number -ne 154 -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.deferred_unbound_mask -ne 0){throw 'Exact sealed fresh148 run149 contract required'}
+        if((@($peripheralPreserve.stage_order) -join ',') -cne 'rtc,thermal,usb,wifi,sd,display,parent,keypad,battery,audio,render,msdc' -or (@($peripheralPreserve.install_targets) -join ',') -cne 'parent,render' -or $peripheralPreserve.gpu_client_execute -ne $true -or $peripheralPreserve.gpu_client_count -ne 1 -or $peripheralPreserve.bt_first_install_execute -ne $false -or @($peripheralPreserve.diagnostic_clients).Count -ne 2 -or $peripheralPreserve.diagnostic_clients[0].name -cne 'thermal_status' -or $peripheralPreserve.diagnostic_clients[1].name -cne 'gpu_suite' -or $peripheralPreserve.diagnostic_clients[0].phase -ne 0 -or $peripheralPreserve.diagnostic_clients[1].phase -ne 1 -or (@($peripheralPreserve.captured_registry_values).Count -ne 20)){throw '12 targets/GPU0/retained BT/5+5 named values required'}
+        if(@($peripheralPreserve.service_preservation.PSObject.Properties).Count -ne 18){throw '18 original full service fingerprints required'}
+        if($peripheralPreserve.boot_transition.boot_write_required -ne $true -or $peripheralPreserve.boot_transition.boot_sha256 -cne '2e6cba6ab96cd5b586cefbd4bd004c6cee0484866ca6710ea454144da568c451' -or $peripheralPreserve.packages.parent.hashes.sys -cne 'bbced952c499ba0588c77b861b20141043929773d703cdd327ffa92e61990979' -or $peripheralPreserve.packages.render.hashes.sys -cne 'e884f33652078618ead6e02faaeccf606e15e9d3074e0cffabe681c8eb1db898'){throw 'Matched parent1117 boot2e6 GPU343 tuple required'}
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup152'){
+        if($peripheralPreserve.profile -cne 'combined-features-fresh152-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne 'fee4081fc3842390e854753aa6b2ce4659fc5b58645246c406ed205679c55ba3' -or $peripheralPreserve.recovery_boot_id -cne '72ea1a1d-06b9-4671-88d2-f957198f3362' -or $peripheralPreserve.capture_selection.capture_number -ne 152 -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.deferred_unbound_mask -ne 0){throw 'Exact sealed fresh148 run149 contract required'}
+        if((@($peripheralPreserve.stage_order) -join ',') -cne 'rtc,thermal,usb,wifi,sd,display,parent,keypad,battery,audio,render,msdc' -or (@($peripheralPreserve.install_targets) -join ',') -cne 'render' -or $peripheralPreserve.gpu_client_execute -ne $true -or $peripheralPreserve.gpu_client_count -ne 1 -or $peripheralPreserve.bt_first_install_execute -ne $false -or @($peripheralPreserve.diagnostic_clients).Count -ne 1 -or $peripheralPreserve.diagnostic_clients[0].name -cne 'gpu_suite' -or $peripheralPreserve.diagnostic_clients[0].phase -ne 1 -or (@($peripheralPreserve.captured_registry_values).Count -ne 15)){throw '12 targets/GPU0/retained BT/5+5 named values required'}
+        if(@($peripheralPreserve.service_preservation.PSObject.Properties).Count -ne 18){throw '18 original full service fingerprints required'}
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup150'){
+        if($peripheralPreserve.profile -cne 'combined-features-fresh150-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne 'ce6c67d6fc90c8ddae99067700efa4aba3da0e1e6c72136a5ab72062deb1c4c6' -or $peripheralPreserve.recovery_boot_id -cne '161b63f1-d476-462e-9bfd-16bddfa09911' -or $peripheralPreserve.capture_selection.capture_number -ne 150 -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.deferred_unbound_mask -ne 0){throw 'Exact sealed fresh148 run149 contract required'}
+        if((@($peripheralPreserve.stage_order) -join ',') -cne 'rtc,thermal,usb,wifi,sd,display,parent,keypad,battery,audio,render,msdc' -or (@($peripheralPreserve.install_targets) -join ',') -cne 'parent,thermal,msdc' -or $peripheralPreserve.gpu_client_execute -ne $false -or $peripheralPreserve.gpu_client_count -ne 0 -or $peripheralPreserve.bt_first_install_execute -ne $false -or @($peripheralPreserve.diagnostic_clients).Count -ne 2 -or $peripheralPreserve.diagnostic_clients[0].name -cne 'thermal_status' -or $peripheralPreserve.diagnostic_clients[1].name -cne 'audio_consumer' -or @($peripheralPreserve.diagnostic_clients|Where-Object {$_.phase -ne 0}).Count -ne 0 -or (@($peripheralPreserve.captured_registry_values).Count -ne 10)){throw '12 targets/GPU0/retained BT/5+5 named values required'}
+        if(@($peripheralPreserve.service_preservation.PSObject.Properties).Count -ne 18){throw '18 original full service fingerprints required'}
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup148'){
+        if($peripheralPreserve.profile -cne 'combined-features-fresh148-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne '38d60c8d9f84a08e0c0284505fee17b0e3b32b56060a6a030643bd78f671f6df' -or $peripheralPreserve.recovery_boot_id -cne '5b5b69d3-70d1-4100-927b-e29eb8bd3026' -or $peripheralPreserve.capture_selection.capture_number -ne 148 -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.deferred_unbound_mask -ne 0){throw 'Exact sealed fresh148 run149 contract required'}
+        if((@($peripheralPreserve.stage_order) -join ',') -cne 'rtc,thermal,usb,wifi,sd,display,parent,keypad,battery,audio,render,msdc' -or (@($peripheralPreserve.install_targets) -join ',') -cne 'parent,thermal,msdc' -or $peripheralPreserve.gpu_client_execute -ne $false -or $peripheralPreserve.gpu_client_count -ne 0 -or $peripheralPreserve.bt_first_install_execute -ne $false -or @($peripheralPreserve.diagnostic_clients).Count -ne 2 -or $peripheralPreserve.diagnostic_clients[0].name -cne 'thermal_status' -or $peripheralPreserve.diagnostic_clients[1].name -cne 'audio_consumer' -or @($peripheralPreserve.diagnostic_clients|Where-Object {$_.phase -ne 0}).Count -ne 0 -or (@($peripheralPreserve.captured_registry_values).Count -ne 10)){throw '12 targets/GPU0/retained BT/5+5 named values required'}
+        if(@($peripheralPreserve.service_preservation.PSObject.Properties).Count -ne 18){throw '18 original full service fingerprints required'}
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup146'){
+
+        if($peripheralPreserve.profile -cne 'combined-features-fresh146-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne '7759162af34e8c440f28155d8d24acd77469f8f3911528eb62ee382b95c15392' -or $peripheralPreserve.recovery_boot_id -cne 'f5fd8256-eba5-463c-8f34-0951330c4ee9' -or $peripheralPreserve.capture_selection.capture_number -ne 146 -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.battery_baseline_sys_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $peripheralPreserve.battery_baseline_sys_sha256 -ceq ('0'*64)){throw 'Final sealed exact fresh142 followup contract required; draft cannot arm'}
+        $names=@($peripheralPreserve.service_preservation.PSObject.Properties.Name|Sort-Object)
+        if(($names -join ',') -cne ((@('MT8167EngineProbe','MT8167RenderSingleGpu','MT8167RenderStage','MT8167DeviceInstall','RpcSs','MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130','MT8167CombinedFollowup132','MT8167CombinedFollowup134','Mt6392Keys','MT8167CombinedFollowup136','MT8167CombinedFollowup140','MT8167CombinedFollowup142','MT8167CombinedFollowup144')|Sort-Object) -join ',')){throw 'All seven old services must be pinned'}
+
+        if((@($peripheralPreserve.install_targets) -join ',') -cne 'audio,render' -or $peripheralPreserve.diagnostic_only -ne $false -or $peripheralPreserve.gpu_client_execute -ne $true -or $peripheralPreserve.gpu_client_count -ne 1 -or @($peripheralPreserve.diagnostic_clients).Count -ne 2 -or (@($peripheralPreserve.diagnostic_clients|Where-Object {$_.phase -eq 1}).Count -ne 1)){throw 'Exact audio1033/WiFi1021/render DIF and one final GPU client required'}
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup144'){
+        if($peripheralPreserve.profile -cne 'combined-features-fresh144-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne '0faa9fd09cce293d411ad025e64e54c27d5975948b54935c00e25a3feff15a60' -or $peripheralPreserve.recovery_boot_id -cne 'c35ceece-d15b-4e07-98f9-5f1d2accd64f' -or $peripheralPreserve.capture_selection.capture_number -ne 144 -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.battery_baseline_sys_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $peripheralPreserve.battery_baseline_sys_sha256 -ceq ('0'*64)){throw 'Final sealed exact fresh142 followup contract required; draft cannot arm'}
+        $names=@($peripheralPreserve.service_preservation.PSObject.Properties.Name|Sort-Object)
+        if(($names -join ',') -cne ((@('MT8167EngineProbe','MT8167RenderSingleGpu','MT8167RenderStage','MT8167DeviceInstall','RpcSs','MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130','MT8167CombinedFollowup132','MT8167CombinedFollowup134','Mt6392Keys','MT8167CombinedFollowup136','MT8167CombinedFollowup140','MT8167CombinedFollowup142')|Sort-Object) -join ',')){throw 'All seven old services must be pinned'}
+
+        if((@($peripheralPreserve.install_targets) -join ',') -cne 'thermal,wifi,render' -or $peripheralPreserve.diagnostic_only -ne $false -or $peripheralPreserve.gpu_client_execute -ne $true -or $peripheralPreserve.gpu_client_count -ne 1 -or @($peripheralPreserve.diagnostic_clients).Count -ne 1 -or (@($peripheralPreserve.diagnostic_clients|Where-Object {$_.phase -eq 1}).Count -ne 1)){throw 'Exact audio1033/WiFi1021/render DIF and one final GPU client required'}
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup142'){
+        if($peripheralPreserve.profile -cne 'combined-audio-classfix-fresh142-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne 'f5ee192fd738b6db129064e71e43bc0a80bf35c6341e0177d468e3bbd6283e37' -or $peripheralPreserve.recovery_boot_id -cne '1eb91bc2-cb82-4433-85f1-a70b3570529e' -or $peripheralPreserve.capture_selection.capture_number -ne 142 -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.battery_baseline_sys_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $peripheralPreserve.battery_baseline_sys_sha256 -ceq ('0'*64)){throw 'Final sealed exact fresh142 followup contract required; draft cannot arm'}
+        $names=@($peripheralPreserve.service_preservation.PSObject.Properties.Name|Sort-Object)
+        if(($names -join ',') -cne ((@('MT8167EngineProbe','MT8167RenderSingleGpu','MT8167RenderStage','MT8167DeviceInstall','RpcSs','MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130','MT8167CombinedFollowup132','MT8167CombinedFollowup134','Mt6392Keys','MT8167CombinedFollowup136','MT8167CombinedFollowup140')|Sort-Object) -join ',')){throw 'All seven old services must be pinned'}
+
+        if((@($peripheralPreserve.install_targets) -join ',') -cne 'audio,wifi,render' -or $peripheralPreserve.diagnostic_only -ne $false -or $peripheralPreserve.gpu_client_execute -ne $true -or $peripheralPreserve.gpu_client_count -ne 1 -or @($peripheralPreserve.diagnostic_clients).Count -ne 6 -or (@($peripheralPreserve.diagnostic_clients|Where-Object {$_.phase -eq 1}).Count -ne 1)){throw 'Exact audio1033/WiFi1021/render DIF and one final GPU client required'}
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup140'){
+        if($peripheralPreserve.profile -cne 'combined-peripherals-fresh140-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne 'af6df53daf6b70248e88007bd23642a43b09e28ca240bee526bf00674a194bc3' -or $peripheralPreserve.recovery_boot_id -cne '0fb71a3a-9ab6-491a-be62-ff3f46f5843d' -or $peripheralPreserve.capture_selection.capture_number -ne 140 -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.battery_baseline_sys_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $peripheralPreserve.battery_baseline_sys_sha256 -ceq ('0'*64)){throw 'Final sealed exact fresh140 followup contract required; draft cannot arm'}
+        $names=@($peripheralPreserve.service_preservation.PSObject.Properties.Name|Sort-Object)
+        if(($names -join ',') -cne ((@('MT8167EngineProbe','MT8167RenderSingleGpu','MT8167RenderStage','MT8167DeviceInstall','RpcSs','MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130','MT8167CombinedFollowup132','MT8167CombinedFollowup134','Mt6392Keys','MT8167CombinedFollowup136')|Sort-Object) -join ',')){throw 'All seven old services must be pinned'}
+
+        if((@($peripheralPreserve.install_targets) -join ',') -cne 'parent,audio' -or $peripheralPreserve.diagnostic_only -ne $false -or $peripheralPreserve.gpu_client_execute -ne $false -or $peripheralPreserve.gpu_client_count -ne 0 -or @($peripheralPreserve.diagnostic_clients).Count -ne 5 -or (@($peripheralPreserve.diagnostic_clients|Where-Object {$_.phase -eq 1}).Count -ne 0)){throw 'Exact parent1115/audio1033 DIF and five non-GPU clients required'}
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup138'){
+        if($peripheralPreserve.profile -cne 'combined-peripherals-fresh138-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne 'db49ed4d7b1759541f6021acd4d1f03b531fe4919f97b4d701d7b329f09ccd15' -or $peripheralPreserve.recovery_boot_id -cne 'bb058389-f139-4728-b90a-47b2cbe20a8f' -or $peripheralPreserve.capture_selection.capture_number -ne 138 -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.battery_baseline_sys_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $peripheralPreserve.battery_baseline_sys_sha256 -ceq ('0'*64)){throw 'Final sealed exact fresh138 followup contract required; draft cannot arm'}
+        $names=@($peripheralPreserve.service_preservation.PSObject.Properties.Name|Sort-Object)
+        if(($names -join ',') -cne ((@('MT8167EngineProbe','MT8167RenderSingleGpu','MT8167RenderStage','MT8167DeviceInstall','RpcSs','MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130','MT8167CombinedFollowup132','MT8167CombinedFollowup134','Mt6392Keys','MT8167CombinedFollowup136')|Sort-Object) -join ',')){throw 'All seven old services must be pinned'}
+
+        if((@($peripheralPreserve.install_targets) -join ',') -cne 'parent,audio' -or $peripheralPreserve.diagnostic_only -ne $false -or $peripheralPreserve.gpu_client_execute -ne $false -or $peripheralPreserve.gpu_client_count -ne 0 -or @($peripheralPreserve.diagnostic_clients).Count -ne 5 -or (@($peripheralPreserve.diagnostic_clients|Where-Object {$_.phase -eq 1}).Count -ne 0)){throw 'Exact parent1115/audio1033 DIF and five non-GPU clients required'}
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup136'){
+        if($peripheralPreserve.profile -cne 'combined-gpu335-fresh136-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne 'bdd612ee0914d2ac853100c89f856534eb4acca198d61a24e6660a257247d0c7' -or $peripheralPreserve.recovery_boot_id -cne '07b0b9b6-fb4e-49d6-af7a-6695d97652d1' -or $peripheralPreserve.capture_selection.capture_number -ne 136 -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.battery_baseline_sys_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $peripheralPreserve.battery_baseline_sys_sha256 -ceq ('0'*64)){throw 'Final sealed exact fresh136 followup contract required; draft cannot arm'}
+        $names=@($peripheralPreserve.service_preservation.PSObject.Properties.Name|Sort-Object)
+        if(($names -join ',') -cne ((@('MT8167EngineProbe','MT8167RenderSingleGpu','MT8167RenderStage','MT8167DeviceInstall','RpcSs','MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130','MT8167CombinedFollowup132','MT8167CombinedFollowup134','Mt6392Keys')|Sort-Object) -join ',')){throw 'All seven old services must be pinned'}
+
+        if((@($peripheralPreserve.install_targets) -join ',') -cne 'render' -or $peripheralPreserve.diagnostic_only -ne $false -or $peripheralPreserve.gpu_client_execute -ne $true -or @($peripheralPreserve.diagnostic_clients).Count -ne 5 -or (@($peripheralPreserve.diagnostic_clients|Where-Object {$_.phase -eq 1}).Count -ne 1)){throw 'Exact332 render-only install and one final GPU client contract required'}
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup134'){
+        if($peripheralPreserve.profile -cne 'combined-gpu332-fresh134-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne '9d4b078f989a589166ad7ef53a211251628e6d32a93c8c66fe4858233f29bee2' -or $peripheralPreserve.recovery_boot_id -cne '3d353a0c-b6e9-4697-957d-aa2b8b82cbe7' -or $peripheralPreserve.capture_selection.capture_number -ne 134 -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.battery_baseline_sys_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $peripheralPreserve.battery_baseline_sys_sha256 -ceq ('0'*64)){throw 'Final sealed exact fresh134 followup contract required; draft cannot arm'}
+        $names=@($peripheralPreserve.service_preservation.PSObject.Properties.Name|Sort-Object)
+        if(($names -join ',') -cne ((@('MT8167EngineProbe','MT8167RenderSingleGpu','MT8167RenderStage','MT8167DeviceInstall','RpcSs','MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130','MT8167CombinedFollowup132','Mt6392Keys')|Sort-Object) -join ',')){throw 'All seven old services must be pinned'}
+
+        if((@($peripheralPreserve.install_targets) -join ',') -cne 'render' -or $peripheralPreserve.diagnostic_only -ne $false -or $peripheralPreserve.gpu_client_execute -ne $true -or @($peripheralPreserve.diagnostic_clients).Count -ne 5 -or (@($peripheralPreserve.diagnostic_clients|Where-Object {$_.phase -eq 1}).Count -ne 1)){throw 'Exact332 render-only install and one final GPU client contract required'}
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup132'){
+        if($peripheralPreserve.profile -cne 'combined-rtc-afe-fresh132-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne '3bb3a33715675aa1382f91f13e328eb6f5690a0da66b77996ae81da153b18159' -or $peripheralPreserve.recovery_boot_id -cne '0623766b-23c8-4c54-b256-e874278087e3' -or $peripheralPreserve.capture_selection.capture_number -ne 132 -or $peripheralPreserve.planned_reboots -ne 0 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.battery_baseline_sys_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $peripheralPreserve.battery_baseline_sys_sha256 -ceq ('0'*64)){throw 'Final sealed exact fresh132 followup contract required; draft cannot arm'}
+        $names=@($peripheralPreserve.service_preservation.PSObject.Properties.Name|Sort-Object)
+        if(($names -join ',') -cne ((@('MT8167EngineProbe','MT8167RenderSingleGpu','MT8167RenderStage','MT8167DeviceInstall','RpcSs','MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130','Mt6392Keys')|Sort-Object) -join ',')){throw 'All seven old services must be pinned'}
+
+        if(@($peripheralPreserve.install_targets).Count -ne 0 -or !$peripheralPreserve.diagnostic_only -or $peripheralPreserve.gpu_client_execute -ne $false -or @($peripheralPreserve.diagnostic_clients).Count -ne 4 -or @($peripheralPreserve.diagnostic_clients|Where-Object {$_.phase -ne 0}).Count){throw 'Readonly132 no-DIF/no-GPU exact four-client contract required'}
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup130'){
+        if($peripheralPreserve.profile -cne 'combined-peripheral-gpu327-fresh130-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne '9f4e3602192cd79cd1d389e864b5745ba169e60b1c52643af9f7dfe1bc2f0447' -or $peripheralPreserve.recovery_boot_id -cne '216e0c46-af74-4015-b9f3-3f2271d81ec0' -or $peripheralPreserve.capture_selection.capture_number -ne 130 -or $peripheralPreserve.planned_reboots -ne 0 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.battery_baseline_sys_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $peripheralPreserve.battery_baseline_sys_sha256 -ceq ('0'*64)){throw 'Final sealed exact fresh130 followup contract required; draft cannot arm'}
+        $names=@($peripheralPreserve.service_preservation.PSObject.Properties.Name|Sort-Object)
+        if(($names -join ',') -cne ((@('MT8167EngineProbe','MT8167RenderSingleGpu','MT8167RenderStage','MT8167DeviceInstall','RpcSs','MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','Mt6392Keys')|Sort-Object) -join ',')){throw 'All seven old services must be pinned'}
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup128'){
+        if($peripheralPreserve.profile -cne 'combined-peripheral-gpu327-fresh128-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne 'bed13bd516128dd8df75a41e7bd68ecb3c5770f8394c73a70cceb7ced260a99d' -or $peripheralPreserve.recovery_boot_id -cne '336b05be-a058-484b-b5fb-5c8e5842882e' -or $peripheralPreserve.capture_selection.capture_number -ne 128 -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.battery_baseline_sys_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $peripheralPreserve.battery_baseline_sys_sha256 -ceq ('0'*64)){throw 'Final sealed exact fresh128 followup contract required; draft cannot arm'}
+        $names=@($peripheralPreserve.service_preservation.PSObject.Properties.Name|Sort-Object)
+        if(($names -join ',') -cne ((@('MT8167EngineProbe','MT8167RenderSingleGpu','MT8167RenderStage','MT8167DeviceInstall','RpcSs','MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167CombinedFollowup124','MT8167CombinedFollowup126','Mt6392Keys')|Sort-Object) -join ',')){throw 'All seven old services must be pinned'}
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup126'){
+        if($peripheralPreserve.profile -cne 'combined-peripheral-gpu327-fresh126-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne 'a07925d0d312500265983fbef8d550175a80a9eb91115b6b479fc4368a579102' -or $peripheralPreserve.recovery_boot_id -cne 'bd1dc7c9-1b01-4b56-a7cf-a9cbd5500e55' -or $peripheralPreserve.capture_selection.capture_number -ne 126 -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.battery_baseline_sys_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $peripheralPreserve.battery_baseline_sys_sha256 -ceq ('0'*64)){throw 'Final sealed exact fresh126 followup contract required; draft cannot arm'}
+        $names=@($peripheralPreserve.service_preservation.PSObject.Properties.Name|Sort-Object)
+        if(($names -join ',') -cne ((@('MT8167EngineProbe','MT8167RenderSingleGpu','MT8167RenderStage','MT8167DeviceInstall','RpcSs','MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167CombinedFollowup124')|Sort-Object) -join ',')){throw 'All seven old services must be pinned'}
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup124'){
+        if($peripheralPreserve.profile -cne 'combined-peripheral-gpu327-fresh124-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne 'aef54b0e2d3d70c083626c76d1c18cfe16b1eff8ecd6237233e83e257bd801da' -or $peripheralPreserve.recovery_boot_id -cne '0adf9f8e-8773-47b3-8d2d-e8440426f9e7' -or $peripheralPreserve.capture_selection.capture_number -ne 124 -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.first_install_mask -ne 128 -or $peripheralPreserve.battery_baseline_sys_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $peripheralPreserve.battery_baseline_sys_sha256 -ceq ('0'*64)){throw 'Final sealed exact fresh124 followup contract required; draft cannot arm'}
+        $names=@($peripheralPreserve.service_preservation.PSObject.Properties.Name|Sort-Object)
+        if(($names -join ',') -cne ((@('MT8167EngineProbe','MT8167RenderSingleGpu','MT8167RenderStage','MT8167DeviceInstall','RpcSs','MT8167PeripheralBatch','MT8167PeripheralNext122')|Sort-Object) -join ',')){throw 'All seven old services must be pinned'}
+    }elseif($ServiceName -ceq 'MT8167PeripheralNext122'){
+        if($peripheralPreserve.profile -cne 'peripheral-usb1010-wifi1020-sd8-dod17-parent1102-next-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.capture_selection.capture_number -lt 122 -or $peripheralPreserve.main_approval_sha256 -cnotmatch '^[0-9a-f]{64}$'){throw 'Explicit approved capture122+ next peripheral contract required'}
+        $names=@($peripheralPreserve.service_preservation.PSObject.Properties.Name|Sort-Object)
+        if(($names -join ',') -cne ((@('MT8167EngineProbe','MT8167RenderSingleGpu','MT8167RenderStage','MT8167DeviceInstall','RpcSs','MT8167PeripheralBatch')|Sort-Object) -join ',')){throw 'All six old service snapshots required'}
+    } else {
+    if($peripheralPreserve.profile -cne 'peripheral-usb1009-mma110-emmc19-parent1101-v1' -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.service -cne 'MT8167PeripheralBatch' -or $peripheralPreserve.data_directory -cne 'MT8167PeripheralBatch' -or $peripheralPreserve.planned_reboots -ne 1){throw 'Final main-selected peripheral-only profile required'}
+    }
+    $selection=$peripheralPreserve.capture_selection
+    if($selection.schema -ne 1 -or $selection.profile -cne $peripheralPreserve.profile -or $selection.capture_number -isnot [int] -or $selection.capture_number -lt 114 -or $selection.manifest_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $selection.manifest_sha256 -cne $peripheralPreserve.backup_manifest_sha256 -or $selection.recovery_boot_id -cnotmatch '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$' -or $selection.recovery_boot_id -cne $peripheralPreserve.recovery_boot_id -or $selection.gpu_policy_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $selection.unchanged_since_capture -ne $true -or $peripheralPreserve.backup_manifest -notmatch ('private-windows-rt-prebackup-run'+$selection.capture_number+$(if(($ServiceName -ceq 'MT8167CombinedFollowup168' -and $selection.capture_number -eq 168) -or ($ServiceName -ceq 'MT8167CombinedFollowup170' -and $selection.capture_number -eq 170) -or ($ServiceName -ceq 'MT8167CombinedFollowup172' -and $selection.capture_number -eq 172)){'-diag1'}else{''})+'/manifest.json$')){throw 'Explicit capture114+ manifest/policy/boot binding required'}
+    if($peripheralPreserve.source_files.SYSTEM.sha256 -cne $ExpectedSystemSha256 -or $peripheralPreserve.source_files.'SYSTEM.LOG1'.sha256 -cne $ExpectedLog1Sha256 -or $peripheralPreserve.source_files.'SYSTEM.LOG2'.sha256 -cne $ExpectedLog2Sha256){throw 'Selected capture trio pins required'}
+} elseif($PeripheralPreservationPlanPath -or $ExpectedPeripheralPreservationPlanSha256){throw 'Peripheral plan belongs only to its dedicated service'}
+$enginePreservePlan=$null
+if($ServiceName -ceq 'MT8167RenderSingleGpu') {
+    if($IncludeHardwareProbe -or $RearmEngineProbe -or $RearmFixedGpuDeviceInstall -or $InspectFixedGpuDeviceInstall -or !$EnginePreservationPlanPath -or $ExpectedEnginePreservationPlanSha256 -cnotmatch '^[0-9a-f]{64}$'){throw 'Single GPU requires explicit Engine-preservation-only plan'}
+    if((Hash-File $EnginePreservationPlanPath) -cne $ExpectedEnginePreservationPlanSha256){throw 'Engine preservation plan hash mismatch'}
+    $enginePreservePlan=Get-Content $EnginePreservationPlanPath -Raw|ConvertFrom-Json
+    if($enginePreservePlan.schema -ne 1 -or $enginePreservePlan.profile -cne 'render-single-gpu321-run111-v1' -or $enginePreservePlan.backup_manifest_sha256 -cne 'fc2a8277510f8836ca1d74efd15939e48a6dbe734b37cf31510448ceb6efa9d9'){throw 'Fixed fresh110 native preservation required'}
+    $sgPlan=$enginePreservePlan.single_gpu_rearm
+    if($sgPlan.schema -ne 1 -or $sgPlan.service -cne 'MT8167RenderSingleGpu' -or $sgPlan.maximum_rearms -ne 1 -or $sgPlan.data_directory -cne 'MT8167RenderSingleGpuRun111' -or @($sgPlan.diagnostic_policies).Count -ne 7 -or $sgPlan.diagnostic_policies[0] -cne 'd64c9165297bb602ac04be1d9053998c2f6f8da3581545b6be8b005d237fcdb5' -or $sgPlan.diagnostic_policies[1] -cne '6b00fa9f57696f19ad10ecdace497d0a3b1b4bcb861e98d7a8571e0ce23f19c3' -or $sgPlan.diagnostic_policies[2] -cne '10f8ec77e44a42c25a01c17434adb9c4bc80f180c142173725846d7735015c64' -or $sgPlan.diagnostic_policies[3] -cne 'b6273b09f165e3e5fcc61d49bc8b874008f9350d30592737c71e31a2999e905f' -or $sgPlan.diagnostic_policies[4] -cne 'bf84654ab50707ca2d660f685663cf4dd8b1c216921e862a7289340c5056ebe0' -or $sgPlan.diagnostic_policies[5] -cne '9947ede87028cd2d8100e443006cf516ed2c5e17e06229bb688943e2746dbc4b' -or $sgPlan.diagnostic_policies[6] -cne 'a66ac828fe1c6838f4de2a8ce766313b53a9d48682463a456727166c5bb39bea' -or @($sgPlan.partial_diagnostic_policies).Count -ne 4 -or $sgPlan.partial_diagnostic_policies[0] -cne '10f8ec77e44a42c25a01c17434adb9c4bc80f180c142173725846d7735015c64' -or $sgPlan.partial_diagnostic_policies[1] -cne 'bf84654ab50707ca2d660f685663cf4dd8b1c216921e862a7289340c5056ebe0' -or $sgPlan.partial_diagnostic_policies[2] -cne '9947ede87028cd2d8100e443006cf516ed2c5e17e06229bb688943e2746dbc4b' -or $sgPlan.partial_diagnostic_policies[3] -cne 'a66ac828fe1c6838f4de2a8ce766313b53a9d48682463a456727166c5bb39bea'){throw 'Fixed run97/run99/run101 to run111 rearm context required'}
+} elseif($EnginePreservationPlanPath -or $ExpectedEnginePreservationPlanSha256){throw 'Engine preserve plan is single-GPU only'}
 $engineRearmPlan=$null;$engineRearmPlanHash=$null
 if($RearmEngineProbe) {
     if($ServiceName -cne 'MT8167EngineProbe' -or $IncludeHardwareProbe -or !$EngineRearmPlanPath -or
@@ -398,8 +842,9 @@ $selected=@((Fixed-ServiceSpec $ServiceName))
 # never implicitly creates or rearms MT8167DeviceInstall.
 if($IncludeHardwareProbe -and $selected[0].name -ne 'MT8167HardwareProbe') { $selected+=@((Fixed-ServiceSpec 'MT8167HardwareProbe')) }
 $names=@($selected | ForEach-Object { $_.name })
-$report=[ordered]@{status='failed-do-not-deploy';whole_system_audit=$false;audit_scope='Select + existing DeviceInstall/RpcSs raw values and exact selected target service values only';source_files=[ordered]@{};timeout_seconds=$TimeoutSeconds;services=$names;errors=@();driver_files_modified=$false}
+$report=[ordered]@{status='failed-do-not-deploy';whole_system_audit=$false;audit_scope='Select + DeviceInstall/RpcSs raw values + selected service seven values; Engine-only known bounded LastDiagnostic subtree fingerprint when explicitly rearming';source_files=[ordered]@{};timeout_seconds=$TimeoutSeconds;services=$names;errors=@();driver_files_modified=$false}
 $plan=[ordered]@{control_set=$ExpectedCurrentControlSet;related_fingerprints='';services=$selected}
+if($enginePreservePlan){$plan.engine_preserve=$enginePreservePlan;$report.engine_preservation_plan_sha256=$ExpectedEnginePreservationPlanSha256;$report.single_gpu_rearm=$enginePreservePlan.single_gpu_rearm}
 if($engineRearmPlan) {
     $plan.engine_rearm=$engineRearmPlan;$plan.engine_rearm_plan_sha256=$engineRearmPlanHash
     $report.engine_rearm_plan_sha256=$engineRearmPlanHash
@@ -411,6 +856,7 @@ if($gpuRearmPlan) {
 if($InspectFixedGpuDeviceInstall) { $plan.gpu_inspect=$true;$report.service_values_written=$false }
 if($gpuCandidateBinding) { $report.audit_scope='Select + DeviceInstall/RpcSs + exact selected service seven values; fixed MOU0006 Enum and selected System-class key read-only';$plan.gpu_candidate_binding=$gpuCandidateBinding;$report.gpu_candidate_binding=$gpuCandidateBinding;$report.gpu_candidate_binding_sha256=$gpuCandidateBindingHash;$report.gpu_policy_sha256=$gpuCandidateBinding.policy_sha256 }
 if($gpuRearmPlan) { $plan.gpu_installed_selection=$gpuRearmPlan.installed_selection }
+if($peripheralPreserve){$plan.peripheral_preserve=$peripheralPreserve;$report.peripheral_preservation_plan_sha256=$ExpectedPeripheralPreservationPlanSha256;$report.peripheral_old_services_required=$true}
 $planFile=Join-Path $out 'plan.json';Save-Json $planFile $plan
 $expected=@{SYSTEM=$ExpectedSystemSha256;'SYSTEM.LOG1'=$ExpectedLog1Sha256;'SYSTEM.LOG2'=$ExpectedLog2Sha256}
 function Invoke-BoundedWorker($Mode,$Directory,$Name,[int]$Seconds) {
@@ -443,6 +889,10 @@ try {
         [IO.File]::Copy($path,(Join-Path $work $name),$false)
         if((Hash-File (Join-Path $work $name)) -cne $hash) { throw "Workcopy hash mismatch: $name" }
     }
+    if($enginePreservePlan){foreach($name in @('SYSTEM','SYSTEM.LOG1','SYSTEM.LOG2')){
+        $pin=$enginePreservePlan.source_files.$name
+        if(!$pin -or $pin.sha256 -cne $report.source_files[$name].sha256 -or $pin.bytes -ne $report.source_files[$name].bytes){throw 'Engine preserve plan and fresh input differ'}
+    }}
     if($engineRearmPlan) {
         foreach($name in @('SYSTEM','SYSTEM.LOG1','SYSTEM.LOG2')) {
             $pin=$engineRearmPlan.source_files.$name
@@ -468,6 +918,11 @@ try {
     # Reload a separate clean copy WITHOUT logs, proving that the candidate is self-contained.
     [IO.File]::Copy((Join-Path $work 'SYSTEM'),(Join-Path $verify 'SYSTEM'),$false)
     $plan.related_fingerprints=$patch.state.related_fingerprints_after
+    if($engineRearmPlan) {
+        $fp=[string]$patch.state.services[0].diagnostic_fingerprint
+        if($fp -cne 'absent' -and $fp -cnotmatch '^[0-9a-f]{64}$') { throw 'Missing actual Engine diagnostic fingerprint' }
+        $plan.engine_diagnostic_fingerprint=$fp;$report.engine_diagnostic_fingerprint=$fp
+    }
     if($InspectFixedGpuDeviceInstall) {
         $fingerprint=[string]$patch.state.gpu_inspected_service_fingerprint
         if($fingerprint -cnotmatch '^[0-9a-f]{64}$') { throw 'Native GPU inspection did not return a real raw fingerprint' }
@@ -503,6 +958,7 @@ try {
     $report.candidate=@{path='candidate/SYSTEM';sha256=(Hash-File (Join-Path $candidate 'SYSTEM'));header=(Hive-Header (Join-Path $candidate 'SYSTEM'))}
     if($report.candidate.sha256 -cne $patchedHash) { throw 'Final clean SYSTEM copy hash mismatch' }
     $report.status='verified-clean-system-services-only'
+    if($peripheralPreserve){$report.peripheral_old_services_preserved=$true}
     }
 } catch { $report.errors+=@($_.Exception.Message) }
 finally {

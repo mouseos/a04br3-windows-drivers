@@ -1,0 +1,20 @@
+{
+ "schema":"present356-bounded-readonly-collection-v1",
+ "directory":"MT8167DXGIPresent",
+ "mount_root":"/tmp/rt125-diag",
+ "basename_regex":"^(?:launch356-[0-9a-f]{8}-[0-9a-f]{8}\\.log|present356-[0-9a-f]{8}-[0-9a-f]{8}(?:\\.log|-[01]\\.bin))$",
+ "max_files":64,
+ "max_log_bytes":131072,
+ "raw_bin_exact_bytes":4096064,
+ "max_total_bytes":67108864,
+ "overwrite":false,
+ "windows_mount":"main-owned read-only,norecover,nosuid,nodev,noexec; helper never mounts, reboots or writes target",
+ "missing_or_partial_evidence":"preserve raw failures; collection is not functional success",
+ "join":"SCM client0 PID -> exactly one matching launch356 filename/LAUNCHER_PID -> fixed evaluator hash and EVALUATOR_PID/EVALUATOR_SESSION -> exactly one present356 same-PID log with matching TICK -> exact same filename stem -0.bin/-1.bin",
+ "session_evidence":"EVALUATOR_SESSION is launcher-reported session used to create evaluator, not child self-reported session; require console nonzero and launcher success",
+ "sameboot_required":"main joins CombinedRunId/phase1 PB220/receipt ModuleIdentity356/actual SYS/DIS0/FW/boot timestamps; helper pixel result alone cannot prove sameboot or hardware success",
+ "binary_layout":"16 little-endian u32: size,version,magic,flags,width,height,pitch,bytes,frameLo,frameHi,completedFence,submittedFence,pixelFNV1a,pfnFNV1a,reserved0,reserved1; then 4096000 BGRA bytes",
+ "GPU_proof":"PresentHRESULT0 twice; selected backing flags3; completed fence equals submitted nonzero; later real RDMA_DONE frame serial observed by production escape; all1024000 pixels each color exactly; present return/launcher exit alone is insufficient",
+ "collector_helper":"tools/recovery/collect-present356.py",
+ "analyzer_helper":"tools/recovery/verify-present356-evidence.py"
+}

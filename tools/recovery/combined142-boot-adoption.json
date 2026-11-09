@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "adoption_status": "main-artifacts-and-recovery-state-verified",
+  "matched_boot": {
+    "path": "port/xnu/out/mt8167-thermal-mmio-map-run139/firmware/boot-final/boot.img",
+    "sha256": "1fef20aa28be71ae0bd826ec91619df3b492abd23631632d5b0d679e38ca560a",
+    "producer_pins": {
+      "path": "port/xnu/out/mt8167-thermal-mmio-map-run139/pins.json",
+      "sha256": "e7bf135237f6d6bbbaeb2d99723dca43b4b8aed6db191f80f3f9d099c541be68"
+    },
+    "producer_compatibility": {
+      "path": "port/xnu/out/mt8167-thermal-mmio-map-run139/firmware/baseline-compatibility.json",
+      "sha256": "fa18c7176ee2f0f657359fd7308beedbae32bb51128a9bbfbad2d4612cc5c387"
+    },
+    "write_required": false,
+    "main_seal": {
+      "path": "port/xnu/out/mt8167-thermal-mmio-map-run139/main-independent-seal.json",
+      "sha256": "3566111344d6460fc3565d6e184a19920bb2180f6363b668078e737e1571ff3c"
+    }
+  },
+  "compatibility_checks": 47,
+  "required_parent_source_commit": "df7892ef316e8ce7ffdf01d9f2fbbbbf3840cf2d",
+  "required_parent_sys_sha256": "a4d86dfcdaa6243619a7d4ca413995e3505b559afb3b9e9bf2a5269ef054046b",
+  "required_firmware_record_version": 3,
+  "required_thermal_interface_version": 3,
+  "required_thermal_parent_build": 1104,
+  "required_headphone_interface_version": 2,
+  "required_headphone_parent_build": 1107,
+  "failure": {
+    "transaction": "combined-run139",
+    "phase": "ThermalHandoffDxe ExitBootServices callback",
+    "fault_address": "0x1100D00C",
+    "fault": "translation fault",
+    "WinPE_audit_count": 0,
+    "Windows_install_observed": false,
+    "Windows_unapplied": "inference only; main fresh140 state comparison required"
+  },
+  "runtime_success_claimed": false,
+  "rejected_boot_sha256": [
+    "f7f997105c11eb60142e1992867533f20dd009ff1dc2cd8f3b49c50e005bf53e"
+  ],
+  "state_rebind_proof": {
+    "path": "port/xnu/out/windows-rt-combined142-audio-classfix/fresh142-nativepost-main.json",
+    "sha256": "d22256e824d83fcdac5741dee01e49bf84dc47e5a52360987bc0c1dd9759cf75"
+  },
+  "fresh_manifest_sha256": "f5ee192fd738b6db129064e71e43bc0a80bf35c6341e0177d468e3bbd6283e37",
+  "fresh_recovery_boot_id": "1eb91bc2-cb82-4433-85f1-a70b3570529e",
+  "baseline_state": "fresh142 actual parent1115 installed on disk; AFE1027 selected; current boot1fef retained",
+  "current_boot_proof": {
+    "path": "port/xnu/out/windows-rt-combined142-audio-classfix/run141-main-state-proof.json",
+    "sha256": "095e8db714b9211b71de26dc2e5f17786a0a4ccec20ecc04a5baad702ebe9af2"
+  }
+}
