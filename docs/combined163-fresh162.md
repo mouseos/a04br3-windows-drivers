@@ -1,0 +1,11 @@
+# run163 / fresh162 / GPU347-only
+
+実fresh162 manifestdd53e778ebd0340cd75f4d4a715693a110c356e56541f12bba017a073d8463cf、Recovery064c914b-966b-4543-a6fd-ae8247d30917、原41・native errors[]/原本不変・service160実Start4。旧18full、35namedにservice160の実5値を追加して40保持。
+
+GPU347だけDIF/index10/mask0x400、予定restart1。既13targetのBT2015/provider1024、親1117/boot2e6/thermal1.10/MSDC1.10/他actualを保持。BT root登録0、BTstatus/WLAN/温度/status/音声/benchmark再試験0。GPU9934 --hardware=PowerVR単独index0/phase1/900秒最後1回。source2016WIP9becf985は別branchで未ARM/未署名のまま保持し本媒体へ混載しない。
+
+347source1c8792cf847546aa306acd1f6ded3f4803a4bc6d、manifestd5e1c50fbf029e3efc1591091dd6d26761a5d3bed1b2b93774b8672d4ff29a53、SYS0fe45c9dc893aa5dfa5f1537224964601efaa1eabe7823fad5ee61863aba5964、BuildIDGPU347-patch-prepare-v1。mainsealの2TU/78不変object/65pins/6BCBF/imports346同一を結合しdriverを再buildしない。新sourceのservice1TUのみ、既toolchain/署名identityを使う。
+
+bootwritefalse/GPT0。install900秒、boot180秒→最初phase1 PB target0/event0x286で1回だけ180秒→GPU idx0 PB220で1回だけ900秒、反復延長無し。post164 read-combined162-post.ps1＋既GPU/BT同clone helper。BTは既失敗stageのreadonly観測だけで実機機能再試験を行わない。R46/47 mask readbackとFW同期/IRQstorm根因証明を分離、R37永続化からhelper帰還を推定しない。
+
+baseline162は81logs。161のPID2628 GPR2slot32/33 checksum/PID一致でmagenta/green各480000画素一致・mismatch0まで進んだ実証を保持する。旧初回fence停止とは呼ばない。Draw timeout/R23kind31444f47/R34PREPAREDまでの到達と全GPU機能成功は別。163の新pid/slot/checksumと旧appendを分離する。
