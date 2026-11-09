@@ -1,0 +1,15 @@
+# GE8300 submitted FIFO / PASSIVE worker 348
+
+run163/GPU347はPID2492で初回magenta 480000画素一致、不一致0。その後resident ClearのRender成功に対する新Patch記録なしでSubmitから119/2/C000000D。Patchは毎Submitで必ず呼ばれるわけではないため、347のcapture-only RenderをPatchでprepareするだけでは不十分。実機の成功は未確認。
+
+348はRender/Patchをcapture・ticket・residency検証に保ち、Submitがfenceを付けたCPU FIFOへstate7として受理する。既PASSIVE work itemが最も古いheadだけをstate8(current DMA buffer)へclaimし、実native prepare後、DxgkCbSynchronizeExecutionで実owner.submitを実行する。完了は従来の実IRQ/GPU_DONE/CPU_VISIBLEだけで通知する。Submitの成功はqueue受理であり描画成功ではない。
+
+準備中のclaim8をDMA buffer単位の現在処理として扱い、preempt要求が入ってもそのbufferの実完了後にackする。未claim7はpreempt時に4へ戻してgen/refを保持する。後続のqueued jobは実完了までprepareされない。失敗はpoison/pinを維持し、架空の完了やpreempt完了で隠さない。
+
+Submit同期後のDISPATCH_LEVELから既IoQueueWorkItemを直接起動し、ソフトウェア開始のためにDxgkのinterrupt/DPCを偽装しない。service_pendingのbit1は実IRQ処理、bit2はsubmitted準備。cold時に未初期化native.serviceを先に呼ばない。既rundownをenqueue前に取得し、work item終了後に解放する。engine/adapter layoutを増やさず、private miniport deviceに理由値だけを追加する。R48/49はclaim/prepare-submit帰還の固定記録で、成功の進行記録を追加flushしない。
+
+一次資料：Microsoft DxgkDdiSubmitCommand（DISPATCH_LEVEL）、DxgkDdiPreemptCommand（DMA buffer単位のpreemption）、IoQueueWorkItem（DISPATCH以下）。Render/Patchの資料と今回の実callback順序を併用し、常駐時のPatch必須を仮定しない。
+
+production engineのFIFO/Clear-Draw-Copy/古い世代/参照保持/準備失敗/claim前後preemptionをhost ASan/UBSanで確認。旧lifecycle testのpending4は既実装でVidMm evictionが許されるため、logical refを保持してevict/rebindする期待へ更新した。これらはGPU・IRQL・PnP・Windowsでの動作証拠ではない。
+
+engine/KMDclear/miniport/lifecycle/kmd_objectsの5TUだけ差分compileし、347の他75objects・native owner・IRQ mask・UMD/FW/clientを保持する。GPU348-submit-worker-v1 / INF0.0.3.48。次165でBT2016/provider1025と一括適用し、実Submit・実IRQ・画素・preemption/電源遷移を区別する。

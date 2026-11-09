@@ -51,6 +51,14 @@ int32_t geo_request_preempt(struct geo_engine *,uint32_t fence);
 int32_t geo_take_preemption(struct geo_engine *,uint32_t *preempt_fence,uint32_t *last_completed);
 int32_t geo_cancel_prepared(struct geo_engine *,const struct geo_dma_ticket *);
 int32_t geo_submit(struct geo_engine *,const struct geo_dma_ticket *,uint32_t fence);
+/* Accept a captured packet without touching hardware. State7 is queued for
+ * PASSIVE preparation; state8 is the single claimed current DMA buffer.
+ * Claim/finish are externally interrupt-synchronized; preparation is outside
+ * that lock. A claimed buffer finishes at the existing DMA preemption boundary. */
+int32_t geo_submit_captured(struct geo_engine *,const struct geo_dma_ticket *,uint32_t fence);
+int geo_submitted_prepare_ready(const struct geo_engine *);
+int32_t geo_claim_submitted_prepare(struct geo_engine *,struct geo_dma_ticket *);
+int32_t geo_finish_submitted_prepare(struct geo_engine *,const struct geo_dma_ticket *,int32_t status,uint64_t owner_job);
 /* Only after actual owner drain/reset proof; never reports aborted work complete. */
 int32_t geo_retire_after_owner_drain(struct geo_engine *);
 int32_t geo_complete(struct geo_engine *,uint64_t owner_job,uint32_t generation,int32_t status,uint32_t visibility,uint32_t *fence);

@@ -105,7 +105,7 @@ static BOOLEAN begin_prepare(void *ctx) {
  if(c->status==STATUS_SUCCESS){c->adapter->engine.jobs[c->ticket.slot].context=c->context;c->adapter->engine.jobs[c->ticket.slot].open_handle=c->open_handle;c->adapter->engine.jobs[c->ticket.slot].vertex_open_handle=c->vertex_open_handle;c->adapter->engine.jobs[c->ticket.slot].texture_open_handle=c->texture_open_handle;}return TRUE;
 }
 static BOOLEAN finish_prepare(void *ctx) {
- struct prepare_call *c=ctx;c->status=geo_prepare_finish(&c->adapter->engine,&c->ticket,c->status,c->token);return TRUE;
+ struct prepare_call *c=ctx;c->status=geo_finish_submitted_prepare(&c->adapter->engine,&c->ticket,c->status,c->token);return TRUE;
 }
 struct payload_collect {struct geo_kmd_adapter *a;struct geo_draw_packet *packets[GEO_MAX_JOBS];};
 static BOOLEAN collect_payloads_locked(void *arg) {
@@ -145,12 +145,12 @@ static NTSTATUS discard_allocation_prepares(struct geo_kmd_adapter *a,struct geo
 }
 static NTSTATUS prepare_pending(struct geo_kmd_adapter *a,const struct geo_dma_ticket *t) {
  struct geo_job *j;struct geo_pending_payload *payload;struct geo_draw_packet *p;struct geo_draw_packet_v2 *v2;
- struct prepare_call call;UINT header;void *blob;
+ struct prepare_call call;UINT header,kind;void *blob;
  if(!a||!t||t->slot>=GEO_MAX_JOBS||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  j=&a->engine.jobs[t->slot];payload=&a->pending[t->slot];
  if(j->generation!=t->generation||payload->generation!=t->generation)return STATUS_INVALID_PARAMETER;
- if(j->state==1)return STATUS_SUCCESS;
- if(j->state!=4||!j->allocation||!j->allocation->bound||(j->vertex&&!j->vertex->bound)||(j->texture&&!j->texture->bound))return STATUS_DEVICE_NOT_READY;
+ kind=j->kind;
+ if(j->state!=8||!j->allocation||!j->allocation->bound||(j->vertex&&!j->vertex->bound)||(j->texture&&!j->texture->bound))return STATUS_DEVICE_NOT_READY;
  RtlZeroMemory(&call,sizeof(call));call.adapter=a;call.ticket=*t;
  if(j->kind==GEO_COPY_MAGIC)call.status=a->engine.owner.prepare_copy?a->engine.owner.prepare_copy(a->engine.owner.context,j->vertex->surface,j->allocation->surface,&call.token):STATUS_NOT_SUPPORTED;
  else if(j->kind==GEO_CLEAR_MAGIC)call.status=a->engine.owner.prepare(a->engine.owner.context,j->allocation->surface,payload->clear.color,&call.token);
@@ -160,7 +160,25 @@ static NTSTATUS prepare_pending(struct geo_kmd_adapter *a,const struct geo_dma_t
     a->draw.prepare_draw(a->draw.context,&p->request,blob,p->request.blob_bytes,&call.token);
  }else return STATUS_INVALID_PARAMETER;
  if(!a->synchronize(a->sync_context,finish_prepare,&call))return STATUS_DEVICE_NOT_READY;
- GeoFactoryCheckpoint(23,call.status,j->kind,t->slot,t->generation,0);return call.status;
+ GeoFactoryCheckpoint(23,call.status,kind,t->slot,t->generation,0);return call.status;
+}
+struct claim_prepare_call {struct geo_kmd_adapter *adapter;struct geo_dma_ticket ticket;NTSTATUS status;};
+static BOOLEAN claim_prepare_locked(void *arg) {
+ struct claim_prepare_call *c=arg;c->status=geo_claim_submitted_prepare(&c->adapter->engine,&c->ticket);return TRUE;
+}
+NTSTATUS GeoPrepareSubmittedWork(struct geo_kmd_adapter *a) {
+ struct claim_prepare_call c;struct geo_job *j;NTSTATUS status;ULONG kind,fence;
+ if(!a||!a->synchronize||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+ RtlZeroMemory(&c,sizeof(c));c.adapter=a;
+ if(!a->synchronize(a->sync_context,claim_prepare_locked,&c))return STATUS_DEVICE_NOT_READY;
+ if(c.status==GEO_NOT_READY)return STATUS_SUCCESS; /* No runnable head, no hardware request. */
+ if(c.status!=STATUS_SUCCESS)return c.status;
+ j=&a->engine.jobs[c.ticket.slot];
+ kind=j->kind;fence=j->fence;
+ GeoFactoryCheckpoint(48,STATUS_SUCCESS,kind,c.ticket.slot,c.ticket.generation,fence);
+ status=prepare_pending(a,&c.ticket);
+ GeoFactoryCheckpoint(49,status,kind,c.ticket.slot,c.ticket.generation,fence);
+ return status;
 }
 static NTSTATUS GeoRenderDrawImpl(struct geo_kmd_context *c,DXGKARG_RENDER *r) {
  struct geo_draw_packet *packet=NULL;struct prepare_call call;struct geo_allocation *a,*v,*x=NULL;
@@ -342,20 +360,21 @@ static NTSTATUS GeoPatchImpl(HANDLE adapter,const DXGKARG_PATCH *p) {
  phase=5;inspect.allow_pending=1;
  if(!a->synchronize(a->sync_context,inspect_prepared,&inspect))return patch_failure(STATUS_DEVICE_NOT_READY,phase,kind,&t);
  if(inspect.status!=STATUS_SUCCESS)return patch_failure(inspect.status,phase,kind,&t);
- phase=6;status=prepare_pending(a,&t);
- if(status!=STATUS_SUCCESS)return patch_failure(status,phase,kind,&t);
- /* A repeated Patch of state1 returns the same owner token: prepare_pending
-  * is idempotent and must not rearm a prepared native transfer a second time. */
- phase=7;inspect.allow_pending=0;
+ /* Patch can be skipped for resident buffers or repeated before submission.
+  * Validate the retained capture/residency only. Submit accepts the fence,
+  * then the PASSIVE worker prepares exactly the selected FIFO head. */
+ phase=7;inspect.allow_pending=1;
  if(!a->synchronize(a->sync_context,inspect_prepared,&inspect))return patch_failure(STATUS_DEVICE_NOT_READY,phase,kind,&t);
  return inspect.status==STATUS_SUCCESS?STATUS_SUCCESS:patch_failure(inspect.status,phase,kind,&t);
 }
-struct submit_call { struct geo_kmd_adapter *adapter;struct geo_dma_ticket ticket;uint32_t fence;HANDLE context;NTSTATUS status; };
+struct submit_call { struct geo_kmd_adapter *adapter;struct geo_dma_ticket ticket;uint32_t fence;HANDLE context;NTSTATUS status;UINT queue_prepare; };
 static BOOLEAN submit_locked(void *ctx) {
  struct submit_call *c=ctx;struct inspect_ticket inspect;
- RtlZeroMemory(&inspect,sizeof(inspect));inspect.adapter=c->adapter;inspect.ticket=c->ticket;inspect.context=c->context;
+ RtlZeroMemory(&inspect,sizeof(inspect));inspect.adapter=c->adapter;inspect.ticket=c->ticket;inspect.context=c->context;inspect.allow_pending=1;
  inspect_prepared(&inspect);if(inspect.status!=STATUS_SUCCESS){c->status=inspect.status;return TRUE;}
- c->status=geo_submit(&c->adapter->engine,&c->ticket,c->fence);return TRUE;
+ c->status=geo_submit_captured(&c->adapter->engine,&c->ticket,c->fence);
+ if(c->status==STATUS_SUCCESS)c->queue_prepare=geo_submitted_prepare_ready(&c->adapter->engine);
+ return TRUE;
 }
 static NTSTATUS GeoSubmitCommandImpl(HANDLE adapter,const DXGKARG_SUBMITCOMMAND *p) {
  struct geo_kmd_adapter *a=adapter;struct geo_dma_ticket t;struct submit_call call;
@@ -365,6 +384,7 @@ static NTSTATUS GeoSubmitCommandImpl(HANDLE adapter,const DXGKARG_SUBMITCOMMAND 
  if(GeoReadTicket((UCHAR *)p->pDmaBufferPrivateData+p->DmaBufferPrivateDataSubmissionStartOffset,&t)!=STATUS_SUCCESS)return STATUS_INVALID_PARAMETER;
  RtlZeroMemory(&call,sizeof(call));call.adapter=a;call.ticket=t;call.fence=p->SubmissionFenceId;call.context=p->hContext;
  if(!a->synchronize(a->sync_context,submit_locked,&call))return STATUS_DEVICE_NOT_READY;
+ if(call.status==STATUS_SUCCESS&&call.queue_prepare){InterlockedOr(&a->service_pending,2);GeoQueueSubmittedPrepare(a);}
  return call.status;
 }
 struct fence_call { struct geo_kmd_adapter *adapter;uint32_t fence;NTSTATUS status; };
@@ -399,6 +419,7 @@ NTSTATUS GeoCompleteFromInterrupt(struct geo_kmd_adapter *a,uint64_t token,uint3
  if(!a||!a->notifications_ready||KeGetCurrentIrql()!=a->owner_irql||a->owner_irql<=DISPATCH_LEVEL)return STATUS_INVALID_DEVICE_STATE;
  s=geo_complete(&a->engine,token,generation,status,visibility,&fence);
  if(s!=STATUS_SUCCESS)return s; /* No stale/fault/visibility failure becomes a completed fence. */
+ if(geo_submitted_prepare_ready(&a->engine))InterlockedOr(&a->service_pending,2);
  RtlZeroMemory(&data,sizeof(data));data.InterruptType=DXGK_INTERRUPT_DMA_COMPLETED;
  data.DmaCompleted.SubmissionFenceId=fence;data.DmaCompleted.NodeOrdinal=0;data.DmaCompleted.EngineOrdinal=0;
  a->notify_interrupt(a->dxgk_device,&data);

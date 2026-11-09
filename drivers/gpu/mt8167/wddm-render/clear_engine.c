@@ -138,13 +138,14 @@ int32_t geo_cancel_prepared(struct geo_engine *e,const struct geo_dma_ticket *t)
  retire_job(j);return GEO_OK;
 }
 static int active(const struct geo_engine *e) {
- uint32_t i;for(i=0;i<GEO_MAX_JOBS;i++)if(e->jobs[i].state==2)return 1;return 0;
+ uint32_t i;for(i=0;i<GEO_MAX_JOBS;i++)if(e->jobs[i].state==2||e->jobs[i].state==8)return 1;return 0;
 }
 static void publish_next(struct geo_engine *e) {
  uint32_t i;struct geo_job *next=0;int32_t status;
  if(e->poisoned||e->preempt_pending||active(e))return;
- for(i=0;i<GEO_MAX_JOBS;i++)if(e->jobs[i].state==5&&(!next||serial_after(next->fence,e->jobs[i].fence)))next=&e->jobs[i];
+ for(i=0;i<GEO_MAX_JOBS;i++)if((e->jobs[i].state==5||e->jobs[i].state==7)&&(!next||serial_after(next->fence,e->jobs[i].fence)))next=&e->jobs[i];
  if(!next)return;
+ if(next->state==7)return; /* A later prepared packet cannot pass this head. */
  status=e->owner.submit(e->owner.context,next->owner_job,next->fence,next->generation);
  if(status!=GEO_OK){next->state=3;next->allocation->poisoned=1;e->poisoned=1;return;}
  next->state=2;
@@ -159,6 +160,49 @@ int32_t geo_submit(struct geo_engine *e,const struct geo_dma_ticket *t,uint32_t 
   * into this bounded owned FIFO, publish at most ONE native DMA pair. */
  j->state=5;j->fence=fence;e->last_submitted=fence;e->submitted_ever=1;
  publish_next(e);return e->poisoned?GEO_POISONED:GEO_OK;
+}
+int32_t geo_submit_captured(struct geo_engine *e,const struct geo_dma_ticket *t,uint32_t fence) {
+ struct geo_job *j=job(e,t);
+ if(!j)return GEO_NOT_FOUND;
+ if(e->poisoned)return GEO_POISONED;
+ if(j->state!=4)return GEO_BUSY;
+ if(e->submitted_ever&&!serial_after(fence,e->last_submitted))return GEO_INVALID;
+ j->state=7;j->fence=fence;e->last_submitted=fence;e->submitted_ever=1;
+ return GEO_OK; /* Acceptance is not native preparation or GPU completion. */
+}
+int32_t geo_claim_submitted_prepare(struct geo_engine *e,struct geo_dma_ticket *t) {
+ uint32_t i,slot=GEO_MAX_JOBS;
+ if(!e||!t)return GEO_INVALID;
+ if(e->poisoned)return GEO_POISONED;
+ if(e->preempt_pending||active(e))return GEO_NOT_READY;
+ for(i=0;i<GEO_MAX_JOBS;i++)if((e->jobs[i].state==5||e->jobs[i].state==7)&&
+    (slot==GEO_MAX_JOBS||serial_after(e->jobs[slot].fence,e->jobs[i].fence)))slot=i;
+ if(slot==GEO_MAX_JOBS||e->jobs[slot].state!=7)return GEO_NOT_READY;
+ e->jobs[slot].state=8;
+ t->magic=GEO_TICKET_MAGIC;t->slot=slot;t->generation=e->jobs[slot].generation;t->reserved=0;
+ return GEO_OK;
+}
+int geo_submitted_prepare_ready(const struct geo_engine *e) {
+ uint32_t i,slot=GEO_MAX_JOBS;
+ if(!e||e->poisoned||e->preempt_pending||active(e))return 0;
+ for(i=0;i<GEO_MAX_JOBS;i++)if((e->jobs[i].state==5||e->jobs[i].state==7)&&
+    (slot==GEO_MAX_JOBS||serial_after(e->jobs[slot].fence,e->jobs[i].fence)))slot=i;
+ return slot<GEO_MAX_JOBS&&e->jobs[slot].state==7;
+}
+int32_t geo_finish_submitted_prepare(struct geo_engine *e,const struct geo_dma_ticket *t,int32_t status,uint64_t token) {
+ struct geo_job *j=job(e,t);
+ if(!j||j->state!=8)return GEO_NOT_FOUND;
+ if(status!=GEO_OK||!token||e->poisoned) {
+  j->owner_job=token;j->state=3;j->allocation->poisoned=1;e->poisoned=1;
+  return status!=GEO_OK?status:GEO_POISONED;
+ }
+ j->owner_job=token;
+ /* Claim made this the current DMA buffer before a possible preempt request.
+  * Finish its real submission and acknowledge preemption only at its actual
+  * IRQ completion. Unclaimed state7 buffers never start past that request. */
+ status=e->owner.submit(e->owner.context,token,j->fence,j->generation);
+ if(status!=GEO_OK){j->state=3;j->allocation->poisoned=1;e->poisoned=1;return status;}
+ j->state=2;return GEO_OK;
 }
 int32_t geo_request_preempt(struct geo_engine *e,uint32_t fence) {
  if(!e)return GEO_INVALID;
@@ -176,6 +220,7 @@ int32_t geo_take_preemption(struct geo_engine *e,uint32_t *fence,uint32_t *last)
  /* These packets were accepted into software but NEVER hardware-published.
   * Retain tokens/pages for scheduler resubmit with a new nonpaging fence. */
  for(i=0;i<GEO_MAX_JOBS;i++)if(e->jobs[i].state==5){e->jobs[i].state=1;e->jobs[i].fence=0;}
+ for(i=0;i<GEO_MAX_JOBS;i++)if(e->jobs[i].state==7){e->jobs[i].state=4;e->jobs[i].fence=0;}
  *fence=e->preempt_fence;*last=e->completed_ever?e->last_completed:0;
  e->preempt_pending=0;e->preempt_ready=0;return GEO_OK;
 }

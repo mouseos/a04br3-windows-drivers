@@ -131,7 +131,7 @@ static BOOLEAN debug_snapshot(void *arg) {
  for(i=0;i<GEO_MAX_JOBS;i++) {
   if(e->jobs[i].state==1)c->snapshot.prepared++;
   if(e->jobs[i].state==2)c->snapshot.submitted++;
-  if(e->jobs[i].state==3||e->jobs[i].state==4)c->snapshot.pinned++;
+  if(e->jobs[i].state==3||e->jobs[i].state==4||e->jobs[i].state==7||e->jobs[i].state==8)c->snapshot.pinned++;
  }
  return TRUE;
 }

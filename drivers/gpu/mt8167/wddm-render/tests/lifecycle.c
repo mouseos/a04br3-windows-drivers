@@ -20,7 +20,10 @@ int main(void) {
  assert(geo_bind(&e,&a,&a,0,256*1024,0)==GEO_OK);
  p.reserved[0]=1;assert(geo_prepare_begin(&e,&a,&p,&t)==GEO_INVALID);p.reserved[0]=0;
  assert(geo_prepare_begin(&e,&a,&p,&t)==GEO_OK);old=t;
- assert(geo_unbind(&e,&a)==GEO_BUSY);assert(geo_destroy(&e,&a)==GEO_BUSY);
+ /* A capture not yet accepted by Submit may be evicted/rebound by VidMm;
+  * its logical allocation reference must survive that mapping change. */
+ assert(geo_unbind(&e,&a)==GEO_OK&&a.references==1);assert(geo_destroy(&e,&a)==GEO_BUSY);
+ assert(geo_bind(&e,&a,&a,0,256*1024,0)==GEO_OK);
  assert(prepare(&e,a.surface,p.color,&token)==GEO_OK);
  assert(geo_prepare_finish(&e,&t,GEO_OK,token)==GEO_OK);
  assert(geo_submit(&e,&t,10)==GEO_OK);assert(publishes==1);

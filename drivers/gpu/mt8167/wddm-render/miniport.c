@@ -15,7 +15,7 @@ struct geo_render_device {
  DXGKRNL_INTERFACE dxgk;
  DXGK_DEVICE_INFO device_info;
  UINT native_created,started;
- PIO_WORKITEM work;LONG work_busy;
+ PIO_WORKITEM work;LONG work_busy;ULONG work_reasons;
 };
 static NTSTATUS add_device(PDEVICE_OBJECT pdo,void **out) {
  struct geo_render_device *d;
@@ -81,7 +81,8 @@ static BOOLEAN interrupt_routine(void *context,ULONG message) {
 static void queue_owner_work(struct geo_render_device *d);
 static void owner_work(PDEVICE_OBJECT device,void *context) {
  struct geo_render_device *d=context;NTSTATUS status;UNREFERENCED_PARAMETER(device);
- status=GeoServiceOwnerWork(&d->session);
+ status=(d->work_reasons&1)?GeoServiceOwnerWork(&d->session):STATUS_SUCCESS;
+ if(status==STATUS_SUCCESS)status=GeoServiceSubmittedWork(&d->session);
  InterlockedExchange(&d->work_busy,0);
  if(status==STATUS_SUCCESS&&InterlockedCompareExchange(&d->adapter.service_pending,0,0))queue_owner_work(d);
  GeoSessionLeave(&d->adapter,0);
@@ -90,10 +91,16 @@ static void queue_owner_work(struct geo_render_device *d) {
  if(!InterlockedCompareExchange(&d->adapter.service_pending,0,0))return;
  if(!GeoSessionEnter(&d->adapter,0))return;
  if(InterlockedCompareExchange(&d->work_busy,1,0)){GeoSessionLeave(&d->adapter,0);return;}
- InterlockedExchange(&d->adapter.service_pending,0);
+ d->work_reasons=(ULONG)InterlockedExchange(&d->adapter.service_pending,0);
  /* Reference is acquired BEFORE queuing and released by worker, so a queued
   * but not yet executing callback cannot outlive owner/miniport teardown. */
  IoQueueWorkItem(d->work,owner_work,DelayedWorkQueue,d);
+}
+void GeoQueueSubmittedPrepare(struct geo_kmd_adapter *a) {
+ /* Adapter is the documented offset-zero member. Submit has returned from
+  * DxgkCbSynchronizeExecution to <=DISPATCH, where IoQueueWorkItem is legal.
+  * Do not queue a synthetic display DPC/interrupt to start software work. */
+ if(a&&KeGetCurrentIrql()<=DISPATCH_LEVEL)queue_owner_work((struct geo_render_device *)a);
 }
 static void dpc_routine(void *context) {
  struct geo_render_device *d=(struct geo_render_device *)context;if(d){GeoClearDpc(&d->adapter);queue_owner_work(d);}
@@ -203,7 +210,7 @@ C_ASSERT(sizeof(struct geo_module_identity_v1)==144);
 static void module_identity(PDRIVER_OBJECT driver)
 {
  static const CHAR source[]="eb2bc820c3b67168b16f50dbe3fbf27f513ddfae";
- static const CHAR build[]="GPU347-patch-prepare-v1";
+ static const CHAR build[]="GPU348-submit-worker-v1";
  struct geo_module_identity_v1 r={0};HANDLE key=NULL;UNICODE_STRING path,name;
  OBJECT_ATTRIBUTES oa;ULONG disposition;NTSTATUS status;
  if(!driver||KeGetCurrentIrql()!=PASSIVE_LEVEL||!driver->DriverStart||!driver->DriverSize)return;

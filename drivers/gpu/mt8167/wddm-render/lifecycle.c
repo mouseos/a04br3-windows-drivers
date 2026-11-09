@@ -165,7 +165,7 @@ BOOLEAN GeoOwnerInterrupt(struct geo_owner_session *s,ULONG message) {
   if(status==STATUS_PENDING) {
    handled=TRUE;
    if(event.size!=sizeof(event)||event.version!=2||event.reserved||event.job||event.visibility){poison(s);break;}
-   if(event.epoch==s->lease.epoch){InterlockedExchange(&s->adapter->service_pending,1);s->adapter->queue_dpc(s->adapter->dxgk_device);}
+   if(event.epoch==s->lease.epoch){InterlockedOr(&s->adapter->service_pending,1);s->adapter->queue_dpc(s->adapter->dxgk_device);}
    break;
   }
   if(status!=STATUS_SUCCESS){poison(s);break;}
@@ -186,6 +186,13 @@ NTSTATUS GeoServiceOwnerWork(struct geo_owner_session *s) {
  InterlockedExchange(&s->last_service_status,status);
  if(status!=STATUS_SUCCESS)return failed(s,status);
  return status; /* Never invoke GeoCompleteFromInterrupt here. */
+}
+NTSTATUS GeoServiceSubmittedWork(struct geo_owner_session *s) {
+ NTSTATUS status;
+ if(!s||!s->lease.cookie||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+ status=GeoPrepareSubmittedWork(s->adapter);
+ InterlockedExchange(&s->last_service_status,status);
+ return status==STATUS_SUCCESS?status:failed(s,status);
 }
 NTSTATUS APIENTRY CALLBACK GeoResetFromTimeout(HANDLE adapter) {
  struct geo_kmd_adapter *a=adapter;return a&&a->session?GeoResetOwnerSession(a->session):STATUS_INVALID_DEVICE_STATE;

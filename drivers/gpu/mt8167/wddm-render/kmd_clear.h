@@ -70,4 +70,6 @@ DXGKDDI_QUERYCURRENTFENCE GeoQueryCurrentFence;
 DXGKDDI_PREEMPTCOMMAND GeoPreemptCommand;
 DXGKDDI_CANCELCOMMAND GeoCancelCommand;
 void GeoNotifyReadyPreemption(struct geo_kmd_adapter *);
+NTSTATUS GeoPrepareSubmittedWork(struct geo_kmd_adapter *);
+void GeoQueueSubmittedPrepare(struct geo_kmd_adapter *);
 #endif
