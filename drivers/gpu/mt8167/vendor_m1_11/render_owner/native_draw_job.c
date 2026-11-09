@@ -88,10 +88,10 @@ static int32_t build(struct a04_m111_draw_job *out,
  if(r->target_desc.width!=800 || r->target_desc.height!=600 || r->target_desc.pitch!=3200 ||
     r->state.vertex_count!=3 ||
     (!general&&!combined&&(r->vs.temps || r->vs.shareds || r->vs.vtxins!=(linked?8u:4u) || r->vs.vtxouts!=(linked?8u:4u) || r->vs.input_mask!=(linked?3u:1u) || r->vs.constant_mask ||
-    r->ps.temps!=(sampled?0u:5u) || r->ps.shareds!=(sampled?12u:linked?0u:4u) || r->ps.vtxins || r->ps.vtxouts || r->ps.input_mask!=(linked?1u:0u) || r->ps.constant_mask!=(linked?0u:1u) ||
+    r->ps.temps!=(sampled?A04_TEXTURE2D_SAMPLE_TEMPS:5u) || r->ps.shareds!=(sampled?12u:linked?0u:4u) || r->ps.vtxins || r->ps.vtxouts || r->ps.input_mask!=(linked?1u:0u) || r->ps.constant_mask!=(linked?0u:1u) ||
     r->vs.usc.bytes!=vn || r->ps.usc.bytes!=pn ||
     !same(b+r->vs.usc.offset,vc,vn) || !same(b+r->ps.usc.offset,pc,pn))))return GEO_UNSUPPORTED;
- if(combined&&(r->ps.temps||r->ps.shareds!=12u||r->ps.vtxins||r->ps.vtxouts||r->ps.input_mask||r->ps.constant_mask!=1u))return GEO_UNSUPPORTED;
+ if(combined&&(r->ps.temps!=A04_TEXTURE2D_SAMPLE_TEMPS||r->ps.shareds!=12u||r->ps.vtxins||r->ps.vtxouts||r->ps.input_mask||r->ps.constant_mask!=1u))return GEO_UNSUPPORTED;
  if(vertex<4096 || vertex>=(UINT64_C(1)<<40)-vertex_bytes || (vertex&3) ||
     (vertex<in->output_gpu+1920000u && in->output_gpu<vertex+vertex_bytes) ||
     (vertex<in->data_page_gpu+4096 && in->data_page_gpu<vertex+vertex_bytes) ||

@@ -19,7 +19,7 @@ int32_t a04_m111_texture2d_program(const struct geo_draw_shader *s,const void *b
 {
  const uint8_t *b=blob;struct geo_sm4_signatures signature={0};struct geo_texture2d_program p;
  if(!s||!b||((uintptr_t)b&3u)||!range(&s->tokens,bytes)||!range(&s->usc,bytes)||!range(&s->constants,bytes)||s->constants.bytes!=512)return GEO_INVALID;
- if(s->format!=GEO_SHADER_D3D10_TOKENS||s->stage!=1||s->temps||s->shareds!=12||s->vtxins||s->vtxouts||s->input_mask||s->constant_mask!=1||s->usc.bytes!=sizeof(expected_sample_code))return GEO_UNSUPPORTED;
+ if(s->format!=GEO_SHADER_D3D10_TOKENS||s->stage!=1||s->temps!=A04_TEXTURE2D_SAMPLE_TEMPS||s->shareds!=12||s->vtxins||s->vtxouts||s->input_mask||s->constant_mask!=1||s->usc.bytes!=sizeof(expected_sample_code))return GEO_UNSUPPORTED;
  signature.output_count=1;signature.outputs[0].mask=15;
  int32_t status=geo_sm4_texture2d_decode((const uint32_t *)(b+s->tokens.offset),s->tokens.bytes,&signature,&p);if(status)return status;
  if(p.coordinate_constant||p.coordinate_x||p.coordinate_y!=1)return GEO_UNSUPPORTED;

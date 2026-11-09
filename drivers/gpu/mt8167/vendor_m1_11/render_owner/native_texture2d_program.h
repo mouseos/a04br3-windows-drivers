@@ -6,5 +6,9 @@
 #ifndef A04_NATIVE_TEXTURE2D_PROGRAM_H
 #define A04_NATIVE_TEXTURE2D_PROGRAM_H
 #include "../../wddm-render/frontend/draw_abi.h"
+/* Exact immutable SAMPLE profile: source PCO RA reports six temporary
+ * registers on RT81. Zero was an unqualified Linux host-cache observation.
+ * This bound is coupled to the unchanged 88-byte program validation below. */
+#define A04_TEXTURE2D_SAMPLE_TEMPS 6u
 int32_t a04_m111_texture2d_program(const struct geo_draw_shader *,const void *,uint32_t);
 #endif
