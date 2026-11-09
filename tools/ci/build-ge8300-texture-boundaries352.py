@@ -34,7 +34,7 @@ def relocate(x):
  import re
  x=str(x).replace(chr(92),'/')
  while '//' in x:x=x.replace('//','/')
- x=re.sub(r'C:/mt8167-[^\s]+?/(?:source|src)/drivers',str(root/'drivers').replace(chr(92),'/'),x,flags=re.I)
+ x=re.sub(r'C:/mt8167-[^\s]+?/(?:source|src)/(?=drivers|third_party)',str(root).replace(chr(92),'/')+'/',x,flags=re.I)
  x=re.sub(r'C:/mt8167-[^\s]+?/build/(?:copy336/)?generated',str(out/'generated').replace(chr(92),'/'),x,flags=re.I)
  return x
 all_rows=load(t/'all-units.json');all_units={Path(x['source']).name:x for x in all_rows}
