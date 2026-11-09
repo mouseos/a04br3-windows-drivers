@@ -639,9 +639,17 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/umd/typed_device.h",
-      "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
-      "role": "Texture326/327 explicit source overlay",
-      "sha256": "f3d4c4c57fb05cbbb6ad0ee916a452305c0e30a744726cf592dda6b2a55ab95d"
+      "source_commit": "80abf5a9ef3c54914743d6ca3dd54e8861b7272d",
+      "sha256": "eb012871d100f566cd46359d63d3e603d8913e68500bfa6ae775abdf4fce0caf",
+      "role": "Present355 runtime callback boundary; display caps remain disabled",
+      "previous_origins": [
+        {
+          "path": "drivers/gpu/mt8167/wddm-render/umd/typed_device.h",
+          "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
+          "role": "Texture326/327 explicit source overlay",
+          "sha256": "f3d4c4c57fb05cbbb6ad0ee916a452305c0e30a744726cf592dda6b2a55ab95d"
+        }
+      ]
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/umd/typed_draw.c",
@@ -673,39 +681,55 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/umd/typed_dxgi.c",
-      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
-      "role": "UMD-base3f829",
-      "sha256": "898f963d14228357bd34296e623573c2ea41ad4ffb01e428148c3f329a4b8cc1"
+      "source_commit": "80abf5a9ef3c54914743d6ca3dd54e8861b7272d",
+      "sha256": "d17dd77daed48505e7aa526563e2ffbc4536667c8e14a5df663e944571244629",
+      "role": "Present355 runtime callback boundary; display caps remain disabled",
+      "previous_origins": [
+        {
+          "path": "drivers/gpu/mt8167/wddm-render/umd/typed_dxgi.c",
+          "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+          "role": "UMD-base3f829",
+          "sha256": "898f963d14228357bd34296e623573c2ea41ad4ffb01e428148c3f329a4b8cc1"
+        }
+      ]
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/umd/typed_entry.c",
-      "source_commit": "ab744bc6278fc1ed099e42f31b07444a2c860b61",
-      "role": "Integrated real Copy336 all-consumer/ownership contract",
-      "sha256": "e09b2f5049b6e392791a527d94b2a5fc168f30afc7d209a39c08b94fbb5f129d",
+      "source_commit": "80abf5a9ef3c54914743d6ca3dd54e8861b7272d",
+      "sha256": "1312714101b7eb3ea8654cd7c7bfd5385987a691a5d4d407372a1bf3afd87764",
+      "role": "Present355 runtime callback boundary; display caps remain disabled",
       "previous_origins": [
         {
-          "source_commit": "729d296b1f4710e9b162a85dca60560d0c22c8ee",
-          "role": "332 bounded readback, retention and durable boundary",
-          "sha256": "0612b24a0534aaac44781d2fea966c225f20577fb008cf47cc835b1da63d7be8",
+          "path": "drivers/gpu/mt8167/wddm-render/umd/typed_entry.c",
+          "source_commit": "ab744bc6278fc1ed099e42f31b07444a2c860b61",
+          "role": "Integrated real Copy336 all-consumer/ownership contract",
+          "sha256": "e09b2f5049b6e392791a527d94b2a5fc168f30afc7d209a39c08b94fbb5f129d",
           "previous_origins": [
             {
-              "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
-              "sha256": "b939a02c49d56633184772af5fd2a9abc509d0221c7fa79c0d7aa98fa7754b4a",
-              "role": "Texture326/327 explicit source overlay"
-            },
-            {
-              "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
-              "sha256": "14663eddf6f59e47c9b93cbe33ed5de305fc405dc8268ecd768cbe38f10d3020"
-            },
-            {
-              "source_commit": "9aa8386cf967e8348e0130a23d419cc9b627d0e6",
-              "sha256": "c2e0b14f4be9c48f63fe9faefed77da04e311ae38641a01486beaa488beb5861",
-              "role": "Explicit VS uniform330 source overlay"
-            },
-            {
-              "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
-              "sha256": "9da10285c97eb87249a4bb2407f37e76845db7c0281fac75b2e0c1e02fbeb3bf",
-              "role": "Matrix VS + sampled PS331 / explicit owned ABI5 composition"
+              "source_commit": "729d296b1f4710e9b162a85dca60560d0c22c8ee",
+              "role": "332 bounded readback, retention and durable boundary",
+              "sha256": "0612b24a0534aaac44781d2fea966c225f20577fb008cf47cc835b1da63d7be8",
+              "previous_origins": [
+                {
+                  "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
+                  "sha256": "b939a02c49d56633184772af5fd2a9abc509d0221c7fa79c0d7aa98fa7754b4a",
+                  "role": "Texture326/327 explicit source overlay"
+                },
+                {
+                  "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
+                  "sha256": "14663eddf6f59e47c9b93cbe33ed5de305fc405dc8268ecd768cbe38f10d3020"
+                },
+                {
+                  "source_commit": "9aa8386cf967e8348e0130a23d419cc9b627d0e6",
+                  "sha256": "c2e0b14f4be9c48f63fe9faefed77da04e311ae38641a01486beaa488beb5861",
+                  "role": "Explicit VS uniform330 source overlay"
+                },
+                {
+                  "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
+                  "sha256": "9da10285c97eb87249a4bb2407f37e76845db7c0281fac75b2e0c1e02fbeb3bf",
+                  "role": "Matrix VS + sampled PS331 / explicit owned ABI5 composition"
+                }
+              ]
             }
           ]
         }
