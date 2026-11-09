@@ -130,7 +130,7 @@ NTSTATUS e_native_build_graph_locked(struct e_native_owner *c)
     status=a04_vendor_m1_11_windows_stage_uncached(&a->firmware,a->adapter,c->firmware_image,c->firmware_bytes);
     if(!NT_SUCCESS(status))return status;
     status=a04_vendor_render_prepare_cold(&a->render,&a->firmware,a->adapter,FALSE,0);if(!NT_SUCCESS(status))return status;
-    status=a04_vendor_native_allocate_cold_ex(&a->native,&a->render,a->adapter,a->map_registers,800,600,&a->diagnostic);
+    status=a04_vendor_native_allocate_cold_ex(&a->native,&a->render,a->adapter,a->map_registers,A04_NATIVE_FRAME_WIDTH,A04_NATIVE_FRAME_HEIGHT,&a->diagnostic);
     if(!NT_SUCCESS(status))return status;
     if(a->binding){status=a04_vendor_native_attach_mdl_target_preserve_cold(a->native,a->binding,c->aperture_offset,c->colour);if(!NT_SUCCESS(status))return status;}
     if(a->vertex){status=a04_vendor_native_attach_vertex_cold(a->native,a->vertex,c->vertex_aperture_offset);if(!NT_SUCCESS(status))return status;}

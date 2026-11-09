@@ -10,7 +10,7 @@ struct geo_umd_resource {
  HANDLE runtime;
  D3DKMT_HANDLE allocation;
  struct geo_surface_desc desc;
- UINT locked,offered,discarded,internal,logical_width,logical_height;
+ UINT locked,offered,discarded,internal,logical_width,logical_height,primary;
 };
 static struct geo_umd_resource *find(struct geo_umd_device *d,HANDLE h) {
  struct geo_umd_resource *r;if(!d)return NULL;for(r=d->resources;r;r=r->next)if(r==(struct geo_umd_resource *)h)return r;return NULL;
@@ -25,11 +25,11 @@ HRESULT geo_umd_clear_init(struct geo_umd_device *d,HANDLE runtime,const D3DDDI_
  d->patches=c->pPatchLocationList;d->patch_count=c->PatchLocationListSize;return S_OK;
 }
 static HRESULT APIENTRY create_resource(HANDLE h,D3DDDIARG_CREATERESOURCE *p) {
- struct geo_umd_device *d=h;struct geo_umd_resource *r;struct geo_allocation_data data;D3DDDICB_ALLOCATE request;D3DDDI_ALLOCATIONINFO info;HRESULT hr;
+ struct geo_umd_device *d=h;struct geo_umd_resource *r;struct geo_allocation_data data;struct geo_allocation_data_v2 extended;D3DDDICB_ALLOCATE request;D3DDDI_ALLOCATIONINFO info;HRESULT hr;
  if(!d||!p||!p->pSurfList||p->SurfCount!=1||p->MipLevels!=1||(p->Format!=D3DDDIFMT_A8R8G8B8&&p->Format!=D3DDDIFMT_VERTEXDATA&&p->Format!=D3DDDIFMT_INDEX16&&p->Format!=D3DDDIFMT_INDEX32)||
     (p->Pool!=D3DDDIPOOL_SYSTEMMEM&&p->Pool!=D3DDDIPOOL_STAGINGMEM&&p->Pool!=D3DDDIPOOL_VIDEOMEMORY)||
     p->MultisampleType!=D3DDDIMULTISAMPLE_NONE||p->MultisampleQuality||p->pSurfList[0].Depth>1||p->pSurfList[0].pSysMem||
-    (p->Flags.Value&~(1u|0x4u|0x8u|0x40u|0x80u|0x10000u|0x80000u|0x100000u|0x1000000u))||p->Rotation!=D3DDDI_ROTATION_IDENTITY)return E_NOTIMPL;
+    (p->Flags.Value&~(1u|0x4u|0x8u|0x40u|0x80u|0x10000u|0x80000u|0x100000u|0x1000000u|(A04_GE8300_UNIFIED_DISPLAY356?0x8000u:0u)))||p->Rotation!=D3DDDI_ROTATION_IDENTITY)return E_NOTIMPL;
  r=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*r));if(!r)return E_OUTOFMEMORY;
  r->device=d;r->runtime=p->hResource;r->desc.size=sizeof(r->desc);r->desc.version=1;
  r->desc.width=p->pSurfList[0].Width;r->desc.height=p->pSurfList[0].Height;
@@ -43,12 +43,17 @@ static HRESULT APIENTRY create_resource(HANDLE h,D3DDDIARG_CREATERESOURCE *p) {
  if(r->desc.usage==GEO_USAGE_TEXTURE2D)r->desc.version=GEO_TEXTURE_STORAGE_VERSION;
  r->logical_width=r->desc.width;r->logical_height=r->desc.height;
  if(r->desc.usage==GEO_USAGE_RENDER_TARGET){
-  if(r->logical_width>800u||r->logical_height>600u){HeapFree(GetProcessHeap(),0,r);return E_NOTIMPL;}
-  r->desc.width=800;r->desc.height=600;r->desc.pitch=3200;
+  if(r->logical_width>800u||r->logical_height>A04_NATIVE_FRAME_HEIGHT){HeapFree(GetProcessHeap(),0,r);return E_NOTIMPL;}
+  r->desc.width=800;r->desc.height=A04_NATIVE_FRAME_HEIGHT;r->desc.pitch=3200;
  }
  if(!geo_desc_valid(&r->desc)){HeapFree(GetProcessHeap(),0,r);return E_INVALIDARG;}
  memset(&request,0,sizeof(request));memset(&info,0,sizeof(info));memset(&data,0,sizeof(data));data.size=sizeof(data);data.version=1;data.logical_width=r->logical_width;data.logical_height=r->logical_height;data.storage=r->desc;
  info.pPrivateDriverData=&data;info.PrivateDriverDataSize=sizeof(data);
+ if(p->Flags.Primary){
+  if(!A04_GE8300_UNIFIED_DISPLAY356||r->logical_width!=800u||r->logical_height!=A04_NATIVE_FRAME_HEIGHT){HeapFree(GetProcessHeap(),0,r);return E_NOTIMPL;}
+  memset(&extended,0,sizeof(extended));extended.base=data;extended.base.size=sizeof(extended);extended.base.version=2;extended.flags=GEO_ALLOCATION_PRIMARY;
+  info.pPrivateDriverData=&extended;info.PrivateDriverDataSize=sizeof(extended);info.Flags.Primary=1;r->primary=1;
+ }
  request.hResource=r->runtime;request.NumAllocations=1;request.pAllocationInfo=&info;
  hr=d->cb.pfnAllocateCb(d->runtime,&request);
  if(FAILED(hr)){HeapFree(GetProcessHeap(),0,r);return hr;}
@@ -56,6 +61,19 @@ static HRESULT APIENTRY create_resource(HANDLE h,D3DDDIARG_CREATERESOURCE *p) {
  r->next=d->resources;d->resources=r;
  if(!r->allocation){/* Retain the ambiguous allocation in the device list. */return E_UNEXPECTED;}
  p->hResource=r;return S_OK;
+}
+HRESULT geo_umd_open_primary(struct geo_umd_device *d,const D3DDDI_OPENALLOCATIONINFO *info,HANDLE runtime,HANDLE *out,struct geo_surface_desc *desc) {
+ struct geo_allocation_data_v2 data;struct geo_umd_resource *r;
+ if(!A04_GE8300_UNIFIED_DISPLAY356||!d||!info||!out||!desc||!info->hAllocation||!info->pPrivateDriverData||info->PrivateDriverDataSize!=sizeof(data))return E_INVALIDARG;
+ memcpy(&data,info->pPrivateDriverData,sizeof(data));
+ if(data.base.size!=sizeof(data)||data.base.version!=2||data.flags!=GEO_ALLOCATION_PRIMARY||data.source_id||
+    data.base.logical_width!=800u||data.base.logical_height!=A04_NATIVE_FRAME_HEIGHT||
+    data.base.storage.width!=800u||data.base.storage.height!=A04_NATIVE_FRAME_HEIGHT||data.base.storage.pitch!=3200u||
+    data.base.storage.format!=GEO_FORMAT_A8R8G8B8||!geo_desc_valid(&data.base.storage))return E_INVALIDARG;
+ if(data.base.storage.usage!=GEO_USAGE_STAGING&&data.base.storage.usage!=GEO_USAGE_RENDER_TARGET)return E_NOTIMPL;
+ r=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*r));if(!r)return E_OUTOFMEMORY;
+ r->device=d;r->runtime=runtime;r->allocation=info->hAllocation;r->desc=data.base.storage;r->logical_width=800;r->logical_height=A04_NATIVE_FRAME_HEIGHT;r->primary=1;
+ r->next=d->resources;d->resources=r;*out=r;*desc=r->desc;return S_OK;
 }
 static HRESULT APIENTRY destroy_resource(HANDLE h,HANDLE resource) {
  struct geo_umd_device *d=h;struct geo_umd_resource *r,**link;D3DDDICB_DEALLOCATE q;HRESULT hr;
@@ -136,9 +154,9 @@ static HRESULT APIENTRY blt(HANDLE h,const D3DDDIARG_BLT *p) {
     p->SrcRect.right!=(LONG)src->logical_width||p->SrcRect.bottom!=(LONG)src->logical_height||
     p->DstRect.right!=(LONG)dst->logical_width||p->DstRect.bottom!=(LONG)dst->logical_height)return E_NOTIMPL;
  if(src->desc.usage==GEO_USAGE_RENDER_TARGET){
-  struct geo_copy_packet packet={GEO_COPY_MAGIC,sizeof(packet),1,0,1,800,600,0};D3DDDICB_RENDER q;
+  struct geo_copy_packet packet={GEO_COPY_MAGIC,sizeof(packet),1,0,1,800,A04_NATIVE_FRAME_HEIGHT,0};D3DDDICB_RENDER q;
   if(src->desc.format!=GEO_FORMAT_A8R8G8B8||dst->desc.format!=GEO_FORMAT_A8R8G8B8||
-     src->logical_width!=800||src->logical_height!=600||dst->logical_width!=800||dst->logical_height!=600||
+     src->logical_width!=800||src->logical_height!=A04_NATIVE_FRAME_HEIGHT||dst->logical_width!=800||dst->logical_height!=A04_NATIVE_FRAME_HEIGHT||
      d->command_bytes<sizeof(packet)||d->allocation_count<2||!d->commands||!d->allocations)return E_NOTIMPL;
   if(!geo_progress_write(8,0,src->desc.usage))return E_FAIL;
   memcpy(d->commands,&packet,sizeof(packet));memset(d->allocations,0,2*sizeof(*d->allocations));

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "kmd_objects.h"
+#include "display_adapter356.h"
 NTSTATUS APIENTRY GeoCreateDevice(HANDLE handle,DXGKARG_CREATEDEVICE *p) {
  struct geo_kmd_adapter *a=handle;struct geo_kmd_device *d;NTSTATUS status=STATUS_SUCCESS;
  if(!p||(p->Flags.Value&~1u))return STATUS_NOT_SUPPORTED;
@@ -100,6 +101,13 @@ NTSTATUS APIENTRY GeoGetStandardAllocationDriverData(HANDLE handle,DXGKARG_GETST
  /* d3dkmdt.h: standard staging is implicitly X8R8G8B8 and lockable.
   * This describes CPU-only storage, not GPU render-format support. */
  RtlZeroMemory(&d,sizeof(d));d.size=sizeof(d);d.version=GEO_ABI_VERSION;d.usage=GEO_USAGE_STAGING;
+ if(p->StandardAllocationType==D3DKMDT_STANDARDALLOCATION_SHAREDPRIMARYSURFACE&&A04_GE8300_UNIFIED_DISPLAY356){
+  struct geo_allocation_data_v2 primary;
+  status=GeoDisplay356PrimaryLayout(a,p->pCreateSharedPrimarySurfaceData,&primary);if(status!=STATUS_SUCCESS)return status;
+  if(p->pAllocationPrivateDriverData&&p->AllocationPrivateDriverDataSize<sizeof(primary))return STATUS_BUFFER_TOO_SMALL;
+  p->AllocationPrivateDriverDataSize=sizeof(primary);p->ResourcePrivateDriverDataSize=0;
+  if(p->pAllocationPrivateDriverData)RtlCopyMemory(p->pAllocationPrivateDriverData,&primary,sizeof(primary));return STATUS_SUCCESS;
+ }
  if(p->StandardAllocationType==D3DKMDT_STANDARDALLOCATION_SHADOWSURFACE) {
   if(!p->pCreateShadowSurfaceData||p->pCreateShadowSurfaceData->Format!=D3DDDIFMT_A8R8G8B8)return STATUS_NOT_SUPPORTED;
   d.width=p->pCreateShadowSurfaceData->Width;d.height=p->pCreateShadowSurfaceData->Height;d.format=GEO_FORMAT_A8R8G8B8;
@@ -108,7 +116,7 @@ NTSTATUS APIENTRY GeoGetStandardAllocationDriverData(HANDLE handle,DXGKARG_GETST
   d.width=p->pCreateStagingSurfaceData->Width;d.height=p->pCreateStagingSurfaceData->Height;d.format=GEO_FORMAT_X8R8G8B8;
  } else return STATUS_NOT_SUPPORTED;
  /* Validate the multiplication before publishing Pitch or private data. */
- if(!d.width||!d.height||d.width>1024||d.height>1024)return STATUS_NOT_SUPPORTED;
+ if(!d.width||!d.height||d.width>1024||d.height>(A04_GE8300_UNIFIED_DISPLAY356?1280u:1024u))return STATUS_NOT_SUPPORTED;
  d.pitch=d.width*4u;
  if(!GeoSessionEnter(a,1))return STATUS_DEVICE_NOT_READY;
  if(!geo_desc_valid(&d)){status=STATUS_NOT_SUPPORTED;goto done;}

@@ -94,8 +94,8 @@ int32_t geo_prepare_copy_begin(struct geo_engine *e,struct geo_allocation *d,str
  uint32_t i;struct geo_job *j;
  if(!e||!d||!s||d==s||!t||!e->owner.prepare_copy||d->desc.usage!=GEO_USAGE_STAGING||s->desc.usage!=GEO_USAGE_RENDER_TARGET||
     d->desc.format!=GEO_FORMAT_A8R8G8B8||s->desc.format!=GEO_FORMAT_A8R8G8B8||
-    d->desc.width!=800||d->desc.height!=600||d->desc.pitch!=3200||
-    s->desc.width!=800||s->desc.height!=600||s->desc.pitch!=3200)return GEO_INVALID;
+    d->desc.width!=800||d->desc.height!=A04_NATIVE_FRAME_HEIGHT||d->desc.pitch!=3200||
+    s->desc.width!=800||s->desc.height!=A04_NATIVE_FRAME_HEIGHT||s->desc.pitch!=3200)return GEO_INVALID;
  if(e->poisoned||d->poisoned||s->poisoned)return GEO_POISONED;
  if(!d->surface||!s->surface)return GEO_NOT_READY;
  for(i=0;i<GEO_MAX_JOBS;i++)if(!e->jobs[i].state&&e->jobs[i].generation!=UINT32_MAX)break;

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "native_copy_job.h"
+#include "display_geometry356.h"
 #include "native_copy_state.h"
 #include "clear_image.h"
 #include "render_resources.h"
@@ -15,9 +16,9 @@ int a04_native_clear_job_build(struct a04_native_copy_job_image *out,
  if(!out||!request||(a&3u)||(b&7u)||a>UINTPTR_MAX-sizeof(*out)||
     b>UINTPTR_MAX-sizeof(*request)||(a<b+sizeof(*request)&&b<a+sizeof(*out)))return 1;
  q=*request;
- if(!q.width||!q.height||q.width>800u||q.height>600u||q.pitch_pixels<q.width||
+ if(!q.width||!q.height||q.width>800u||q.height>A04_NATIVE_FRAME_HEIGHT||q.pitch_pixels<q.width||
     q.pitch_pixels>1024u||(q.pitch_pixels&31u)||!q.aperture_bytes||
-    q.aperture_bytes>4194304u||(q.aperture_base&4095u)||(q.aperture_bytes&4095u)||
+    q.aperture_bytes>A04_NATIVE_APERTURE_BYTES||(q.aperture_base&4095u)||(q.aperture_bytes&4095u)||
     q.aperture_base>=(UINT64_C(1)<<40)||q.aperture_bytes>(UINT64_C(1)<<40)-q.aperture_base||
     (q.target_va&127u)||q.target_va<q.aperture_base||
     q.target_va-q.aperture_base>q.aperture_bytes||
@@ -61,8 +62,8 @@ int a04_native_copy_job_build(struct a04_native_copy_job_image *out,
  q=*request;
  /* Bounds include the final padded row. The registered allocation extent,
   * not a naked VA, must contain all sampled and written bytes. */
- if(!q.width||!q.height||q.width>800u||q.height>600u||q.pitch_pixels<q.width||
-    q.pitch_pixels>1024u||(q.pitch_pixels&31u)||!q.aperture_bytes||q.aperture_bytes>4194304u||
+ if(!q.width||!q.height||q.width>800u||q.height>A04_NATIVE_FRAME_HEIGHT||q.pitch_pixels<q.width||
+    q.pitch_pixels>1024u||(q.pitch_pixels&31u)||!q.aperture_bytes||q.aperture_bytes>A04_NATIVE_APERTURE_BYTES||
     (q.aperture_base&4095u)||(q.aperture_bytes&4095u)||q.aperture_base>=(UINT64_C(1)<<40)||
     q.aperture_bytes>(UINT64_C(1)<<40)-q.aperture_base||
     (q.source_va&127u)||(q.destination_va&127u)||(q.shared_va&15u))return 1;

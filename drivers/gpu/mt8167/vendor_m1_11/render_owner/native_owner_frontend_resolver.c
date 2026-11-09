@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "native_owner_frontend_resolver.h"
+#include "display_geometry356.h"
 #include "native_owner_allocation_private.h"
 #define TAG 0x724e4741u
 static NTSTATUS resolve_bind(struct a04_native_owner_allocation *a,
@@ -8,7 +9,7 @@ static NTSTATUS resolve_bind(struct a04_native_owner_allocation *a,
 {
     struct geo_frontend_mdl_lease *lease;struct a04_native_mdl_lease normal;NTSTATUS status;
     if(!a || !memory || memory->size!=sizeof(*memory) || memory->version!=GEO_FRONTEND_MEMORY_VERSION ||
-       !memory->context || !memory->resolve || !original || (vertex?(active<4u || active>65536u):active!=1920000u) ||
+       !memory->context || !memory->resolve || !original || (vertex?(active<4u || active>65536u):active!=A04_NATIVE_FRAME_BYTES) ||
        !a->native || !a->adapter || (vertex?a->vertex!=NULL:a->binding!=NULL) || a->frontend_orphan ||
        a->firmware.hardware_owned || a->start.attempted || KeGetCurrentIrql()!=PASSIVE_LEVEL)
         return STATUS_INVALID_PARAMETER;

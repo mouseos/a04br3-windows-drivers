@@ -77,7 +77,7 @@ static NTSTATUS release_contents(struct a04_vendor_native_cold *n)
     }
 #endif
     a04_vendor_native_storage_free(n,1);
-    for(unsigned i=1;i<4;i++)a04_vendor_uncached_free(&n->output[i]);
+    for(unsigned i=1;i<A04_NATIVE_OUTPUT_TABLE_COUNT;i++)a04_vendor_uncached_free(&n->output[i]);
     a04_vendor_uncached_free(&n->code[1]);a04_vendor_uncached_free(&n->code[0]);
     a04_vendor_uncached_free(&n->pt);a04_vendor_native_storage_free(n,0);
     if(r)r->native_owner=NULL;
@@ -94,7 +94,7 @@ static NTSTATUS prepare_contents(struct a04_vendor_native_cold *n,
        n->pt.cpu || n->prepared || n->mapped || !r->mapped || !r->firmware ||
        !r->firmware->staged || !r->firmware->uncached || r->firmware->hardware_owned ||
        r->firmware->adapter!=adapter || r->firmware->render_owner!=r || r->native_owner || r->layout.used>0x4800u ||
-       r->buffer[0].bytes<0x4c40u || width!=800u || height!=(A04_GE8300_VENDOR_NATIVE_CLEAR_JOB?600u:1280u))
+       r->buffer[0].bytes<0x4c40u || width!=800u || height!=(A04_GE8300_VENDOR_NATIVE_CLEAR_JOB?A04_NATIVE_FRAME_HEIGHT:1280u))
         return STATUS_INVALID_PARAMETER;
     tiles_x=(width+15u)/16u;tiles_y=(height+15u)/16u;
     region=ROUND_PAGE(((tiles_x*tiles_y*5u+63u)&~63u)*2u);

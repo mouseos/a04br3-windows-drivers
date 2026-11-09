@@ -107,3 +107,14 @@ void GeoEndVidMmMap(struct geo_kmd_adapter *a,struct geo_allocation *allocation)
  if(r){r->map_ref=0;dispose=unlink_unused(r);}
  unlock(a);if(dispose)free_record(r);
 }
+
+NTSTATUS GeoAcquireScanoutMap(struct geo_kmd_adapter *a,struct geo_allocation *allocation,struct geo_frontend_mdl_lease *out){
+ struct geo_mdl_record *r;NTSTATUS status=STATUS_INVALID_PARAMETER;
+ if(!a||!allocation||!out||KeGetCurrentIrql()!=PASSIVE_LEVEL||!allocation->primary||!allocation->bound)return status;
+ lock(a);r=mapped(a,allocation);
+ if(r&&!r->fault&&r->native_refs&&r->native_refs<MAXULONG&&r->map_ref&&r->active_bytes==A04_NATIVE_FRAME_BYTES&&!InterlockedCompareExchange(&a->memory_fault,0,0)){
+  RtlZeroMemory(out,sizeof(*out));out->size=sizeof(*out);out->version=1;out->origin=GEO_MDL_VIDMM_CACHED_SHADOW;out->active_bytes=r->active_bytes;out->page_bytes=r->page_bytes;
+  out->mdl=r->pinned;out->context=r;out->acquire=acquire;out->release=release;r->native_refs++;status=STATUS_SUCCESS;
+ }
+ unlock(a);return status;
+}

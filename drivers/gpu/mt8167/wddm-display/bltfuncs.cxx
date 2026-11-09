@@ -104,8 +104,7 @@ VOID CopyBits32_32(
         for (UINT i = 0; i < NumRows; ++i)
         {
             RtlCopyMemory(pStartDst, pStartSrc, BytesToCopy);
-            pStartDst += pDst->Pitch;
-            pStartSrc += pSrc->Pitch;
+            if (i+1<NumRows) { pStartDst += pDst->Pitch; pStartSrc += pSrc->Pitch; }
         }
     }
 }
@@ -293,12 +292,10 @@ VOID CopyBitsGeneric(
                     // Invalid pDst->BitsPerPel
                     NT_ASSERT(FALSE);
                 }
-                pDstPixel += DstPixelPitch;
-                pSrcPixel += SrcPixelPitch;
+                if(x+1<NumPixels){pDstPixel += DstPixelPitch;pSrcPixel += SrcPixelPitch;}
             }
 
-            pDstRow += DstRowPitch;
-            pSrcRow += SrcRowPitch;
+            if(y+1<NumRows){pDstRow += DstRowPitch;pSrcRow += SrcRowPitch;}
         }
     }
 }

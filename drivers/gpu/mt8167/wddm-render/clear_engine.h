@@ -10,6 +10,7 @@ struct geo_allocation {
  uint64_t surface;
  uint32_t references,bound,poisoned,open_count,cpu_only;
  uint64_t aperture_offset;uint32_t aperture_pages;
+ uint32_t primary,source_id,display_refs;
 };
 struct geo_job {
  struct geo_allocation *allocation,*vertex;

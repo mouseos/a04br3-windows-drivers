@@ -42,7 +42,7 @@ NTSTATUS a04_vendor_native_validate_allocation_cold(struct a04_vendor_native_col
     for(i=0;i<n->data_blocks;i++)if(clash(a,a04_vendor_native_block(n,0,i)))goto quarantine;
     for(i=0;i<n->pixel_blocks;i++)if(clash(a,a04_vendor_native_block(n,1,i)))goto quarantine;
     for(i=0;i<2;i++)if(clash(a,&n->code[i]))goto quarantine;
-    for(i=0;i<4;i++)if(clash(a,&n->output[i]))goto quarantine;
+    for(i=0;i<A04_NATIVE_OUTPUT_TABLE_COUNT;i++)if(clash(a,&n->output[i]))goto quarantine;
     for(i=0;i<16;i++)if(clash(a,&r->buffer[i]))goto quarantine;
     for(i=0;i<5;i++)if(f->buffers[i].cpu &&
         (a04_rgx_fw_overlap((uint64_t)a->logical.QuadPart,a->bytes,f->buffers[i].dma,f->buffers[i].bytes) ||
@@ -82,7 +82,7 @@ NTSTATUS a04_vendor_native_prepare_backing_cold(struct a04_vendor_native_cold *n
     PDMA_ADAPTER adapter,ULONG maps)
 {
     struct a04_vendor_render_cold *r;UCHAR *shadow;
-    uint32_t *pc,entry;uint64_t *pd,*pt[2],address;
+    uint32_t *pc,entry;uint64_t *pd,*pt[A04_NATIVE_OUTPUT_PT_COUNT],address;
     _Alignas(8) struct a04_m111_clear_surface surface;
     _Alignas(8) struct a04_m111_clear_codespace code;
     _Alignas(8) struct a04_m111_clear_code_bindings bindings;
@@ -92,19 +92,18 @@ NTSTATUS a04_vendor_native_prepare_backing_cold(struct a04_vendor_native_cold *n
        !(r=n->render) || r->native_owner!=n || !r->firmware || r->firmware->adapter!=adapter ||
        r->firmware->hardware_owned || r->firmware->render_owner!=r || !n->prepared || !n->mapped || !n->bank_prepared ||
        n->code_mapped!=3u || n->output_mapped || n->backing_staged || maps<A04_NATIVE_BLOCK_BYTES/4096u ||
-       n->width!=800u || n->height!=(A04_GE8300_VENDOR_NATIVE_CLEAR_JOB?600u:1280u) || n->suffix_offset+4096u!=n->used)
+       n->width!=A04_NATIVE_FRAME_WIDTH || n->height!=(A04_GE8300_VENDOR_NATIVE_CLEAR_JOB?A04_NATIVE_FRAME_HEIGHT:1280u) || n->suffix_offset+4096u!=n->used)
         return STATUS_INVALID_DEVICE_STATE;
-    for(i=0;i<4;i++)if(n->output[i].cpu || n->output[i].adapter)return STATUS_INVALID_DEVICE_STATE;
-    a04_vendor_native_diagnose(n,A04_NATIVE_PREP_OUTPUT,0xffffffffu,5u*4096u);
-    shadow=ExAllocatePoolWithTag(NonPagedPoolNx,5u*4096u,BACKING_TAG);
+    for(i=0;i<A04_NATIVE_OUTPUT_TABLE_COUNT;i++)if(n->output[i].cpu || n->output[i].adapter)return STATUS_INVALID_DEVICE_STATE;
+    a04_vendor_native_diagnose(n,A04_NATIVE_PREP_OUTPUT,0xffffffffu,(3u+A04_NATIVE_OUTPUT_PT_COUNT)*4096u);
+    shadow=ExAllocatePoolWithTag(NonPagedPoolNx,(3u+A04_NATIVE_OUTPUT_PT_COUNT)*4096u,BACKING_TAG);
     if(!shadow)return STATUS_INSUFFICIENT_RESOURCES;
-    RtlZeroMemory(shadow,5u*4096u);pc=(uint32_t *)(void *)shadow;
-    pd=(uint64_t *)(void *)(shadow+4096u);pt[0]=(uint64_t *)(void *)(shadow+8192u);
-    pt[1]=(uint64_t *)(void *)(shadow+12288u);
+    RtlZeroMemory(shadow,(3u+A04_NATIVE_OUTPUT_PT_COUNT)*4096u);pc=(uint32_t *)(void *)shadow;
+    pd=(uint64_t *)(void *)(shadow+4096u);for(i=0;i<A04_NATIVE_OUTPUT_PT_COUNT;i++)pt[i]=(uint64_t *)(void *)(shadow+(2u+i)*4096u);
     if(a04_rgx_device_read_words(pc,r->buffer[1].cpu,4096u) || pc[A04_NATIVE_OUTPUT_VA>>30])goto done;
     status=a04_vendor_native_storage_allocate(n,1,adapter,A04_NATIVE_OUTPUT_BYTES);
     if(!NT_SUCCESS(status))goto done;
-    for(i=1;i<4;i++) {
+    for(i=1;i<A04_NATIVE_OUTPUT_TABLE_COUNT;i++) {
         a04_vendor_native_diagnose(n,A04_NATIVE_PREP_OUTPUT,64u+i,4096u);
         status=a04_vendor_uncached_allocate(&n->output[i],adapter,4096u);
         if(!NT_SUCCESS(status))goto done;
@@ -120,12 +119,16 @@ NTSTATUS a04_vendor_native_prepare_backing_cold(struct a04_vendor_native_cold *n
     }
     /* A black clear must change the owned output, rather than matching an
      * already-zero allocation. Table shadows remain zero-initialized. */
-    for(i=0;i<1024u;i++)((uint32_t *)(void *)(shadow+16384u))[i]=0xa5a5a5a5u;
+    for(i=0;i<1024u;i++)((uint32_t *)(void *)(shadow+(2u+A04_NATIVE_OUTPUT_PT_COUNT)*4096u))[i]=0xa5a5a5a5u;
     /* All allocations are validated before any Device-memory write. */
-    for(i=0;i<1000u;i++)if(a04_vendor_native_storage_write(n,1,i*4096u,shadow+16384u,4096u))goto done;
-    if(a04_rgx_device_write_words(n->output[1].cpu,pd,4096u) ||
-       a04_rgx_device_write_words(n->output[2].cpu,pt[0],4096u) ||
-       a04_rgx_device_write_words(n->output[3].cpu,pt[1],4096u))goto done;
+    for(i=0;i<1000u;i++)if(a04_vendor_native_storage_write(n,1,i*4096u,shadow+(2u+A04_NATIVE_OUTPUT_PT_COUNT)*4096u,4096u))goto done;
+    /* Publish every owned aperture leaf, including currently empty leaves.
+     * Later resident primary/target/VB bindings must never write an unlinked PT. */
+    for(i=0;i<A04_NATIVE_OUTPUT_PT_COUNT;i++) {
+        pd[((A04_NATIVE_OUTPUT_VA>>21)&511u)+i]=(uint64_t)n->output[2u+i].logical.QuadPart|1u;
+        if(a04_rgx_device_write_words(n->output[2u+i].cpu,pt[i],4096u))goto done;
+    }
+    if(a04_rgx_device_write_words(n->output[1].cpu,pd,4096u))goto done;
     a04_gpu_dma_barrier();entry=pc[A04_NATIVE_OUTPUT_VA>>30];
     n->output_mapped=TRUE; /* Retain ownership through any partial PC write. */
     if(write_verified((UCHAR *)r->buffer[1].cpu+(A04_NATIVE_OUTPUT_VA>>30)*4u,&entry,4u))goto done;

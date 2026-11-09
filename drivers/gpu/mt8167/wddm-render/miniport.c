@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "native_binding.h"
+#include "display_adapter356.h"
+#include "../wddm-display/unified_display.h"
 #include "kmd_objects.h"
 #include "query_adapter.h"
 #include "init_checkpoint.h"
@@ -55,13 +57,20 @@ static NTSTATUS start_device(void *context,DXGK_START_INFO *start,DXGKRNL_INTERF
  if(status!=STATUS_SUCCESS||d->adapter.draw_v4.size!=sizeof(d->adapter.draw_v4)||d->adapter.draw_v4.version!=4||!d->adapter.draw_v4.context||!d->adapter.draw_v4.prepare_draw)return STATUS_INVALID_DEVICE_STATE;
  status=GeoNativeOwnerGetDrawOpsV5(&d->native,&d->adapter.draw_v5);
  if(status!=STATUS_SUCCESS||d->adapter.draw_v5.size!=sizeof(d->adapter.draw_v5)||d->adapter.draw_v5.version!=5||!d->adapter.draw_v5.context||!d->adapter.draw_v5.prepare_draw)return STATUS_INVALID_DEVICE_STATE;
- *sources=0;*children=0;d->started=1;GeoInitCheckpoint(10,STATUS_SUCCESS);return STATUS_SUCCESS;
+ *sources=0;*children=0;
+ if(A04_GE8300_UNIFIED_DISPLAY356){status=GeoDisplay356Start(&d->adapter,d->pdo,start,dxgk,sources,children);if(status!=STATUS_SUCCESS)return status;}
+ d->started=1;GeoInitCheckpoint(10,STATUS_SUCCESS);return STATUS_SUCCESS;
 }
 static NTSTATUS stop_device(void *context) {
  struct geo_render_device *d=context;NTSTATUS status;
  if(!d||!d->started||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+ if(A04_GE8300_UNIFIED_DISPLAY356){status=GeoDisplay356Restore(&d->adapter);if(status!=STATUS_SUCCESS)return status;}
  if(d->session.state!=GEO_SESSION_STOPPED){
   status=GeoStopOwnerSession(&d->session);if(status!=STATUS_SUCCESS)return status;
+ }
+ if(A04_GE8300_UNIFIED_DISPLAY356){
+  status=GeoDisplay356ReleaseMaps(&d->adapter);if(status!=STATUS_SUCCESS)return status;
+  status=GeoDisplay356Stop(&d->adapter);if(status!=STATUS_SUCCESS)return status;
  }
  if(InterlockedCompareExchange(&d->adapter.memory_record_count,0,0)||InterlockedCompareExchange(&d->adapter.memory_fault,0,0))return STATUS_DEVICE_BUSY;
  status=GeoNativeOwnerDelete(&d->native);if(status!=STATUS_SUCCESS)return status;
@@ -109,8 +118,16 @@ static NTSTATUS power_state(void *context,ULONG uid,DEVICE_POWER_STATE power,POW
  struct geo_render_device *d=(struct geo_render_device *)context;UNREFERENCED_PARAMETER(action);
  /* Microsoft DxgkDdiSetPowerState DeviceUid: DISPLAY_ADAPTER_HW_ID=-1.
   * This render-only device has no monitor/child power operations. */
- if(!d||uid!=0xffffffffu)return STATUS_NOT_SUPPORTED;
- return GeoPowerOwnerSession(&d->session,power);
+ if(!d)return STATUS_INVALID_PARAMETER;
+ if(uid!=0xffffffffu)return A04_GE8300_UNIFIED_DISPLAY356?GeoDisplayPower(GeoUnifiedDisplayContext(&d->adapter),uid,power,action):STATUS_NOT_SUPPORTED;
+ NTSTATUS status;
+ if(A04_GE8300_UNIFIED_DISPLAY356&&power==PowerDeviceD3){status=GeoDisplay356Restore(&d->adapter);if(status!=STATUS_SUCCESS)return status;}
+ status=GeoPowerOwnerSession(&d->session,power);if(status!=STATUS_SUCCESS)return status;
+ if(A04_GE8300_UNIFIED_DISPLAY356){
+  if(power==PowerDeviceD3){status=GeoDisplay356ReleaseMaps(&d->adapter);if(status!=STATUS_SUCCESS)return status;}
+  return GeoDisplayPower(GeoUnifiedDisplayContext(&d->adapter),uid,power,action);
+ }
+ return status;
 }
 /* The RT8.1 ARM initialization gate requires these base callbacks even for
  * an adapter with no video sources or children. MOU0007 owns all scanout.
@@ -209,7 +226,7 @@ C_ASSERT(sizeof(struct geo_module_identity_v1)==144);
 static void module_identity(PDRIVER_OBJECT driver)
 {
  static const CHAR source[]="eb2bc820c3b67168b16f50dbe3fbf27f513ddfae";
- static const CHAR build[]="GPU355-present-blt-v1";
+ static const CHAR build[]="GPU356-unified-present-v1";
  struct geo_module_identity_v1 r={0};HANDLE key=NULL;UNICODE_STRING path,name;
  OBJECT_ATTRIBUTES oa;ULONG disposition;NTSTATUS status;
  if(!driver||KeGetCurrentIrql()!=PASSIVE_LEVEL||!driver->DriverStart||!driver->DriverSize)return;
@@ -237,6 +254,10 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driver,PUNICODE_STRING registry) {
  table.DxgkDdiQueryAdapterInfo=observed_query_adapter_info;table.DxgkDdiPreemptCommand=GeoPreemptCommand;
  table.DxgkDdiCancelCommand=GeoCancelCommand;
  table.DxgkDdiPresent=render_present;table.DxgkDdiControlInterrupt=control_display_interrupt;
+ if(A04_GE8300_UNIFIED_DISPLAY356){
+  status=GeoDisplayFillVidPnCallbacks(&table);if(status!=STATUS_SUCCESS)return status;
+  table.DxgkDdiEscape=GeoDisplay356Observe;table.DxgkDdiGetScanLine=GeoDisplay356GetScanLine;table.DxgkDdiSetVidPnSourceAddress=GeoDisplay356SetSource;table.DxgkDdiControlInterrupt=GeoDisplay356ControlInterrupt;
+ }
  table.DxgkDdiDescribeAllocation=GeoDescribeAllocation;table.DxgkDdiGetStandardAllocationDriverData=GeoGetStandardAllocationDriverData;
  table.DxgkDdiCollectDbgInfo=GeoCollectDbgInfo;
  table.DxgkDdiCreateDevice=GeoCreateDevice;table.DxgkDdiDestroyDevice=GeoDestroyDevice;
@@ -246,11 +267,11 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driver,PUNICODE_STRING registry) {
  table.DxgkDdiBuildPagingBuffer=GeoBuildPagingBuffer;table.DxgkDdiRender=GeoRender;table.DxgkDdiPatch=GeoPatch;
  table.DxgkDdiSubmitCommand=GeoSubmitCommand;table.DxgkDdiQueryCurrentFence=GeoQueryCurrentFence;
  table.DxgkDdiResetFromTimeout=GeoResetFromTimeout;table.DxgkDdiRestartFromTimeout=GeoRestartFromTimeout;
- table.DxgkDdiDispatchIoRequest=dispatch_io_request;
+ if(!A04_GE8300_UNIFIED_DISPLAY356)table.DxgkDdiDispatchIoRequest=dispatch_io_request;
  table.DxgkDdiGetNodeMetadata=get_node_metadata;
- table.DxgkDdiQueryChildRelations=query_child_relations;
- table.DxgkDdiQueryChildStatus=query_child_status;table.DxgkDdiQueryDeviceDescriptor=query_device_descriptor;
- table.DxgkDdiResetDevice=reset_display_to_vga;table.DxgkDdiUnload=unload_driver;
+ if(!A04_GE8300_UNIFIED_DISPLAY356)table.DxgkDdiQueryChildRelations=query_child_relations;
+ if(!A04_GE8300_UNIFIED_DISPLAY356){table.DxgkDdiQueryChildStatus=query_child_status;table.DxgkDdiQueryDeviceDescriptor=query_device_descriptor;}
+ if(!A04_GE8300_UNIFIED_DISPLAY356)table.DxgkDdiResetDevice=reset_display_to_vga;table.DxgkDdiUnload=unload_driver;
  /* RT8.1 FUN_0008775c checks this complete render contract separately
   * from DxgkInitialize's base callbacks. Do not retry a known NULL gate. */
  if(!table.DxgkDdiPresent||!table.DxgkDdiControlInterrupt||!table.DxgkDdiRender||
@@ -258,3 +279,12 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driver,PUNICODE_STRING registry) {
   return STATUS_INVALID_PARAMETER;
  status=DxgkInitialize(driver,registry,&table);GeoInitCheckpoint(2,status);return status;
 }
+
+NTSTATUS GeoUnifiedDrainNativeForDisplay(struct geo_kmd_adapter *a){
+ struct geo_render_device *d=(struct geo_render_device *)a;
+ return d&&d->native_created?GeoNativeOwnerDrainForDisplay(&d->native):STATUS_DEVICE_NOT_READY;
+}
+#if A04_GE8300_UNIFIED_DISPLAY356
+void GeoUnifiedEmergencyRestore(HANDLE adapter){GeoDisplay356EmergencyRestore(adapter);}
+
+#endif

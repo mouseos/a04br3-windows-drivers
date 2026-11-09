@@ -62,11 +62,11 @@ static NTSTATUS prepare_job_cold(struct a04_vendor_native_cold *n,uint32_t pixel
        !(r=n->render) || r->native_owner!=n || !r->firmware || r->firmware->hardware_owned ||
        r->poisoned || r->cleanup_started || !n->mapped || !n->prepared || !n->bank_prepared ||
        !n->backing_staged || !n->output_mapped || n->code_mapped!=3u ||
-       n->width!=800u || n->height!=600u || r->buffer[0].bytes!=65536u ||
+       n->width!=A04_NATIVE_FRAME_WIDTH || n->height!=A04_NATIVE_FRAME_HEIGHT || r->buffer[0].bytes!=65536u ||
        n->suffix_offset>n->used || n->used-n->suffix_offset!=4096u ||
        !n->code[0].cpu || !n->code[1].cpu || !n->data.cpu || !a04_vendor_native_output_ready(n))
         return STATUS_INVALID_DEVICE_STATE;
-    if(a04_m111_build_single_rt_hwrt_profile(profile,800,600,&n->target,&n->mlists))return status;
+    if(a04_m111_build_single_rt_hwrt_profile(profile,n->width,n->height,&n->target,&n->mlists))return status;
     if(!data_span(n,n->target.region_gpu[0],n->target.region_used) ||
        !data_span(n,n->target.tail_ptrs_gpu,n->target.tpc_vheap_used) ||
        !data_span(n,n->mlists.gpu[0],n->mlists.used) ||
@@ -122,7 +122,7 @@ static NTSTATUS prepare_job_cold(struct a04_vendor_native_cold *n,uint32_t pixel
 #if A04_GE8300_NATIVE_OWNER_MDL_TARGET
     c->clear_pixel=pixel;
 #endif
-    if(a04_m111_build_clear_job_800x600_cold(&c->job,&input))goto fail;
+    if(a04_m111_build_clear_job_dims(&c->job,&input,n->width,n->height))goto fail;
 #if A04_GE8300_VENDOR_NATIVE_TRIANGLE_SUITE
     if(a04_m111_build_triangle_suite(&c->triangle,&input,(uint8_t *)c+sizeof(*c),8192u))goto fail;
     RtlCopyMemory(c->job.ta,c->triangle.record[0].ta,sizeof(c->job.ta));

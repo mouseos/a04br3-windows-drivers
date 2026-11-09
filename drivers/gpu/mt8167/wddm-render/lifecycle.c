@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "lifecycle.h"
+#include "display_adapter356.h"
 #include "../vendor_m1_11/native_factory_checkpoint.h"
 /* TDR boundary only: existing schema2 records, flushed without changing
  * stop status/proof. PASSIVE only; no MMIO or completion notification. */
@@ -207,7 +208,11 @@ NTSTATUS GeoServiceSubmittedWork(struct geo_owner_session *s) {
  return status;
 }
 NTSTATUS APIENTRY CALLBACK GeoResetFromTimeout(HANDLE adapter) {
- struct geo_kmd_adapter *a=adapter;return a&&a->session?GeoResetOwnerSession(a->session):STATUS_INVALID_DEVICE_STATE;
+ struct geo_kmd_adapter *a=adapter;NTSTATUS status;
+ if(!a||!a->session)return STATUS_INVALID_DEVICE_STATE;
+ if(A04_GE8300_UNIFIED_DISPLAY356){status=GeoDisplay356Restore(a);if(status!=STATUS_SUCCESS)return status;}
+ status=GeoResetOwnerSession(a->session);
+ if(status==STATUS_SUCCESS&&A04_GE8300_UNIFIED_DISPLAY356)status=GeoDisplay356ReleaseMaps(a);return status;
 }
 NTSTATUS APIENTRY CALLBACK GeoRestartFromTimeout(HANDLE adapter) {
  struct geo_kmd_adapter *a=adapter;return a&&a->session?GeoRestartOwnerSession(a->session):STATUS_INVALID_DEVICE_STATE;

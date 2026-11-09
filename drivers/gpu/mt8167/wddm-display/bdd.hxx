@@ -9,6 +9,7 @@
 
 #ifndef _BDD_HXX_
 #define _BDD_HXX_
+#include "../wddm-render/frame_geometry356.h"
 
 extern "C"
 {
@@ -192,6 +193,7 @@ private:
     KMUTEX           m_PresentMutex;
 #if A04_MT8167_DISPLAY_BRIGHTNESS
     A04Mt8167Brightness m_Brightness;
+    PCM_RESOURCE_LIST m_UnifiedBrightnessResources;
 #endif
 #if A04_GE8300_WDDM_SHARED_AUTOSTART
     KEVENT m_SharedWorkerStop;
@@ -252,6 +254,7 @@ public:
 
     NTSTATUS StopDevice(VOID);
     NTSTATUS QueryBrightness(PQUERY_INTERFACE query);
+    void SetUnifiedBrightnessResources(PCM_RESOURCE_LIST p){m_UnifiedBrightnessResources=p;}
 
     // Must be Non-Paged
     VOID ResetDevice(VOID);

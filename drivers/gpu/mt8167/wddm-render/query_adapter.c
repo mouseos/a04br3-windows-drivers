@@ -55,7 +55,7 @@ NTSTATUS APIENTRY GeoQueryAdapterInfo(HANDLE handle,const DXGKARG_QUERYADAPTERIN
   if(status!=STATUS_SUCCESS)break;
   /* Never overwrite an overclaim with a silently more plausible cap set. */
   if(caps.HighestAcceptableAddress.QuadPart!=(LONGLONG)a->aperture.highest_dma_address||
-     caps.ApertureSegmentCommitLimit!=a->aperture.commit_limit||caps.SupportNonVGA||
+     caps.ApertureSegmentCommitLimit!=a->aperture.commit_limit||caps.SupportNonVGA!=(A04_GE8300_UNIFIED_DISPLAY356?1u:0u)||
      !caps.SchedulingCaps.MultiEngineAware||caps.GpuEngineTopology.NbAsymetricProcessingNodes!=1||
      caps.MaxPointerWidth||caps.MaxPointerHeight||caps.MaxOverlays||caps.SupportDirectFlip||caps.SupportMultiPlaneOverlay||
      caps.MemoryManagementCaps.CrossAdapterResource||caps.HybridDiscrete){status=STATUS_INVALID_PARAMETER;break;}
@@ -76,7 +76,7 @@ NTSTATUS GeoBuildRequiredDriverCaps(struct geo_kmd_adapter *a,DXGK_DRIVERCAPS *c
  /* SupportNonVGA claims StopDeviceAndReleasePostDisplayOwnership support;
   * it does not mean that this is a non-VGA render adapter. This device owns
   * no POST scanout and exposes no such display DDI. */
- caps->SupportNonVGA=FALSE;
+ caps->SupportNonVGA=A04_GE8300_UNIFIED_DISPLAY356?TRUE:FALSE;
  /* The actual RT8.1 ARM post-start validator reads this WDK8.1 field at
   * offset 0x148 and accepts only 0x1000/0x1200/0x1300 for Win8+ DDIs.
   * Modern documentation calling it reserved does not match that binary.

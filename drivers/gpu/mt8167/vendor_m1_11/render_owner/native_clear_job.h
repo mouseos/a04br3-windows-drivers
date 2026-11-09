@@ -27,6 +27,7 @@ struct a04_m111_clear_job {
  * In particular, unread auxiliary contents are not certified by this API.
  * Success changes out only, error leaves it unchanged; out/in must not alias.
  * Code and data use separate owned 4KiB pages in their respective heaps. */
+int a04_m111_build_clear_job_dims(struct a04_m111_clear_job *,const struct a04_m111_clear_job_input *,uint32_t width,uint32_t height);
 int a04_m111_build_clear_job_800x600_cold(struct a04_m111_clear_job *out,
     const struct a04_m111_clear_job_input *input);
 #endif

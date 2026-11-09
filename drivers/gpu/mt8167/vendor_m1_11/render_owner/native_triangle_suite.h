@@ -20,6 +20,7 @@ struct a04_m111_triangle_suite {
  * CPU success never reports GPU completion. scratch is a distinct, 8-aligned
  * sizeof(suite) byte host buffer; avoids kernel-stack-sized resource shadows.
  * No allocation, device access, queue publication or capability advertisement. */
+int a04_m111_build_triangle_suite_dims(struct a04_m111_triangle_suite *,const struct a04_m111_clear_job_input *,void *,size_t,uint32_t width,uint32_t height);
 int a04_m111_build_triangle_suite(struct a04_m111_triangle_suite *out,
     const struct a04_m111_clear_job_input *memory,void *scratch,size_t scratch_bytes);
 uint32_t a04_m111_triangle_expected_pixel(unsigned frame,unsigned pixel);

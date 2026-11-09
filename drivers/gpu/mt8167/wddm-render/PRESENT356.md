@@ -1,0 +1,19 @@
+# 標準DXGI Presentと同adapterの表示所有権
+
+356は未実機の候補。354/175で確認済みの標準D3D textureと、通常Windows画面へのGPU出力の検証を区別する。9Fは未解決。任意DWM shader対応や通常デスクトップ完成は主張しない。
+
+GPU0/MOU0006の既native ownerだけがGPU MMU/FW/queue/実完了IRQを所有する。DIS0/MOU0007は表示資源/DMA/実frame IRQのPnP providerへ置換する。標準QUERY_INTERFACEの参照でproviderと資源の寿命を保持し、独立DxgkInitialize/旧named CDO/旧GPU leaseは作らない。既DOD1.7のsource 2d94bcc89b08773624d105b6e5b24e2eea21de64を同GPU adapterのPOST/VidPn bridgeとして使う。旧DODのCPU PresentDisplayOnlyは登録しない。brightnessはDIS0の実PWM resourceだけを明示的に貸与し、同adapterの既brightness実装へ渡す。
+
+標準SHAREDPRIMARYSURFACEは56Bのallocation metadataV2で作成、UMD OpenResourceでOSのallocationをopenする。swapchain backbufferは通常RTとして作成し、実WDK8.1 DXGI_DDI_PRIMARY_DRIVER_FLAG_NO_SCANOUTでcopy-style Presentを選ぶ。標準SetDisplayModeCbには実allocation handleを渡す。Presentは既実GPU TQ Copy queueへ渡し、CPU blit/擬似完了を使わない。
+
+SetVidPnSourceAddressのPrimaryAddressはsegment内のbyte address。allocation.aperture_offsetはページ単位なので4096を掛けて照合する。GPU VA/POST PA/DIS0 DMA addressを混同しない。null allocationの復旧はOSが取得済みのPOST物理アドレスに完全一致するmode reassertionだけを受理する。
+
+nativeはWDDM MAP_APERTURE_SEGMENT由来の実Normal-RAM PFNsを自身のGPU MMUへmapする。独立pin済み同VidMm MDLをDIS0の実HAL SGへ渡し、全1000pageがPFNと一致し連続32bit addressになる場合だけscanoutを許す。bounce/translated SGは拒否する。readonly AML DMS0で実SMI LARB0 port0 MMU_EN=0とvideo modeを確認する。物理POSTをGPU DMAに流用しない。実VidMm primaryがこの連続direct-RAM契約を満たすかは未実機であり、満たさなければ成功扱いせず停止する。
+
+800x1280/pitch3200、identity modeを一組で使用する。GPU apertureは16MiB/4096PTE/8leafとし、target/primary/通常resident allocationを別spanで保持する。600旧profileはdefault-off側に残す。shader/ISA制約は削除しない。
+
+表示IRQ一次根拠はCT3 kernel4.4 mt8167.dtsiのOVL SPI160/RDMA SPI162 LEVEL_LOW、およびprimary_display.cのvideo-mode IF_VSYNC→RDMA0_DONE。matched firmwareはSYSIRQ POL5 bit0/2をOR/readbackし、ACPIでGSI192/194 Level/ActiveHighとGPU0 _DEP DIS0を公開する。RDMA DONE bit2だけをCRTC vsyncへ渡し、OVL completionをvsyncと合成しない。INT_STATUSはCT3 ddp_irq.cどおりW0C。新FWは別branch、旧boot2e6は非変更。
+
+退役順序はaccepted GPU workの実完了待ち→表示disable/reset/実idle→native ownerの既stop/IRQ rundown/graph retirement→DIS0 SG unmap→独立MDL参照解放。timeout/不確実な除去ではmappingを保持し、NoDMA/NoReadを偽造しない。電源IRPをfile/interface参照だけで保留しない。emergency restoreはany-IRQL best effortに限定し、退役や解放を証明しない。
+
+標準評価client dxgi-present356はPnP HWID/service→KMT LUID→実DXGI adapter/outputを照合し、800x1280 discard swapchainの2色Clear→Presentを実行する。readonly escapeはactual accepted GPU完了の後、さらに後続の実RDMA frame IRQを待ち、選択中の同VidMm backingを読み出す。framebuffer画像は観測証拠であり描画入力ではない。Present returnだけで表示成功としない。全1024000画素、同PID、LUID、fence、frame serial、画素/PFN hashと保存binをmainが照合する。通常デスクトップの完成にはその後のOS workload/表示退役の実確認も必要である。

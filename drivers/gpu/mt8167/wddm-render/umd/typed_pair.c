@@ -17,7 +17,7 @@ HRESULT geo_typed_submit_pair(D3D10DDI_HDEVICE h,const FLOAT vertices[3][8]) {
  if(!d||!d->target||!d->bound_shader[0]||!d->bound_shader[1])return E_INVALIDARG;
  if(d&&FAILED(d->error))return d->error;
  vs=d->bound_shader[0]->code;ps=d->bound_shader[1]->code;
- if(vs->pair_stage!=1||ps->pair_stage!=2||d->target->resource->width!=800||d->target->resource->height!=600)return E_NOTIMPL;
+ if(vs->pair_stage!=1||ps->pair_stage!=2||d->target->resource->width!=800||d->target->resource->height!=A04_NATIVE_FRAME_HEIGHT)return E_NOTIMPL;
  hr=geo_typed_validate_native_state(h);if(FAILED(hr))return hr;
  if(!d->viewport_set||d->viewport.TopLeftX||d->viewport.TopLeftY||d->viewport.Width!=800||d->viewport.Height!=600||d->viewport.MinDepth||d->viewport.MaxDepth!=1)return E_NOTIMPL;
  for(i=0;i<24;i++){UINT v;memcpy(&v,(const BYTE *)vertices+4*i,4);if((v&0x7f800000u)==0x7f800000u)return E_INVALIDARG;}

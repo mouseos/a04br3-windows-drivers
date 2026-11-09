@@ -66,7 +66,7 @@ static int32_t build(struct a04_m111_draw_job *out,
   status=a04_m111_texture2d_program(&r->ps,blob,bytes);if(status)return status;
   status=a04_m111_texture2d_state_filtered(&texstate,&t,sampled->sampler_profile==1?0:(sampled->sampler_profile>>8)&255u,sampled->sampler_profile==1?1:sampled->sampler_profile&255u);if(status)return status;
   if(texture<vertex+vertex_bytes&&vertex<texture+t.bytes)return GEO_INVALID;
-  if((texture<in->output_gpu+1920000u&&in->output_gpu<texture+t.bytes)||
+  if((texture<in->output_gpu+(uint64_t)r->target_desc.pitch*r->target_desc.height&&in->output_gpu<texture+t.bytes)||
      (texture<in->data_page_gpu+4096&&in->data_page_gpu<texture+t.bytes)||
      (texture<in->usc_page_gpu+4096&&in->usc_page_gpu<texture+t.bytes)||
      (texture<in->pds_page_gpu+4096&&in->pds_page_gpu<texture+t.bytes))return GEO_INVALID;
@@ -85,7 +85,7 @@ static int32_t build(struct a04_m111_draw_job *out,
  if(r->vs.format==GEO_SHADER_D3D10_TOKENS) {
   status=a04_m111_build_d3d_viewport(vp_words,r->state.viewport);if(status)return status;
  } else if(!same(r->state.viewport,viewport,sizeof(viewport)))return GEO_UNSUPPORTED;
- if(r->target_desc.width!=800 || r->target_desc.height!=600 || r->target_desc.pitch!=3200 ||
+ if(r->target_desc.width!=800 || (r->target_desc.height!=600 && r->target_desc.height!=1280) || r->target_desc.pitch!=3200 ||
     r->state.vertex_count!=3 ||
     (!general&&!combined&&(r->vs.temps || r->vs.shareds || r->vs.vtxins!=(linked?8u:4u) || r->vs.vtxouts!=(linked?8u:4u) || r->vs.input_mask!=(linked?3u:1u) || r->vs.constant_mask ||
     r->ps.temps!=(sampled?A04_TEXTURE2D_SAMPLE_TEMPS:5u) || r->ps.shareds!=(sampled?12u:linked?0u:4u) || r->ps.vtxins || r->ps.vtxouts || r->ps.input_mask!=(linked?1u:0u) || r->ps.constant_mask!=(linked?0u:1u) ||
@@ -93,12 +93,12 @@ static int32_t build(struct a04_m111_draw_job *out,
     !same(b+r->vs.usc.offset,vc,vn) || !same(b+r->ps.usc.offset,pc,pn))))return GEO_UNSUPPORTED;
  if(combined&&(r->ps.temps!=A04_TEXTURE2D_SAMPLE_TEMPS||r->ps.shareds!=12u||r->ps.vtxins||r->ps.vtxouts||r->ps.input_mask||r->ps.constant_mask!=1u))return GEO_UNSUPPORTED;
  if(vertex<4096 || vertex>=(UINT64_C(1)<<40)-vertex_bytes || (vertex&3) ||
-    (vertex<in->output_gpu+1920000u && in->output_gpu<vertex+vertex_bytes) ||
+    (vertex<in->output_gpu+(uint64_t)r->target_desc.pitch*r->target_desc.height && in->output_gpu<vertex+vertex_bytes) ||
     (vertex<in->data_page_gpu+4096 && in->data_page_gpu<vertex+vertex_bytes) ||
     (vertex<in->usc_page_gpu+4096 && in->usc_page_gpu<vertex+vertex_bytes) ||
     (vertex<in->pds_page_gpu+4096 && in->pds_page_gpu<vertex+vertex_bytes))return GEO_INVALID;
  base=(void *)((uint8_t *)scratch+((sizeof(*m)+7u)&~7u));
- if(a04_m111_build_triangle_suite(base,in,(void *)(((uintptr_t)(base+1)+7u)&~(uintptr_t)7u),sizeof(*base)))return GEO_INVALID;
+ if(a04_m111_build_triangle_suite_dims(base,in,(void *)(((uintptr_t)(base+1)+7u)&~(uintptr_t)7u),sizeof(*base),r->target_desc.width,r->target_desc.height))return GEO_INVALID;
  for(unsigned i=0;i<sizeof(*m);i++)((uint8_t *)m)[i]=0;
  copy(m->ta,base->record[0].ta,sizeof(m->ta));copy(m->three,base->record[0].three,sizeof(m->three));
  copy(m->data,base->data,sizeof(base->data));copy(m->usc,base->usc,sizeof(base->usc));copy(m->pds,base->pds,sizeof(base->pds));

@@ -20,7 +20,7 @@ struct geo_typed_state;
  * the heap and may outlive Destroy* when still bound or ambiguously pinned. */
 struct geo_typed_handle {void *object;};
 struct geo_typed_resource {
- UINT magic,refs,deleted,usage,bind,map_flags,width,height,bytes,mapped;
+ UINT magic,refs,deleted,usage,bind,map_flags,width,height,bytes,mapped,primary;
  DXGI_FORMAT format;D3D10DDIRESOURCE_TYPE dimension;
  HANDLE backend;struct geo_typed_device *device;
  struct geo_typed_resource *next;

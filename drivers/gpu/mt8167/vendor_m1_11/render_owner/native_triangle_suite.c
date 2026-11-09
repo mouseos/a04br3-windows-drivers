@@ -35,8 +35,8 @@ uint32_t a04_m111_triangle_expected_pixel(unsigned frame,unsigned pixel)
     return 3u*(2u*x+1u)+4u*(2u*y+1u)<4800u?
         (frame?0xffcc9933u:0xff6633ccu):0xff000000u;
 }
-int a04_m111_build_triangle_suite(struct a04_m111_triangle_suite *out,
-    const struct a04_m111_clear_job_input *memory,void *scratch,size_t bytes)
+int a04_m111_build_triangle_suite_dims(struct a04_m111_triangle_suite *out,
+    const struct a04_m111_clear_job_input *memory,void *scratch,size_t bytes,uint32_t width,uint32_t height)
 {
     /* Static unrelocated board program, not a runtime-captured code blob. */
     static const uint8_t first[32]={0x78,0xe0,0x04,0x08,0x00,0xd0,0x3f,0x87,
@@ -54,7 +54,7 @@ int a04_m111_build_triangle_suite(struct a04_m111_triangle_suite *out,
        overlap((uintptr_t)memory,sizeof(*memory),(uintptr_t)scratch,sizeof(*m)) ||
        overlap((uintptr_t)out,sizeof(*out),(uintptr_t)memory,sizeof(*memory)))return 1;
     in=*memory;in.rgba[0]=in.rgba[1]=in.rgba[2]=0;in.rgba[3]=255;
-    if(a04_m111_build_clear_job_800x600_cold(&clear,&in))return 1;
+    if(a04_m111_build_clear_job_dims(&clear,&in,width,height))return 1;
     d=in.data_page_gpu;u=in.usc_page_gpu;p=in.pds_page_gpu;
     po=(uint32_t)(p-UINT64_C(0xa800000000));
     for(i=0;i<sizeof(*m);i++)((uint8_t *)m)[i]=0; /* owned layout padding */
@@ -86,7 +86,7 @@ int a04_m111_build_triangle_suite(struct a04_m111_triangle_suite *out,
     copy(m->data+DESCRIPTORS+16,tex.image,sizeof(tex.image));
     copy(m->data+TEXEL,tex.texel,sizeof(tex.texel));
     put(m->data,COLOUR,0xff6633ccu,4); /* independent packed RGBA uniform */
-    for(i=0;i<2;i++){put(m->data,SCISSOR+i*8,800,4);put(m->data,SCISSOR+i*8+4,600,4);}
+    for(i=0;i<2;i++){put(m->data,SCISSOR+i*8,width,4);put(m->data,SCISSOR+i*8+4,height,4);}
     put(m->data,VERTEX,0xbf800000u,4);put(m->data,VERTEX+4,0xbf800000u,4);
     put(m->data,VERTEX+8,0x3f800000u,4);put(m->data,VERTEX+12,0xbf800000u,4);
     put(m->data,VERTEX+16,0xbf800000u,4);put(m->data,VERTEX+20,0x3f800000u,4);
@@ -94,7 +94,7 @@ int a04_m111_build_triangle_suite(struct a04_m111_triangle_suite *out,
     put(m->data,FIRST_VERTEX+12,0x3d4ccccdu,4);put(m->data,FIRST_VERTEX+16,0x3d4ccccdu,4);
     put(m->data,FIRST_VERTEX+20,0x3f800000u,4);
     /* Same captured terminator: 800/600 profile, source-native tile units. */
-    put(m->data,TERMINATE,1u<<25,4);put(m->data,TERMINATE+4,(49u<<18)|37u,4);
+    put(m->data,TERMINATE,1u<<25,4);put(m->data,TERMINATE+4,(((width+15u)/16u-1u)<<18)|((height+15u)/16u-1u),4);
     for(i=0;i<2;i++){
         unsigned at=i?STREAM_TEXTURE:STREAM_SOLID,draw=i?DRAW_TEXTURE:DRAW_SOLID;
         pp.fragment_pds=po+(i?PDS_TEXTURE:PDS_SOLID);pp.texuni_code=po+PDS_DMA_CODE;
@@ -113,3 +113,6 @@ int a04_m111_build_triangle_suite(struct a04_m111_triangle_suite *out,
     }
     copy(out,m,sizeof(*m));return 0;
 }
+
+int a04_m111_build_triangle_suite(struct a04_m111_triangle_suite *out,const struct a04_m111_clear_job_input *memory,void *scratch,size_t bytes)
+{return a04_m111_build_triangle_suite_dims(out,memory,scratch,bytes,800,600);}

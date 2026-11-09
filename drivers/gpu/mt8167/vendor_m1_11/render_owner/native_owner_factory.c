@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent
  * Source-linked Dxgk owner. No WDF, second IRQ connection or user payload. */
 #include "native_owner_factory_private.h"
+#include "display_geometry356.h"
 #include "native_factory_checkpoint.h"
 #include "../draw_trace_candidate.h"
 #include "A04BR3RogueRuntimeLayout.h"
@@ -106,7 +107,7 @@ static int32_t create(void *p,const struct geo_surface_desc *d,uint64_t *id)
     if(vertex){
         if(d->size!=sizeof(*d) || d->version!=1 || d->width<4 || d->width>65536 ||
            d->height!=1 || d->pitch!=d->width || d->reserved)return STATUS_INVALID_PARAMETER;
-    }else if(!d || d->size!=sizeof(*d) || d->version!=1 || d->width!=800 || d->height!=600 ||
+    }else if(!d || d->size!=sizeof(*d) || d->version!=1 || d->width!=A04_NATIVE_FRAME_WIDTH || d->height!=A04_NATIVE_FRAME_HEIGHT ||
        d->pitch!=3200 || d->format!=GEO_FORMAT_A8R8G8B8 || d->usage!=GEO_USAGE_RENDER_TARGET || d->reserved)return STATUS_NOT_SUPPORTED;
     s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
     if(c->next_id==UINT64_MAX)return leave(c,STATUS_INTEGER_OVERFLOW);
@@ -180,7 +181,7 @@ static int32_t bind(void *p,uint64_t surface,void *mdl,uint32_t offset,uint32_t 
     /* Vertex MDLs are resource-owned read-only bindings above. Multiple
      * resident VBs must coexist; a->vertex is only a borrowed per-draw
      * selection, never a second owner or an admission limit. */
-    if(bytes!=1920000 || c->allocation->binding)return leave(c,STATUS_DEVICE_BUSY);
+    if(bytes!=A04_NATIVE_FRAME_BYTES || c->allocation->binding)return leave(c,STATUS_DEVICE_BUSY);
     s=cold_for_bind(c);if(!NT_SUCCESS(s))return leave(c,s);
     c->surface=surface;c->description=r->desc;c->aperture_offset=aperture;
     s=e_native_build_graph_locked(c);
@@ -602,5 +603,18 @@ static int32_t prepare_draw_v5(void *p,const struct geo_draw_request_v5 *r,const
 int32_t GeoNativeOwnerGetDrawOpsV5(struct geo_native_binding *b,struct geo_native_draw_ops_v5 *out) {
  struct geo_native_draw_ops_v1 v;int32_t s;if(!out)return GEO_INVALID;RtlZeroMemory(out,sizeof(*out));s=GeoNativeOwnerGetDrawOpsV1(b,&v);if(s)return s;
  out->size=sizeof(*out);out->version=5;out->context=v.context;out->prepare_draw=prepare_draw_v5;return GEO_OK;
+}
+NTSTATUS GeoNativeOwnerDrainForDisplay(struct geo_native_binding *binding){
+ struct e_native_owner *c;NTSTATUS status;
+ if(!binding||binding->size!=sizeof(*binding)||binding->version!=2||!(c=binding->native_context)||binding->control.Interface.Context!=c)return STATUS_INVALID_PARAMETER;
+ status=enter(c,FALSE);if(status!=STATUS_SUCCESS)return status;
+ /* Caller holds the miniport PASSIVE lock and has excluded all accepted
+  * jobs under the genuine GPU IRQ lock. Use the normal stop/platform-off,
+  * IRQ close and graph retirement, preserving logical physical MDL binds. */
+ status=wait_boundary_locked(c);
+ if(status==STATUS_SUCCESS)status=e_native_stop_locked(c);
+ if(status==STATUS_SUCCESS)status=e_native_retire_graph_locked(c);
+ if(status!=STATUS_SUCCESS)c->state=E_OWNER_FAILED;
+ return leave(c,status);
 }
 #endif

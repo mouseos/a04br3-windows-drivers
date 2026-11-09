@@ -3,6 +3,7 @@
 #include "../dma_pages.h"
 #include "../gpu_mmu.h"
 #define TAG 0x53444741u
+#if !defined(A04_SHARED_SCANOUT_VIDMM_ONLY) || !A04_SHARED_SCANOUT_VIDMM_ONLY
 struct map_wait { KEVENT event; PSCATTER_GATHER_LIST sg; };
 static void map_done(PDEVICE_OBJECT dev,PIRP irp,PSCATTER_GATHER_LIST sg,PVOID arg)
 {
@@ -22,6 +23,7 @@ static NTSTATUS map_one(PDMA_ADAPTER adapter,PDEVICE_OBJECT pdo,PMDL mdl,
     if(!w.sg)return STATUS_DEVICE_CONFIGURATION_ERROR;
     *out=w.sg;return STATUS_SUCCESS;
 }
+#endif
 static NTSTATUS display_address(PSCATTER_GATHER_LIST sg,uint32_t *out)
 {
     uint64_t base=0,next=0,remaining=A04_SHARED_SCANOUT_BYTES;ULONG i;
@@ -37,6 +39,7 @@ static NTSTATUS display_address(PSCATTER_GATHER_LIST sg,uint32_t *out)
     if(remaining || !base || (base&3u))return STATUS_DEVICE_CONFIGURATION_ERROR;
     *out=(uint32_t)base;return STATUS_SUCCESS;
 }
+#if !defined(A04_SHARED_SCANOUT_VIDMM_ONLY) || !A04_SHARED_SCANOUT_VIDMM_ONLY
 NTSTATUS a04_shared_scanout_handoff_display(struct a04_shared_scanout *s,
     PDEVICE_OBJECT display_pdo,a04_shared_quiesce_proof proof,void *ctx)
 {
@@ -130,4 +133,21 @@ NTSTATUS a04_shared_scanout_build_tables(const struct a04_shared_scanout *s,
           s->gpu_pages,A04_SHARED_SCANOUT_PAGES,A04_GPU_MMU_SLC_BYPASS))
         return STATUS_DEVICE_CONFIGURATION_ERROR;
     return STATUS_SUCCESS;
+}
+
+#endif
+NTSTATUS a04_shared_scanout_match_vidmm(PMDL mdl,PSCATTER_GATHER_LIST sg,uint32_t *out) {
+ PFN_NUMBER *pfns;ULONG page=0;uint32_t base;NTSTATUS status;
+ if(!mdl||!sg||!out||MmGetMdlByteOffset(mdl)||MmGetMdlByteCount(mdl)!=A04_SHARED_SCANOUT_BYTES||
+    !(mdl->MdlFlags&MDL_PAGES_LOCKED)||(mdl->MdlFlags&MDL_IO_SPACE))return STATUS_INVALID_PARAMETER;
+ status=display_address(sg,&base);if(!NT_SUCCESS(status))return status;
+ pfns=MmGetMdlPfnArray(mdl);
+ for(ULONG i=0;i<sg->NumberOfElements;i++){
+  uint64_t a=sg->Elements[i].Address.QuadPart;ULONG n=sg->Elements[i].Length;
+  if((a&4095u)||(n&4095u)||n/4096u>A04_SHARED_SCANOUT_PAGES-page)return STATUS_DEVICE_CONFIGURATION_ERROR;
+  for(ULONG j=0;j<n/4096u;j++,page++)
+   if(!pfns[page]||(uint64_t)pfns[page]>0xfffffu||a+j*4096u!=((uint64_t)pfns[page]<<12))return STATUS_DEVICE_CONFIGURATION_ERROR;
+ }
+ if(page!=A04_SHARED_SCANOUT_PAGES)return STATUS_DEVICE_CONFIGURATION_ERROR;
+ *out=base;return STATUS_SUCCESS;
 }

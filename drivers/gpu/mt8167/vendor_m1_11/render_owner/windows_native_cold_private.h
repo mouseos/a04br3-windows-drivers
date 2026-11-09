@@ -2,6 +2,7 @@
 #ifndef MT8167_M111_WINDOWS_NATIVE_COLD_PRIVATE_H
 #define MT8167_M111_WINDOWS_NATIVE_COLD_PRIVATE_H
 #include "windows_native_cold.h"
+#include "display_geometry356.h"
 #include "windows_render_cold.h"
 #include "native_resources.h"
 #include "native_clear_surface.h"
@@ -27,7 +28,7 @@ struct a04_vendor_native_cold {
     struct a04_vendor_uncached data_tail[31],pixel_tail[63];
     ULONG data_blocks,pixel_blocks;
     struct a04_vendor_native_diagnostic *diagnostic; /* only during cold preparation */
-    struct a04_vendor_uncached output[4]; /* first pixel block, PD, PT0, PT1 */
+    struct a04_vendor_uncached output[A04_NATIVE_OUTPUT_TABLE_COUNT]; /* pixel slot, PD, complete aperture PT leaves */
     struct a04_m111_clear_surface clear_surface;
     struct a04_m111_clear_code_bindings bindings;
     struct a04_vendor_native_candidate *candidate;

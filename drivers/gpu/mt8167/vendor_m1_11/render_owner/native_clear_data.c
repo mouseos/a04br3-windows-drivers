@@ -15,9 +15,10 @@ int a04_m111_build_clear_data(struct a04_m111_clear_data *out,
 {
     struct a04_m111_clear_data made={{0},0,0,0,0};
     struct a04_m111_terminate_stream stream;unsigned i;
-    /* This first profile is exactly the captured single-sample 800x600 RT.
-     * Other dimensions need an independent complete-record profile. */
-    if(!out || width!=800u || height!=600u ||
+    /* Two closed single-sample profiles. Scissor and terminate fields are
+     * rebuilt from explicit dimensions; the HWRT producer has exact profiles
+     * for both 600 and 1280. No shader/packet restrictions are removed. */
+    if(!out || width!=800u || (height!=600u && height!=1280u) ||
        a04_m111_build_clear_terminate_stream(&stream,gpu,width,height))return 1;
     for(i=0;i<sizeof(stream.data);i++)made.bytes[i]=stream.data[i];
     le32(made.bytes+A04_M111_CLEAR_SCISSOR_OFFSET,width);

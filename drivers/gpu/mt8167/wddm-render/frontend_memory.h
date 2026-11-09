@@ -38,6 +38,7 @@ NTSTATUS GeoBeginVidMmMap(struct geo_kmd_adapter *,struct geo_allocation *,PMDL,
 NTSTATUS GeoBeginVidMmMapSpan(struct geo_kmd_adapter *,struct geo_allocation *,PMDL source,
  ULONG mdl_offset_pages,SIZE_T mapped_pages,ULONG active_bytes,PMDL *selected_view);
 NTSTATUS GeoConfirmVidMmBind(struct geo_kmd_adapter *,struct geo_allocation *);
+NTSTATUS GeoAcquireScanoutMap(struct geo_kmd_adapter *,struct geo_allocation *,struct geo_frontend_mdl_lease *);
 void GeoEndVidMmMap(struct geo_kmd_adapter *,struct geo_allocation *);
 /* SEH TU MUST use the real Microsoft ARM compiler, not unsafe dereference or
  * a Clang SEH substitute. The rest of the miniport remains Clang-built. */

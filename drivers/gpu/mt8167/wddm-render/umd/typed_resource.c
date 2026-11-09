@@ -52,8 +52,9 @@ HRESULT geo_typed_resource_unref(struct geo_typed_resource *r) {
 }
 static HRESULT desc_valid(const D3D11DDIARG_CREATERESOURCE *p) {
  const D3D10DDI_MIPINFO *m;
- if(!p||!p->pMipInfoList||p->MipLevels!=1||p->ArraySize!=1||p->MiscFlags||p->pPrimaryDesc||p->ByteStride||p->DecoderBufferType)return E_NOTIMPL;
+ if(!p||!p->pMipInfoList||p->MipLevels!=1||p->ArraySize!=1||p->MiscFlags||(!A04_GE8300_UNIFIED_DISPLAY356&&p->pPrimaryDesc)||p->ByteStride||p->DecoderBufferType)return E_NOTIMPL;
  m=p->pMipInfoList;
+ if(p->pPrimaryDesc&&(!(p->BindFlags&D3D10_DDI_BIND_PRESENT)||p->pPrimaryDesc->VidPnSourceId||p->pPrimaryDesc->ModeDesc.Width!=m->TexelWidth||p->pPrimaryDesc->ModeDesc.Height!=m->TexelHeight))return E_NOTIMPL;
  if(!m->TexelWidth||!m->TexelHeight||m->TexelDepth!=1||m->PhysicalWidth!=m->TexelWidth||m->PhysicalHeight!=m->TexelHeight||m->PhysicalDepth!=1)return E_INVALIDARG;
  if(p->Usage>D3D10_DDI_USAGE_STAGING||(p->MapFlags&~D3D10_DDI_CPU_ACCESS_MASK))return E_INVALIDARG;
  if(p->ResourceDimension==D3D10DDIRESOURCE_BUFFER){
@@ -61,8 +62,8 @@ static HRESULT desc_valid(const D3D11DDIARG_CREATERESOURCE *p) {
      !(p->BindFlags&(D3D10_DDI_BIND_VERTEX_BUFFER|D3D10_DDI_BIND_INDEX_BUFFER|D3D10_DDI_BIND_CONSTANT_BUFFER))||
      (p->BindFlags&~(D3D10_DDI_BIND_VERTEX_BUFFER|D3D10_DDI_BIND_INDEX_BUFFER|D3D10_DDI_BIND_CONSTANT_BUFFER)))return E_NOTIMPL;
  } else if(p->ResourceDimension==D3D10DDIRESOURCE_TEXTURE2D){
-  if(p->Format!=DXGI_FORMAT_B8G8R8A8_UNORM||m->TexelWidth>800u||m->TexelHeight>600u||
-     p->SampleDesc.Count!=1||p->SampleDesc.Quality||(p->BindFlags&~(D3D10_DDI_BIND_RENDER_TARGET|D3D10_DDI_BIND_SHADER_RESOURCE)))return E_NOTIMPL;
+  if(p->Format!=DXGI_FORMAT_B8G8R8A8_UNORM||m->TexelWidth>800u||m->TexelHeight>A04_NATIVE_FRAME_HEIGHT||
+     p->SampleDesc.Count!=1||p->SampleDesc.Quality||(p->BindFlags&~(D3D10_DDI_BIND_RENDER_TARGET|D3D10_DDI_BIND_SHADER_RESOURCE|(A04_GE8300_UNIFIED_DISPLAY356?D3D10_DDI_BIND_PRESENT:0))))return E_NOTIMPL;
   if(p->BindFlags&D3D10_DDI_BIND_SHADER_RESOURCE){if(p->BindFlags!=D3D10_DDI_BIND_SHADER_RESOURCE||m->TexelWidth>128||m->TexelHeight>128)return E_NOTIMPL;}
  } else return E_NOTIMPL;
  if(p->Usage==D3D10_DDI_USAGE_STAGING&&(p->BindFlags||!p->MapFlags))return E_INVALIDARG;
@@ -106,6 +107,10 @@ static void APIENTRY create_resource(D3D10DDI_HDEVICE h,const D3D11DDIARG_CREATE
  q.Pool=(p->BindFlags&D3D10_DDI_BIND_RENDER_TARGET)?D3DDDIPOOL_VIDEOMEMORY:D3DDDIPOOL_SYSTEMMEM;
  q.hResource=runtime.handle;q.pSurfList=&surf;q.SurfCount=q.MipLevels=1;q.Rotation=D3DDDI_ROTATION_IDENTITY;
  q.Flags.Texture=(p->BindFlags&D3D10_DDI_BIND_SHADER_RESOURCE)!=0;
+ /* RT8.1 explicitly supports NO_SCANOUT: request real Blt presentation
+  * into the standard OS-owned primary rather than advertise fake flip. */
+ if(p->pPrimaryDesc)p->pPrimaryDesc->DriverFlags|=DXGI_DDI_PRIMARY_DRIVER_FLAG_NO_SCANOUT;
+ q.Flags.Primary=0;r->primary=0;
  q.Flags.VertexBuffer=r->dimension==D3D10DDIRESOURCE_BUFFER;q.Flags.RenderTarget=(p->BindFlags&D3D10_DDI_BIND_RENDER_TARGET)!=0;
  geo_typed_resource_trace(h,"RESOURCE_BACKEND_POOL",q.Pool);
  geo_typed_resource_trace(h,"RESOURCE_RUNTIME_HANDLE_PRESENT",runtime.handle!=NULL);
@@ -165,7 +170,24 @@ static BOOL APIENTRY staging_busy(D3D10DDI_HDEVICE h,D3D10DDI_HRESOURCE handle) 
  if(FAILED(hr)){geo_typed_error(h,hr);return TRUE;}
  hr=unmap_backend(r);if(FAILED(hr)){geo_typed_error(h,hr);return TRUE;}return FALSE;
 }
+static SIZE_T APIENTRY opened_size(D3D10DDI_HDEVICE h,const D3D10DDIARG_OPENRESOURCE *p){
+ if(!A04_GE8300_UNIFIED_DISPLAY356||!geo_typed_device(h)||!p||p->NumAllocations!=1||!p->pOpenAllocationInfo||p->PrivateDriverDataSize)return 0;
+ return sizeof(struct geo_typed_handle);
+}
+static void APIENTRY open_resource(D3D10DDI_HDEVICE h,const D3D10DDIARG_OPENRESOURCE *p,D3D10DDI_HRESOURCE handle,D3D10DDI_HRTRESOURCE runtime){
+ struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_resource *r;struct geo_surface_desc desc;HRESULT hr;
+ if(!d||!handle.pDrvPrivate||!opened_size(h,p)){geo_typed_error(h,E_INVALIDARG);return;}
+ ((struct geo_typed_handle *)handle.pDrvPrivate)->object=NULL;
+ r=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*r));if(!r){geo_typed_error(h,E_OUTOFMEMORY);return;}
+ hr=geo_umd_open_primary(&d->backend,p->pOpenAllocationInfo,runtime.handle,&r->backend,&desc);
+ if(FAILED(hr)){HeapFree(GetProcessHeap(),0,r);geo_typed_error(h,hr);return;}
+ r->magic=GEO_TYPED_RESOURCE_MAGIC;r->refs=1;r->device=d;r->primary=1;r->usage=D3D10_DDI_USAGE_DEFAULT;
+ r->bind=D3D10_DDI_BIND_PRESENT|(desc.usage==GEO_USAGE_RENDER_TARGET?D3D10_DDI_BIND_RENDER_TARGET:0);
+ r->width=desc.width;r->height=desc.height;r->bytes=desc.pitch*desc.height;r->format=DXGI_FORMAT_B8G8R8A8_UNORM;r->dimension=D3D10DDIRESOURCE_TEXTURE2D;
+ r->next=d->resources;d->resources=r;((struct geo_typed_handle *)handle.pDrvPrivate)->object=r;
+}
 void geo_typed_resources_install(D3D11_1DDI_DEVICEFUNCS *f) {
+ if(A04_GE8300_UNIFIED_DISPLAY356){f->pfnCalcPrivateOpenedResourceSize=opened_size;f->pfnOpenResource=open_resource;}
  f->pfnCalcPrivateResourceSize=resource_size;f->pfnCreateResource=create_resource;f->pfnDestroyResource=destroy_resource;
  f->pfnResourceIsStagingBusy=staging_busy;f->pfnResourceMap=map_resource;f->pfnResourceUnmap=unmap_resource;f->pfnStagingResourceMap=map_resource;f->pfnStagingResourceUnmap=unmap_resource;
  f->pfnDynamicIABufferMapDiscard=map_resource;f->pfnDynamicIABufferMapNoOverwrite=map_resource;f->pfnDynamicIABufferUnmap=unmap_resource;

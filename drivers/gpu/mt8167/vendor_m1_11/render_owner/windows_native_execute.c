@@ -170,7 +170,7 @@ NTSTATUS a04_vendor_native_publish_candidate(struct a04_vendor_native_cold *n,
        r->native_owner!=n || !(c=n->candidate) || n->quarantined || r->poisoned ||
        r->cleanup_started || c->attempted || !n->mapped || !n->prepared || !n->bank_prepared ||
        !n->backing_staged || !n->output_mapped || n->code_mapped!=3u ||
-       n->width!=800u || n->height!=600u || !a04_vendor_native_output_ready(n) ||
+       n->width!=A04_NATIVE_FRAME_WIDTH || n->height!=A04_NATIVE_FRAME_HEIGHT || !a04_vendor_native_output_ready(n) ||
        !s->online || !s->core || s->memory!=r->firmware ||
        !s->memory || !s->memory->hardware_owned || !s->memory->uncached ||
        !(f=s->memory->runtime) || !f->kctl || !f->fctl || !f->kcommands || !f->command_sync ||

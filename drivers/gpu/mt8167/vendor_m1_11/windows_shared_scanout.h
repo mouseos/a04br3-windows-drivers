@@ -37,6 +37,10 @@ static_assert(sizeof(struct a04_shared_scanout)==32 && offsetof(struct a04_share
 _Static_assert(sizeof(struct a04_shared_scanout)==32 && offsetof(struct a04_shared_scanout,gpu_pages)==20 && offsetof(struct a04_shared_scanout,exposed)==28, "shared scanout ABI");
 #endif
 #endif
+/* Current native owner variant: GPU PTEs use retained VidMm physical PFNs,
+ * not a HAL packet transfer. Match the DIS0 SG mapping page-for-page to the
+ * SAME Normal-RAM MDL and require the display's actual contiguous span. */
+NTSTATUS a04_shared_scanout_match_vidmm(PMDL,PSCATTER_GATHER_LIST,uint32_t *display_dma);
 NTSTATUS a04_shared_scanout_prepare(struct a04_shared_scanout *,
     PDMA_ADAPTER gpu,PDEVICE_OBJECT gpu_pdo,
     PDMA_ADAPTER display,PDEVICE_OBJECT display_pdo);

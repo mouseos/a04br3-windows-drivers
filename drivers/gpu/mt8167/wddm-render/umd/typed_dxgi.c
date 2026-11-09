@@ -90,8 +90,36 @@ static HRESULT APIENTRY present(DXGI_DDI_ARG_PRESENT *p) {
  d->presenting=0;return hr;
 }
 static HRESULT APIENTRY gamma(DXGI_DDI_ARG_GET_GAMMA_CONTROL_CAPS *p){return p?DXGI_ERROR_UNSUPPORTED:E_INVALIDARG;}
-static HRESULT APIENTRY display(DXGI_DDI_ARG_SETDISPLAYMODE *p){return p?DXGI_ERROR_UNSUPPORTED:E_INVALIDARG;}
-static HRESULT APIENTRY rotate(DXGI_DDI_ARG_ROTATE_RESOURCE_IDENTITIES *p){return p?DXGI_ERROR_UNSUPPORTED:E_INVALIDARG;}
+static HRESULT APIENTRY display(DXGI_DDI_ARG_SETDISPLAYMODE *p){
+ D3D10DDI_HDEVICE h;struct geo_typed_device *d;struct geo_typed_resource *r;D3DDDICB_SETDISPLAYMODE q;HRESULT hr;
+ if(!p)return E_INVALIDARG;h=device(p->hDevice);d=geo_typed_device(h);
+ if(!A04_GE8300_UNIFIED_DISPLAY356||!d||!d->backend.cb.pfnSetDisplayModeCb)return DXGI_ERROR_UNSUPPORTED;
+ r=geo_typed_resource(h,resource(p->hResource));if(!r||!r->primary||r->mapped||p->SubResourceIndex)return E_INVALIDARG;
+ if(FAILED(d->error))return d->error;memset(&q,0,sizeof(q));hr=geo_typed_allocation(r,&q.hPrimaryAllocation);
+ if(FAILED(hr))return hr;return d->backend.cb.pfnSetDisplayModeCb(d->backend.runtime,&q);
+}
+static HRESULT APIENTRY rotate(DXGI_DDI_ARG_ROTATE_RESOURCE_IDENTITIES *p){
+ struct geo_typed_resource *r[16];HANDLE first;UINT primary,i,j;D3D10DDI_HDEVICE h;struct geo_typed_device *d;D3DDDIARG_SETRENDERTARGET q;HRESULT hr;
+ if(!p)return E_INVALIDARG;if(!A04_GE8300_UNIFIED_DISPLAY356)return DXGI_ERROR_UNSUPPORTED;
+ h=device(p->hDevice);d=geo_typed_device(h);if(!d||!p->pResources||!p->Resources||p->Resources>16)return E_INVALIDARG;
+ if(FAILED(d->error))return d->error;
+ for(i=0;i<p->Resources;i++){
+  r[i]=geo_typed_resource(h,resource(p->pResources[i]));if(!r[i]||r[i]->mapped)return E_INVALIDARG;
+  for(j=0;j<i;j++)if(r[j]==r[i])return E_INVALIDARG;
+  if(i&&(r[i]->width!=r[0]->width||r[i]->height!=r[0]->height||r[i]->format!=r[0]->format||r[i]->usage!=r[0]->usage||r[i]->bind!=r[0]->bind||r[i]->map_flags!=r[0]->map_flags))return DXGI_ERROR_UNSUPPORTED;
+ }
+ hr=d->backend.frontend_flush(&d->backend);if(FAILED(hr))return hr;
+ first=r[0]->backend;primary=r[0]->primary;
+ for(i=0;i+1<p->Resources;i++){r[i]->backend=r[i+1]->backend;r[i]->primary=r[i+1]->primary;}
+ r[i]->backend=first;r[i]->primary=primary;
+ if(d->target){memset(&q,0,sizeof(q));q.hRenderTarget=d->target->resource->backend;hr=d->memory.pfnSetRenderTarget(&d->backend,&q);}
+ if(FAILED(hr)){
+  first=r[p->Resources-1]->backend;primary=r[p->Resources-1]->primary;
+  for(i=p->Resources-1;i;i--){r[i]->backend=r[i-1]->backend;r[i]->primary=r[i-1]->primary;}
+  r[0]->backend=first;r[0]->primary=primary;
+ }
+ return hr;
+}
 static HRESULT APIENTRY blt(DXGI_DDI_ARG_BLT *p){return p?DXGI_ERROR_UNSUPPORTED:E_INVALIDARG;}
 static HRESULT APIENTRY resolve(DXGI_DDI_ARG_RESOLVESHAREDRESOURCE *p){return p?DXGI_ERROR_UNSUPPORTED:E_INVALIDARG;}
 static HRESULT APIENTRY blt1(DXGI_DDI_ARG_BLT1 *p){return p?DXGI_ERROR_UNSUPPORTED:E_INVALIDARG;}

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "kmd_clear.h"
+#include "display_adapter356.h"
 #include "capture.h"
 #include "lifecycle.h"
 #include "kmd_objects.h"
@@ -12,21 +13,26 @@ static int ticket_range(UINT size,UINT begin,UINT end) {
 static NTSTATUS discard_allocation_prepares(struct geo_kmd_adapter *,struct geo_allocation *);
 static NTSTATUS prepare_pending(struct geo_kmd_adapter *,const struct geo_dma_ticket *);
 static NTSTATUS GeoCreateAllocationImpl(HANDLE adapter,DXGKARG_CREATEALLOCATION *p) {
- struct geo_kmd_adapter *a=adapter;struct geo_allocation *allocation;struct geo_surface_desc desc;struct geo_allocation_data data;DXGK_ALLOCATIONINFO *info;NTSTATUS s;
+ struct geo_kmd_adapter *a=adapter;struct geo_allocation *allocation;struct geo_surface_desc desc;struct geo_allocation_data data;struct geo_allocation_data_v2 extended={0};UINT primary=0;DXGK_ALLOCATIONINFO *info;NTSTATUS s;
  if(!a||!p||KeGetCurrentIrql()!=PASSIVE_LEVEL||p->NumAllocations!=1||!p->pAllocationInfo||p->PrivateDriverDataSize)return STATUS_INVALID_PARAMETER;
  info=p->pAllocationInfo;
- if(info->PrivateDriverDataSize!=sizeof(data)||!info->pPrivateDriverData)return STATUS_INVALID_PARAMETER;
+ if((info->PrivateDriverDataSize!=sizeof(data)&&info->PrivateDriverDataSize!=sizeof(extended))||!info->pPrivateDriverData)return STATUS_INVALID_PARAMETER;
  RtlCopyMemory(&data,info->pPrivateDriverData,sizeof(data));
- if(data.size!=sizeof(data)||data.version!=1u||!data.logical_width||!data.logical_height)return STATUS_INVALID_PARAMETER;
+ if(info->PrivateDriverDataSize==sizeof(extended)) {
+  RtlCopyMemory(&extended,info->pPrivateDriverData,sizeof(extended));
+  if(!A04_GE8300_UNIFIED_DISPLAY356||!a->display||data.size!=sizeof(extended)||data.version!=2u||extended.flags!=GEO_ALLOCATION_PRIMARY||extended.source_id)return STATUS_NOT_SUPPORTED;
+  primary=1;
+ }else if(data.size!=sizeof(data)||data.version!=1u)return STATUS_INVALID_PARAMETER;
+ if(!data.logical_width||!data.logical_height)return STATUS_INVALID_PARAMETER;
  desc=data.storage;
  if(desc.usage==GEO_USAGE_RENDER_TARGET){
-  if(desc.width!=800u||desc.height!=600u||desc.pitch!=3200u||data.logical_width>800u||data.logical_height>600u)return STATUS_NOT_SUPPORTED;
+  if(desc.width!=800u||desc.height!=A04_NATIVE_FRAME_HEIGHT||desc.pitch!=3200u||data.logical_width>800u||data.logical_height>A04_NATIVE_FRAME_HEIGHT)return STATUS_NOT_SUPPORTED;
  }else if(data.logical_width!=desc.width||data.logical_height!=desc.height)return STATUS_INVALID_PARAMETER;
 if(!a->aperture_ready||!geo_desc_valid(&desc)||ROUND_TO_PAGES(desc.pitch*desc.height)>a->aperture.commit_limit)return STATUS_NOT_SUPPORTED;
  allocation=ExAllocatePoolWithTag(NonPagedPool,sizeof(*allocation),'rOeG');if(!allocation)return STATUS_INSUFFICIENT_RESOURCES;
  RtlZeroMemory(allocation,sizeof(*allocation));s=geo_create(&a->engine,allocation,&desc);
  if(s!=STATUS_SUCCESS){ExFreePoolWithTag(allocation,'rOeG');return s;}
- allocation->logical_width=data.logical_width;allocation->logical_height=data.logical_height;
+ allocation->logical_width=data.logical_width;allocation->logical_height=data.logical_height;allocation->primary=primary;allocation->source_id=0;if(primary)allocation->cpu_only=0;
  info->hAllocation=allocation;info->Alignment=PAGE_SIZE;info->Size=ROUND_TO_PAGES(desc.pitch*desc.height);
  /* A CPU-only allocation supports no pitch-aligned GPU segment.
   * WDK8.1 DXGK_ALLOCATIONINFO.PitchAlignedSize is zero in that case. */
@@ -41,6 +47,7 @@ static NTSTATUS GeoDestroyAllocationImpl(HANDLE adapter,const DXGKARG_DESTROYALL
  struct geo_kmd_adapter *a=adapter;struct geo_allocation *allocation;NTSTATUS s;
  if(!a||!p||KeGetCurrentIrql()!=PASSIVE_LEVEL||p->NumAllocations!=1||!p->pAllocationList)return STATUS_INVALID_PARAMETER;
  allocation=p->pAllocationList[0];if(!allocation)return STATUS_INVALID_PARAMETER;
+ if(A04_GE8300_UNIFIED_DISPLAY356&&allocation->display_refs){s=GeoDisplay356RetireAllocation(a,allocation);if(s!=STATUS_SUCCESS)return s;}
  s=geo_destroy(&a->engine,allocation);if(s!=STATUS_SUCCESS)return s;
  GeoEndVidMmMap(a,allocation);
  ExFreePoolWithTag(allocation,'rOeG');return STATUS_SUCCESS;
@@ -94,6 +101,7 @@ static NTSTATUS GeoBuildPagingBufferImpl(HANDLE adapter,DXGKARG_BUILDPAGINGBUFFE
      p->UnmapApertureSegment.OffsetInPages!=allocation->aperture_offset||
      p->UnmapApertureSegment.NumberOfPages!=allocation->aperture_pages)return STATUS_INVALID_PARAMETER;
   status=discard_allocation_prepares(a,allocation);
+  if(A04_GE8300_UNIFIED_DISPLAY356&&status==STATUS_SUCCESS&&allocation->display_refs)status=GeoDisplay356RetireAllocation(a,allocation);
   if(status==STATUS_SUCCESS)status=geo_unbind(&a->engine,allocation);
   if(status==STATUS_SUCCESS)GeoEndVidMmMap(a,allocation);return status;
  }
@@ -308,7 +316,7 @@ static NTSTATUS fail_copy_render(struct geo_kmd_adapter *a,NTSTATUS status) {
 }
 static NTSTATUS GeoRenderCopyImpl(struct geo_kmd_context *c,DXGKARG_RENDER *r,const struct geo_copy_packet *p) {
  struct copy_begin x;UINT i;
- if(p->magic!=GEO_COPY_MAGIC||p->size!=sizeof(*p)||p->version!=1||p->destination_index||p->source_index!=1||p->width!=800||p->height!=600||p->reserved||
+ if(p->magic!=GEO_COPY_MAGIC||p->size!=sizeof(*p)||p->version!=1||p->destination_index||p->source_index!=1||p->width!=800||p->height!=A04_NATIVE_FRAME_HEIGHT||p->reserved||
     r->AllocationListSize<2||r->PatchLocationListOutSize<2||!r->pAllocationList[0].WriteOperation||r->pAllocationList[1].WriteOperation)return STATUS_INVALID_PARAMETER;
  RtlZeroMemory(&x,sizeof(x));x.context=c;x.dh=r->pAllocationList[0].hDeviceSpecificAllocation;x.sh=r->pAllocationList[1].hDeviceSpecificAllocation;
  x.destination=GeoResolveWriteAllocation(c,x.dh);x.source=GeoResolveReadAllocation(c,x.sh);
@@ -357,12 +365,12 @@ static NTSTATUS GeoRenderImpl(HANDLE context,DXGKARG_RENDER *r) {
  * Capture only; use the same queued real Copy as ordinary Render. */
 NTSTATUS APIENTRY GeoPresent(HANDLE context,DXGKARG_PRESENT *p) {
  struct geo_kmd_context *c=context;DXGK_ALLOCATIONLIST list[2];
- struct geo_copy_packet copy={GEO_COPY_MAGIC,sizeof(copy),1,0,1,800,600,0};
+ struct geo_copy_packet copy={GEO_COPY_MAGIC,sizeof(copy),1,0,1,800,A04_NATIVE_FRAME_HEIGHT,0};
  DXGKARG_RENDER r={.pCommand=&copy,.CommandLength=sizeof(copy)};NTSTATUS status;UINT i;
  if(!c||!p)return STATUS_INVALID_PARAMETER;
  if(KeGetCurrentIrql()!=PASSIVE_LEVEL||p->Flags.Value!=1u||p->FlipInterval||p->DmaBufferSegmentId||p->MultipassOffset||p->SubRectCnt||
-    p->SrcRect.left||p->SrcRect.top||p->SrcRect.right!=800||p->SrcRect.bottom!=600||
-    p->DstRect.left||p->DstRect.top||p->DstRect.right!=800||p->DstRect.bottom!=600||
+    p->SrcRect.left||p->SrcRect.top||p->SrcRect.right!=800||p->SrcRect.bottom!=A04_NATIVE_FRAME_HEIGHT||
+    p->DstRect.left||p->DstRect.top||p->DstRect.right!=800||p->DstRect.bottom!=A04_NATIVE_FRAME_HEIGHT||
     !p->pAllocationList||!p->pPatchLocationListOut||p->PatchLocationListOutSize<2||
     !p->pDmaBuffer||((ULONG_PTR)p->pDmaBuffer&3)||p->DmaSize<sizeof(struct geo_dma_ticket)||
     !p->pDmaBufferPrivateData||((ULONG_PTR)p->pDmaBufferPrivateData&3)||p->DmaBufferPrivateDataSize<sizeof(struct geo_dma_ticket))return STATUS_NOT_SUPPORTED;

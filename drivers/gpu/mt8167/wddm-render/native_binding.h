@@ -18,6 +18,7 @@ struct geo_native_binding {
 /* V3 symbol prevents accidentally calling a legacy four-argument factory.
  * Output binding/control/ops versions remain 2; memory input is version 1. */
 NTSTATUS GeoNativeOwnerCreateV3(PDEVICE_OBJECT,const DXGKRNL_INTERFACE *,const DXGK_DEVICE_INFO *,const struct geo_frontend_memory *,struct geo_native_binding *);
+NTSTATUS GeoNativeOwnerDrainForDisplay(struct geo_native_binding *);
 NTSTATUS GeoNativeOwnerDelete(struct geo_native_binding *);
 /* Kernel render contract/caps/preemption are implemented by this sidecar.
  * Native factory must implement actual memory/command/IRQ/control operations,

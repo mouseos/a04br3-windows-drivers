@@ -21,6 +21,7 @@ struct geo_owner_session;
 struct geo_kmd_device;
 struct geo_kmd_adapter {
  struct geo_owner_session *session;
+ void *display; /* Same WDDM adapter; owns POST/VidPn, not a second GPU owner. */
  struct geo_kmd_device *devices;
  UINT device_count;
  struct geo_aperture_config aperture;

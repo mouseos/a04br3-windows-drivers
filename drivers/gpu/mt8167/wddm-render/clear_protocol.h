@@ -2,6 +2,7 @@
 #ifndef GEO_CLEAR_PROTOCOL_H
 #define GEO_CLEAR_PROTOCOL_H
 #include <stdint.h>
+#include "frame_geometry356.h"
 #define GEO_ABI_VERSION 1u
 #define GEO_COPY_MAGIC 0x31504f47u /* GOP1: real GPU RT -> staging transfer */
 #define GEO_CLEAR_MAGIC 0x31434f47u
@@ -25,6 +26,10 @@ struct geo_allocation_data {
  struct geo_surface_desc storage;
 };
 
+/* V2 allocation metadata adds explicit standard-primary eligibility. GPU
+ * storage descriptors and command wire remain V1; no caller-supplied address. */
+#define GEO_ALLOCATION_PRIMARY 1u
+struct geo_allocation_data_v2 {struct geo_allocation_data base;uint32_t flags,source_id;};
 /* Semantic command only. Allocation index is resolved through VidMm's list.
  * No user VA, PA, GPU VA, firmware command, shader or arbitrary payload. */
 struct geo_clear_packet { uint32_t magic,size,version,allocation_index,color,flags,reserved[2]; };

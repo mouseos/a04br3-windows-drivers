@@ -13,7 +13,7 @@ int geo_desc_valid(const struct geo_surface_desc *d) {
    ((d->format==GEO_FORMAT_INDEX16&&d->width>=2u&&!(d->width&1u))||
     (d->format==GEO_FORMAT_INDEX32&&d->width>=4u&&!(d->width&3u)));
  if(!d||d->size!=sizeof(*d)||d->version!=GEO_ABI_VERSION||!d->width||!d->height||
-    d->width>1024||d->height>1024||d->pitch<d->width*4u||(d->pitch&3u)||d->reserved||
+    d->width>1024||d->height>(A04_GE8300_UNIFIED_DISPLAY356?1280u:1024u)||d->pitch<d->width*4u||(d->pitch&3u)||d->reserved||
     (d->usage!=GEO_USAGE_RENDER_TARGET&&d->usage!=GEO_USAGE_STAGING))return 0;
  /* Standard STAGINGSURFACE is implicitly X8R8G8B8. geo_create keeps every
   * staging allocation CPU-only; no X8 rendering or GPU owner format is added. */

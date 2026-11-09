@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "native_owner_allocation_private.h"
+#include "display_geometry356.h"
 #include "native_factory_checkpoint.h"
 #define TAG 0x6f4e4741u
 NTSTATUS a04_native_allocation_release_cold(struct a04_native_owner_allocation **pointer)
@@ -49,7 +50,7 @@ NTSTATUS a04_native_allocation_create(struct a04_native_owner_allocation **out,
     GeoFactoryCheckpoint(31,status,a->firmware.stage_step,0,0,0);
     if(!NT_SUCCESS(status))goto fail;
     status=a04_vendor_native_allocate_cold_ex(&a->native,&a->render,a->adapter,
-        a->map_registers,800,600,&a->diagnostic);
+        a->map_registers,A04_NATIVE_FRAME_WIDTH,A04_NATIVE_FRAME_HEIGHT,&a->diagnostic);
     GeoFactoryCheckpoint(32,status,a->diagnostic.stage,a->diagnostic.index,a->diagnostic.request_bytes,a->diagnostic.map_registers);
     GeoFactoryCheckpoint(33,status,a->diagnostic.data_bytes,a->diagnostic.data_blocks,a->diagnostic.pixel_blocks,(ULONG)a->diagnostic.status);
     if(!NT_SUCCESS(status))goto fail;
@@ -66,7 +67,7 @@ NTSTATUS a04_native_allocation_bind_lease_cold(struct a04_native_owner_allocatio
     if(!a || !mdl || !lease || !lease->acquire || !lease->release || !a->native || !a->adapter || a->binding ||
        a->firmware.hardware_owned || a->start.attempted ||
        KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
-    status=a04_native_mdl_bind(&a->binding,a->adapter,a->pdo,mdl,469u*4096u,
+    status=a04_native_mdl_bind(&a->binding,a->adapter,a->pdo,mdl,A04_NATIVE_FRAME_PAGES*4096u,
         lease);
     if(!NT_SUCCESS(status))return status;
     status=a04_vendor_native_attach_mdl_target_preserve_cold(a->native,a->binding,offset,color);

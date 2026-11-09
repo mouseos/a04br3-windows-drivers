@@ -1,0 +1,62 @@
+{
+  "schema": "gpu356-unified-standard-present-candidate-v1",
+  "hardware_verified": false,
+  "normal_windows_display_complete": false,
+  "install_authorized": false,
+  "matched_firmware_required": true,
+  "gpu_hardware_id": "ACPI\\MOU0006",
+  "transport_hardware_id": "ACPI\\MOU0007",
+  "single_dxgk_adapter": true,
+  "mode": {
+    "width": 800,
+    "height": 1280,
+    "pitch": 3200,
+    "format": 21,
+    "rotation": "identity",
+    "scaling": "identity"
+  },
+  "primary": {
+    "creation": "GetStandardAllocationDriverData SHAREDPRIMARYSURFACE allocation metadataV2",
+    "open": "D3D10DDI OpenResource one OS allocation",
+    "swapchain": "DXGI Blt discard; NO_SCANOUT backbuffer; standard shared primary destination",
+    "set_display_mode": "real runtime allocation handle",
+    "source_address": "segment1 offsetInPages*4096; POST physical only on exact null-allocation restore",
+    "scanout_dma": "independently pinned same VidMm PFNs; DIS0 SG every page equals PFN; contiguous32 span; direct SMI port0 bypass is observed by readonly DMS0; translation/bounce rejected",
+    "no_read_before_unmap": true,
+    "native_gpu_drain_before_unmap": true
+  },
+  "irq": {
+    "ovl_gsi": 192,
+    "rdma_gsi": 194,
+    "sysirq160_162": "invert bits0/2, preserve others",
+    "gic": "level/high",
+    "vsync": "real video-mode RDMA0_DONE bit2; OVL frame not synthesized vsync"
+  },
+  "client": {
+    "path": "mt8167-dxgi-present356.exe",
+    "source": "drivers/gpu/mt8167/wddm-render/testclient/dxgi-present356.c",
+    "calls": 1,
+    "standard_api": "D3D11 Clear on real swapchain backbuffer + IDXGISwapChain Present",
+    "hardware_selection": "PnP MOU0006+GE8300Render -> KMT LUID -> exact DXGI adapter/output; no software fallback",
+    "frame_count": 2,
+    "gpu_client9934_runs": 0,
+    "read_only_observation": "selected same backing after GPU work completion and a later real frame IRQ; all1024000 pixels exact per solid color; framebuffer artifact is observation, never a CPU rendering source",
+    "display_completion_is_not_present_return": true
+  },
+  "preserved": {
+    "gpu354_175": "immutable",
+    "BT2018_provider1027": "retain; no test",
+    "parent1117": "retain",
+    "thermal1_10": "retain",
+    "root_registration": 0,
+    "GPT_write": 0
+  },
+  "unresolved": [
+    "rootreset9F",
+    "real356 GPU-to-scanout hardware evaluation",
+    "arbitrary DWM shader and desktop workloads",
+    "contiguous direct-RAM display DMA admission must be verified on actual primary pages"
+  ],
+  "no_cpu_copy_render_success": true,
+  "no_fake_completion": true
+}
