@@ -792,9 +792,9 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/umd/typed_dxgi.c",
-      "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
-      "sha256": "ef95b38bdfdc019cfc5f72cee94bd0c22969b7109c4d39c4079123b65b22b594",
-      "role": "Unified356 source overlay; prior origin retained",
+      "source_commit": "dc631f0077105250f5acb1a5a192c7854b5f585f",
+      "sha256": "ffec6949538973a3a287b10c8479128f74873df57b357edd546a570f8ee9d0fa",
+      "role": "Unified356 exact full-primary DXGI Blt/Blt1; real GPU queue, no conversion or CPU path",
       "previous_origins": [
         {
           "path": "drivers/gpu/mt8167/wddm-render/umd/typed_dxgi.c",
@@ -806,6 +806,11 @@
           "source_commit": "80abf5a9ef3c54914743d6ca3dd54e8861b7272d",
           "sha256": "d17dd77daed48505e7aa526563e2ffbc4536667c8e14a5df663e944571244629",
           "role": "Present355 runtime callback boundary; display caps remain disabled"
+        },
+        {
+          "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+          "sha256": "ef95b38bdfdc019cfc5f72cee94bd0c22969b7109c4d39c4079123b65b22b594",
+          "role": "Unified356 source overlay; prior origin retained"
         }
       ]
     },
