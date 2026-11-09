@@ -15,3 +15,9 @@ GPU9934 --hardware=PowerVRだけをphase1最後1回/900秒。157では**client i
 post158では14fixed initfields/ReachedMask/ModuleIdentity144B/actual SYS+selectedINFと、344最終sourceが定義するdurable進行値を同captureで回収する。別boot PCとの比較をしない。失敗receiptもarchive/get後に判定するmain修正を継承。
 
 署名service/native/mediaは生成しない。既344/親/FW/thermalを再buildせず、採用時は既cacheによるservice1TUだけ。Recovery未変更再確認/実機/boot復旧操作はmain所有。
+
+## guarded344 seal結合後の正式入口
+
+正式入力prepare-peripheral-followup156.py / combined156_policy.py、署名tools/ci/build-combined156-service.ps1、native clone専用prepare-offline-system-service.ps1、post158 reader read-combined156-post.ps1＋既存read-gpu-native-checkpoint.ps1。媒体--combined156-profile。
+main sealのca9d2687 manifest/SYS2090a01f、source0feb67ff、runtime BuildID GPU344-durable-progress-v1、追加import KeAreAllApcsDisabledだけの実RT81 export照合を固定。親1117/thermal1.10/boot2e6を保持しGPU344だけDIF。18full＋25raw values、原41、69logs、UMD/FW actual155回収byteを照合する。GPU payloadの修正とは呼ばない。APC guardは予防的制約で、ZwFlushKeyの公開PASSIVE条件やPC一点から前回reset原因を証明したとは扱わない。
+旧draft generatorは非arm入口として履歴保持し、正式map/header/service/native/mediaは完成artifactから別生成する。
