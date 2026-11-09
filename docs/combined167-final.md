@@ -11,3 +11,7 @@ BT2017はHCI file OPEN中の既combo epoch保護と実runtime/Rx失敗伝達を�
 新42555796562の既cache/入力を利用、service1TUのみ増分。driver/SDK再build0。正式policy/validator/read166-post/native/媒体/contractを同hashに固定し、main独立seal後だけ実機mainが適用する。165/348固定物変更0。
 
 349r1は未実機撤回。r2 core108f152cはinline実IRQ service直前のInterlockedAnd(~1L)で旧bit1だけを消費し、rearm後の新IRQ通知とbit2を保持する。SYSd9936632、manifestd9183de6/main独立sealを必須とし、r1署名物のfallback無し。service/hive/mediaをr2専用outへ再生成する。
+
+## 最終r3：GPU350
+
+349r1/r2は未実機撤回。採用はGPU350 source109c9d5c/SYS18be3d3e/manifestb4381c45。r2基点のKMDclear/miniport2TU、78object保持。BuildPagingBufferの実busy/owner admission閉鎖だけをGRAPHICS_ALLOCATION_BUSYへ限定対応、unknown error変換0、pin/fence解放0、元GPU失敗をSUCCESSへ変更しない。BuildIDGPU350-paging-busy-v1/INF3.50。BT2017/provider1026・fresh166・18full+50named/89logsは不変。batch_revision=r3を正本とし、上記r1/r2は履歴のみ。

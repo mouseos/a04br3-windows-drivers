@@ -1,6 +1,6 @@
 param([Parameter(Mandatory=$true)][string]$WorkspaceRoot)
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
-$base=[IO.Path]::GetFullPath($WorkspaceRoot);$w=$base;$src="$base\windows-rt\a04br3-windows-combined167-fresh166-r2";$out="$base\post-preservation"
+$base=[IO.Path]::GetFullPath($WorkspaceRoot);$w=$base;$src="$base\windows-rt\a04br3-windows-combined167-fresh166-r3";$out="$base\post-preservation"
 if(Test-Path $out){throw 'New comparison output required'}
 New-Item -ItemType Directory "$out\baseline","$out\candidate"|Out-Null
 $input="$base\port\xnu\out\private-windows-rt-prebackup-run166\files\Windows\System32\config"
