@@ -190,9 +190,21 @@ NTSTATUS GeoServiceOwnerWork(struct geo_owner_session *s) {
 NTSTATUS GeoServiceSubmittedWork(struct geo_owner_session *s) {
  NTSTATUS status;
  if(!s||!s->lease.cookie||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
- status=GeoPrepareSubmittedWork(s->adapter);
+ /* The queued worker already owns its mode0 rundown reference. Take the
+  * same PASSIVE mutex as Render/paging/cancel across claim through finish,
+  * without reacquiring rundown after a concurrent close has started. IRQ
+  * service above remains outside this lock so a waiting paging callback can
+  * still obtain the real completion that lets it release the mutex. */
+ KeWaitForSingleObject(&s->passive_lock,Executive,KernelMode,FALSE,NULL);
+ status=state(s)==GEO_SESSION_ACTIVE?GeoPrepareSubmittedWork(s->adapter):STATUS_SUCCESS;
+ KeReleaseMutex(&s->passive_lock,FALSE);
  InterlockedExchange(&s->last_service_status,status);
- return status==STATUS_SUCCESS?status:failed(s,status);
+ if(status!=STATUS_SUCCESS){
+  if(s->adapter->synchronize)s->adapter->synchronize(s->adapter->sync_context,poison,s);
+  /* A reset/power transition owns TRANSITION once it closes rundown. */
+  InterlockedCompareExchange(&s->state,GEO_SESSION_FAILED,GEO_SESSION_ACTIVE);
+ }
+ return status;
 }
 NTSTATUS APIENTRY CALLBACK GeoResetFromTimeout(HANDLE adapter) {
  struct geo_kmd_adapter *a=adapter;return a&&a->session?GeoResetOwnerSession(a->session):STATUS_INVALID_DEVICE_STATE;
