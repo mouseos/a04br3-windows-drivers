@@ -1,8 +1,9 @@
-param([Parameter(Mandatory=$true)][string]$TaskRoot)
+param([Parameter(Mandatory=$true)][string]$TaskRoot,[string]$OutputLeaf='build')
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 function Sha($p){(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()}
 function Pin($p,$h){if((Sha $p) -cne $h){throw "Pin mismatch $p"}}
-$root="$TaskRoot\source";$cache="$TaskRoot\cache";$out="$TaskRoot\build"
+$root="$TaskRoot\source";$cache="$TaskRoot\cache";$out="$TaskRoot\$OutputLeaf"
+if($OutputLeaf -notmatch '^build(-r[0-9]+)?$'){throw 'Task-local output leaf required'}
 if(Test-Path $out){throw 'New output directory required'}
 New-Item -ItemType Directory $out,"$out\objects","$out\deps"|Out-Null
 foreach($r in (Get-Content "$cache\cache-input-pins.json" -Raw|ConvertFrom-Json)){Pin "$cache\$($r.name)" $r.sha256}
@@ -19,6 +20,7 @@ $umd="$root\drivers\gpu\mt8167\wddm-render\umd";$records=@();$closure=@()
 # Compiler-generated include closure, rather than a guessed fixed TU count.
 foreach($p in Get-ChildItem $umd -Filter '*.c'){
  $name='umd_'+$p.BaseName+'.obj';$f=@($flags)
+ if($p.BaseName -eq 'entry'){$f+='-DGEO_LINKED_REAL_FRONTEND=1'}
  if($p.BaseName -eq 'typed_entry'){$f+=@('-DGEO_TYPED_LIMITED_DEVELOPMENT=1','-DGEO_TYPED_NATIVE_PIPELINE10=1')}
  & clang @f -M -MT $name -MF "$out\deps\$name.d" $p.FullName;if($LASTEXITCODE){throw "Dependency $name"}
  $affected=(Get-Content "$out\deps\$name.d" -Raw) -match 'typed_device\.h'
@@ -58,5 +60,5 @@ $sign='C:\mt8167-minimal-service-host\cache\kit81\bin\x86\signtool.exe'
 & $sign sign /fd SHA256 /sha1 BCBF6C456C6F0DD0818434763B189488FBF13570 "$out\ge8300-umd.dll";if($LASTEXITCODE){throw 'Sign'}
 & $sign verify /pa "$out\ge8300-umd.dll";if($LASTEXITCODE){throw 'Signature verify'}
 [ordered]@{schema='present355-umd-runtime-boundary-v1';compiled_units=$records;include_closure=$closure;archive_members=$rows;retained_link_inputs=@($libs|ForEach-Object{@{name=[IO.Path]::GetFileName($_);sha256=(Sha $_)}});dll_sha256=(Sha "$out\ge8300-umd.dll");production_callback_host_test_exit=0;SDK_rebuilt=$false;compiler_rebuilt=$false;kernel_rebuilt=$false;firmware_rebuilt=$false;client_rebuilt=$false;hardware_verified=$false;display_caps_enabled=$false;primary_scanout_connected=$false;installable_package=$false}|ConvertTo-Json -Depth 16|Set-Content -Encoding UTF8 "$out\build-manifest.json"
-Compress-Archive "$out\*" "$TaskRoot\outputs.zip"
+Compress-Archive "$out\*" "$TaskRoot\$OutputLeaf-outputs.zip"
 'PRESENT355_RUNTIME_BOUNDARY_BUILD_COMPLETE'
