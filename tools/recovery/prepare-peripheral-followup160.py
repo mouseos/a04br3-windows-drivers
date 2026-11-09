@@ -125,10 +125,10 @@ def build_policy(root,spec):
   else:require(b['version_u64']==packages[r]['version_u64'] and b['sys_sha256']==packages[r]['hashes']['sys'],'Retained role mismatch: '+r)
   baselines[r]=b
  require(packages['thermal']['driver_version']==packages['msdc']['driver_version']=='0.0.1.10','Retain leaf/MSDC1.10')
- baseline=pin(spec['mutable_baseline']);require(baseline['capture']==160 and baseline['source']=='private-windows-rt-combined-run159-diagnostics' and len(baseline['files'])>=73,'Exact160 archived log baseline required')
+ baseline=pin(spec['mutable_baseline']);require(baseline['source_transaction']=='run159' and baseline['not_a_hardware_success'] is True and len(baseline['files'])==77,'Exact160 archived log baseline required')
  mutable=[]
  for n,h in baseline['files'].items():
-  require(re.fullmatch(r'(clear|umd)-[A-Za-z0-9_.-]+\.log',n),'Fixed log name required');q=rooted(root,Path('port/xnu/out')/baseline['source']/n);require(sha(q)==h,'Log archive mismatch');pins[q.relative_to(root).as_posix()]=h;mutable.append({'relative_path':'MT8167D3DClear/'+n,'source':q.relative_to(root).as_posix(),'sha256':h,'prefix_bytes':q.stat().st_size})
+  require(re.fullmatch(r'(clear|umd)-[A-Za-z0-9_.-]+\.log',n),'Fixed log name required');q=rooted(root,Path('port/xnu/out/private-windows-rt-combined-run159-diagnostics')/n);require(sha(q)==h,'Log archive mismatch');pins[q.relative_to(root).as_posix()]=h;mutable.append({'relative_path':'MT8167D3DClear/'+n,'source':q.relative_to(root).as_posix(),'sha256':h,'prefix_bytes':q.stat().st_size})
  preserved={};sources={}
  for n,f in originals.items():
   if (n.startswith('Windows/System32/Drivers/') and Path(n).name not in ('ge8300-render.sys','mt6630-combo-runtime.sys','mt6630-combo-bluetooth.sys')) or (n.startswith('Windows/System32/') and n.endswith('.exe')):
