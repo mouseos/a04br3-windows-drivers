@@ -1,0 +1,5 @@
+# run179 起動境界取得候補
+
+fresh178原42/actual356 init63 NativeOwnerCreate C0000182を保持。GPU357とSystem DIS0 provider357のみDIF、旧176Start4の5値追加で18full/80named、新service178/post180。matchedboot0943retain/write0、BT保持、root0/GPT0。
+
+console launcher/evaluatorは177で配置済み同byteを厳密保全して一度実行。checkpointはPASSIVE/APC有効時のbounded832B、追加flush0。Native/Start/D0の0は帰還だけ、欠落/未到達を成功としない。samebootjoinを必須とする。9F未解決、根因解消・実DMA成功未主張。mainseal前arm不可、実機mainのみ。

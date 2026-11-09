@@ -215,7 +215,7 @@ static DWORD first_keypad_baseline(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev)
 #ifndef A04_UNIFIED_DISPLAY177
 #define A04_UNIFIED_DISPLAY177 0
 #endif
-static int transport177(unsigned i){return A04_UNIFIED_DISPLAY177 && i==5 && !lstrcmpW(targets[i].id,L"ACPI\\MOU0007") && !lstrcmpW(targets[i].service,L"MT8167DisplayTransport");}
+static int transport177(unsigned i){return 0 && A04_UNIFIED_DISPLAY177 && i==5 && !lstrcmpW(targets[i].id,L"ACPI\\MOU0007") && !lstrcmpW(targets[i].service,L"MT8167DisplayTransport");}
 static DWORD selected_identity(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,int candidate){static const DEVPROPKEY dk={{0xa8b865dd,0x2e3d,0x4094,{0xad,0x97,0xe5,0x93,0xa7,0x0c,0x75,0xd6}},2};ULONGLONG v;FILETIME d;DWORD n,e;DEVPROPTYPE type;if(!candidate&&((A04_PERIPHERAL_FIRST_INSTALL_MASK|A04_PERIPHERAL_DEFERRED_UNBOUND_MASK)&(1u<<i)))return first_keypad_baseline(i,set,dev);e=deferred_selected_version(i,set,dev,&v);if(e)return e;if(v!=(candidate?targets[i].version:targets[i].base_version))return ERROR_REVISION_MISMATCH;if(!SetupDiGetDevicePropertyW(set,dev,&dk,&type,(BYTE *)&d,sizeof(d),&n,0)){
  DWORD error=GetLastError();record(i,0x215,error);if(error!=ERROR_NOT_FOUND)return error;
  error=deferred_driver_value(set,dev,L"DriverDateData",REG_BINARY,(BYTE *)&d,sizeof(d),&n);record(i,0x216,error);if(error)return error;type=DEVPROP_TYPE_FILETIME;
