@@ -56,6 +56,6 @@ static DWORD bt_readonly_status(void){
  set=SetupDiGetClassDevsW(NULL,NULL,NULL,DIGCF_ALLCLASSES|DIGCF_PRESENT);if(set==INVALID_HANDLE_VALUE)e=GetLastError();else{
  e=bt_find(set,L"ROOT\\MT6630COMBO",&root,&proof.root_count);if(!e&&proof.root_count==1){e=property(set,&root,SPDRP_SERVICE,L"Mt6630ComboBluetooth");cr=CM_Get_DevNode_Status(&status,&problem,root.DevInst,0);proof.root_status=status;proof.root_problem=problem;if(!e&&(cr!=CR_SUCCESS||!(status&DN_STARTED)||problem))e=ERROR_NOT_READY;}else if(!e)e=proof.root_count?ERROR_DUP_NAME:ERROR_NOT_FOUND;
  {DWORD q=bt_find(set,L"A04BR3\\MT6630HCI",&child,&proof.child_count);if(!q&&proof.child_count==1){q=property(set,&child,SPDRP_SERVICE,L"BthMini");if(!q)proof.standard_bthmini=1;cr=CM_Get_DevNode_Status(&status,&problem,child.DevInst,0);proof.child_status=status;proof.child_problem=problem;if(!q&&(cr!=CR_SUCCESS||!(status&DN_STARTED)||problem))q=ERROR_NOT_READY;}else if(!q)q=proof.child_count?ERROR_DUP_NAME:ERROR_NOT_FOUND;if(!e)e=q;}SetupDiDestroyDeviceInfoList(set);}
- proof.result=e;saved=save_blob(L"bt2013-radio.bin",&proof,sizeof(proof));record(0,0x28c,e);return saved?saved:e;
+ proof.result=e;saved=save_blob(A04_FEATURE160?L"bt2015-radio.bin":L"bt2013-radio.bin",&proof,sizeof(proof));record(0,0x28c,e);return saved?saved:e;
 }
 #endif

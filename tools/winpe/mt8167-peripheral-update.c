@@ -85,11 +85,14 @@ struct diagnostic_client {const WCHAR *exe,*arguments,*name,*relative_directory;
 #ifndef A04_RENDER_TARGET_INDEX
 #define A04_RENDER_TARGET_INDEX 10u
 #endif
+#ifndef A04_FEATURE160
+#define A04_FEATURE160 0
+#endif
 #define PERIPHERAL_TARGET_COUNT (sizeof(targets)/sizeof(targets[0]))
 /* Retained render identity is explicit; MSDC must never inherit its error policy. */
 static int render_target(unsigned i){return i==A04_RENDER_TARGET_INDEX && !lstrcmpW(targets[i].id,L"ACPI\\MOU0006") && !lstrcmpW(targets[i].sys,L"ge8300-render.sys");}
 typedef char bounded_gpu_extras[(A04_CANDIDATE_EXTRA_COUNT<=2)?1:-1];
-typedef char bounded_target_count[(PERIPHERAL_TARGET_COUNT>0 && PERIPHERAL_TARGET_COUNT<=(A04_FEATURE148?12:11))?1:-1];
+typedef char bounded_target_count[(PERIPHERAL_TARGET_COUNT>0 && PERIPHERAL_TARGET_COUNT<=(A04_FEATURE160?13:(A04_FEATURE148?12:11)))?1:-1];
 #ifndef A04_UNBOUND_KEYPAD_CONFIG
 #define A04_UNBOUND_KEYPAD_CONFIG 0x40u
 #endif
@@ -198,7 +201,7 @@ static DWORD inf_location_missing(DWORD error,DWORD stage){
  * identity/configuration or an already installed service is never a baseline. */
 static DWORD first_keypad_baseline(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev){
  static const DWORD absent_props[3]={SPDRP_SERVICE,SPDRP_CLASSGUID,SPDRP_DRIVER};WCHAR value[256];DWORD n,type,flags,j,e;SC_HANDLE manager,service;
- if((PERIPHERAL_TARGET_COUNT!=11&&!(A04_FEATURE148&&PERIPHERAL_TARGET_COUNT==12))||i!=7||lstrcmpW(targets[i].id,L"MT6392\\Buttons")||lstrcmpW(targets[i].sys,L"mt8167-keypad.sys"))return ERROR_INVALID_PARAMETER;
+ if((PERIPHERAL_TARGET_COUNT!=11&&!(A04_FEATURE148&&PERIPHERAL_TARGET_COUNT==12)&&!(A04_FEATURE160&&PERIPHERAL_TARGET_COUNT==13))||i!=7||lstrcmpW(targets[i].id,L"MT6392\\Buttons")||lstrcmpW(targets[i].sys,L"mt8167-keypad.sys"))return ERROR_INVALID_PARAMETER;
  if(!SetupDiGetDeviceRegistryPropertyW(set,dev,SPDRP_CONFIGFLAGS,&type,(BYTE *)&flags,sizeof(flags),&n))return GetLastError();
  if(type!=REG_DWORD||n!=4||flags!=A04_UNBOUND_KEYPAD_CONFIG)return ERROR_REVISION_MISMATCH;
  for(j=0;j<3;j++){
@@ -299,7 +302,7 @@ static DWORD selected_runtime(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,DWORD
 }
 static DWORD installed_gpu_extras(int candidate){
 #if A04_CANDIDATE_EXTRA_COUNT
- WCHAR sys[MAX_PATH],full[MAX_PATH];HANDLE held;DWORD j,e=0;if((PERIPHERAL_TARGET_COUNT!=11&&!(A04_FEATURE148&&PERIPHERAL_TARGET_COUNT==12))||A04_CANDIDATE_EXTRA_COUNT!=2)return ERROR_INVALID_DATA;
+ WCHAR sys[MAX_PATH],full[MAX_PATH];HANDLE held;DWORD j,e=0;if((PERIPHERAL_TARGET_COUNT!=11&&!(A04_FEATURE148&&PERIPHERAL_TARGET_COUNT==12)&&!(A04_FEATURE160&&PERIPHERAL_TARGET_COUNT==13))||A04_CANDIDATE_EXTRA_COUNT!=2)return ERROR_INVALID_DATA;
  if(!GetSystemDirectoryW(sys,MAX_PATH))return GetLastError();
  for(j=0;j<A04_CANDIDATE_EXTRA_COUNT;j++){held=INVALID_HANDLE_VALUE;e=path(full,sys,candidate_extras[j].installed);if(!e)e=deferred_file(full,candidate?candidate_extras[j].hash:candidate_extras[j].baseline_hash,&held);if(held!=INVALID_HANDLE_VALUE)CloseHandle(held);if(e)return e;}
  return 0;
@@ -362,7 +365,7 @@ static DWORD sd_readonly_presence(DEVINST host){
 static DWORD keypad_hid_bindings(DEVINST host){
  static const GUID hid={0x4d1e55b2,0xf16f,0x11cf,{0x88,0xcb,0x00,0x11,0x11,0x00,0x00,0x30}};
  static DWORD detailbuf[512];static WCHAR ids[1024];DEVINST seen[64],cur,parent;HDEVINFO set;SP_DEVICE_INTERFACE_DATA iface;SP_DEVINFO_DATA dev;DWORD i,j,n,type,depth,count=0,keyboard=0,col04=0,e=0;CONFIGRET cr;
- if((PERIPHERAL_TARGET_COUNT!=11&&!(A04_FEATURE148&&PERIPHERAL_TARGET_COUNT==12)))return ERROR_INVALID_PARAMETER;
+ if((PERIPHERAL_TARGET_COUNT!=11&&!(A04_FEATURE148&&PERIPHERAL_TARGET_COUNT==12)&&!(A04_FEATURE160&&PERIPHERAL_TARGET_COUNT==13)))return ERROR_INVALID_PARAMETER;
  set=SetupDiGetClassDevsW(&hid,NULL,NULL,DIGCF_DEVICEINTERFACE|DIGCF_PRESENT);if(set==INVALID_HANDLE_VALUE)return GetLastError();
  for(i=0;i<64;i++){
   SP_DEVICE_INTERFACE_DETAIL_DATA_W *detail=(SP_DEVICE_INTERFACE_DETAIL_DATA_W*)detailbuf;
@@ -427,7 +430,7 @@ static DWORD run_clients(DWORD peripheral_result)
   if(i>=8||c->phase>1)return ERROR_INVALID_DATA;
   if(c->phase==1){
    if(A04_FEATURE148&&!A04_GPU_PHASE1_ENABLED)return ERROR_INVALID_PARAMETER;
-   DWORD boundary;if(i+1!=A04_DIAGNOSTIC_CLIENT_COUNT||(PERIPHERAL_TARGET_COUNT!=11&&!(A04_FEATURE148&&PERIPHERAL_TARGET_COUNT==12))||A04_CANDIDATE_EXTRA_COUNT!=2||!combined_gpu_node_ready)return ERROR_NOT_READY;
+   DWORD boundary;if(i+1!=A04_DIAGNOSTIC_CLIENT_COUNT||(PERIPHERAL_TARGET_COUNT!=11&&!(A04_FEATURE148&&PERIPHERAL_TARGET_COUNT==12)&&!(A04_FEATURE160&&PERIPHERAL_TARGET_COUNT==13))||A04_CANDIDATE_EXTRA_COUNT!=2||!combined_gpu_node_ready)return ERROR_NOT_READY;
    boundary=persist_before_gpu(first);if(boundary)return boundary;
   }
   combined_clients[i].observed=1;combined_clients[i].phase=c->phase;combined_clients[i].client_id=i;combined_clients[i].created=0;combined_clients[i].exit_valid=0;
