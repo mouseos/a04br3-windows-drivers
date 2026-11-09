@@ -2,6 +2,7 @@
  * Source-linked Dxgk owner. No WDF, second IRQ connection or user payload. */
 #include "native_owner_factory_private.h"
 #include "native_factory_checkpoint.h"
+#include "../draw_trace_candidate.h"
 #include "A04BR3RogueRuntimeLayout.h"
 #include "A04BR3RogueDeviceWords.h"
 
@@ -469,6 +470,7 @@ static int32_t prepare_draw_impl(void *p,const struct geo_draw_request *request,
     struct e_native_owner *c=p;RGXFWIF_CCB_CTL k;NTSTATUS s;uint64_t end,offset;struct e_native_resource *texture=NULL,*vertex=NULL;BOOLEAN selection_retired=FALSE;
     if(!job)return STATUS_INVALID_PARAMETER;*job=0;
     s=combined?geo_draw_validate_capture_v5(combined,blob,bytes):general?geo_draw_validate_capture_v4(general,blob,bytes):sampled?geo_draw_validate_capture_v3(sampled,blob,bytes):linked?geo_draw_validate_capture_v2(linked,blob,bytes):geo_draw_validate_capture(request,blob,bytes);if(!NT_SUCCESS(s))return s;
+    ULONG trace_cookie=GeoDrawTraceCookie(request,blob,bytes);
     s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
     vertex=resource(c,request->vertex);
     if(request->target!=c->surface || !vertex || !vertex->linear || vertex->desc.usage!=GEO_USAGE_VERTEX_BUFFER ||
@@ -517,18 +519,28 @@ static int32_t prepare_draw_impl(void *p,const struct geo_draw_request *request,
     }
     s=STATUS_SUCCESS;
     if(!selection_retired){s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);}
-    if(NT_SUCCESS(s))s=e_native_build_graph_locked(c);
-    if(NT_SUCCESS(s))s=combined?a04_vendor_native_prepare_draw_v5_cold(c->allocation->native,combined,blob,bytes,A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset,A04_NATIVE_OUTPUT_VA+texture->linear_offset):general?a04_vendor_native_prepare_draw_v4_cold(c->allocation->native,general,blob,bytes,A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset):sampled?a04_vendor_native_prepare_draw_v3_cold(c->allocation->native,sampled,blob,bytes,A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset,A04_NATIVE_OUTPUT_VA+texture->linear_offset):linked?a04_vendor_native_prepare_draw_v2_cold(c->allocation->native,linked,blob,bytes,
+    if(NT_SUCCESS(s)){
+        GeoFactoryCheckpoint(52,STATUS_PENDING,1,request->version,0,trace_cookie);
+        s=e_native_build_graph_locked(c);
+        GeoFactoryCheckpoint(52,s,2,request->version,0,trace_cookie);
+    }
+    if(NT_SUCCESS(s)){
+        GeoFactoryCheckpoint(53,STATUS_PENDING,1,request->version,0,trace_cookie);
+        s=combined?a04_vendor_native_prepare_draw_v5_cold(c->allocation->native,combined,blob,bytes,A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset,A04_NATIVE_OUTPUT_VA+texture->linear_offset):general?a04_vendor_native_prepare_draw_v4_cold(c->allocation->native,general,blob,bytes,A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset):sampled?a04_vendor_native_prepare_draw_v3_cold(c->allocation->native,sampled,blob,bytes,A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset,A04_NATIVE_OUTPUT_VA+texture->linear_offset):linked?a04_vendor_native_prepare_draw_v2_cold(c->allocation->native,linked,blob,bytes,
         A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset):
         a04_vendor_native_prepare_draw_cold(c->allocation->native,request,blob,bytes,
         A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset);
+        GeoFactoryCheckpoint(53,s,2,request->version,0,trace_cookie);
+    }
     if(!NT_SUCCESS(s)){
         /* Unsupported shader/state never publishes a job. A real resource
          * write/retirement failure keeps all backing and closes admission. */
         if(s!=STATUS_NOT_SUPPORTED && s!=STATUS_INVALID_PARAMETER)c->state=E_OWNER_FAILED;
         return leave(c,s);
     }
+    GeoFactoryCheckpoint(54,STATUS_PENDING,1,request->version,0,trace_cookie);
     s=e_native_boot_locked(c);
+    GeoFactoryCheckpoint(54,s,2,request->version,0,trace_cookie);
     if(NT_SUCCESS(s)){
         if(a04_rgx_device_read_words(&k,c->allocation->firmware.runtime->kctl,sizeof(k)) ||
            k.ui32WrapMask!=127 || k.ui32ReadOffset>127 || k.ui32ReadOffset!=k.ui32WriteOffset)s=STATUS_DEVICE_BUSY;

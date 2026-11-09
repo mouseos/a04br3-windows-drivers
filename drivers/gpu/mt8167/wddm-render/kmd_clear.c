@@ -5,6 +5,7 @@
 #include "kmd_objects.h"
 #include "ticket_io.h"
 #include "../vendor_m1_11/native_factory_checkpoint.h"
+#include "../vendor_m1_11/draw_trace_candidate.h"
 static int ticket_range(UINT size,UINT begin,UINT end) {
  return begin<=size&&end>=begin&&end-begin==sizeof(struct geo_dma_ticket)&&end<=size;
 }
@@ -99,13 +100,19 @@ static NTSTATUS GeoBuildPagingBufferImpl(HANDLE adapter,DXGKARG_BUILDPAGINGBUFFE
  /* Fill/transfer/discard are not silently accepted without implementing them. */
  return STATUS_NOT_SUPPORTED;
 }
-struct prepare_call { struct geo_kmd_adapter *adapter;struct geo_allocation *allocation,*vertex,*texture;struct geo_clear_packet packet;struct geo_kmd_context *context;HANDLE open_handle,vertex_open_handle,texture_open_handle;struct geo_dma_ticket ticket;uint64_t token;NTSTATUS status; };
+struct prepare_call { struct geo_kmd_adapter *adapter;struct geo_allocation *allocation,*vertex,*texture;struct geo_clear_packet packet;struct geo_kmd_context *context;HANDLE open_handle,vertex_open_handle,texture_open_handle;struct geo_dma_ticket ticket;uint64_t token;NTSTATUS status;UINT trace_submit_eligible; };
 static BOOLEAN begin_prepare(void *ctx) {
  struct prepare_call *c=ctx;c->status=c->texture?geo_prepare_texture_begin(&c->adapter->engine,c->allocation,c->vertex,c->texture,&c->ticket):c->vertex?geo_prepare_draw_begin(&c->adapter->engine,c->allocation,c->vertex,&c->ticket):geo_prepare_begin(&c->adapter->engine,c->allocation,&c->packet,&c->ticket);
  if(c->status==STATUS_SUCCESS){c->adapter->engine.jobs[c->ticket.slot].context=c->context;c->adapter->engine.jobs[c->ticket.slot].open_handle=c->open_handle;c->adapter->engine.jobs[c->ticket.slot].vertex_open_handle=c->vertex_open_handle;c->adapter->engine.jobs[c->ticket.slot].texture_open_handle=c->texture_open_handle;}return TRUE;
 }
 static BOOLEAN finish_prepare(void *ctx) {
- struct prepare_call *c=ctx;c->status=geo_finish_submitted_prepare(&c->adapter->engine,&c->ticket,c->status,c->token);return TRUE;
+ struct prepare_call *c=ctx;struct geo_engine *e=&c->adapter->engine;struct geo_job *j=NULL;
+ /* Read-only mirror of clear_engine.c:job()/finish predicates under the same
+  * IRQ lock; no registry call here. Keep in sync when that function changes. */
+ if(c->ticket.magic==GEO_TICKET_MAGIC&&!c->ticket.reserved&&c->ticket.slot<GEO_MAX_JOBS)j=&e->jobs[c->ticket.slot];
+ c->trace_submit_eligible=j&&j->generation==c->ticket.generation&&j->state==8&&
+  (!j->owner_job||j->owner_job==c->token)&&c->status==GEO_OK&&c->token&&!e->poisoned;
+ c->status=geo_finish_submitted_prepare(e,&c->ticket,c->status,c->token);return TRUE;
 }
 struct payload_collect {struct geo_kmd_adapter *a;struct geo_draw_packet *packets[GEO_MAX_JOBS];};
 static BOOLEAN collect_payloads_locked(void *arg) {
@@ -157,12 +164,17 @@ static NTSTATUS prepare_pending(struct geo_kmd_adapter *a,const struct geo_dma_t
  else if(j->kind==GEO_CLEAR_MAGIC)call.status=a->engine.owner.prepare(a->engine.owner.context,j->allocation->surface,payload->clear.color,&call.token);
  else if(j->kind==GEO_DRAW_MAGIC&&(p=payload->draw)!=NULL) {
   header=p->version==5?sizeof(struct geo_draw_packet_v5):p->version==4?sizeof(struct geo_draw_packet_v4):p->version==3?sizeof(struct geo_draw_packet_v3):p->version==2?sizeof(struct geo_draw_packet_v2):sizeof(*p);blob=(UCHAR *)p+header;v2=(struct geo_draw_packet_v2 *)p;
+  GeoDrawTraceSnapshot(&p->request,blob,p->request.blob_bytes,t->slot,t->generation,j->fence);
   call.status=p->version==5?a->draw_v5.prepare_draw(a->draw_v5.context,&((struct geo_draw_packet_v5 *)p)->request,blob,p->request.blob_bytes,&call.token):p->version==4?a->draw_v4.prepare_draw(a->draw_v4.context,&((struct geo_draw_packet_v4 *)p)->request,blob,p->request.blob_bytes,&call.token):p->version==3?a->draw_v3.prepare_draw(a->draw_v3.context,&((struct geo_draw_packet_v3 *)p)->request,blob,p->request.blob_bytes,&call.token):p->version==2?a->draw_v2.prepare_draw(a->draw_v2.context,&v2->request,blob,p->request.blob_bytes,&call.token):
     a->draw.prepare_draw(a->draw.context,&p->request,blob,p->request.blob_bytes,&call.token);
  }else return STATUS_INVALID_PARAMETER;
+ if(kind==GEO_DRAW_MAGIC)GeoFactoryCheckpoint(55,STATUS_PENDING,t->slot,t->generation,0,8);
  began=KeQueryInterruptTime();interval.QuadPart=-10000;
  for(;;) {
-  if(!a->synchronize(a->sync_context,finish_prepare,&call))return STATUS_DEVICE_NOT_READY;
+  if(!a->synchronize(a->sync_context,finish_prepare,&call)){
+   if(kind==GEO_DRAW_MAGIC)GeoFactoryCheckpoint(55,STATUS_DEVICE_NOT_READY,t->slot,t->generation,attempt,2);
+   return STATUS_DEVICE_NOT_READY;
+  }
   if(call.status!=GEO_SUBMIT_WAIT_IRQ)break;
   GeoFactoryCheckpoint(50,call.status,kind,t->slot,t->generation,attempt);
   /* Only the owner's exact real-claim continuation reaches this branch.
@@ -185,9 +197,13 @@ static NTSTATUS prepare_pending(struct geo_kmd_adapter *a,const struct geo_dma_t
   }
   /* Fail closed with the same retained token if the real source cannot be
    * serviced within the existing 100ms FW synchronization budget. */
-  if(!a->synchronize(a->sync_context,finish_prepare,&call))return STATUS_DEVICE_NOT_READY;
+  if(!a->synchronize(a->sync_context,finish_prepare,&call)){
+   if(kind==GEO_DRAW_MAGIC)GeoFactoryCheckpoint(55,STATUS_DEVICE_NOT_READY,t->slot,t->generation,attempt,2);
+   return STATUS_DEVICE_NOT_READY;
+  }
   break;
  }
+ if(kind==GEO_DRAW_MAGIC)GeoFactoryCheckpoint(55,call.status,t->slot,t->generation,attempt,4|(call.trace_submit_eligible?1:0));
  GeoFactoryCheckpoint(23,call.status,kind,t->slot,t->generation,0);return call.status;
 }
 struct claim_prepare_call {struct geo_kmd_adapter *adapter;struct geo_dma_ticket ticket;NTSTATUS status;};
