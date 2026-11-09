@@ -144,6 +144,8 @@ static HRESULT APIENTRY create_device(D3D10DDI_HADAPTER h,D3D10DDIARG_CREATEDEVI
  if(D3D11DDI_EXTRACT_3DPIPELINELEVEL_FROM_FLAGS(p->Flags)!=development_pipeline()||(!development_enabled()&&geo_typed_profile_missing()))return DXGI_ERROR_UNSUPPORTED;
  d=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*d));if(!d)return E_OUTOFMEMORY;
  d->magic=GEO_TYPED_DEVICE_MAGIC;d->adapter=a;d->core=p->hRTCoreLayer;d->callbacks=*p->p11UMCallbacks;
+ /* Only the base callback is required; do not read optional overlay fields. */
+ if(p->DXGIBaseDDI.pDXGIBaseCallbacks)d->present_callback=p->DXGIBaseDDI.pDXGIBaseCallbacks->pfnPresentCb;
  ((struct geo_typed_handle *)p->hDrvDevice.pDrvPrivate)->object=d;
  memset(&q,0,sizeof(q));q.NodeOrdinal=0;q.EngineAffinity=1;hr=p->pKTCallbacks->pfnCreateContextCb(p->hRTDevice.handle,&q);trace_value(a,"CREATE_CONTEXT_HRESULT",(UINT)hr);
  if(FAILED(hr))goto failed;

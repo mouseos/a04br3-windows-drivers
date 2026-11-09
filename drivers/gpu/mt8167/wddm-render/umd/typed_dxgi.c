@@ -50,7 +50,45 @@ static HRESULT APIENTRY reclaim(DXGI_DDI_ARG_RECLAIMRESOURCES *p) {
 /* This adapter has no VidPn/display outputs, primary or shared-resource cap.
  * Optional display/sharing requests return a real unsupported result instead
  * of dereferencing NULL callbacks or pretending that content was presented. */
-static HRESULT APIENTRY present(DXGI_DDI_ARG_PRESENT *p){return p?DXGI_ERROR_UNSUPPORTED:E_INVALIDARG;}
+/* This is an OS presentation request, not a display completion. The runtime
+ * retains the allocation references for accepted queued work. Private resource
+ * addresses and POST physical addresses must never cross this callback ABI.
+ * Keep C objects alive across a reentrant runtime callback; KMD owns subsequent
+ * DMA/fence references. No CPU readback, wait-for-idle or synthetic completion. */
+static HRESULT APIENTRY present(DXGI_DDI_ARG_PRESENT *p) {
+ D3D10DDI_HDEVICE h;struct geo_typed_device *d;struct geo_typed_resource *src,*dst=NULL;
+ DXGIDDICB_PRESENT q;HRESULT hr,cleanup;
+ if(!p)return E_INVALIDARG;
+ h=device(p->hDevice);d=geo_typed_device(h);if(!d)return E_INVALIDARG;
+ if(FAILED(d->error))return d->error;
+ if(!d->present_callback||!d->backend.frontend_flush||!d->backend.context)return DXGI_ERROR_UNSUPPORTED;
+ /* No flip, broadcast, stereo, rotation or subresource support is advertised. */
+ if(p->Flags.Value!=1u||p->FlipInterval!=DXGI_DDI_FLIP_INTERVAL_IMMEDIATE||
+    p->SrcSubResourceIndex||p->DstSubResourceIndex)return DXGI_ERROR_UNSUPPORTED;
+ if(d->presenting)return DXGI_ERROR_WAS_STILL_DRAWING;
+ src=geo_typed_resource(h,resource(p->hSurfaceToPresent));
+ if(!src||src->mapped||src->dimension!=D3D10DDIRESOURCE_TEXTURE2D||
+    !(src->bind&D3D10_DDI_BIND_RENDER_TARGET)||src->format!=DXGI_FORMAT_B8G8R8A8_UNORM)return E_INVALIDARG;
+ if(p->hDstResource){
+  dst=geo_typed_resource(h,resource(p->hDstResource));
+  if(!dst||dst==src||dst->mapped||dst->dimension!=src->dimension||dst->format!=src->format||
+     dst->width!=src->width||dst->height!=src->height)return E_INVALIDARG;
+ }
+ d->presenting=1;geo_typed_resource_ref(src);if(dst)geo_typed_resource_ref(dst);
+ memset(&q,0,sizeof(q));
+ hr=d->backend.frontend_flush(&d->backend);
+ if(SUCCEEDED(hr))hr=geo_typed_allocation(src,&q.hSrcAllocation);
+ if(SUCCEEDED(hr)&&dst)hr=geo_typed_allocation(dst,&q.hDstAllocation);
+ if(SUCCEEDED(hr)){
+  if(!q.hSrcAllocation||(dst&&!q.hDstAllocation))hr=E_UNEXPECTED;
+  else {q.hContext=d->backend.context;q.pDXGIContext=p->pDXGIContext;
+   hr=d->present_callback(d->backend.runtime,&q);}
+ }
+ /* Never turn runtime failure (including NOT_SUPPORTED) into success. */
+ if(dst){cleanup=geo_typed_resource_unref(dst);if(SUCCEEDED(hr)&&FAILED(cleanup))hr=cleanup;}
+ cleanup=geo_typed_resource_unref(src);if(SUCCEEDED(hr)&&FAILED(cleanup))hr=cleanup;
+ d->presenting=0;return hr;
+}
 static HRESULT APIENTRY gamma(DXGI_DDI_ARG_GET_GAMMA_CONTROL_CAPS *p){return p?DXGI_ERROR_UNSUPPORTED:E_INVALIDARG;}
 static HRESULT APIENTRY display(DXGI_DDI_ARG_SETDISPLAYMODE *p){return p?DXGI_ERROR_UNSUPPORTED:E_INVALIDARG;}
 static HRESULT APIENTRY rotate(DXGI_DDI_ARG_ROTATE_RESOURCE_IDENTITIES *p){return p?DXGI_ERROR_UNSUPPORTED:E_INVALIDARG;}

@@ -35,6 +35,7 @@ struct geo_typed_rtv {
 };
 struct geo_typed_device {
  UINT magic,pending;struct geo_typed_adapter *adapter;
+ PFNDDXGIDDI_PRESENTCB present_callback;UINT presenting;
  D3D10DDI_HRTCORELAYER core;D3D11DDI_CORELAYER_DEVICECALLBACKS callbacks;
  D3D11_1DDI_DEVICEFUNCS functions;
  struct geo_umd_device backend;D3DDDI_DEVICEFUNCS memory;
