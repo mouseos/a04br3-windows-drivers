@@ -47,8 +47,12 @@ transport=pkg/'display-transport';run([link,*flags,o/'transport356.obj',o/'scano
 inf=pkg/'ge8300-render.inf';bb=inf.read_bytes();enc='utf-16'if bb[:2]in (b'\xff\xfe',b'\xfe\xff')else'utf-8-sig';inf.write_text(bb.decode(enc).replace('0.0.3.56','0.0.3.57'),encoding=enc);shutil.copyfile(r/'drivers/gpu/mt8167/display-transport/mt8167-display-transport.inf',transport/'mt8167-display-transport.inf')
 sign=Path('C:/mt8167-minimal-service-host/cache/kit81/bin/x86/signtool.exe');thumb='BCBF6C456C6F0DD0818434763B189488FBF13570'
 for q in [pkg/'ge8300-render.sys',transport/'mt8167-display-transport.sys']:run([sign,'sign','/fd','SHA256','/sha1',thumb,q],q.name+'.sign.log');run([sign,'verify','/pa',q],q.name+'.verify.log')
-for d,cat in [(transport,'mt8167-display-transport.cat'),(pkg,'ge8300-render.cat')]:
- (d/cat).unlink();run(['C:/mt8167-hp1033/inputs/signing/bin/Inf2Cat.exe','/driver:'+str(d),'/os:6_3_ARM','/uselocaltime'],cat+'.make.log');run([sign,'sign','/fd','SHA256','/sha1',thumb,d/cat],cat+'.sign.log')
+# Generate recursively first: parent Inf2Cat also recreates the child CAT.
+run(['C:/mt8167-hp1033/inputs/signing/bin/Inf2Cat.exe','/driver:'+str(pkg),'/os:6_3_ARM','/uselocaltime'],'final-catalog-generation.log')
+for d,cat in [(pkg,'ge8300-render.cat'),(transport,'mt8167-display-transport.cat')]:
+ run([sign,'sign','/fd','SHA256','/sha1',thumb,d/cat],cat+'.sign.log')
+for d,cat in [(pkg,'ge8300-render.cat'),(transport,'mt8167-display-transport.cat')]:
+ run([sign,'verify','/pa',d/cat],cat+'.final-verify.log')
  for name in (['mt8167-display-transport.sys','mt8167-display-transport.inf'] if d==transport else ['ge8300-render.sys','ge8300-render.inf','ge8300-umd.dll','ge8300-mips.fw']):run([sign,'verify','/pa','/c',d/cat,d/name],name+'.CAT.log')
 changed_out={'ge8300-render.sys','ge8300-render.inf','ge8300-render.cat','display-transport/mt8167-display-transport.sys','display-transport/mt8167-display-transport.inf','display-transport/mt8167-display-transport.cat'}
 for x in old['outputs']:
