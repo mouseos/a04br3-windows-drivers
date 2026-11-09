@@ -29,6 +29,10 @@ ServiceType=1
 StartType=3
 ErrorControl=1
 ServiceBinary=%12%\mt8167-display-transport.sys
+AddReg=Diagnostic357
+[Diagnostic357]
+; Key-only parent for bounded optional startup receipts; no control value.
+HKR,Parameters,,0x00000010
 [Strings]
 MediaTek="MediaTek"
 Device="MediaTek MT8167 display DMA transport"
