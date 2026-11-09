@@ -1,0 +1,13 @@
+# run159：fresh158／GPU345-only
+
+正本入力はfresh158 manifest c89c8d67d6b914588dc51893c04323ebf36273840c3383cc0486c733637fd80c、Recovery 6b05be55-9b69-4544-a786-359023f3f283。41原本、同capture native receipt、旧18full service、旧25namedと実Start4のservice156新5値を照合して30値を保持する。
+
+GPU345 source cc72a4297d0432dce15fafee757d6337227e1ca7、manifest ba9a961d926241d98ae4d8fea65b9bd61d1d10d2301e507a3cb9c13dd1089eed、SYS 7a5bb17fc86a342bfb4217770b5ad80bbbb0c420fccb716d237aae1771147cc0。最終main seal／61pins／3TU・77不変object／6BCBF／実344と同importsを照合する。BuildID GPU345-passive-waits-v1はpost160の期待値。baseline158は実344のModuleIdentityとinit7ff全0として分離する。
+
+renderのみDIF mask0x400、予定restart1。GPU9934 --hardware=PowerVR、phase1単独index0最後1回、timeout900秒。温度28B/status64B/音声/WLAN/BT/benchmark/初回登録は0。親1117、boot2e6、leaf/MSDC1.10、他actualを保持しbootwritefalse/GPT0。SystemRequired bounded requestは既実装を保持する。
+
+install900秒。Recovery離脱からboot180秒、最初のphase1 PB286で1回だけ180秒へ、現GPU index0 PB220で1回だけ900秒へ延長する。反復イベントで延命しない。post160はread-combined158-post.ps1と既helperで14init fields／ReachedMask／ModuleIdentity144B／固定FactoryCheckpointを回収する。入口status0は到達だけ。古いR22/R23/R35/R38/R39を今回の成功証拠にしない。
+
+mutableログ73本を保存しimmutable hive/driver導入基準から分離する。前69本のうち155clear1本の末尾追記は既byteのprefix保存を確認し、新4本を追加。採用基準をunknown受理へ緩和しない。
+
+345はPASSIVE FWack 1ms要求100回（実時間はOS粒度依存）、IRQ drainは1秒elapsed+1000回上限。real sync／CCB／poison／noDMA資格を保持した候補であり、同期完了・描画成功・reset解消は実機未検証。実機操作と最終独立sealはmainのみ。
