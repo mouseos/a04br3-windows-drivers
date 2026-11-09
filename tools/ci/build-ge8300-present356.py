@@ -4,7 +4,7 @@ No device access. A signature/CPU build never proves a displayed GPU frame.
 """
 import argparse,hashlib,json,subprocess,re,shutil,ntpath,struct,zipfile
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('--task-root',type=Path,required=True);p.add_argument('--source-commit',required=True);a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--task-root',type=Path,required=True);p.add_argument('--source-commit',required=True);p.add_argument('--resume-stage-sha256');a=p.parse_args()
 t=a.task_root;r=t/'source';o=t/'build';base=Path('C:/mt8167-present355-kernel/build');ub=Path('C:/mt8167-present355/build-r2');cache=Path('C:/mt8167-present355/cache');llvm=Path('C:/Program Files/LLVM/bin');kit=Path('C:/mt8167-public-fullsource323/wdk81');link=Path('C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/14.29.30133/bin/Hostx64/arm/link.exe');cl=link.with_name('cl.exe')
 def sha(f):return hashlib.sha256(Path(f).read_bytes()).hexdigest()
 def load(f):return json.loads(Path(f).read_text(encoding='utf-8-sig'))
@@ -22,8 +22,14 @@ pin(link,'f8b2e9c5341419525f915b61b87d1bc8aa307adca6e1e022071175912e965938')
 pin(base/'package355/signed-manifest.json','43f49646379a79900e78279ed34484c71a59f9b02a78de986aab2410485a08a0')
 m=load(base/'package355/signed-manifest.json')
 for x in m['outputs']:pin(base/'package355'/x['name'],x['sha256'])
-if o.exists():raise ValueError('New build output required; resume only explicit failed stage')
-o.mkdir();(o/'deps').mkdir();(o/'logs').mkdir();pkg=o/'package356';pkg.mkdir()
+stage=None
+if o.exists():
+ if not a.resume_stage_sha256:raise ValueError('Existing build requires the pinned failed-stage receipt')
+ pin(t/'failed-link-inputs.json',a.resume_stage_sha256);stage=load(t/'failed-link-inputs.json')
+ if stage['source_commit']!='ac16aa83abf3e6ebeb49ff1a4dbcc5be620c8b98':raise ValueError('Exact failed source required')
+ for n,h in stage['objects'].items():pin(o/n,h)
+else:o.mkdir()
+(o/'deps').mkdir(exist_ok=True);(o/'logs').mkdir(exist_ok=True);pkg=o/'package356';pkg.mkdir(exist_ok=True)
 changed=set(run(['git','-C',r,'diff','--name-only','39492c1084ab7e9b41a0efc8a3f7221bd94c08d5','HEAD']).splitlines())
 def fix(x):
  x=str(x).replace('\\','/')
@@ -58,9 +64,11 @@ for src,role,name in [('wddm-render/display_adapter356.c','bridge','display_adap
 archives=[];objects={};records=[];closure=[]
 for arc in m['archives']:
  if arc['role']not in ['native','kmd','umd']:archives.append(arc);continue
- path=(ub/'ge8300-native-umd.lib')if arc['role']=='umd'else base/arc['file'];pin(path,arc['sha256']);d=o/(arc['role']+'-objects');d.mkdir()
- run([llvm/'llvm-ar.exe','x','--output='+str(d),path])
- for x in arc['members']:pin(d/x['name'],x['sha256']);objects[(arc['role'],x['name'])]=d/x['name']
+ path=(ub/'ge8300-native-umd.lib')if arc['role']=='umd'else base/arc['file'];pin(path,arc['sha256']);d=o/(arc['role']+'-objects');d.mkdir(exist_ok=True)
+ if not stage:run([llvm/'llvm-ar.exe','x','--output='+str(d),path])
+ for x in arc['members']:
+  if not stage:pin(d/x['name'],x['sha256'])
+  objects[(arc['role'],x['name'])]=d/x['name']
 prior={x['object']:x for x in load(t/'compile-check/result.json')if x.get('sha256')}
 for u in rows:
  src=r/u['source'];args=[fix(x)for x in u['arguments']]+['-DA04_GE8300_UNIFIED_DISPLAY356=1'];name=u['object'];role=u['role'];obj=objects.get((role,name),o/name)
@@ -81,11 +89,13 @@ for u in rows:
  hashes={n:sha(r/n)for n in sorted(local)};affected=sorted(local&changed)
  needed=bool(affected)or role in ['bridge','transport','umd-entry'];recovered=False
  if needed:
+  from_stage=bool(stage and obj.exists()and stage['objects'].get(obj.relative_to(o).as_posix())==sha(obj)and all(stage['source_files'].get(n)==h for n,h in hashes.items()))
   before=prior.get(name)
-  if before and before['arguments']==args and before['local_closure']==hashes:
+  if from_stage:recovered=True
+  elif before and before['arguments']==args and before['local_closure']==hashes:
    pin(t/'compile-check'/name,before['sha256']);shutil.copyfile(t/'compile-check'/name,obj);recovered=True
   else:run([llvm/'clang.exe',*args,'-c',src,'-o',obj],o/'logs'/(name+'.log'))
-  records.append(dict(source=u['source'],object=name,role=role,arguments=args,source_sha256=sha(src),object_sha256=sha(obj),recovered_identical_compile_snapshot=recovered))
+  records.append(dict(source=u['source'],object=name,role=role,arguments=args,source_sha256=sha(src),object_sha256=sha(obj),recovered_identical_compile_snapshot=recovered,recovered_stage_source_commit=stage['source_commit']if from_stage else None))
  elif not obj.exists():raise ValueError('Missing retained object '+name)
  closure.append(dict(source=u['source'],object=name,role=role,local_closure=hashes,changed_includes=affected,compile_required=needed))
  objects[(role,name)]=obj
@@ -102,14 +112,14 @@ for arc in m['archives']:
  archives.append(dict(role=role,file=path.name,sha256=sha(path),members=members))
 # Actual DOD1.7 sources under the same miniport. No bdd_ddi DriverEntry/CDO.
 uc=next(x/'ucrt'for x in sorted(Path('C:/Program Files (x86)/Windows Kits/10/Include').iterdir(),reverse=True)if(x/'ucrt/stddef.h').exists())
-bflags=['/nologo','/c','/kernel','/GS-','/Zl','/D_KERNEL_MODE','/D_ARM_','/DARM','/DNTDDI_VERSION=0x06030000','/D_WIN32_WINNT=0x0603','/DDXGKDDI_INTERFACE_VERSION=0x4002','/DA04_MT8167_DISPLAY_BRIGHTNESS=1','/DA04_GE8300_UNIFIED_DISPLAY356=1','/DA04_GE8300_WDDM_DIRECT_EXPERIMENT=0','/DA04_GE8300_WDDM_SHARED_AUTOSTART=0','/DA04_GE8300_WDDM_VENDOR_TILE=0','/DA04_GE8300_WDDM_COPY=0','/I'+str(kit/'Include/km'),'/I'+str(kit/'Include/shared'),'/IC:/mt8167-minimal-service-host/cache/kit81/Include/um','/I'+str(link.parents[3]/'include'),'/I'+str(uc),'/I'+str(r/'drivers/gpu/mt8167/wddm-display')]
+bflags=['/nologo','/c','/kernel','/Gy','/GS-','/Zl','/D_KERNEL_MODE','/D_ARM_','/DARM','/DNTDDI_VERSION=0x06030000','/D_WIN32_WINNT=0x0603','/DDXGKDDI_INTERFACE_VERSION=0x4002','/DA04_MT8167_DISPLAY_BRIGHTNESS=1','/DA04_GE8300_UNIFIED_DISPLAY356=1','/DA04_GE8300_WDDM_DIRECT_EXPERIMENT=0','/DA04_GE8300_WDDM_SHARED_AUTOSTART=0','/DA04_GE8300_WDDM_VENDOR_TILE=0','/DA04_GE8300_WDDM_COPY=0','/I'+str(kit/'Include/km'),'/I'+str(kit/'Include/shared'),'/IC:/mt8167-minimal-service-host/cache/kit81/Include/um','/I'+str(link.parents[3]/'include'),'/I'+str(uc),'/I'+str(r/'drivers/gpu/mt8167/wddm-display')]
 bdd=[]
-for n in ['bdd','bdd_dmm','bdd_util','bltfuncs','blthw','mt8167_brightness','unified_display']:
+for n in ['bdd','bdd_dmm','bdd_util','bltfuncs','blthw','mt8167_brightness','unified_display','memory','ge8300_trace','ge8300_present']:
  src=r/'drivers/gpu/mt8167/wddm-display'/(n+'.cxx');obj=o/('display_'+n+'.obj');run([cl,*bflags,'/showIncludes','/Fo'+str(obj),src],o/'logs'/('display_'+n+'.log'));bdd.append(obj);records.append(dict(source=src.relative_to(r).as_posix(),source_sha256=sha(src),object=obj.name,object_sha256=sha(obj),role='display',arguments=bflags))
 kl=kit/'Lib/winv6.3/km/arm';kernel=['/nologo','/driver','/subsystem:native,6.03','/machine:arm','/entry:DriverEntry','/nodefaultlib','/incremental:no','/largeaddressaware','/tsaware:no','/base:0x400000']
 libs=[kl/(n+'.lib')for n in ['displib','ntoskrnl','hal','libcntpr','bufferoverflowfastfailk']]
 run([link,*kernel,o/'ge8300-pair-kmd.lib',o/'ge8300-native-owner-core.lib',o/'display_adapter356.obj',*bdd,*libs,'/out:'+str(pkg/'ge8300-render.sys'),'/map:'+str(o/'ge8300-render.map')],o/'logs/link-kmd.log')
-transport=pkg/'display-transport';transport.mkdir()
+transport=pkg/'display-transport';transport.mkdir(exist_ok=True)
 run([link,*kernel,o/'transport356.obj',o/'scanout_vidmm356.obj',*libs,'/out:'+str(transport/'mt8167-display-transport.sys'),'/map:'+str(o/'transport.map')],o/'logs/link-transport.log')
 # PCO375 and all other compiler archives are reused and pinned, not rebuilt.
 cm=load(cache/'compiler/link-manifest.json');ul=[]

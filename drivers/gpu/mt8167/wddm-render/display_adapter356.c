@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
+#include <intrin.h>
 #include "display_adapter356.h"
 #include "lifecycle.h"
 #include "../wddm-display/unified_display.h"

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent
  * DIS0 PnP resource/DMA/real frame-IRQ provider. No DxgkInitialize, second GPU
  * owner, framebuffer CPU blitter, root registration or user control device. */
+#include <intrin.h>
 #include "interface356.h"
 #include <acpiioct.h>
 #include "../vendor_m1_11/windows_shared_scanout.h"
