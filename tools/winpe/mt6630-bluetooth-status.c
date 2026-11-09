@@ -9,7 +9,7 @@
 #include <cfgmgr32.h>
 void *memset(void *p,int c,size_t n){volatile unsigned char *v=p;while(n--)*v++=(unsigned char)c;return p;}
 static void number(const char *name,DWORD v){char out[96],rev[16];DWORD n=0,m=0,w;while(*name&&n<70)out[n++]=*name++;out[n++]='=';do{rev[m++]=(char)('0'+v%10);v/=10;}while(v);while(m)out[n++]=rev[--m];out[n++]='\r';out[n++]='\n';WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),out,n,&w,NULL);}
-static DWORD observe(void){
+static DWORD observe(DWORD *terminal){
  HDEVINFO set;DWORD i,e=0,first=0,roots=0,children=0;SP_DEVINFO_DATA d;
  set=SetupDiGetClassDevsW(NULL,NULL,NULL,DIGCF_ALLCLASSES|DIGCF_PRESENT);if(set==INVALID_HANDLE_VALUE)return GetLastError();
  for(i=0;i<512;i++){
@@ -20,7 +20,7 @@ static DWORD observe(void){
   for(j=0;j+1<bytes/2&&ids[j];){
    int root=!lstrcmpiW(ids+j,L"ROOT\\MT6630COMBO"),child=!lstrcmpiW(ids+j,L"A04BR3\\MT6630HCI");
    if(root||child){ULONG status=0,problem=0;CONFIGRET cr=CM_Get_DevNode_Status(&status,&problem,d.DevInst,0);WCHAR svc[64];DWORD used,kind;
-    if(root)roots++;else children++;number(root?"ROOT_CR":"CHILD_CR",cr);number(root?"ROOT_STATUS":"CHILD_STATUS",status);number(root?"ROOT_PROBLEM":"CHILD_PROBLEM",problem);
+    if(problem)*terminal=1;if(root)roots++;else children++;number(root?"ROOT_CR":"CHILD_CR",cr);number(root?"ROOT_STATUS":"CHILD_STATUS",status);number(root?"ROOT_PROBLEM":"CHILD_PROBLEM",problem);
     if(!SetupDiGetDeviceRegistryPropertyW(set,&d,SPDRP_SERVICE,&kind,(BYTE*)svc,sizeof(svc),&used))e=GetLastError();
     else if(kind!=REG_SZ||used<2||used>sizeof(svc)||(used&1)||svc[used/2-1]||lstrcmpiW(svc,root?L"Mt6630ComboBluetooth":L"BthMini"))e=ERROR_REVISION_MISMATCH;
     if(!first)first=e?e:(cr!=CR_SUCCESS||!(status&DN_STARTED)||problem?ERROR_NOT_READY:0);
@@ -35,4 +35,14 @@ static DWORD observe(void){
  }
  return first;
 }
-void mainCRTStartup(void){const WCHAR *s=GetCommandLineW();DWORD e;if(*s=='"'){s++;while(*s&&*s!='"')s++;if(*s)s++;}else while(*s&&*s!=' '&&*s!='\t')s++;while(*s==' '||*s=='\t')s++;e=lstrcmpW(s,L"--status")?ERROR_INVALID_PARAMETER:observe();number("RESULT",e);ExitProcess(e?1:0);}
+void mainCRTStartup(void){
+ const WCHAR *s=GetCommandLineW();DWORD e,terminal=0,began=GetTickCount(),samples=0;
+ if(*s=='"'){s++;while(*s&&*s!='"')s++;if(*s)s++;}else while(*s&&*s!=' '&&*s!='\t')s++;while(*s==' '||*s=='\t')s++;
+ if(lstrcmpW(s,L"--status")){number("RESULT",ERROR_INVALID_PARAMETER);ExitProcess(1);}
+ do{
+  number("SAMPLE_INDEX",samples++);e=observe(&terminal);
+  if(!e||terminal||(e!=ERROR_NOT_READY&&e!=ERROR_NOT_FOUND)||GetTickCount()-began>=35000u||samples>=141u)break;
+  Sleep(250);
+ }while(1);
+ number("WAIT_ELAPSED_MS",GetTickCount()-began);number("WAIT_SAMPLES",samples);number("TERMINAL_CM_PROBLEM",terminal);number("RESULT",e);ExitProcess(e?1:0);
+}
