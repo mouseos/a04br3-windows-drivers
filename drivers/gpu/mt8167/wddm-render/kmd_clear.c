@@ -352,6 +352,39 @@ static NTSTATUS GeoRenderImpl(HANDLE context,DXGKARG_RENDER *r) {
  r->pPatchLocationListOut->AllocationIndex=0;r->pPatchLocationListOut->DriverId=GEO_CLEAR_MAGIC;
  r->pPatchLocationListOut++;return STATUS_SUCCESS;
 }
+/* WDK8.1 Present lists have reserved entry0, source1, destination2.
+ * pAllocationInfo is a reserved alternative, not a replacement for this list.
+ * Capture only; use the same queued real Copy as ordinary Render. */
+NTSTATUS APIENTRY GeoPresent(HANDLE context,DXGKARG_PRESENT *p) {
+ struct geo_kmd_context *c=context;DXGK_ALLOCATIONLIST list[2];
+ struct geo_copy_packet copy={GEO_COPY_MAGIC,sizeof(copy),1,0,1,800,600,0};
+ DXGKARG_RENDER r={.pCommand=&copy,.CommandLength=sizeof(copy)};NTSTATUS status;UINT i;
+ if(!c||!p)return STATUS_INVALID_PARAMETER;
+ if(KeGetCurrentIrql()!=PASSIVE_LEVEL||p->Flags.Value!=1u||p->FlipInterval||p->DmaBufferSegmentId||p->MultipassOffset||p->SubRectCnt||
+    p->SrcRect.left||p->SrcRect.top||p->SrcRect.right!=800||p->SrcRect.bottom!=600||
+    p->DstRect.left||p->DstRect.top||p->DstRect.right!=800||p->DstRect.bottom!=600||
+    !p->pAllocationList||!p->pPatchLocationListOut||p->PatchLocationListOutSize<2||
+    !p->pDmaBuffer||((ULONG_PTR)p->pDmaBuffer&3)||p->DmaSize<sizeof(struct geo_dma_ticket)||
+    !p->pDmaBufferPrivateData||((ULONG_PTR)p->pDmaBufferPrivateData&3)||p->DmaBufferPrivateDataSize<sizeof(struct geo_dma_ticket))return STATUS_NOT_SUPPORTED;
+ if(!GeoSessionEnter(c->adapter,1))return STATUS_DEVICE_NOT_READY;
+ list[0]=p->pAllocationList[DXGK_PRESENT_DESTINATION_INDEX];
+ list[1]=p->pAllocationList[DXGK_PRESENT_SOURCE_INDEX];
+ /* A NULL destination means scanout/flip. No primary backing exists yet. */
+ if(p->pAllocationList[0].hDeviceSpecificAllocation||!list[0].hDeviceSpecificAllocation||!list[1].hDeviceSpecificAllocation||
+    list[0].hDeviceSpecificAllocation==list[1].hDeviceSpecificAllocation||!list[0].WriteOperation||list[1].WriteOperation){status=STATUS_NOT_SUPPORTED;goto done;}
+ r.pAllocationList=list;r.AllocationListSize=2;r.pDmaBuffer=p->pDmaBuffer;r.DmaSize=p->DmaSize;
+ r.pDmaBufferPrivateData=p->pDmaBufferPrivateData;r.DmaBufferPrivateDataSize=p->DmaBufferPrivateDataSize;
+ r.pPatchLocationListOut=p->pPatchLocationListOut;r.PatchLocationListOutSize=p->PatchLocationListOutSize;
+ GeoCollectPendingPayloads(c->adapter);status=GeoRenderImpl(c,&r);
+ if(status==STATUS_SUCCESS){
+  for(i=0;i<2;i++)p->pPatchLocationListOut[i].AllocationIndex=i?DXGK_PRESENT_SOURCE_INDEX:DXGK_PRESENT_DESTINATION_INDEX;
+  p->pDmaBuffer=r.pDmaBuffer;p->pDmaBufferPrivateData=r.pDmaBufferPrivateData;p->pPatchLocationListOut=r.pPatchLocationListOut;
+ }
+ done:GeoSessionLeave(c->adapter,1);return status;
+}
+/* The two legal semantic lists: normal Render 0/1, Present Blt 2/1.
+ * Never silently reinterpret Draw or escalate read-only allocation rights. */
+static UINT patch_index(UINT present,UINT ordinal){return present?(ordinal?DXGK_PRESENT_SOURCE_INDEX:DXGK_PRESENT_DESTINATION_INDEX):ordinal;}
 struct inspect_ticket { struct geo_kmd_adapter *adapter;struct geo_dma_ticket ticket;HANDLE context,open_handle,vertex_open_handle,texture_open_handle;UINT kind,count;NTSTATUS status;UINT allow_pending; };
 static BOOLEAN inspect_prepared(void *arg) {
  struct inspect_ticket *c=arg;struct geo_job *j;
@@ -377,13 +410,13 @@ static NTSTATUS patch_failure(NTSTATUS status,UINT phase,UINT kind,const struct 
 }
 static NTSTATUS GeoPatchImpl(HANDLE adapter,const DXGKARG_PATCH *p) {
  struct geo_dma_ticket t,private_ticket;struct geo_kmd_adapter *a=adapter;struct inspect_ticket inspect;
- const D3DDDI_PATCHLOCATIONLIST *location;UINT count=0,i,kind=0,phase=1;NTSTATUS status;
+ const D3DDDI_PATCHLOCATIONLIST *location;UINT count=0,i,kind=0,phase=1,os_present=0,index;NTSTATUS status;
  RtlZeroMemory(&t,sizeof(t));
  if(p) {
   GeoFactoryCheckpoint(28,STATUS_SUCCESS,p->Flags.Value,p->DmaBufferSize,p->DmaBufferSubmissionStartOffset,p->DmaBufferSubmissionEndOffset);
   GeoFactoryCheckpoint(29,STATUS_SUCCESS,p->hContext!=NULL,p->DmaBufferPrivateDataSize,p->DmaBufferPrivateDataSubmissionStartOffset,p->DmaBufferPrivateDataSubmissionEndOffset);
  }
- if(!p||!p->hContext||!a||!a->synchronize||p->EngineOrdinal||p->DmaBufferSegmentId||p->Flags.Value||
+ if(!p||!p->hContext||!a||!a->synchronize||p->EngineOrdinal||p->DmaBufferSegmentId||(p->Flags.Value&~2u)||
     !p->pPatchLocationList||!p->pAllocationList||!p->pDmaBuffer||!p->pDmaBufferPrivateData||
     p->PatchLocationListSubmissionStart>p->PatchLocationListSize||
     p->PatchLocationListSubmissionLength>p->PatchLocationListSize-p->PatchLocationListSubmissionStart||
@@ -393,18 +426,20 @@ static NTSTATUS GeoPatchImpl(HANDLE adapter,const DXGKARG_PATCH *p) {
  if((count!=1u&&count!=2u&&count!=3u)||p->AllocationListSize<count)return patch_failure(STATUS_INVALID_PARAMETER,phase,kind,&t);
  kind=p->pPatchLocationList[p->PatchLocationListSubmissionStart].DriverId;
  if((count==1&&kind!=GEO_CLEAR_MAGIC)||(count==2&&kind!=GEO_DRAW_MAGIC&&kind!=GEO_COPY_MAGIC)||(count==3&&kind!=GEO_DRAW_MAGIC))return patch_failure(STATUS_INVALID_PARAMETER,phase,kind,&t);
+ os_present=p->Flags.Present;
+ if(os_present&&(kind!=GEO_COPY_MAGIC||count!=2u||p->AllocationListSize<=DXGK_PRESENT_DESTINATION_INDEX))return patch_failure(STATUS_INVALID_PARAMETER,phase,kind,&t);
  phase=3;for(i=0;i<count;i++) {
-  location=&p->pPatchLocationList[p->PatchLocationListSubmissionStart+i];
-  if(location->AllocationIndex!=i||location->Value||location->DriverId!=kind||location->AllocationOffset||location->PatchOffset||location->SplitOffset||
-     !p->pAllocationList[i].hDeviceSpecificAllocation||((p->pAllocationList[i].WriteOperation!=0)!=(i==0u)))return patch_failure(STATUS_INVALID_PARAMETER,phase,kind,&t);
+  location=&p->pPatchLocationList[p->PatchLocationListSubmissionStart+i];index=patch_index(os_present,i);
+  if(location->AllocationIndex!=index||location->Value||location->DriverId!=kind||location->AllocationOffset||location->PatchOffset||location->SplitOffset||
+     !p->pAllocationList[index].hDeviceSpecificAllocation||((p->pAllocationList[index].WriteOperation!=0)!=(i==0u)))return patch_failure(STATUS_INVALID_PARAMETER,phase,kind,&t);
  }
  phase=4;if(GeoReadTicket((UCHAR *)p->pDmaBuffer+p->DmaBufferSubmissionStartOffset,&t)!=STATUS_SUCCESS||
     GeoReadTicket((UCHAR *)p->pDmaBufferPrivateData+p->DmaBufferPrivateDataSubmissionStartOffset,&private_ticket)!=STATUS_SUCCESS)return patch_failure(STATUS_INVALID_PARAMETER,phase,kind,&t);
  if(t.magic!=GEO_TICKET_MAGIC||t.reserved||t.slot>=GEO_MAX_JOBS||
     t.magic!=private_ticket.magic||t.slot!=private_ticket.slot||t.generation!=private_ticket.generation||t.reserved!=private_ticket.reserved)return patch_failure(STATUS_INVALID_PARAMETER,phase,kind,&t);
  RtlZeroMemory(&inspect,sizeof(inspect));inspect.adapter=a;inspect.ticket=t;inspect.context=p->hContext;inspect.kind=kind;inspect.count=count;
- inspect.open_handle=p->pAllocationList[0].hDeviceSpecificAllocation;
- if(count>=2u)inspect.vertex_open_handle=p->pAllocationList[1].hDeviceSpecificAllocation;
+ inspect.open_handle=p->pAllocationList[patch_index(os_present,0)].hDeviceSpecificAllocation;
+ if(count>=2u)inspect.vertex_open_handle=p->pAllocationList[patch_index(os_present,1)].hDeviceSpecificAllocation;
  if(count==3u)inspect.texture_open_handle=p->pAllocationList[2].hDeviceSpecificAllocation;
  /* The OS will bugcheck on any Patch error. A malformed context/list must
   * not first arm real firmware work. Validate both endpoints and residency
@@ -419,10 +454,10 @@ static NTSTATUS GeoPatchImpl(HANDLE adapter,const DXGKARG_PATCH *p) {
  if(!a->synchronize(a->sync_context,inspect_prepared,&inspect))return patch_failure(STATUS_DEVICE_NOT_READY,phase,kind,&t);
  return inspect.status==STATUS_SUCCESS?STATUS_SUCCESS:patch_failure(inspect.status,phase,kind,&t);
 }
-struct submit_call { struct geo_kmd_adapter *adapter;struct geo_dma_ticket ticket;uint32_t fence;HANDLE context;NTSTATUS status;UINT queue_prepare; };
+struct submit_call { struct geo_kmd_adapter *adapter;struct geo_dma_ticket ticket;uint32_t fence;HANDLE context;NTSTATUS status;UINT queue_prepare,present; };
 static BOOLEAN submit_locked(void *ctx) {
  struct submit_call *c=ctx;struct inspect_ticket inspect;
- RtlZeroMemory(&inspect,sizeof(inspect));inspect.adapter=c->adapter;inspect.ticket=c->ticket;inspect.context=c->context;inspect.allow_pending=1;
+ RtlZeroMemory(&inspect,sizeof(inspect));inspect.adapter=c->adapter;inspect.ticket=c->ticket;inspect.context=c->context;inspect.allow_pending=1;inspect.kind=c->present?GEO_COPY_MAGIC:0;
  inspect_prepared(&inspect);if(inspect.status!=STATUS_SUCCESS){c->status=inspect.status;return TRUE;}
  c->status=geo_submit_captured(&c->adapter->engine,&c->ticket,c->fence);
  if(c->status==STATUS_SUCCESS)c->queue_prepare=geo_submitted_prepare_ready(&c->adapter->engine);
@@ -431,10 +466,10 @@ static BOOLEAN submit_locked(void *ctx) {
 static NTSTATUS GeoSubmitCommandImpl(HANDLE adapter,const DXGKARG_SUBMITCOMMAND *p) {
  struct geo_kmd_adapter *a=adapter;struct geo_dma_ticket t;struct submit_call call;
  if(!a||!a->notifications_ready||!a->synchronize||!p||KeGetCurrentIrql()>DISPATCH_LEVEL||p->EngineOrdinal||p->NodeOrdinal||p->DmaBufferSegmentId||
-    p->Flags.Value||!p->pDmaBufferPrivateData||
+    (p->Flags.Value&~2u)||!p->pDmaBufferPrivateData||
     !ticket_range(p->DmaBufferPrivateDataSize,p->DmaBufferPrivateDataSubmissionStartOffset,p->DmaBufferPrivateDataSubmissionEndOffset))return STATUS_NOT_SUPPORTED;
  if(GeoReadTicket((UCHAR *)p->pDmaBufferPrivateData+p->DmaBufferPrivateDataSubmissionStartOffset,&t)!=STATUS_SUCCESS)return STATUS_INVALID_PARAMETER;
- RtlZeroMemory(&call,sizeof(call));call.adapter=a;call.ticket=t;call.fence=p->SubmissionFenceId;call.context=p->hContext;
+ RtlZeroMemory(&call,sizeof(call));call.adapter=a;call.ticket=t;call.fence=p->SubmissionFenceId;call.context=p->hContext;call.present=p->Flags.Present;
  if(!a->synchronize(a->sync_context,submit_locked,&call))return STATUS_DEVICE_NOT_READY;
  if(call.status==STATUS_SUCCESS&&call.queue_prepare){InterlockedOr(&a->service_pending,2);GeoQueueSubmittedPrepare(a);}
  return call.status;

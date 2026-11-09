@@ -145,13 +145,11 @@ static NTSTATUS observed_query_adapter_info(HANDLE context,const DXGKARG_QUERYAD
  }
  return status;
 }
-/* RT8.1 requires these slots even when StartDevice exposes no sources.
- * Their absence rejects the entire render interface before VidMm queries.
- * No Present packet or display IRQ can exist on this render-only device:
- * reject them explicitly without consuming buffers or touching MOU0007. */
+/* RT8.1 requires Present/interrupt slots on render-only adapters. Only a
+ * bounded offscreen real-GPU Blt is supported; no display/flip is advertised. */
 static NTSTATUS APIENTRY render_present(HANDLE context,DXGKARG_PRESENT *present) {
- NTSTATUS status=context&&present?STATUS_NOT_SUPPORTED:STATUS_INVALID_PARAMETER;
- GeoFactoryCheckpoint(60,status,0,0,0,0);return status;
+ NTSTATUS status=GeoPresent(context,present);
+ GeoFactoryCheckpoint(60,status,present?present->Flags.Value:0,0,0,0);return status;
 }
 static NTSTATUS APIENTRY control_display_interrupt(HANDLE context,DXGK_INTERRUPT_TYPE type,BOOLEAN enable) {
  NTSTATUS status=context?STATUS_NOT_SUPPORTED:STATUS_INVALID_PARAMETER;
@@ -210,7 +208,7 @@ C_ASSERT(sizeof(struct geo_module_identity_v1)==144);
 static void module_identity(PDRIVER_OBJECT driver)
 {
  static const CHAR source[]="eb2bc820c3b67168b16f50dbe3fbf27f513ddfae";
- static const CHAR build[]="GPU354-texture-temp-contract-v1";
+ static const CHAR build[]="GPU355-present-blt-v1";
  struct geo_module_identity_v1 r={0};HANDLE key=NULL;UNICODE_STRING path,name;
  OBJECT_ATTRIBUTES oa;ULONG disposition;NTSTATUS status;
  if(!driver||KeGetCurrentIrql()!=PASSIVE_LEVEL||!driver->DriverStart||!driver->DriverSize)return;
