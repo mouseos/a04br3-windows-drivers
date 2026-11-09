@@ -90,4 +90,4 @@ r=Path.cwd();p=r/'port/xnu/out/private-windows-rt-combined-run179-diagnostics'
 files=[{'path':str(f.relative_to(p)),'bytes':f.stat().st_size,'sha256':hashlib.sha256(f.read_bytes()).hexdigest()} for f in sorted(p.rglob('*')) if f.is_file()]
 (p/'capture-index.json').write_text(json.dumps({'files':files,'windows_unmounted':True,'hardware_success_asserted':False},indent=2)+'\n')
 MANIFEST
-echo COMBINED_RUN177_DIAGNOSTICS_COLLECTED_NOT_A_SUCCESS_ASSERTION
+echo COMBINED_RUN179_DIAGNOSTICS_COLLECTED_NOT_A_SUCCESS_ASSERTION
