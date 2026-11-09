@@ -39,7 +39,7 @@ void a04_ndis_tx_complete(void *context,PNET_BUFFER_LIST nbl,NDIS_STATUS status)
  * event that those ongoing control operations are allowed to reset. */
 static int pause_complete_locked(struct a04_ndis_runtime *a)
 {
- if(a->paused!=MT6630_NDIS_PAUSING||a->busy||a->api_refs||a->send||a->send_queue.count)return 0;
+ if(a->paused!=MT6630_NDIS_PAUSING||a->busy||a->api_refs||a->send||a->send_queue.count||a->tx.pending)return 0;
  a->paused=MT6630_NDIS_PAUSED;return 1;
 }
 static void api_leave(struct a04_ndis_runtime *a)
@@ -567,7 +567,7 @@ NDIS_STATUS RuntimePause(NDIS_HANDLE p,PNDIS_MINIPORT_PAUSE_PARAMETERS params)
 {
  struct a04_ndis_runtime *a=p;NDIS_STATUS status;UNREFERENCED_PARAMETER(params);
  NdisAcquireSpinLock(&a->lock);a->paused=1;
- if(a->busy||a->api_refs||a->send||a->send_queue.count){a->paused=MT6630_NDIS_PAUSING;status=NDIS_STATUS_PENDING;}
+ if(a->busy||a->api_refs||a->send||a->send_queue.count||a->tx.pending){a->paused=MT6630_NDIS_PAUSING;status=NDIS_STATUS_PENDING;}
  else status=NDIS_STATUS_SUCCESS;
  NdisReleaseSpinLock(&a->lock);return status;
 }

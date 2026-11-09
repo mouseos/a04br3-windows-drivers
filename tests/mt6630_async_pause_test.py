@@ -27,12 +27,12 @@ typedef void *NDIS_HANDLE;typedef int NDIS_STATUS;typedef void *PNDIS_MINIPORT_P
 #define MT6630_NDIS_PAUSED 1
 #define MT6630_NDIS_PAUSING 2
 #define UNREFERENCED_PARAMETER(x) (void)(x)
-struct a04_ndis_runtime {int lock,paused,busy;unsigned api_refs;void *send;struct {unsigned count;}send_queue;int idle;NDIS_HANDLE adapter;};
+struct a04_ndis_runtime {int lock,paused,busy;unsigned api_refs;void *send;struct {unsigned count;}send_queue;struct {void *pending;}tx;int idle;NDIS_HANDLE adapter;};
 static unsigned completions;
 static void NdisAcquireSpinLock(int *v){assert(!*v);*v=1;}
 static void NdisReleaseSpinLock(int *v){assert(*v);*v=0;}
 static void NdisSetEvent(int *v){*v=1;}
-static void NdisMPauseComplete(NDIS_HANDLE p){struct a04_ndis_runtime *a=p;assert(!a->lock&&a->paused==1&&!a->busy&&!a->api_refs&&!a->send&&!a->send_queue.count);++completions;}
+static void NdisMPauseComplete(NDIS_HANDLE p){struct a04_ndis_runtime *a=p;assert(!a->lock&&a->paused==1&&!a->busy&&!a->api_refs&&!a->send&&!a->send_queue.count&&!a->tx.pending);++completions;}
 '''+body+r'''
 static void worker_drained(struct a04_ndis_runtime *a){int complete;NdisAcquireSpinLock(&a->lock);a->busy=0;complete=pause_complete_locked(a);NdisReleaseSpinLock(&a->lock);if(complete)NdisMPauseComplete(a);}
 int main(void){
@@ -47,10 +47,13 @@ int main(void){
  a.paused=0;a.busy=1;a.send=&a;a.send_queue.count=1;
  assert(RuntimePause(&a,0)==NDIS_STATUS_PENDING);worker_drained(&a);assert(completions==1);
  a.send=0;a.send_queue.count=0;a.api_refs=1;api_leave(&a);assert(completions==2&&a.paused==1);
+ a.paused=0;a.tx.pending=&a;assert(RuntimePause(&a,0)==NDIS_STATUS_PENDING);
+ worker_drained(&a);assert(completions==2&&a.paused==2);
+ a.tx.pending=0;a.api_refs=1;api_leave(&a);assert(completions==3&&a.paused==1);
  puts("PASS actual Pause/claim/api_leave: no synchronous wait, drain-before-complete, exactly once outside lock; no NDIS/hardware execution");
 }
 '''
 out=root/'build/mt6630-async-pause';out.mkdir(parents=True,exist_ok=True)
 (out/'production-boundary.c').write_text(fixture)
-subprocess.run(['cc','-std=c11','-O2','-Wall','-Wextra','-Werror',str(out/'production-boundary.c'),'-o',str(out/'boundary-test')],check=True)
+subprocess.run(['clang','-std=c11','-O1','-fsanitize=address,undefined','-Wall','-Wextra','-Werror',str(out/'production-boundary.c'),'-o',str(out/'boundary-test')],check=True)
 subprocess.run([str(out/'boundary-test')],check=True)

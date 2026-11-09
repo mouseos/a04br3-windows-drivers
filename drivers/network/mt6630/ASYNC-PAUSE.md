@@ -34,3 +34,23 @@ source-only依頼のためWDK compile/link/signと実機試験は未実施。
 一次契約:
 - https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ndis/nc-ndis-miniport_pause
 - https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ndis/nf-ndis-ndismpausecomplete
+
+## provider1027 integration
+
+Carson source2df626895513d734ba5af87837d9e0c5bcf81530 is retained as the
+origin of async Pause. Drain also explicitly tests tx.pending, both for immediate
+SUCCESS and the one-time completion claim. Current normal worker aborts/completes
+TX before exit, but an invalid/faulted backend must not let an unreturned NBL
+become a successful Pause. This is fail-closed ownership checking, not a proved
+9F fix. The production extraction test covers this case under ASAN/UBSAN.
+
+An actual installed-Windows partition backup (20261106) contains ARM NDIS.SYS
+6.3.9600.16408, SHA256 3c1b6c26e7cda87ff075e751a65d972fc273fed08cc106d8b0145958a5339120.
+Its non-forwarded export NdisMPauseComplete is ordinal237/RVA0x15ec9.
+This export-table check used no disassembly and no live device access. Current
+run170 device-byte equality is not re-queried by this source owner.
+
+The busy/API drain boundary still serializes with the shared BT/OID worker;
+asynchronous Pause frees the PnP callback but does not bound a stuck physical
+I/O or an indefinitely busy control worker. Do not claim it alone resolves9F.
+Client2018 has independent source aa4233fd and remains byte-identical.
