@@ -76,7 +76,7 @@ run([link,*args]);h=header(out/'ge8300-render.sys')
 if (h['machine'],h['magic'],h['characteristics'],h['subsystem'],h['dll_characteristics'])!=(0x1c4,0x10b,0x122,1,0x140):raise ValueError('RT81 baseline PE contract not restored')
 for n in ['.text','.rdata','.data','.pdata']:
  if not h['sections'].get(n,0)&0x08000000:raise ValueError('Baseline nonpageable section contract: '+n)
-sign=Path('C:/mt8167-minimal-service-host/cache/kit81/bin/x86/signtool.exe');thumb='BCBF6C456C6F0DD0818434863B189488FBF13570'
+sign=Path('C:/mt8167-minimal-service-host/cache/kit81/bin/x86/signtool.exe');thumb='BCBF6C456C6F0DD0818434763B189488FBF13570'
 run([sign,'sign','/fd','SHA256','/sha1',thumb,out/'ge8300-render.sys']);run([sign,'verify','/pa',out/'ge8300-render.sys'])
 for f in old.iterdir():
  if f.is_file()and f.name not in ['ge8300-render.sys','ge8300-render.cat','ge8300-render.inf','signed-manifest.json']:shutil.copyfile(f,pkg/f.name)
