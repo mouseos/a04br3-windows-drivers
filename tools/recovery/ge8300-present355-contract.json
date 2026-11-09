@@ -1,0 +1,206 @@
+{
+  "schema": "ge8300-present355-boundary-contract-v1",
+  "base_source": "03048eefb73db0e30b209f0136031625020e9769",
+  "runtime_build_id": "GPU355-present-blt-v1",
+  "record_bytes": 40,
+  "record_schema": 2,
+  "hash": "FNV1a32 seed2166136261 multiplier16777619; diagnostic checksum only",
+  "same_boot_same_module_required": true,
+  "missing_or_skipped_is_unknown": true,
+  "root_reset_fix_proven": false,
+  "hardware_verified": false,
+  "records": {
+    "R52": {
+      "meaning": "build_graph_return",
+      "fields": [
+        "phase",
+        "packet_version",
+        "reserved",
+        "cookie"
+      ],
+      "success_is_GPU_completion": false
+    },
+    "R53": {
+      "meaning": "cold_prepare_return",
+      "fields": [
+        "phase",
+        "packet_version",
+        "reserved",
+        "cookie"
+      ],
+      "success_is_GPU_completion": false
+    },
+    "R54": {
+      "meaning": "boot_return",
+      "fields": [
+        "phase",
+        "packet_version",
+        "reserved",
+        "cookie"
+      ],
+      "success_is_GPU_completion": false
+    },
+    "R55": {
+      "meaning": "synchronized_finish_submit_return",
+      "fields": [
+        "slot",
+        "generation",
+        "continuation_attempt",
+        "flags"
+      ],
+      "success_is_GPU_completion": false
+    },
+    "R56": {
+      "meaning": "ticket_anchor",
+      "fields": [
+        "slot",
+        "generation",
+        "fence",
+        "cookie"
+      ],
+      "success_is_GPU_completion": false
+    },
+    "R57": {
+      "meaning": "packet",
+      "fields": [
+        "version",
+        "blob_bytes",
+        "blob_hash",
+        "cookie"
+      ],
+      "success_is_GPU_completion": false
+    },
+    "R58": {
+      "meaning": "target_desc",
+      "fields": [
+        "width",
+        "height",
+        "pitch",
+        "cookie"
+      ],
+      "success_is_GPU_completion": false
+    },
+    "R63": {
+      "meaning": "texture_desc",
+      "fields": [
+        "width",
+        "height",
+        "pitch",
+        "cookie"
+      ],
+      "success_is_GPU_completion": false
+    },
+    "R64": {
+      "meaning": "VS_span_bytes",
+      "fields": [
+        "tokens",
+        "USC",
+        "constants",
+        "cookie"
+      ],
+      "success_is_GPU_completion": false
+    },
+    "R65": {
+      "meaning": "PS_span_bytes",
+      "fields": [
+        "tokens",
+        "USC",
+        "constants",
+        "cookie"
+      ],
+      "success_is_GPU_completion": false
+    },
+    "R66": {
+      "meaning": "VS_span_hash",
+      "fields": [
+        "tokens",
+        "USC",
+        "constants",
+        "cookie"
+      ],
+      "success_is_GPU_completion": false
+    },
+    "R67": {
+      "meaning": "PS_span_hash",
+      "fields": [
+        "tokens",
+        "USC",
+        "constants",
+        "cookie"
+      ],
+      "success_is_GPU_completion": false
+    },
+    "R68": {
+      "meaning": "witness_sampler",
+      "fields": [
+        "vertex_witness_bytes",
+        "vertex_witness_hash",
+        "sampler_profile",
+        "cookie"
+      ],
+      "success_is_GPU_completion": false
+    },
+    "R69": {
+      "meaning": "metadata_commit",
+      "fields": [
+        "target_desc_hash",
+        "texture_desc_hash",
+        "state_shader_metadata_hash",
+        "cookie"
+      ],
+      "success_is_GPU_completion": false
+    },
+    "R50": {
+      "meaning": "last real claimed IRQ continuation; deferred persistence after retry decision",
+      "fields": [
+        "kind",
+        "slot",
+        "generation",
+        "last_wait_attempt"
+      ],
+      "success_is_GPU_completion": false
+    },
+    "R51": {
+      "meaning": "last direct service result; deferred persistence after retry decision",
+      "fields": [
+        "kind",
+        "slot",
+        "generation",
+        "service_elapsed_ms"
+      ],
+      "success_is_GPU_completion": false
+    },
+    "R60": {
+      "meaning": "Present Blt capture/reserve returned; not submit or display completion",
+      "fields": [
+        "Present_flags",
+        "reserved0",
+        "reserved0",
+        "reserved0"
+      ],
+      "success_is_GPU_completion": false
+    }
+  },
+  "phase": {
+    "0": "reset/not reached",
+    "1": "call entry only",
+    "2": "function returned"
+  },
+  "R55_flags": {
+    "0": "reset/not reached",
+    "8": "synchronized finish entry",
+    "2": "synchronize failed",
+    "4": "finish returned",
+    "bit0": "source-matched owner.submit admission predicate true; only with returned flag4 indicates actual submit return"
+  },
+  "FILETIME_semantics_R50_R51": "persistence time, NOT actual call boundary; use measured R51 service_elapsed_ms",
+  "R39_PREPARED": "not persisted inside inline continuation; previous R39 may be stale; normal non-PREPARED service retains R39",
+  "SAMPLE_profile_exact_temps": 6,
+  "record_layout_changed": false,
+  "previous_contract": {
+    "path": "tools/recovery/ge8300-boundaries354-contract.json",
+    "sha256": "05b71439a63446a23974788cc0f77dc4e8acede809a25827a8471897afed0b1f"
+  },
+  "display_caps_enabled": false,
+  "primary_scanout_connected": false
+}

@@ -25,6 +25,7 @@ if a.metadata_only:
   for row in arc['members']:row['before_sha256']=old_members[row['name']]
   if arc['role']=='native' and arc['sha256']!=before['sha256']:raise ValueError('Native must remain byte-identical')
  n['unchanged_linked_object_count']=sum(x['sha256']==x['before_sha256']for arc in n['archives']if arc['role']in('native','kmd')for x in arc['members'])
+ n['diagnostic_contract']=load(root/'tools/recovery/ge8300-present355-contract.json')
  n['package_source_commit']=a.recipe_commit;n['metadata_recipe_source_commit']=a.recipe_commit;n['actual_compile_source_commit']=compiled_commit
  n['packaging_metadata_only_resume']=True;n['resume_compile_count']=0;n['resume_link_count']=0;n['resume_sign_count']=0
  n.pop('build_manifest_sha256',None)
@@ -151,7 +152,7 @@ new['baseline_compiled_input_receipt']=new.pop('compiled_input_receipt',None)
 new['resume_packaging_without_compile']=False
 new['progress_headers']=[{'path':p,'sha256':sha(root/p)}for p in ['drivers/gpu/mt8167/vendor_m1_11/native_factory_checkpoint.h','drivers/gpu/mt8167/vendor_m1_11/render_owner/native_factory_checkpoint.h']]
 new['actual_include_closure']=load(out/'include-closure.json')
-new['diagnostic_contract']=load(root/'tools/recovery/ge8300-boundaries354-contract.json')
+new['diagnostic_contract']=load(root/'tools/recovery/ge8300-present355-contract.json')
 shutil.copyfile(a.umd_build/'build-manifest.json',pkg/'present355-umd-build-manifest.json')
 new['umd355_build_receipt']=um;new['umd_compiled_units']=um['compiled_units'];new['primary_scanout_connected']=False;new['display_caps_enabled']=False;new['normal_Windows_display_verified']=False;new['install_authorized']=False
 new['outputs']=[{'name':x['name'],'sha256':sha(pkg/x['name'])}for x in m['outputs']]
