@@ -1,8 +1,22 @@
 # TAB-A04-BR3 Windows ドライバ
 
+
+## 最新の実機結果：run175の標準D3D texture・標準Bluetooth radio
+
+GPU354（INF3.54/source `aeeef16c`）を適用したWindows RT 8.1実機で、標準D3D11のClear→Draw→Copy→Map読戻しが正常終了しました。同PID2568・GPR2 checksumと実SYS/ModuleIdentityを照合し、slots32～43がすべてPASS。有限2×2 textureの8ケース（POINT4、LINEAR3、default sampler1）は、各ケース内部149,784＋外部322,536＝472,320画素で不一致0、境界7,680画素を除外し各channel±2で比較しました。Diagnostic terminal0/client exit0/volumeFlush0です。
+
+MT6630 BT2018＋provider1027では、run171-diag1で標準Bluetooth APIのradio列挙が初成功しました（root/child Problem0、RADIO_FIRST_PRESENT1/RADIO_ERROR0/RESULT0）。ペアリング・RF通信は未確認です。
+
+この成果はGPU RAM上の標準D3D有限入力の読戻しであり、通常Windows画面へのGPU Present、物理画面表示、任意shader/texture、全3D機能、長期安定・電源遷移9Fの完成を意味しません。現在のrender adapterとdisplay-only driverは分離しており、通常DXGI PresentとOS所有primary/scanoutの結合を次工程としています。
+
+- GPU実採用source: [fix/ge8300-texture-cold354](https://github.com/mouseos/a04br3-windows-drivers/tree/fix/ge8300-texture-cold354)
+- 実採用batch source: [work/combined175-fresh174](https://github.com/mouseos/a04br3-windows-drivers/tree/work/combined175-fresh174)（`f123604f`）
+- Bluetooth: [fix/mt6630-read-completion-reentry2018](https://github.com/mouseos/a04br3-windows-drivers/tree/fix/mt6630-read-completion-reentry2018)、[fix/mt6630-provider-async-pause1027](https://github.com/mouseos/a04br3-windows-drivers/tree/fix/mt6630-provider-async-pause1027)
+- [run175の確認範囲と未完了範囲](docs/verified-run175.md)
+
 TAB-A04-BR3のWindows RT 8.1 ARM32向けドライバをまとめるリポジトリです。ストレージ、入力、USBなどを機能別のディレクトリに置き、ドライバごとにリポジトリは分けません。UEFIの共通コードやWindowsのバイナリは含めません。
 
-## 現在の開発ソース（2026-11-09）
+## 以前の開発ソースと経緯（2026-11-09時点）
 
 開発中のソースとビルド手順は、下記の公開ブランチに保存しています。GPUはKMD・native owner・UMD・compilerを単一checkoutから構築する手順を用意しています。各候補の固定ソースとビルド済みパッケージを混同せず、対応する機種UEFI・署名・設定を揃えてください。
 
