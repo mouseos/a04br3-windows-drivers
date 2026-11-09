@@ -24,13 +24,17 @@ static BOOLEAN drain_close(void *p)
 static NTSTATUS irq_phase(struct e_native_owner *c,PKSYNCHRONIZE_ROUTINE routine)
 {
     struct irq_call call={c,STATUS_UNSUCCESSFUL};
-    for(unsigned i=0;i<20000;i++){
+    ULONGLONG began;LARGE_INTEGER interval;
+    if(KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+    began=KeQueryInterruptTime();interval.QuadPart=-10000;
+    for(unsigned i=0;i<1000;i++){
+        if(KeQueryInterruptTime()-began>=10000000u)return STATUS_IO_TIMEOUT;
         if(!e_native_synchronize(c,routine,&call))return STATUS_IO_DEVICE_ERROR;
         if(NT_SUCCESS(call.status))return call.status;
         if(call.status!=STATUS_DEVICE_BUSY &&
            !(routine==drain_close && call.status==STATUS_INVALID_DEVICE_STATE &&
              c->allocation->irq.draining && !c->allocation->irq.sampled_fw_valid && !c->allocation->irq.faulted))return call.status;
-        KeStallExecutionProcessor(50);
+        (void)KeDelayExecutionThread(KernelMode,FALSE,&interval);
     }
     return STATUS_IO_TIMEOUT;
 }

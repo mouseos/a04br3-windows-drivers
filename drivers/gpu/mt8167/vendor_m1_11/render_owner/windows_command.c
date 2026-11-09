@@ -13,7 +13,16 @@ static void fence_kick(void *ctx,uint32_t offset,uint32_t value)
     WRITE_REGISTER_ULONG((volatile ULONG *)(void *)(s->core+offset),value);
 }
 static void fence_wait(void *ctx,uint32_t usec)
-{ UNREFERENCED_PARAMETER(ctx);KeStallExecutionProcessor(usec); }
+{
+    LARGE_INTEGER interval;
+    UNREFERENCED_PARAMETER(ctx);
+    /* Command acknowledgements are PASSIVE operations. Yield to the actual
+     * Windows clock/DPC instead of repeatedly stalling on the HAL PMU-based
+     * delay path. The producer still checks the real FW sync/CCB each poll.
+     * WDK scheduling granularity may exceed this requested 1ms interval. */
+    interval.QuadPart=-(LONGLONG)usec*10;
+    (void)KeDelayExecutionThread(KernelMode,FALSE,&interval);
+}
 NTSTATUS a04_vendor_m1_11_windows_irq_snapshot(struct a04_vendor_start *s,
     BOOLEAN coherent_or_uncached,struct a04_vendor_irq_snapshot *snapshot)
 {
@@ -80,7 +89,7 @@ NTSTATUS a04_vendor_m1_11_windows_fence(struct a04_vendor_start *s,
     if(s->shutdown_started) { InterlockedExchange(&s->command_busy,0);return STATUS_IO_DEVICE_ERROR; }
     state.sequence=s->command_sequence;state.poisoned=s->command_poisoned!=FALSE;
     io.context=s;io.publish=fence_barrier;io.acquire=fence_barrier;io.kick=fence_kick;io.wait_us=fence_wait;
-    result=a04_rgx_command_fence(s->memory->runtime,&state,&io,dm,10000,10);
+    result=a04_rgx_command_fence(s->memory->runtime,&state,&io,dm,100,1000);
     s->command_sequence=state.sequence;s->command_poisoned=state.poisoned?TRUE:FALSE;
     InterlockedExchange(&s->command_busy,0);
     if(result==A04_CCB_OK) status=STATUS_SUCCESS;
@@ -102,7 +111,7 @@ NTSTATUS a04_vendor_m1_11_windows_power_off(struct a04_vendor_start *s,
     if(s->shutdown_started) { InterlockedExchange(&s->command_busy,0);return STATUS_IO_DEVICE_ERROR; }
     state.sequence=s->command_sequence;state.poisoned=s->command_poisoned!=FALSE;
     io.context=s;io.publish=fence_barrier;io.acquire=fence_barrier;io.kick=fence_kick;io.wait_us=fence_wait;
-    result=a04_rgx_command_power_off(s->memory->runtime,&state,&io,10000,10);
+    result=a04_rgx_command_power_off(s->memory->runtime,&state,&io,100,1000);
     s->command_sequence=state.sequence;s->command_poisoned=state.poisoned?TRUE:FALSE;
     if(result==A04_CCB_OK) s->power_off_ack=TRUE;
     if(result==A04_CCB_OK || result==A04_CCB_TIMEOUT || result==A04_CCB_CORRUPT)
@@ -134,7 +143,7 @@ NTSTATUS a04_vendor_m1_11_windows_forced_power_off(struct a04_vendor_start *s,
     s->shutdown_started=TRUE;
     state.sequence=s->command_sequence;state.poisoned=FALSE;
     io.context=s;io.publish=fence_barrier;io.acquire=fence_barrier;io.kick=fence_kick;io.wait_us=fence_wait;
-    result=a04_rgx_command_power_transition(s->memory->runtime,&state,&io,A04_POWER_FORCE_IDLE,10000,10);
+    result=a04_rgx_command_power_transition(s->memory->runtime,&state,&io,A04_POWER_FORCE_IDLE,100,1000);
     if(result==A04_CCB_OK) *idle_status=STATUS_SUCCESS;
     else if(result==A04_CCB_TIMEOUT) *idle_status=STATUS_IO_TIMEOUT;
     else if(result==A04_CCB_POWER_DENIED || result==A04_CCB_BUSY || result==A04_CCB_FULL) *idle_status=STATUS_DEVICE_BUSY;
@@ -142,7 +151,7 @@ NTSTATUS a04_vendor_m1_11_windows_forced_power_off(struct a04_vendor_start *s,
     else *idle_status=STATUS_IO_DEVICE_ERROR;
     status=*idle_status;
     if(result==A04_CCB_OK) {
-        result=a04_rgx_command_power_transition(s->memory->runtime,&state,&io,A04_POWER_FORCED_OFF,10000,10);
+        result=a04_rgx_command_power_transition(s->memory->runtime,&state,&io,A04_POWER_FORCED_OFF,100,1000);
         if(result==A04_CCB_OK){s->power_off_ack=TRUE;s->online=FALSE;status=STATUS_SUCCESS;}
         else if(result==A04_CCB_TIMEOUT)status=STATUS_IO_TIMEOUT;
         else if(result==A04_CCB_POWER_DENIED || result==A04_CCB_BUSY || result==A04_CCB_FULL)status=STATUS_DEVICE_BUSY;
