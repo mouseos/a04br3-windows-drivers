@@ -3,7 +3,7 @@ $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 $base=[IO.Path]::GetFullPath($WorkspaceRoot);$w=$base;$src="$base\windows-rt\a04br3-windows-combined173-fresh172";$out="$base\post-preservation"
 if(Test-Path $out){throw 'New comparison output required'}
 New-Item -ItemType Directory "$out\baseline","$out\candidate"|Out-Null
-$input="$base\port\xnu\out\private-windows-rt-prebackup-run170-diag1\files\Windows\System32\config"
+$input="$base\port\xnu\out\private-windows-rt-prebackup-run172-diag1\files\Windows\System32\config"
 foreach($n in @('SYSTEM','SYSTEM.LOG1','SYSTEM.LOG2')){Copy-Item "$input\$n" "$out\baseline\$n"}
 $native=Get-Content "$base\native-arm\result.json" -Raw|ConvertFrom-Json
 if($native.status -cne 'verified-clean-system-services-only'){throw 'Native preparation must pass first'}
@@ -62,8 +62,8 @@ foreach($mode in @('baseline','candidate')){
 $report.keypad_wdf_timestamp_policy='TimeOfLastSqmLog is recorded by read-combined138-post.ps1; full same-generation fingerprints remain strict'
 $report.equal=($report.snapshots.baseline.paths|ConvertTo-Json -Depth 12 -Compress) -ceq ($report.snapshots.candidate.paths|ConvertTo-Json -Depth 12 -Compress)
 $report.originals_unchanged=$true
-$fm=Get-Content "$base\port\xnu\out\private-windows-rt-prebackup-run170-diag1\manifest.json" -Raw|ConvertFrom-Json
-foreach($f in $fm.files){$p=Join-Path "$base\port\xnu\out\private-windows-rt-prebackup-run170-diag1" $f.backup_path;if((Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant() -cne $f.sha256){$report.originals_unchanged=$false}}
+$fm=Get-Content "$base\port\xnu\out\private-windows-rt-prebackup-run172-diag1\manifest.json" -Raw|ConvertFrom-Json
+foreach($f in $fm.files){$p=Join-Path "$base\port\xnu\out\private-windows-rt-prebackup-run172-diag1" $f.backup_path;if((Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant() -cne $f.sha256){$report.originals_unchanged=$false}}
 $report|ConvertTo-Json -Depth 16|Set-Content -Encoding UTF8 "$base\post-preservation.json"
 if($report.errors.Count -or !$report.equal -or !$report.originals_unchanged){throw 'Target preservation comparison failed'}
 foreach($r in $report.snapshots.Values){if($r.load_rc -or $r.unload_rc -or $r.privilege_restore_error){throw 'Native cleanup failed'}}
