@@ -77,7 +77,7 @@ def build_policy(root,spec):
  n=pin(spec['native']);prior=pin(spec['prior175_policy'])
  require(n['source_manifest_sha256']==spec['fresh']['sha256'] and not n['errors'] and n['originals_unchanged'] and n['full_service_preservation_equal'] and all(n[k]==0 for k in ('load_rc','unload_rc','privilege_restore_error')),'Clean same-trio176 native proof required')
  for name,h in n['source_files'].items():require(originals['Windows/System32/config/'+name]['sha256']==h,'Trio mismatch')
- require(n['gpu_init']['reached_mask']==0x7ff and n['module_identity']['observed_buildid']=='GPU354-texture-temp-contract-v1' and n['module_identity']['expected_identity_matches'],'Actual354 init/identity required')
+ require(n['gpu_init']['reached_mask']==0x7ff and all(n['gpu_init']['values'][k]['value']==0 for k in ('DriverEntry','Contract','DxgkInitialize','AddDevice','DeviceInformation','NativeOwnerCreate','ConfigureAperture','StartOwner','DrawOpsV1','DrawOpsV2','StartDevice')) and n['module_identity']['observed_buildid']=='GPU354-texture-temp-contract-v1' and n['module_identity']['expected_identity_matches'],'Actual354 init/identity required')
  require(prior['profile']=='combined-features-fresh174-v1' and n['old_services']==prior['service_preservation'] and len(n['old_services'])==18,'18 exact full service fingerprints')
  values=copy.deepcopy(prior['captured_registry_values']);require(len(values)==70,'70 prior values')
  for v in values:
@@ -92,6 +92,7 @@ def build_policy(root,spec):
   q=rooted(root,gp/f['name']);require(sha(q)==f['sha256'],'356 output pin');pins[q.relative_to(root).as_posix()]=f['sha256']
  pkgs=copy.deepcopy(prior['packages']);pkgs['render'].update(directory=gp.as_posix(),manifest=spec['GPU356_manifest']['path'],manifest_sha256=spec['GPU356_manifest']['sha256'],source_commit=gm['package_source_commit'],binary_source_commit=gm['kernel_binary_source_commit'],driver_version='0.0.3.56',driver_date='11/09/2026')
  pkgs['render'].pop('main_seal',None)
+ pkgs['render']['artifact_review']=spec['GPU356_handoff'];pkgs['render']['producer_pins']=spec['GPU356_pins']
  outputs={f['name']:f['sha256'] for f in gm['outputs']}
  for e in pkgs['render']['extra_members']:e['baseline_sha256']=e['sha256'];e['sha256']=outputs[e['name']]
  pkgs['display'].update(directory=(gp/'display-transport').as_posix(),manifest=spec['GPU356_manifest']['path'],manifest_sha256=spec['GPU356_manifest']['sha256'],source_commit=gm['package_source_commit'],binary_source_commit=gm['display_transport_source_commit'],driver_version='0.0.3.56',driver_date='11/09/2026',names={'inf':'mt8167-display-transport.inf','sys':'mt8167-display-transport.sys','cat':'mt8167-display-transport.cat'},extra_members=[])
