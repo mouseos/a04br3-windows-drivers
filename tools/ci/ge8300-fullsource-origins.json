@@ -170,9 +170,9 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/kmd_clear.c",
-      "source_commit": "108f152ce5e61ed5b5d45ee7f095be950d35aa83",
-      "role": "Consume the serviced real-IRQ work bit before rearm349-r2; prior origins retained",
-      "sha256": "7e87cfc4391af512d8fb3625bd3ff1edc4725f601ca864ebbf7dd4330a926754",
+      "source_commit": "6218160ef1340e61a497d97c1fa4fe7cd430b247",
+      "role": "Documented VidMm paging busy status350; previous origins retained",
+      "sha256": "5c6427299747ded060ef0fa530115fa57fe6541ca52c0b8aa08a38c7359b3183",
       "previous_origins": [
         {
           "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
@@ -231,6 +231,12 @@
           "source_commit": "0d4d197ae03b70bc86c6dcaf4af024b775299098",
           "role": "Real claimed startup IRQ service before submitted DMA349; previous origins retained",
           "sha256": "7ed32c667e749d992cc13f72420a4a62dd67923bc6856254872d578a554fc35e"
+        },
+        {
+          "path": "drivers/gpu/mt8167/wddm-render/kmd_clear.c",
+          "source_commit": "108f152ce5e61ed5b5d45ee7f095be950d35aa83",
+          "role": "Consume the serviced real-IRQ work bit before rearm349-r2; prior origins retained",
+          "sha256": "7e87cfc4391af512d8fb3625bd3ff1edc4725f601ca864ebbf7dd4330a926754"
         }
       ]
     },
@@ -335,9 +341,9 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
-      "source_commit": "0d4d197ae03b70bc86c6dcaf4af024b775299098",
-      "role": "Real claimed startup IRQ service before submitted DMA349; previous origins retained",
-      "sha256": "5ab76f43ea625b262741eec8bbbe1438a613247e66be17398fa7b6ecc96ce79b",
+      "source_commit": "6218160ef1340e61a497d97c1fa4fe7cd430b247",
+      "role": "Documented VidMm paging busy status350; previous origins retained",
+      "sha256": "229b3d18e5638e168022f3e20c4c64cfb9a44965f2536874a09f22d7d48fffd5",
       "previous_origins": [
         {
           "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
@@ -395,6 +401,12 @@
           "source_commit": "a52476c0612b77c3457c9ebb53c393bf30000673",
           "role": "submitted FIFO and PASSIVE preparation348; old origins preserved",
           "sha256": "9c640245ef1f7186b26e2c9db9dbb5ef347588f4313179205916bbf9dc44887c"
+        },
+        {
+          "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
+          "source_commit": "0d4d197ae03b70bc86c6dcaf4af024b775299098",
+          "role": "Real claimed startup IRQ service before submitted DMA349; previous origins retained",
+          "sha256": "5ab76f43ea625b262741eec8bbbe1438a613247e66be17398fa7b6ecc96ce79b"
         }
       ]
     },
