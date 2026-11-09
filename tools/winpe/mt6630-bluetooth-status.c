@@ -41,7 +41,10 @@ void mainCRTStartup(void){
  if(lstrcmpW(s,L"--status")){number("RESULT",ERROR_INVALID_PARAMETER);ExitProcess(1);}
  do{
   number("SAMPLE_INDEX",samples++);e=observe(&terminal);
-  if(!e||terminal||(e!=ERROR_NOT_READY&&e!=ERROR_NOT_FOUND)||GetTickCount()-began>=35000u||samples>=141u)break;
+  /* BluetoothFindFirstRadio reports ERROR_NO_MORE_ITEMS until the software
+   * radio interface arrives. Keep that observation distinct from success;
+   * only CM terminal problems and other errors end the bounded wait early. */
+  if(!e||terminal||(e!=ERROR_NOT_READY&&e!=ERROR_NOT_FOUND&&e!=ERROR_NO_MORE_ITEMS)||GetTickCount()-began>=35000u||samples>=141u)break;
   Sleep(250);
  }while(1);
  number("WAIT_ELAPSED_MS",GetTickCount()-began);number("WAIT_SAMPLES",samples);number("TERMINAL_CM_PROBLEM",terminal);number("RESULT",e);ExitProcess(e?1:0);
