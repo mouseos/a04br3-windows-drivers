@@ -1,0 +1,11 @@
+# 167：fresh166/GPU349＋MT6630 2017/1026
+
+fresh166 manifest e53d4c13df2cbba7a744c49ba345f9d6acbaa33146f1d97a4101b6d92e009a3e、Recovery910c5a11-562e-4fe3-a1ee-e3ea31e2eef7。原41、18full fingerprints、旧45named＋実service164停止5＝50を独立に保持。mutable GPU logs89をimmutable導入guardから分離する。
+
+GPU349正式recipe c7e0c7ce/実compile26c3ec02（packaging-only再開）とBT2017/provider1026 source99ef927dを対で結合。DIF wifi idx3/bt idx12/render idx10、予定restart1、root登録0、boot2e6保持write0/GPT0、親1117/thermalMSDC1.10/AFE1034他actual保持。BTstatus c72d0e71 idx0 --status1回/35s software待機45s timeout→GPU9934 idx1最後1回900s/preGPU180、温度等他機能再試験0。
+
+349はstate8/token/refをpending中保持し、実IRQclaim限定で既service後に同tokenを同期Submit、prepare再実行0。R50/R51はpending/service到達・戻り値でありGPU完了ではない。100回/100ms経過判定はservice帰還後の境界であり個々のservice内部を強制中断しない。今回実masked predicate直接採取無し、今回原因の単独確定や改善成功は未実証。
+
+BT2017はHCI file OPEN中の既combo epoch保護と実runtime/Rx失敗伝達を追加。run165 Code10のexact predicateは未取得であり、今回電源経路が発火したとは断定しない。capsガード緩和・架空SCO/PCM/latency/drain/成功合成0。新helperは64B BrokerRuntimeV1/stage21,22を同cloneで回収する。root D0Return0はHCI/radio成功ではない。
+
+新42555796562の既cache/入力を利用、service1TUのみ増分。driver/SDK再build0。正式policy/validator/read166-post/native/媒体/contractを同hashに固定し、main独立seal後だけ実機mainが適用する。165/348固定物変更0。

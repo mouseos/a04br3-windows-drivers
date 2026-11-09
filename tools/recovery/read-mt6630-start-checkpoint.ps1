@@ -33,7 +33,7 @@ function Read-Mt6630StartCheckpoint {
  if($key){try {
   if($key.GetValueNames().Count -gt 64 -or $key.GetSubKeyNames().Count){throw 'Checkpoint bound exceeded'}
   $cp=[ordered]@{present=$true;Schema=(Fixed-Dword $key 'Schema');ReachedMask=(Fixed-Dword $key 'ReachedMask');stages=[ordered]@{};receipt=@{present=$false}}
-  $names=@('DeviceCreated','WaitLock','IoTarget','Timer','Queues','ChildCreated','SidebandQI','ControllerQI','StaticChild','D0Entry','BrokerTargetOpen','BrokerHciOpen','OptionalController','D0Return','D0Exit','Capabilities','BrokerReceipt','ProviderWait','BrokerAdmission','HciReady','ProviderWaitResult')
+  $names=@('DeviceCreated','WaitLock','IoTarget','Timer','Queues','ChildCreated','SidebandQI','ControllerQI','StaticChild','D0Entry','BrokerTargetOpen','BrokerHciOpen','OptionalController','D0Return','D0Exit','Capabilities','BrokerReceipt','ProviderWait','BrokerAdmission','HciReady','ProviderWaitResult','RxDrainFailure','RuntimeSnapshot')
   for($i=0;$i -lt $names.Count;$i++){
    $v=Fixed-Dword $key $names[$i];$v.reached_in_saved_mask=$cp.ReachedMask.present -and (($cp.ReachedMask.value -band (1 -shl $i)) -ne 0)
    $v.old_unreached_value_may_be_stale=!$v.reached_in_saved_mask;$cp.stages[$names[$i]]=$v
@@ -44,6 +44,13 @@ function Read-Mt6630StartCheckpoint {
    $v=@();for($i=0;$i -lt 16;$i++){$v+=@([BitConverter]::ToUInt32($blob,4*$i))}
    if($v[0] -ne 1 -or $v[1] -ne 64 -or !$v[3] -or ($v[11] -band 5) -ne 5 -or ($v[11] -band 0xfffffff8L) -or ($v[4] -band 0xfffe0001L) -or ($v[5] -band (-bnot $v[4])) -or ($v[6] -band (-bnot $v[5])) -or $v[7] -gt 16){throw 'Malformed broker receipt'}
    $cp.receipt=[ordered]@{present=$true;schema=$v[0];bytes=$v[1];generation=$v[2];sequence=$v[3];entered_mask=$v[4];returned_mask=$v[5];succeeded_mask=$v[6];last_stage=$v[7];broker_ntstatus_hex=('{0:X8}' -f $v[8]);backend_status=[BitConverter]::ToInt32($blob,36);backend_valid=(($v[11] -band 2) -ne 0);last_opcode_hex=('{0:X4}' -f $v[10]);start_filetime=[BitConverter]::ToUInt64($blob,48);start_interrupttime=[BitConverter]::ToUInt64($blob,56);current_receipt_stage_reached=$cp.stages.BrokerReceipt.reached_in_saved_mask;same_boot_binding_required=$true;HCI_or_RF_success_inferred=$false}
+  }
+  if('BrokerRuntimeV1' -cin $key.GetValueNames()){
+   if($key.GetValueKind('BrokerRuntimeV1') -ne [Microsoft.Win32.RegistryValueKind]::Binary){throw 'Runtime must be binary'}
+   [byte[]]$b=$key.GetValue('BrokerRuntimeV1');if($b.Length -ne 64){throw 'Runtime must be64B'}
+   $v=@();for($i=0;$i -lt 16;$i++){$v+=@([BitConverter]::ToUInt32($b,4*$i))}
+   if($v[0] -ne 1 -or $v[1] -ne 64 -or $v[4] -ne 0x7ff -or $v[15]){throw 'Runtime ABI mismatch'}
+   $cp.runtime=[ordered]@{present=$true;version=$v[0];generation=$v[2];flags=('{0:X8}' -f $v[3]);missing_flags=('{0:X8}' -f $v[5]);bt_failure=[BitConverter]::ToInt32($b,24);wmt_failure=[BitConverter]::ToInt32($b,28);radio_failure=[BitConverter]::ToInt32($b,32);commands=$v[9];acked=$v[10];phase=$v[11];tx_pending=$v[12];queued_packets=$v[13];transport_result=('{0:X8}' -f $v[14]);current_stage_reached=$cp.stages.RuntimeSnapshot.reached_in_saved_mask;same_boot_binding_required=$true}
   }
   $out.checkpoint=$cp
  }finally{$key.Dispose()}}
