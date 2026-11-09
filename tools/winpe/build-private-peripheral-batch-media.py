@@ -137,7 +137,11 @@ def main():
  if signed_source!=a.source_commit:
   subprocess.run(['git','-C',str(repo),'merge-base','--is-ancestor',signed_source,a.source_commit],check=True)
   changed=set(subprocess.check_output(['git','-C',str(repo),'diff','--name-only',signed_source,a.source_commit],text=True).splitlines())
-  if a.combined172_profile:
+  if a.combined176_profile:
+   allowed={'tools/recovery/OfflineSystemHiveNative.cs','tools/recovery/read-combined176-post.ps1','tools/recovery/verify-combined176-preservation.ps1','tools/winpe/build-private-peripheral-batch-media.py'}
+   require(changed and changed<=allowed,'177 signed SCM permits exact native/reader/media helper closure only')
+   require(sha(repo/'tools/winpe/mt8167-peripheral-update.c')==sm['source_sha256'],'Signed SCM TU unchanged')
+  elif a.combined172_profile:
    allowed={'tools/recovery/verify-combined172-preservation.ps1','tools/recovery/read-combined172-post.ps1','tools/winpe/build-private-peripheral-batch-media.py'}
    require(changed and changed<=allowed,'run173 signed service permits only its exact reader/preservation/media helpers')
    require(sha(repo/'tools/winpe/mt8167-peripheral-update.c')==sm['source_sha256'],'Signed service TU must remain byte identical')
