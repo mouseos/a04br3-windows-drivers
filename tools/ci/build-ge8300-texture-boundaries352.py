@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Keep resource-owned resident VBs; incrementally rebuild four GPU350 units."""
-import argparse,hashlib,json,shutil,struct,subprocess,zipfile
+import argparse,hashlib,json,shutil,struct,subprocess,zipfile,re
 from pathlib import Path
 p=argparse.ArgumentParser();p.add_argument('--task-root',type=Path,required=True);p.add_argument('--recipe-commit',required=True);a=p.parse_args()
 t=a.task_root;base=t/'baseline';old=base/'package351';out=t/'build';pkg=out/'package352'
