@@ -473,11 +473,20 @@ NTSTATUS APIENTRY GeoDestroyAllocation(HANDLE handle,const DXGKARG_DESTROYALLOCA
 }
 NTSTATUS APIENTRY GeoBuildPagingBuffer(HANDLE handle,DXGKARG_BUILDPAGINGBUFFER *p) {
  struct geo_kmd_adapter *a=handle;NTSTATUS status;UINT mode;
- if(!p)return STATUS_INVALID_PARAMETER;
+ if(!a||!a->session||!p||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  GeoFactoryCheckpoint(8,STATUS_SUCCESS,(ULONG)p->Operation,KeGetCurrentIrql(),0,0);
  mode=p->Operation==DXGK_OPERATION_UNMAP_APERTURE_SEGMENT?2:1;
- if(!GeoSessionEnter(a,mode))return STATUS_DEVICE_NOT_READY;
- status=GeoBuildPagingBufferImpl(a,p);GeoFactoryCheckpoint(21,status,(ULONG)p->Operation,0,0,0);GeoSessionLeave(a,mode);return status;
+ /* VidMm accepts ALLOCATION_BUSY while these owner-held pages cannot be
+  * remapped/retired. DEVICE_NOT_READY is not a legal paging return and
+  * causes VIDEO_MEMORY_MANAGEMENT_INTERNAL/0xB after a prior engine fault.
+  * Keep every pin and outstanding fence until actual drain/reset proof. */
+ if(!GeoSessionEnter(a,mode)) {
+  GeoFactoryCheckpoint(21,STATUS_GRAPHICS_ALLOCATION_BUSY,(ULONG)p->Operation,1,0,0);
+  return STATUS_GRAPHICS_ALLOCATION_BUSY;
+ }
+ status=GeoBuildPagingBufferImpl(a,p);
+ if(status==STATUS_DEVICE_BUSY || status==(NTSTATUS)GEO_BUSY)status=STATUS_GRAPHICS_ALLOCATION_BUSY;
+ GeoFactoryCheckpoint(21,status,(ULONG)p->Operation,0,0,0);GeoSessionLeave(a,mode);return status;
 }
 NTSTATUS APIENTRY GeoRender(HANDLE handle,DXGKARG_RENDER *p) {
  struct geo_kmd_context *c=handle;NTSTATUS status;
