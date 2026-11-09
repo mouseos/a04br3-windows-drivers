@@ -7,6 +7,9 @@
 #include "../../bluetooth/mt6630/physical_owner.h"
 #include "../../bus/mt8167-shared/hfp_interface.h"
 #include "../../bluetooth/mt6630/transport_caps.h"
+#include "../../bluetooth/mt6630/runtime_status.h"
+#include "../../bluetooth/mt6630/power_guard.h"
+C_ASSERT(sizeof(struct a04_bt_runtime_status)==64);
 #include "../../bluetooth/mt6630/start_status.h"
 #include "../../bluetooth/mt6630/admission_status.h"
 C_ASSERT(sizeof(struct a04_bt_admission_status)==32);
@@ -108,7 +111,7 @@ int a04_combo_poll(struct a04_ndis_runtime *a)
  if(a04_bt_poll(&a->combo.bt)){a->radio.failed=-1;return -1;}return 0;
 }
 static int service(void *p){return a04_combo_poll(p);}
-int a04_combo_held(struct a04_ndis_runtime *a){return a->combo.sco_holds!=0;}
+int a04_combo_held(struct a04_ndis_runtime *a){return a04_mt6630_combo_power_held(a->combo.file,a->combo.sco_holds);}
 int a04_combo_stop(struct a04_ndis_runtime *a,int removed)
 {
  struct a04_combo_broker *b=&a->combo;int result=b->bt.failed?-1:0;
@@ -125,6 +128,26 @@ int a04_combo_stop(struct a04_ndis_runtime *a,int removed)
  /* The caller is revoking the hardware epoch; no stale initialized channel
   * can be reused after the session's cold reset/removal. */
  if(!result||removed)RtlSecureZeroMemory(&b->bt,sizeof(b->bt));return result;
+}
+static void runtime_status(struct a04_ndis_runtime *a,struct a04_bt_runtime_status *out)
+{
+ struct a04_combo_broker *b=&a->combo;struct a04_wmt_bridge *bridge=a->radio.bridge;
+ struct a04_mt6630_route_facts f={0};RtlZeroMemory(out,sizeof(*out));out->version=1;out->bytes=sizeof(*out);
+ out->generation=a->session.generation;out->required_flags=A04_BT_RUNTIME_REQUIRED;
+ if(bridge){
+  f.merge=A04_BT_COMBO_MERGE_REQUIRED;f.firmware_ready=bridge->wmt_ready;f.firmware_fault=bridge->failed||bridge->wmt_state.failed;
+  f.stp_ready=bridge->wmt_state.stp_ready;f.phase_ready=bridge->wmt_state.phase==A04_WMT_DL_READY;f.commands=bridge->wmt_state.commands;f.acked=bridge->wmt_state.acked;
+  f.radio_ready=a->power&&a->radio.initialized&&!a->radio.failed&&!a->uncertain&&b->bt.ready&&!b->bt.failed;
+  f.version_valid=b->bt.version_valid;f.pcm_ack=b->bt.pcm_command_applied;
+  f.epoch_live=a->session.generation&&a->parent.Live(a->parent.Header.Context,a->session.generation)==1;
+  out->wmt_failure=bridge->wmt_state.failed;out->wmt_commands=f.commands;out->wmt_acked=f.acked;out->wmt_phase=bridge->wmt_state.phase;
+  out->flags=(!!f.merge)|((!!f.firmware_ready)<<1)|((!!f.stp_ready)<<2)|((!!f.phase_ready)<<3)|((!!f.commands&&f.commands==f.acked)<<4)|
+   ((!!a->power)<<5)|((!!a->radio.initialized)<<6)|((!!b->bt.ready)<<7)|((!!f.version_valid)<<8)|((!!f.pcm_ack)<<9)|((!!f.epoch_live)<<10)|
+   ((!!a->radio.failed)<<16)|((!!a->uncertain)<<17)|((!!bridge->failed)<<18)|((!!b->bt.failed)<<19)|((!!bridge->wmt_state.failed)<<20);
+ }
+ out->bt_failure=b->bt.failed;out->radio_failure=a->radio.failed;out->tx_pending=b->bt.pending;out->queued_packets=b->count;
+ out->missing_flags=out->required_flags&~out->flags;
+ out->transport_result=a04_mt6630_route_ready(&f)?STATUS_SUCCESS:(out->flags&A04_BT_RUNTIME_FAULTS)?STATUS_IO_DEVICE_ERROR:STATUS_DEVICE_NOT_READY;
 }
 void a04_combo_worker(struct a04_ndis_runtime *a)
 {
@@ -193,27 +216,15 @@ open_done:
   state->pcm_command_applied=state->ready&&b->bt.pcm_command_applied;
   state->generation=a->session.generation;
   used=sizeof(*state);s=STATUS_SUCCESS;
+ }else if(code==A04_BT_BROKER_RUNTIME){
+  struct a04_bt_runtime_status *state=irp->AssociatedIrp.SystemBuffer;
+  if(in||out!=sizeof(*state)||!state){s=STATUS_INVALID_PARAMETER;goto done;}
+  runtime_status(a,state);used=sizeof(*state);s=STATUS_SUCCESS;
  }else if(code==A04_BT_BROKER_TRANSPORT_CAPS){
-  struct a04_bt_transport_caps *caps=irp->AssociatedIrp.SystemBuffer;
-  struct a04_wmt_bridge *bridge=a->radio.bridge;
+  struct a04_bt_transport_caps *caps=irp->AssociatedIrp.SystemBuffer;struct a04_bt_runtime_status state;
   if(in||out!=sizeof(*caps)||!caps){s=STATUS_INVALID_PARAMETER;goto done;}
-  RtlZeroMemory(caps,sizeof(*caps));caps->version=1;
-  /* Same profile passes MERGE_REQUIRED to the real startup command sequence.
-   * READY is reached only after its ACK and identity checks. FC72 ACK is a
-   * routing/configuration fact, not decoded sample format/latency proof. */
-  struct a04_mt6630_route_facts facts={0};
-  if(bridge){
-   facts.merge=A04_BT_COMBO_MERGE_REQUIRED;facts.firmware_ready=bridge->wmt_ready;
-   facts.firmware_fault=bridge->failed||bridge->wmt_state.failed;
-   facts.stp_ready=bridge->wmt_state.stp_ready;facts.phase_ready=bridge->wmt_state.phase==A04_WMT_DL_READY;
-   facts.commands=bridge->wmt_state.commands;facts.acked=bridge->wmt_state.acked;
-   facts.radio_ready=a->power&&a->radio.initialized&&!a->radio.failed&&!a->uncertain&&b->bt.ready&&!b->bt.failed;
-   facts.version_valid=b->bt.version_valid;facts.pcm_ack=b->bt.pcm_command_applied;
-   facts.epoch_live=a->session.generation&&a->parent.Live(a->parent.Header.Context,a->session.generation)==1;
-  }
-  if(a04_mt6630_route_ready(&facts)){
-   caps->ready=1;caps->generation=a->session.generation;caps->routes=A04_BT_ROUTE_HCI_BYPASS;
-  }
+  runtime_status(a,&state);RtlZeroMemory(caps,sizeof(*caps));caps->version=1;
+  if(state.transport_result==STATUS_SUCCESS){caps->ready=1;caps->generation=state.generation;caps->routes=A04_BT_ROUTE_HCI_BYPASS;}
   used=sizeof(*caps);s=STATUS_SUCCESS;
  }else if(code==A04_BT_BROKER_GET_PHYSICAL_OWNER){
   struct a04_bt_physical_owner *owner=irp->UserBuffer;

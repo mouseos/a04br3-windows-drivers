@@ -6,7 +6,7 @@
 #define A04_MT6630_START_CHECKPOINT_H
 static void StartCheckpoint(WDFDEVICE device,ULONG *mask,ULONG stage,NTSTATUS status)
 {
- static const PCWSTR names[]={L"DeviceCreated",L"WaitLock",L"IoTarget",L"Timer",L"Queues",L"ChildCreated",L"SidebandQI",L"ControllerQI",L"StaticChild",L"D0Entry",L"BrokerTargetOpen",L"BrokerHciOpen",L"OptionalController",L"D0Return",L"D0Exit",L"Capabilities",L"BrokerReceipt",L"ProviderWait",L"BrokerAdmission",L"HciReady",L"ProviderWaitResult"};
+ static const PCWSTR names[]={L"DeviceCreated",L"WaitLock",L"IoTarget",L"Timer",L"Queues",L"ChildCreated",L"SidebandQI",L"ControllerQI",L"StaticChild",L"D0Entry",L"BrokerTargetOpen",L"BrokerHciOpen",L"OptionalController",L"D0Return",L"D0Exit",L"Capabilities",L"BrokerReceipt",L"ProviderWait",L"BrokerAdmission",L"HciReady",L"ProviderWaitResult",L"RxDrainFailure",L"RuntimeSnapshot"};
  WDFKEY driver=NULL,key=NULL;WDF_OBJECT_ATTRIBUTES a;UNICODE_STRING name;NTSTATUS saved;
  if(!mask||stage>=RTL_NUMBER_OF(names)||KeGetCurrentIrql()!=PASSIVE_LEVEL||KeAreAllApcsDisabled())return;
  *mask|=1u<<stage;WDF_OBJECT_ATTRIBUTES_INIT(&a);

@@ -14,6 +14,8 @@
 #include "start_checkpoint.h"
 #include "admission_status.h"
 #include "provider_wait.h"
+#include "runtime_status.h"
+C_ASSERT(sizeof(struct a04_bt_runtime_status)==64);
 #define CONTEXT_BYTES FIELD_OFFSET(BTHX_HCI_READ_WRITE_CONTEXT,Data)
 C_ASSERT(sizeof(BTHX_VERSION)==4);
 C_ASSERT(sizeof(BTHX_CAPABILITIES)==16);
@@ -21,7 +23,7 @@ C_ASSERT(CONTEXT_BYTES==5);
 typedef struct _CLIENT {
  WDFDEVICE device,child;WDFIOTARGET target;WDFWAITLOCK lock;WDFTIMER timer;WDFQUEUE reads[2];
  struct a04_mt6630_radio_binding sideband;struct a04_combo_controller controller;NTSTATUS controller_status;
- ULONG start_mask;
+ ULONG start_mask;NTSTATUS rx_status;
  BOOLEAN running,negotiated,open,hci_open,child_reported,waiting,binding_active;
  struct a04_provider_wait provider_wait;unsigned wait_phase;NTSTATUS wait_status;unsigned count;struct a04_bt_broker_packet packets[32],scratch;
 } CLIENT;
@@ -61,18 +63,33 @@ static NTSTATUS UnbindSideband(PVOID p,ULONG generation)
  CLIENT *c=p;NTSTATUS s=a04_mt6630_binding_unbind(&c->sideband,generation);
  if(NT_SUCCESS(s)){lock(c);c->binding_active=FALSE;unlock(c);WdfDeviceResumeIdle(c->device);}return s;
 }
+static void RuntimeCheckpoint(CLIENT *c,const struct a04_bt_runtime_status *state)
+{
+ WDFKEY driver=NULL,key=NULL;WDF_OBJECT_ATTRIBUTES a;UNICODE_STRING n;
+ if(KeGetCurrentIrql()!=PASSIVE_LEVEL||KeAreAllApcsDisabled())return;
+ WDF_OBJECT_ATTRIBUTES_INIT(&a);if(!NT_SUCCESS(WdfDeviceOpenRegistryKey(c->device,PLUGPLAY_REGKEY_DRIVER,KEY_CREATE_SUB_KEY,&a,&driver)))return;
+ RtlInitUnicodeString(&n,L"MT6630StartCheckpoint");
+ if(NT_SUCCESS(WdfRegistryCreateKey(driver,&n,KEY_SET_VALUE,REG_OPTION_NON_VOLATILE,NULL,&a,&key))){
+  RtlInitUnicodeString(&n,L"BrokerRuntimeV1");(void)WdfRegistryAssignValue(key,&n,REG_BINARY,sizeof(*state),(PVOID)state);WdfRegistryClose(key);
+ }
+ WdfRegistryClose(driver);
+}
 static NTSTATUS TransportBypassStatus(CLIENT *c)
 {
- struct a04_bt_transport_caps state={0};WDF_MEMORY_DESCRIPTOR buffer;ULONG_PTR used=0;NTSTATUS s;
+ struct a04_bt_runtime_status state={0};WDF_MEMORY_DESCRIPTOR buffer;ULONG_PTR used=0;NTSTATUS s;
  WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(&buffer,&state,sizeof(state));lock(c);
- if(!c->running||!c->open){s=STATUS_DEVICE_NOT_READY;goto done;}
- s=WdfIoTargetSendIoctlSynchronously(c->target,WDF_NO_HANDLE,A04_BT_BROKER_TRANSPORT_CAPS,NULL,&buffer,NULL,&used);
- if(!NT_SUCCESS(s))goto done;
- if(used!=sizeof(state)||state.version!=1||state.ready>1){s=STATUS_DATA_ERROR;goto done;}
- if(!state.ready){s=STATUS_DEVICE_NOT_READY;goto done;}
- if(!a04_mt6630_transport_bypass(&state))s=STATUS_DATA_ERROR;
-done:
- StartCheckpoint(c->device,&c->start_mask,15,s);unlock(c);return s;
+ if(!c->open){s=STATUS_DEVICE_NOT_READY;goto done;}
+ s=WdfIoTargetSendIoctlSynchronously(c->target,WDF_NO_HANDLE,A04_BT_BROKER_RUNTIME,NULL,&buffer,NULL,&used);
+ if(NT_SUCCESS(s)){
+  if(used!=sizeof(state)||state.version!=1||state.bytes!=sizeof(state)||state.reserved||state.required_flags!=A04_BT_RUNTIME_REQUIRED||
+    state.flags&~(A04_BT_RUNTIME_REQUIRED|A04_BT_RUNTIME_FAULTS)||state.missing_flags!=(A04_BT_RUNTIME_REQUIRED&~state.flags)||
+    (state.transport_result!=STATUS_SUCCESS&&state.transport_result!=(unsigned)STATUS_DEVICE_NOT_READY&&state.transport_result!=(unsigned)STATUS_IO_DEVICE_ERROR)||
+    (state.transport_result==STATUS_SUCCESS&&(!state.generation||state.missing_flags||(state.flags&A04_BT_RUNTIME_FAULTS))))s=STATUS_DATA_ERROR;
+  else {RuntimeCheckpoint(c,&state);s=(NTSTATUS)state.transport_result;}
+ }
+ StartCheckpoint(c->device,&c->start_mask,22,s);
+ if(!c->running)s=NT_SUCCESS(c->rx_status)?STATUS_DEVICE_NOT_READY:c->rx_status;
+ done:StartCheckpoint(c->device,&c->start_mask,15,s);unlock(c);return s;
 }
 static void RecordBrokerOpen(CLIENT *c,NTSTATUS actual_open_status)
 {
@@ -133,7 +150,7 @@ VOID Timer(WDFTIMER timer)
   struct RX_DRAIN state={c,STATUS_SUCCESS};
   const struct mt6630_rx_drain_io io={&state,RxDeliver,RxRoom,RxPull};
   if(mt6630_rx_drain(&io)!=MT6630_RX_FAULT)WdfTimerStart(timer,WDF_REL_TIMEOUT_IN_MS(5));
-  else {InterlockedExchange(&c->controller.uncertain,1);c->running=FALSE;WdfIoQueuePurge(c->reads[0],NULL,NULL);WdfIoQueuePurge(c->reads[1],NULL,NULL);}
+  else {c->rx_status=state.status;StartCheckpoint(c->device,&c->start_mask,21,c->rx_status);InterlockedExchange(&c->controller.uncertain,1);c->running=FALSE;WdfIoQueuePurge(c->reads[0],NULL,NULL);WdfIoQueuePurge(c->reads[1],NULL,NULL);}
  }
  unlock(c);
  /* Never restart or certify a transport after a real failure. No pending
@@ -240,7 +257,7 @@ NTSTATUS Start(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 {
  CLIENT *c=Context(device);NTSTATUS s;UNREFERENCED_PARAMETER(previous);lock(c);
  c->start_mask&=(1u<<9)-1u;StartCheckpoint(device,&c->start_mask,9,STATUS_SUCCESS);
- c->provider_wait.began=KeQueryInterruptTime();c->provider_wait.attempts=1;c->waiting=FALSE;
+ c->rx_status=STATUS_SUCCESS;c->provider_wait.began=KeQueryInterruptTime();c->provider_wait.attempts=1;c->waiting=FALSE;
  s=StartTransport(c);
  if(!NT_SUCCESS(s)&&a04_provider_may_wait(&c->provider_wait,(ULONG)s,c->wait_phase,KeQueryInterruptTime(),c->child_reported)){
   /* This is a live software enumerator waiting for its real provider, not a
