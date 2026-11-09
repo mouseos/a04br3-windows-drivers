@@ -261,9 +261,9 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
-      "source_commit": "46aebff390b169a36bc72dae3ddfeb005fbc8b2c",
-      "role": "Resident Copy341 and TQ Clear342 runtime; preserved previous origin",
-      "sha256": "380538ac66d72291e1b5f6f92b663dee91b1ee3cda88082a0ccb8027733209a5",
+      "source_commit": "5b5649e0",
+      "role": "Durable PASSIVE existing progress344; previous origins preserved",
+      "sha256": "8f46d7210cfbfea70baa47a30c7df343309ee5cfc28d6522df4f45cb27c991af",
       "previous_origins": [
         {
           "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
@@ -285,6 +285,12 @@
           "source_commit": "fbabbedde025052337a5659f21882d3ff4ca28b2",
           "role": "Moduleidentity339 evidence-only DriverObject load record, initialization PASSIVE only",
           "sha256": "effc326bb21e2b18388776a9f74fe5c9dc0217cb243f809c3e9adc745022f4ca"
+        },
+        {
+          "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
+          "source_commit": "46aebff390b169a36bc72dae3ddfeb005fbc8b2c",
+          "role": "Resident Copy341 and TQ Clear342 runtime; preserved previous origin",
+          "sha256": "380538ac66d72291e1b5f6f92b663dee91b1ee3cda88082a0ccb8027733209a5"
         }
       ]
     },
@@ -1116,7 +1122,15 @@
     },
     {
       "path": "drivers/gpu/mt8167/vendor_m1_11/native_factory_checkpoint.h",
-      "sha256": "4a984233ab61c0fb3038b73f9b07c93b819ffff2461d86b38e6c36d1e37db119"
+      "sha256": "72a0bcea901bc26046623cb524f2c6dff97082da2d55d1602408d2da46f6030f",
+      "previous_origins": [
+        {
+          "path": "drivers/gpu/mt8167/vendor_m1_11/native_factory_checkpoint.h",
+          "sha256": "4a984233ab61c0fb3038b73f9b07c93b819ffff2461d86b38e6c36d1e37db119"
+        }
+      ],
+      "source_commit": "5b5649e0",
+      "role": "Durable PASSIVE existing progress344; previous origins preserved"
     },
     {
       "path": "drivers/gpu/mt8167/vendor_m1_11/native_hwrt_profile.c",
@@ -2053,6 +2067,13 @@
       "sha256": "00c1960a7cd2377e785213ad77ef7d28b2f5a1361e72a6dd5ba8cc18dff722d7",
       "baseline_destination_sha256": "f44a55f5001d1532ff594f51a618d83e19026b6609ad8abc3229cdb3b226c291",
       "role": "Resident cold/live341, immutable Draw reuse and TQ Clear342"
+    },
+    {
+      "source_commit": "5b5649e0",
+      "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_factory_checkpoint.h",
+      "sha256": "72a0bcea901bc26046623cb524f2c6dff97082da2d55d1602408d2da46f6030f",
+      "baseline_destination_sha256": "4a984233ab61c0fb3038b73f9b07c93b819ffff2461d86b38e6c36d1e37db119",
+      "role": "Durable existing PASSIVE progress344"
     }
   ],
   "viewport_source_commit": "1e4ca5d11701a809653c518e07b75aa6c8cfb409",
@@ -2061,5 +2082,6 @@
   "SG_source_commit": "51cbe2d47df4bef5e915cf7f5bff1d51fd94bec8",
   "copy_usc_input_sha256": "5c68917faa051238b23674b64c6b137ef7ff75425dbde9dbc5e1e5a36e02c4a3",
   "HAL_packet_DMA_operations": 0,
-  "resident_tq_clear_source_commit": "59ded879bab1c4c54abac73bd2b673adada33d4c"
+  "resident_tq_clear_source_commit": "59ded879bab1c4c54abac73bd2b673adada33d4c",
+  "durable_progress_source_commit": "5b5649e0"
 }

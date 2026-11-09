@@ -704,9 +704,16 @@
       "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_factory_checkpoint.h",
       "source_commit": "f96948533601f9fdcdcc22b9700aacd96dbf7204",
       "source_sha256": "4a984233ab61c0fb3038b73f9b07c93b819ffff2461d86b38e6c36d1e37db119",
-      "sha256": "4a984233ab61c0fb3038b73f9b07c93b819ffff2461d86b38e6c36d1e37db119",
+      "sha256": "72a0bcea901bc26046623cb524f2c6dff97082da2d55d1602408d2da46f6030f",
       "include_rewrites": [],
-      "rewrite_includes_only": true
+      "rewrite_includes_only": true,
+      "reviewed_delta": {
+        "source_commit": "5b5649e0",
+        "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_factory_checkpoint.h",
+        "sha256": "72a0bcea901bc26046623cb524f2c6dff97082da2d55d1602408d2da46f6030f",
+        "baseline_destination_sha256": "4a984233ab61c0fb3038b73f9b07c93b819ffff2461d86b38e6c36d1e37db119",
+        "role": "Durable existing PASSIVE progress344"
+      }
     },
     {
       "source": "drivers/gpu/mt8167/vendor_m1_11/native_hwrt_profile.c",
