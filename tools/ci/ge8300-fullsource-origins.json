@@ -1535,6 +1535,12 @@
       "source_commit": "4576e10a0c69b86f510c58ce87a3d8b8583d1c83",
       "sha256": "bbb96ad416aebf960e7aa50ac531a161c2d1c1f39694a4085f039a9c9022a547",
       "role": "Unified356 explicit platform contract"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/testclient/dxgi-console-launch356.c",
+      "source_commit": "bafdc2d8d50bc348748709ede66b732d51849d26",
+      "sha256": "06ab349dad41e2a0804bec80e3df994871292f6f2d186ff89452f235bbfee504",
+      "role": "Separate356 console software launcher; fixed evaluator hash; no GPU calls"
     }
   ],
   "legacy_files_preserved": [
@@ -2939,5 +2945,6 @@
   "submit_worker_source_commit": "a52476c0612b77c3457c9ebb53c393bf30000673",
   "resident_vertices_source_commit": "0fa9e534ccddb239e5432803ea45c44893ced765",
   "unified_display_source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
-  "matched_firmware_source_commit": "37129f1b"
+  "matched_firmware_source_commit": "37129f1b",
+  "console_launcher_source_commit": "bafdc2d8d50bc348748709ede66b732d51849d26"
 }

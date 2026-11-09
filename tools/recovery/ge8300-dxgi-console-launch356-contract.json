@@ -1,0 +1,38 @@
+{
+  "schema": "356-standard-DXGI-console-evaluation-v1",
+  "driver_package_source_commit": "c3fc95e615b49c243a05140a07d7c7a7a8e023cd",
+  "driver_signed_manifest_sha256": "db305b820fd891d1b85da9908e5dac7b2ca187a33cc3ddf09eb72a9a97e2bfe0",
+  "launcher_compile_source_commit": "bafdc2d8d50bc348748709ede66b732d51849d26",
+  "launch_image": "System32/mt8167-dxgi-console-launch356.exe",
+  "required_evaluator": "System32/mt8167-dxgi-present356.exe",
+  "evaluator_sha256": "eaa30760ebc38a1955ccb3bbd834ee5c3972ce8842b90e6a58bc5084109ef8d5",
+  "diagnostic_clients": 1,
+  "execution_index": 0,
+  "timeout_seconds": 900,
+  "software_console_wait_seconds": 30,
+  "child_wait_seconds": 850,
+  "actual_GPU_evaluation_processes": 1,
+  "caller_policy": "Session0 only SYSTEM SID may duplicate its own token to active console; caller already in console uses same identity; no user-token substitution or desktop switch",
+  "companion_image_pin": "exact SHA256 held FILE_SHARE_READ through child exit; no arbitrary executable/command input",
+  "copy_assets": [
+    "mt8167-dxgi-console-launch356.exe",
+    "mt8167-dxgi-present356.exe"
+  ],
+  "collect_directory": "C:/MT8167DXGIPresent",
+  "collect_files": [
+    "launch356-*.log",
+    "present356-*.log",
+    "present356-*-0.bin",
+    "present356-*-1.bin"
+  ],
+  "PID_join": "SCM diagnostic PID is launcher; join EVALUATOR_PID/EVALUATOR_SESSION from its log to evaluator PID/log/bin; never infer GPU PID from launcher PID",
+  "GPU_success": "evaluator RESULT=1/HRESULT0, standard Present0, actual GPU completed fence and later real RDMA frame serial, current selected backing full1024000 pixel match per color, sameboot actual356 module tuple",
+  "launcher_success_is_not_independent_GPU_proof": true,
+  "unrelated_tests": 0,
+  "client9934_runs": 0,
+  "BT_tests": 0,
+  "root_registration": 0,
+  "GPT_write": 0,
+  "main_hardware_owner_only": true,
+  "hardware_verified": false
+}
