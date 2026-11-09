@@ -32,7 +32,7 @@ if sha(t/'copy.usc')!='5c68917faa051238b23674b64c6b137ef7ff75425dbde9dbc5e1e5a36
 (out/'generated/a04_copy_usc_asset.h').write_text('static const unsigned char a04_copy_usc_asset[152]={'+','.join(hex(x)for x in asset)+'};\n')
 def relocate(x):
  x=str(x).replace(chr(92)*2,chr(92))
- for oldpath in ['C:/mt8167-copy-integration/source/build/copy336/generated','C:/mt8167-residentcopy341/build/generated','C:/mt8167-persistentcopy340/build/generated','C:/mt8167-tq-clear342-r2/build/generated']:
+ for oldpath in ['C:/mt8167-copy-integration/source/build/copy336/generated','C:/mt8167-residentcopy341/build/generated','C:/mt8167-persistentcopy340/build/generated','C:/mt8167-tq-clear342-r2/build/generated','C:/mt8167-durable-progress344-final/build/generated']:
   x=x.replace(oldpath.replace('/',chr(92)),str(out/'generated'))
  for prefix in ['C:/mt8167-residentcopy341/source/drivers','C:/mt8167-copy-integration/source/drivers','C:/mt8167-moduleidentity339/source/drivers','C:/mt8167-persistentcopy340/source/drivers','C:/mt8167-tq-clear342-r2/source/drivers','C:/mt8167-durable-progress344-final/source/drivers']:
   x=x.replace(prefix.replace('/',chr(92)),str(root/'drivers'))
@@ -89,7 +89,7 @@ for n in ['ge8300-render.inf','ge8300-render.sys','ge8300-umd.dll','ge8300-mips.
 for x in m['outputs']:
  if x['name']not in ['ge8300-render.sys','ge8300-render.cat','ge8300-render.inf']:pin(pkg/x['name'],x['sha256'])
 new=dict(m);new.update(schema='passive-waits345-three-unit-incremental-v1',package_source_commit=a.recipe_commit,link_recipe_source_commit=a.recipe_commit,kernel_binary_source_commit=a.recipe_commit,native_owner_source_commit=a.recipe_commit,compiled_units=units,archives=archives,baseline_reused_342_compiled_units=m['reused_342_compiled_units'],unchanged_linked_object_count=77,compiler_reexecuted=True,source_changed=True,native_owner_changed=True,linker_changed=False,linked_objects_reused_without_recompile=False,linker_path=str(link),linker_sha256=sha(link),link_arguments=[str(x)for x in args],PE_contract=h,runtime_build_id='GPU345-passive-waits-v1',inf_driverver='11/09/2026,0.0.3.45',baseline_manifest_file='baseline344-signed-manifest.json',baseline_manifest_sha256=sha(pkg/'baseline344-signed-manifest.json'),build_manifest_file='passive-waits345-build-manifest.json',hardware_verified=False,runtime_verified=False,root_reset_fix_proven=False)
-new['baseline_original_compile_source_commit']=new.pop('original_compile_source_commit',None)
+if 'original_compile_source_commit' in new:new['baseline_original_compile_source_commit']=new.pop('original_compile_source_commit')
 new['progress_headers']=[{'path':p,'sha256':sha(root/p)}for p in ['drivers/gpu/mt8167/vendor_m1_11/native_factory_checkpoint.h','drivers/gpu/mt8167/vendor_m1_11/render_owner/native_factory_checkpoint.h']]
 new['outputs']=[{'name':x['name'],'sha256':sha(pkg/x['name'])}for x in m['outputs']]
 new['retained_provenance']=[{'name':f.name,'sha256':sha(f)}for f in pkg.iterdir()if f.is_file()and f.name not in {x['name']for x in new['outputs']}]
