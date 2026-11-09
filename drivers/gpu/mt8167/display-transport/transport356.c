@@ -281,7 +281,15 @@ static NTSTATUS pnp(PDEVICE_OBJECT device,PIRP irp){
   out->BrightnessResources=brightness_resources;out->Snapshot=snapshot;out->Map=map_backing;out->Unmap=unmap_backing;out->Select=select_backing;out->Restore=restore;out->Subscribe=subscribe;out->Unsubscribe=unsubscribe;out->Raster=raster;out->EmergencyRestore=emergency_restore;reference(d);KeReleaseMutex(&d->mutex,FALSE);return complete(irp,STATUS_SUCCESS);
  }
  if(sp->MinorFunction==IRP_MN_QUERY_STOP_DEVICE||sp->MinorFunction==IRP_MN_QUERY_REMOVE_DEVICE){
-  if(d->references||!IsListEmpty(&d->maps)||d->active||d->notify)return complete(irp,STATUS_DEVICE_BUSY);return forward(device,irp);
+  KeWaitForSingleObject(&d->mutex,Executive,KernelMode,FALSE,NULL);
+  if(d->references||!IsListEmpty(&d->maps)||d->active||d->notify){KeReleaseMutex(&d->mutex,FALSE);return complete(irp,STATUS_DEVICE_BUSY);}
+  /* Close new QUERY_INTERFACE admission before acknowledging QueryStop. */
+  d->closing=TRUE;KeReleaseMutex(&d->mutex,FALSE);IoSetDeviceInterfaceState(&d->link,FALSE);return forward(device,irp);
+ }
+ if(sp->MinorFunction==IRP_MN_CANCEL_STOP_DEVICE||sp->MinorFunction==IRP_MN_CANCEL_REMOVE_DEVICE){
+  KeWaitForSingleObject(&d->mutex,Executive,KernelMode,FALSE,NULL);
+  BOOLEAN reopen=d->started&&!d->quarantined;if(reopen)d->closing=FALSE;
+  KeReleaseMutex(&d->mutex,FALSE);if(reopen)IoSetDeviceInterfaceState(&d->link,TRUE);return forward(device,irp);
  }
  if(sp->MinorFunction==IRP_MN_STOP_DEVICE){s=stop(d);if(!NT_SUCCESS(s))return complete(irp,s);return forward(device,irp);}
  if(sp->MinorFunction==IRP_MN_SURPRISE_REMOVAL){
