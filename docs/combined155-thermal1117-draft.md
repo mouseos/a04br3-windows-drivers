@@ -28,3 +28,9 @@ read-gpu-native-checkpoint.ps1をread-combined152-post.ps1の既存cloneセッ�
 343の完成署名tuple/main seal、Recovery未変更証拠、actual154の全選択driver、Service152を含む最新停止values、mutableログsnapshotを結合する。旧152を154と偽装しない。旧boot baselineとupdate後新bootのhashは分離する。immutable hive/driver guardとmutableログ保存prefix比較の分離を保持。
 
 validator/native preparation/post156 reader/policy/headerの最終hashを一致させ、既closureでservice1TUのみ増分build/signしてmain独立sealへ返す。署名済parent/FW/GPU objects、SDK/libsを再compile/setupしない。このdraftはservice/native/mediaを生成しない。温度/新boot復旧/343開始/描画成功はすべてmain実機結果待ち。
+
+## 正式155生成入口
+
+main343 seal受領後の正式入力は `prepare-peripheral-followup154.py` と `combined154_policy.py`。service生成は `tools/ci/build-combined154-service.ps1`、readerは `read-combined154-post.ps1`、媒体は `--combined154-profile`。旧draft generator/旧153 sourceは履歴の非arm入口として保持。
+
+343 main seal manifest ceb56133/SYS e884f336を固定し、親1117/newbootを同時必須とする。18 full fingerprint＋20 raw values（146/BT/150/152）を守る。runtimeは既存1TUを新policyでcompileし、既署名driver/FWを再buildしない。GPUclientはindex1、GPU開始observerはPB target1/event0x220へ変更する。fresh154原41と実153回収の67logsを別baselineで固定し、mutablelogを導入入力にしない。
