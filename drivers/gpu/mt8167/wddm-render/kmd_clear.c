@@ -476,16 +476,11 @@ NTSTATUS APIENTRY GeoBuildPagingBuffer(HANDLE handle,DXGKARG_BUILDPAGINGBUFFER *
  if(!a||!a->session||!p||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  GeoFactoryCheckpoint(8,STATUS_SUCCESS,(ULONG)p->Operation,KeGetCurrentIrql(),0,0);
  mode=p->Operation==DXGK_OPERATION_UNMAP_APERTURE_SEGMENT?2:1;
- /* VidMm accepts ALLOCATION_BUSY while these owner-held pages cannot be
-  * remapped/retired. DEVICE_NOT_READY is not a legal paging return and
-  * causes VIDEO_MEMORY_MANAGEMENT_INTERNAL/0xB after a prior engine fault.
-  * Keep every pin and outstanding fence until actual drain/reset proof. */
- if(!GeoSessionEnter(a,mode)) {
-  GeoFactoryCheckpoint(21,STATUS_GRAPHICS_ALLOCATION_BUSY,(ULONG)p->Operation,1,0,0);
-  return STATUS_GRAPHICS_ALLOCATION_BUSY;
- }
+ /* RT81 VidMm accepts no busy paging result (verified with the shipped
+  * dxgmms1). Native residency must complete the requested mapping; never
+  * invent SUCCESS or INSUFFICIENT_DMA_BUFFER to hide an owner failure. */
+ if(!GeoSessionEnter(a,mode))return STATUS_DEVICE_NOT_READY;
  status=GeoBuildPagingBufferImpl(a,p);
- if(status==STATUS_DEVICE_BUSY || status==(NTSTATUS)GEO_BUSY)status=STATUS_GRAPHICS_ALLOCATION_BUSY;
  GeoFactoryCheckpoint(21,status,(ULONG)p->Operation,0,0,0);GeoSessionLeave(a,mode);return status;
 }
 NTSTATUS APIENTRY GeoRender(HANDLE handle,DXGKARG_RENDER *p) {

@@ -166,7 +166,7 @@ static int32_t bind(void *p,uint64_t surface,void *mdl,uint32_t offset,uint32_t 
     GeoFactoryCheckpoint(15,STATUS_SUCCESS,3,(ULONG)surface,bytes,0);
     s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
     r=resource(c,surface);if(!r || offset)return leave(c,STATUS_INVALID_PARAMETER);
-    if(r->desc.usage==GEO_USAGE_STAGING || r->desc.usage==GEO_USAGE_INDEX_BUFFER || r->desc.usage==GEO_USAGE_TEXTURE2D){
+    if(r->desc.usage==GEO_USAGE_STAGING || r->desc.usage==GEO_USAGE_INDEX_BUFFER || r->desc.usage==GEO_USAGE_TEXTURE2D || r->desc.usage==GEO_USAGE_VERTEX_BUFFER){
         if(r->linear || bytes!=(uint64_t)r->desc.pitch*r->desc.height)return leave(c,STATUS_INVALID_PARAMETER);
         s=cold_for_bind(c);if(!NT_SUCCESS(s))return leave(c,s);
         s=e_native_build_graph_locked(c);if(!NT_SUCCESS(s))return leave(c,s);
@@ -176,20 +176,9 @@ static int32_t bind(void *p,uint64_t surface,void *mdl,uint32_t offset,uint32_t 
         if(!NT_SUCCESS(s) && (r->linear || c->allocation->frontend_orphan))c->state=E_OWNER_FAILED;
         return leave(c,s);
     }
-    BOOLEAN vertex=r->desc.usage==3u;
-    if(vertex){
-        if(bytes!=r->desc.width || c->allocation->vertex)return leave(c,STATUS_DEVICE_BUSY);
-        s=cold_for_bind(c);if(!NT_SUCCESS(s))return leave(c,s);
-        c->vertex=surface;c->vertex_description=r->desc;c->vertex_aperture_offset=aperture;
-        s=e_native_build_graph_locked(c);
-        if(NT_SUCCESS(s))s=a04_native_allocation_bind_frontend_vertex_cold(c->allocation,&c->memory,mdl,bytes,aperture);
-        if(NT_SUCCESS(s))s=e_native_prepare_copy_storage_locked(c);
-        if(!NT_SUCCESS(s)){
-            if(c->allocation->vertex || c->allocation->frontend_orphan)c->state=E_OWNER_FAILED;
-            else c->vertex=0;
-        }
-        return leave(c,s);
-    }
+    /* Vertex MDLs are resource-owned read-only bindings above. Multiple
+     * resident VBs must coexist; a->vertex is only a borrowed per-draw
+     * selection, never a second owner or an admission limit. */
     if(bytes!=1920000 || c->allocation->binding)return leave(c,STATUS_DEVICE_BUSY);
     s=cold_for_bind(c);if(!NT_SUCCESS(s))return leave(c,s);
     c->surface=surface;c->description=r->desc;c->aperture_offset=aperture;
@@ -207,8 +196,14 @@ static int32_t unbind(void *p,uint64_t surface)
     struct e_native_owner *c=p;NTSTATUS s=enter(c,TRUE);if(!NT_SUCCESS(s))return s;
     struct e_native_resource *linear=resource(c,surface);
     if(linear && linear->linear){
-        if(c->job_state==E_JOB_PREPARED || c->job_state==E_JOB_SUBMITTED)return leave(c,STATUS_DEVICE_BUSY);
+        if(c->job_state==E_JOB_PREPARED || c->job_state==E_JOB_SUBMITTED){
+            s=wait_boundary_locked(c);if(!NT_SUCCESS(s))return leave(c,s);
+        }
         s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);
+        if(NT_SUCCESS(s) && c->allocation->vertex==linear->linear){
+            c->allocation->vertex=NULL;c->vertex=0;c->vertex_aperture_offset=0;
+            RtlZeroMemory(&c->vertex_description,sizeof(c->vertex_description));
+        }
         if(NT_SUCCESS(s))s=a04_native_mdl_release_cold(&linear->linear);
         if(NT_SUCCESS(s)){linear->linear_offset=0;c->job=0;c->job_state=E_JOB_NONE;}else c->state=E_OWNER_FAILED;
         return leave(c,s);
@@ -471,15 +466,26 @@ NTSTATUS GeoNativeOwnerDelete(struct geo_native_binding *out)
 static int32_t prepare_draw_impl(void *p,const struct geo_draw_request *request,
  const void *blob,uint32_t bytes,uint64_t *job,const struct geo_draw_request_v2 *linked,const struct geo_draw_request_v3 *sampled,const struct geo_draw_request_v4 *general,const struct geo_draw_request_v5 *combined)
 {
-    struct e_native_owner *c=p;RGXFWIF_CCB_CTL k;NTSTATUS s;uint64_t end,offset;struct e_native_resource *texture=NULL;
+    struct e_native_owner *c=p;RGXFWIF_CCB_CTL k;NTSTATUS s;uint64_t end,offset;struct e_native_resource *texture=NULL,*vertex=NULL;BOOLEAN selection_retired=FALSE;
     if(!job)return STATUS_INVALID_PARAMETER;*job=0;
     s=combined?geo_draw_validate_capture_v5(combined,blob,bytes):general?geo_draw_validate_capture_v4(general,blob,bytes):sampled?geo_draw_validate_capture_v3(sampled,blob,bytes):linked?geo_draw_validate_capture_v2(linked,blob,bytes):geo_draw_validate_capture(request,blob,bytes);if(!NT_SUCCESS(s))return s;
     s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
-    if(request->target!=c->surface || request->vertex!=c->vertex || !c->vertex ||
-       !c->allocation->binding || !c->allocation->vertex || c->next_id==UINT64_MAX ||
+    vertex=resource(c,request->vertex);
+    if(request->target!=c->surface || !vertex || !vertex->linear || vertex->desc.usage!=GEO_USAGE_VERTEX_BUFFER ||
+       !c->allocation->binding || c->next_id==UINT64_MAX ||
        RtlCompareMemory(&c->description,&request->target_desc,sizeof(c->description))!=sizeof(c->description))return leave(c,STATUS_INVALID_DEVICE_STATE);
     if(sampled){texture=resource(c,sampled->texture);if(!texture||!texture->linear||texture->desc.usage!=GEO_USAGE_TEXTURE2D||RtlCompareMemory(&texture->desc,&sampled->texture_desc,sizeof(texture->desc))!=sizeof(texture->desc))return leave(c,STATUS_INVALID_PARAMETER);}
     s=wait_boundary_locked(c);native_progress(c,34,s);if(!NT_SUCCESS(s))return leave(c,s);
+    if(c->vertex!=request->vertex || c->allocation->vertex!=vertex->linear){
+        /* Select only after the old graph's real stop/IRQ/OFF proof. All
+         * resource-owned VBs remain mapped at their own VidMm offsets in
+         * the next union PT; selection does not evict or replace an MDL. */
+        s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);
+        if(!NT_SUCCESS(s)){c->state=E_OWNER_FAILED;return leave(c,s);}
+        c->vertex=request->vertex;c->vertex_description=vertex->desc;
+        c->vertex_aperture_offset=vertex->linear_offset;c->allocation->vertex=vertex->linear;
+        c->job=0;c->job_state=E_JOB_NONE;selection_retired=TRUE;
+    }
     offset=(uint64_t)request->state.first_vertex*request->state.vertex_stride+request->state.vertex_offset;
     end=offset+(uint64_t)request->state.vertex_count*request->state.vertex_stride;
     if(request->state.vertex_count!=3 || end>c->vertex_description.width)return leave(c,STATUS_INVALID_PARAMETER);
@@ -509,7 +515,8 @@ static int32_t prepare_draw_impl(void *p,const struct geo_draw_request *request,
         }
         if(s!=STATUS_NOT_SUPPORTED){c->state=E_OWNER_FAILED;return leave(c,s);}
     }
-    s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);
+    s=STATUS_SUCCESS;
+    if(!selection_retired){s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);}
     if(NT_SUCCESS(s))s=e_native_build_graph_locked(c);
     if(NT_SUCCESS(s))s=combined?a04_vendor_native_prepare_draw_v5_cold(c->allocation->native,combined,blob,bytes,A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset,A04_NATIVE_OUTPUT_VA+texture->linear_offset):general?a04_vendor_native_prepare_draw_v4_cold(c->allocation->native,general,blob,bytes,A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset):sampled?a04_vendor_native_prepare_draw_v3_cold(c->allocation->native,sampled,blob,bytes,A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset,A04_NATIVE_OUTPUT_VA+texture->linear_offset):linked?a04_vendor_native_prepare_draw_v2_cold(c->allocation->native,linked,blob,bytes,
         A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset):
