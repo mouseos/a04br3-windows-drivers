@@ -11,3 +11,5 @@
 記録用のregistry I/OはPASSIVEだけでなくspecial kernel APCが有効な場合に限定する。KeAreAllApcsDisabledが真なら記録を省略し、GPU処理の成否は変更しない。元のhelperもこの条件を確認していなかったため修正する。初版344の署名物はこのguard追加前の履歴として保持し、実機には投入しない。
 
 補足：Microsoft ZwFlushKey一次資料で明記されるIRQL条件はPASSIVE_LEVEL。KeAreAllApcsDisabled一次資料はguarded region/IRQL>=APC_LEVELの判別を定義する。特殊APC有効への限定は今回追加する任意の記録処理の予防的な制約であり、ZwFlushKeyが今回停止したことや、今回の停止原因を実証するものではない。ヘッダーの一般化した説明を根因の証拠として扱わない。
+
+最終候補は既存の終了後記録だけでなく、Render入口6・session lock取得後7・paging入口8・Patch入口9・native clear/copy/bind入口15も永続化する。実機1回でcallback前/lock待ち/native drainを分けるための観測であり、入口status0は処理の成功を意味しない。R15のopは1=clear/2=copy/3=bind。

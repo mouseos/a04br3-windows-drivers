@@ -426,13 +426,16 @@ NTSTATUS APIENTRY GeoDestroyAllocation(HANDLE handle,const DXGKARG_DESTROYALLOCA
 NTSTATUS APIENTRY GeoBuildPagingBuffer(HANDLE handle,DXGKARG_BUILDPAGINGBUFFER *p) {
  struct geo_kmd_adapter *a=handle;NTSTATUS status;UINT mode;
  if(!p)return STATUS_INVALID_PARAMETER;
+ GeoFactoryCheckpoint(8,STATUS_SUCCESS,(ULONG)p->Operation,KeGetCurrentIrql(),0,0);
  mode=p->Operation==DXGK_OPERATION_UNMAP_APERTURE_SEGMENT?2:1;
  if(!GeoSessionEnter(a,mode))return STATUS_DEVICE_NOT_READY;
  status=GeoBuildPagingBufferImpl(a,p);GeoFactoryCheckpoint(21,status,(ULONG)p->Operation,0,0,0);GeoSessionLeave(a,mode);return status;
 }
 NTSTATUS APIENTRY GeoRender(HANDLE handle,DXGKARG_RENDER *p) {
  struct geo_kmd_context *c=handle;NTSTATUS status;
+ GeoFactoryCheckpoint(6,STATUS_SUCCESS,p?p->CommandLength:0,p?p->AllocationListSize:0,KeGetCurrentIrql(),0);
  if(!c||!GeoSessionEnter(c->adapter,1))return STATUS_DEVICE_NOT_READY;
+ GeoFactoryCheckpoint(7,STATUS_SUCCESS,0,0,0,0);
  GeoCollectPendingPayloads(c->adapter);status=GeoRenderImpl(c,p);GeoFactoryCheckpoint(20,status,p?p->CommandLength:0,p?p->AllocationListSize:0,p&&p->pAllocationList&&p->AllocationListSize?p->pAllocationList[0].SegmentId:0,0);GeoSessionLeave(c->adapter,1);return status;
 }
 NTSTATUS APIENTRY GeoSubmitCommand(HANDLE handle,const DXGKARG_SUBMITCOMMAND *p) {
@@ -448,6 +451,7 @@ NTSTATUS APIENTRY GeoQueryCurrentFence(HANDLE handle,DXGKARG_QUERYCURRENTFENCE *
 
 NTSTATUS APIENTRY GeoPatch(HANDLE handle,const DXGKARG_PATCH *p) {
  struct geo_kmd_adapter *a=handle;NTSTATUS status;
+ GeoFactoryCheckpoint(9,STATUS_SUCCESS,p?p->AllocationListSize:0,KeGetCurrentIrql(),0,0);
  if(!GeoSessionEnter(a,1))return patch_failure(STATUS_DEVICE_NOT_READY,0,0,NULL);
  GeoCollectPendingPayloads(a);status=GeoPatchImpl(a,p);GeoFactoryCheckpoint(22,status,p?p->AllocationListSize:0,p?p->PatchLocationListSubmissionLength:0,0,0);GeoSessionLeave(a,1);return status;
 }

@@ -162,7 +162,9 @@ static NTSTATUS cold_for_bind(struct e_native_owner *c)
 }
 static int32_t bind(void *p,uint64_t surface,void *mdl,uint32_t offset,uint32_t bytes,uint64_t aperture)
 {
-    struct e_native_owner *c=p;struct e_native_resource *r;NTSTATUS s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
+    struct e_native_owner *c=p;struct e_native_resource *r;NTSTATUS s;
+    GeoFactoryCheckpoint(15,STATUS_SUCCESS,3,(ULONG)surface,bytes,0);
+    s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
     r=resource(c,surface);if(!r || offset)return leave(c,STATUS_INVALID_PARAMETER);
     if(r->desc.usage==GEO_USAGE_STAGING || r->desc.usage==GEO_USAGE_INDEX_BUFFER || r->desc.usage==GEO_USAGE_TEXTURE2D){
         if(r->linear || bytes!=(uint64_t)r->desc.pitch*r->desc.height)return leave(c,STATUS_INVALID_PARAMETER);
@@ -236,7 +238,9 @@ static int32_t destroy(void *p,uint64_t surface)
 static int32_t prepare(void *p,uint64_t surface,uint32_t colour,uint64_t *job)
 {
     struct e_native_owner *c=p;RGXFWIF_CCB_CTL k;NTSTATUS s;
-    if(!job)return STATUS_INVALID_PARAMETER;*job=0;s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
+    if(!job)return STATUS_INVALID_PARAMETER;*job=0;
+    GeoFactoryCheckpoint(15,STATUS_SUCCESS,1,(ULONG)surface,colour,0);
+    s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
     if(!surface || surface!=c->surface || !c->allocation->binding || c->next_id==UINT64_MAX)return leave(c,STATUS_DEVICE_BUSY);
     s=wait_boundary_locked(c);native_progress(c,34,s);if(!NT_SUCCESS(s))return leave(c,s);
     /* A completed Copy leaves a live TQ context and both resident MDLs.
@@ -274,7 +278,9 @@ static int32_t prepare(void *p,uint64_t surface,uint32_t colour,uint64_t *job)
 }
 static int32_t prepare_copy(void *p,uint64_t source,uint64_t destination,uint64_t *job) {
  struct e_native_owner *c=p;struct e_native_resource *src,*dst;NTSTATUS s;
- if(!job)return STATUS_INVALID_PARAMETER;*job=0;s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
+ if(!job)return STATUS_INVALID_PARAMETER;*job=0;
+ GeoFactoryCheckpoint(15,STATUS_SUCCESS,2,(ULONG)source,(ULONG)destination,0);
+ s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
  src=resource(c,source);dst=resource(c,destination);
  if(!src||!dst||src==dst||source!=c->surface||src->desc.usage!=GEO_USAGE_RENDER_TARGET||
     dst->desc.usage!=GEO_USAGE_STAGING||!dst->linear||!c->allocation->binding||c->next_id==UINT64_MAX)return leave(c,STATUS_INVALID_PARAMETER);
