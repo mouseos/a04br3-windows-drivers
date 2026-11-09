@@ -1122,14 +1122,20 @@
     },
     {
       "path": "drivers/gpu/mt8167/vendor_m1_11/native_factory_checkpoint.h",
-      "sha256": "72a0bcea901bc26046623cb524f2c6dff97082da2d55d1602408d2da46f6030f",
+      "sha256": "4767d6f3a912cf2d46cf7853b11a2ca90fad762de5a4165c988247389bcc0e77",
       "previous_origins": [
         {
           "path": "drivers/gpu/mt8167/vendor_m1_11/native_factory_checkpoint.h",
           "sha256": "4a984233ab61c0fb3038b73f9b07c93b819ffff2461d86b38e6c36d1e37db119"
+        },
+        {
+          "path": "drivers/gpu/mt8167/vendor_m1_11/native_factory_checkpoint.h",
+          "sha256": "72a0bcea901bc26046623cb524f2c6dff97082da2d55d1602408d2da46f6030f",
+          "source_commit": "5b5649e0",
+          "role": "Durable PASSIVE existing progress344; previous origins preserved"
         }
       ],
-      "source_commit": "5b5649e0",
+      "source_commit": "17af96fe642c0dc672b172a322f0f0ab67fdb374",
       "role": "Durable PASSIVE existing progress344; previous origins preserved"
     },
     {
@@ -2069,11 +2075,18 @@
       "role": "Resident cold/live341, immutable Draw reuse and TQ Clear342"
     },
     {
-      "source_commit": "5b5649e0",
+      "source_commit": "17af96fe642c0dc672b172a322f0f0ab67fdb374",
       "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_factory_checkpoint.h",
-      "sha256": "72a0bcea901bc26046623cb524f2c6dff97082da2d55d1602408d2da46f6030f",
-      "baseline_destination_sha256": "4a984233ab61c0fb3038b73f9b07c93b819ffff2461d86b38e6c36d1e37db119",
-      "role": "Durable existing PASSIVE progress344"
+      "sha256": "4767d6f3a912cf2d46cf7853b11a2ca90fad762de5a4165c988247389bcc0e77",
+      "baseline_destination_sha256": "72a0bcea901bc26046623cb524f2c6dff97082da2d55d1602408d2da46f6030f",
+      "role": "Durable existing PASSIVE progress344",
+      "previous_reviewed_delta": {
+        "source_commit": "5b5649e0",
+        "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_factory_checkpoint.h",
+        "sha256": "72a0bcea901bc26046623cb524f2c6dff97082da2d55d1602408d2da46f6030f",
+        "baseline_destination_sha256": "4a984233ab61c0fb3038b73f9b07c93b819ffff2461d86b38e6c36d1e37db119",
+        "role": "Durable existing PASSIVE progress344"
+      }
     }
   ],
   "viewport_source_commit": "1e4ca5d11701a809653c518e07b75aa6c8cfb409",
@@ -2083,5 +2096,5 @@
   "copy_usc_input_sha256": "5c68917faa051238b23674b64c6b137ef7ff75425dbde9dbc5e1e5a36e02c4a3",
   "HAL_packet_DMA_operations": 0,
   "resident_tq_clear_source_commit": "59ded879bab1c4c54abac73bd2b673adada33d4c",
-  "durable_progress_source_commit": "5b5649e0"
+  "durable_progress_source_commit": "17af96fe642c0dc672b172a322f0f0ab67fdb374"
 }
