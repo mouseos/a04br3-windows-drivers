@@ -39,7 +39,8 @@ void mainCRTStartup(void){
  TOKEN_PRIVILEGES old[3];DWORD old_size[3]={0},enabled=0,current=0,target,n,error=ERROR_GEN_FAILURE,child_exit=1,wait;BOOL launched=FALSE;
  const WCHAR *names[3]={SE_TCB_NAME,SE_ASSIGNPRIMARYTOKEN_NAME,SE_INCREASE_QUOTA_NAME};
  open_log();if(!ProcessIdToSessionId(GetCurrentProcessId(),&current)){error=GetLastError();goto done;}value("CALLER_SESSION",current);
- target=WTSGetActiveConsoleSessionId();value("ACTIVE_CONSOLE_SESSION",target);
+ {DWORD began=GetTickCount();do{target=WTSGetActiveConsoleSessionId();if(target!=0xffffffffu&&target!=0)break;Sleep(250);}while((DWORD)(GetTickCount()-began)<30000u);}
+ value("ACTIVE_CONSOLE_SESSION",target);
  if(target==0xffffffffu||target==0){error=ERROR_NOT_READY;goto done;}
  n=GetSystemDirectoryW(image,32768);if(!n||n>32000){error=ERROR_INSUFFICIENT_BUFFER;goto done;}
  image[n++]=L'\\';{const WCHAR suffix[]=L"mt8167-dxgi-present356.exe";DWORD j=0;do{image[n+j]=suffix[j];}while(suffix[j++]);}
