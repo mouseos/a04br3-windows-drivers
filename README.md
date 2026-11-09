@@ -2,7 +2,7 @@
 
 TAB-A04-BR3のWindows RT 8.1 ARM32向けドライバをまとめるリポジトリです。ストレージ、入力、USBなどを機能別のディレクトリに置き、ドライバごとにリポジトリは分けません。UEFIの共通コードやWindowsのバイナリは含めません。
 
-## 現在の開発ソース（2026-11-08）
+## 現在の開発ソース（2026-11-09）
 
 開発中のソースとビルド手順は、下記の公開ブランチに保存しています。GPUはKMD・native owner・UMD・compilerを単一checkoutから構築する手順を用意しています。各候補の固定ソースとビルド済みパッケージを混同せず、対応する機種UEFI・署名・設定を揃えてください。
 
@@ -20,7 +20,9 @@ PowerVR GE8300は、標準Direct3Dで異なる２色の描画・stagingへのコ
 |GE8300のWDDM aperture所有権・GPUコピー統合|[integrate/copy334-wddm-aperture](https://github.com/mouseos/a04br3-windows-drivers/tree/integrate/copy334-wddm-aperture)|Windows供給のlocked MDL/PFNとresident leaseに所有権を接続。旧packet DMA方式は採用しない。GPU CopyResource入口・実IRQからschedulerへの完了通知・資源退役を結合し、予約後エラー時に通常sessionを閉じる3.38を署名回収。3.38の遅延回収ログから、標準Direct3D CopyResourceの実GPU転送で２色とも各480,000画素一致・不一致0を確認（RT CPU Lock/memcpy fallbackなし）。後続のCopy中に予定外再起動。3.40は初回CopyのPatch失敗で119/3となり、cold/live初回arm契約を修正した3.41を署名回収。3.41は初回GPU Copyの480,000画素一致をGPR2へ耐久保存でき、初回119/3を今回観測しなかった。遅延回収ログではUnmap成功・RemovedReason0・PASS1の後、2回目ClearのRenderCbが未帰還。後続再起動は残り、Unmap完了・２色目・三角形画素成功は未確認|
 |GE8300の同一FW上のClear・Copy|[work/ge8300-tq-clear342](https://github.com/mouseos/a04br3-windows-drivers/tree/work/ge8300-tq-clear342)|3.42はCopyのcold配置時にRT向けEOTを確保し、後続Clearを同じTQ contextへ送る。毎ClearのFW stop/rebuildを避け、実UFO/cache/IRQ/scheduler経路を保持。native7 TUとidentity miniport1 TUを増分ビルド・署名し、原341から無変更の80-member archive構成、UMD/PCO/FW/clientを照合。3.42は実機でCode37・DxgkInitialize C000003Bとなりclient未実行。mainのLLDへのリンク変更による退行で、REAではWDK displibのUTF16レジストリパス先頭+1 byte参照を確認。三角形・通常desktop Present・reset解消は未確認|
 |GE8300のMSVC再リンク修正|[work/ge8300-msvc-relink343](https://github.com/mouseos/a04br3-windows-drivers/tree/work/ge8300-msvc-relink343)|3.42と同一の80objects/2libsをMSVC14.29 ARM linkerで再リンクした3.43。REAで文字列先頭参照の修正を確認。compile0、runtime source59ded879・BuildID342を維持、INF3.43とSYS hashで区別。3.43の実SYS・INF・同起動ModuleIdentityとReachedMask2047を照合し、全初期化段階の成功を確認。GPU clientは最初のCopy要求後にwatchdog再起動し、描画成功は未確認|
-|GE8300のPASSIVE FW同期待ち修正|[fix/ge8300-passive-waits345](https://github.com/mouseos/a04br3-windows-drivers/tree/fix/ge8300-passive-waits345)|3.44の実機記録で、コピー要求内の最初のClear準備がFW start成功後のfenceから戻っていないと限定。3.45はPASSIVE FW ackとIRQ drainの長いビジーウェイトをWindowsの待機へ変更し、実sync/CCB/poison/retirement proofを保持。3TU署名候補を照合済み、実機同期完了・描画成功は未確認|
+|GE8300のPASSIVE FW同期待ち修正|[fix/ge8300-passive-waits345](https://github.com/mouseos/a04br3-windows-drivers/tree/fix/ge8300-passive-waits345)|3.45を実機適用し、配置SYS/選択INF/BuildIDと初期化11段階成功を確認したが、初回Clear中に予定外watchdog再起動。FW開始のR37 phase1までで、同helperのflush帰還やfence進入・帰還は未証明。待機方法の変更だけでは未解決。描画成功として扱わない|
+|GE8300のMASKED起動順序修正|[fix/ge8300-masked-start346](https://github.com/mouseos/a04br3-windows-drivers/tree/fix/ge8300-masked-start346)|初回fence前にIRQ source maskの保証が無い実装を修正。MASKEDモードだけFW開始前後に0設定とreadbackを追加、元mask値も記録。HANDLER経路と実同期・所有権を保持。実IRQ storm原因・再起動解消・描画成功は未確認|
+|MT6630 Bluetooth開始契約修正|[fix/mt6630-bthx-start-contract2015](https://github.com/mouseos/a04br3-windows-drivers/tree/fix/mt6630-bthx-start-contract2015)|client2015/provider1024を署名回収。任意HFP通知への開始依存とcapsでの失敗握り潰しを修正し、実HCI開始結果を保持。コマンド列/校正データ/共有電源は保持。Code10解消・radio/RF動作は未確認|
 |GE8300の最初のCopy停止の記録|[work/ge8300-durable-progress344](https://github.com/mouseos/a04br3-windows-drivers/tree/work/ge8300-durable-progress344)|3.44は既存のPASSIVE進行記録を永続化する署名候補。4TUのみ増分compile、76objects/UMD/PCO/FW/client保持。任意の記録を特殊APC有効時に限定する予防的条件も追加。GPU制御・shader・成功判定は変更せず、停止原因や描画成功を確認したものではない。fresh156基点の一括適用を準備中|
 |GE8300の初回Copyと継続Copy契約|[fix/gpu341-resident-copy](https://github.com/mouseos/a04br3-windows-drivers/tree/fix/gpu341-resident-copy)|3.41はcold資産準備→boot/first-armと同FW rootでの再armを接続。全ticket/residency事前照合・prepared再Patch保持。実機で初回Copyの480,000画素一致を確認、後続再起動は残る。一般の119解消や三角形描画成功とは主張しない|
 |GE8300の全allocation Lock指定|[LockEntire修正source](https://github.com/mouseos/a04br3-windows-drivers/commit/26b7c8ef2034bb41265dbd4347d952b7a838d7a8)|3.35を実機適用。RT/staging Lock・CPUコピー・Map通過を記録したが、その後に予定外再起動。単独修正では未解決|
