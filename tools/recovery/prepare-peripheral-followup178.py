@@ -85,7 +85,7 @@ def build_policy(root,spec):
  previous=n['new_service'];require(previous['present'] and previous['values']['Start']['value']==4 and previous['values']['ImagePath']['value']=='"C:\\Windows\\System32\\MT8167CombinedFollowup176.exe"','Actual174 stopped required')
  values+=value_contract('SYSTEM\\CurrentControlSet\\Services\\MT8167CombinedFollowup176',previous['values']);require(len(values)==80,'80 exact named required')
  gm=pin(spec['GPU357_manifest']);handoff=pin(spec['GPU357_handoff']);gp=Path(spec['GPU357_manifest']['path']).parent
- require(spec['GPU357_manifest']['sha256']=='2dc9b149ff6809c21e2db1fd53690420b0b0a670340ad65cc73ce90cc4c39a8e' and gm['runtime_build_id']=='GPU357-start-predicates-v1' and handoff['hardware_verified'] is False,'Adopt r2 only')
+ require(spec['GPU357_manifest']['sha256']=='60c14c5f00f6cdcdead36de23ac9c4da5829aa227ecc21bf1b335d7af1bd0e90' and gm['runtime_build_id']=='GPU357-start-predicates-v1' and handoff['hardware_verified'] is False,'Adopt r2 only')
  for f in pin(spec['GPU357_pins'])['pins']:
   q=rooted(root,f['path']);require(sha(q)==f['sha256'] and q.stat().st_size==f['bytes'],'356 full closure pin');pins[f['path']]=f['sha256']
  for f in gm['outputs']:

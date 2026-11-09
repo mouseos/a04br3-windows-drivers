@@ -3,3 +3,5 @@
 fresh178原42/actual356 init63 NativeOwnerCreate C0000182を保持。GPU357とSystem DIS0 provider357のみDIF、旧176Start4の5値追加で18full/80named、新service178/post180。matchedboot0943retain/write0、BT保持、root0/GPT0。
 
 console launcher/evaluatorは177で配置済み同byteを厳密保全して一度実行。checkpointはPASSIVE/APC有効時のbounded832B、追加flush0。Native/Start/D0の0は帰還だけ、欠落/未到達を成功としない。samebootjoinを必須とする。9F未解決、根因解消・実DMA成功未主張。mainseal前arm不可、実機mainのみ。
+
+CATは親Inf2Catの再帰生成後に両方へ署名する。初期未署名子CATは非採用で保存。fresh178 offline cloneでDIS0 Parameters不存在を確認したためprovider INF Service AddRegにParameters key-onlyを追加し、bounded checkpointの親を作る。driver再compile/link/SYS再署名0、制御値の追加0。
