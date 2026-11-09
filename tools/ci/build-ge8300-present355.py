@@ -2,7 +2,7 @@
 """Build the Present355 KMD over frozen354, retaining real native/UMD provenance."""
 import argparse,hashlib,json,shutil,struct,subprocess,zipfile,re,ntpath
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('--task-root',type=Path,required=True);p.add_argument('--recipe-commit',required=True);p.add_argument('--umd-build',type=Path,required=True);a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--task-root',type=Path,required=True);p.add_argument('--recipe-commit',required=True);p.add_argument('--umd-build',type=Path,required=True);p.add_argument('--metadata-only',action='store_true');a=p.parse_args()
 t=a.task_root;base=t/'baseline';old=base/'package354';out=t/'build';pkg=out/'package355'
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def load(p):return json.loads(p.read_text(encoding='utf-8-sig'))
@@ -13,6 +13,28 @@ def header(p):
  b=p.read_bytes();at=struct.unpack_from('<I',b,60)[0];assert b[at:at+4]==b'PE\0\0';o=at+24
  machine,ns=struct.unpack_from('<HH',b,at+4);size=struct.unpack_from('<H',b,at+20)[0]
  return {'machine':machine,'characteristics':struct.unpack_from('<H',b,at+22)[0],'magic':struct.unpack_from('<H',b,o)[0],'subsystem':struct.unpack_from('<H',b,o+68)[0],'dll_characteristics':struct.unpack_from('<H',b,o+70)[0],'sections':{b[o+size+i*40:o+size+i*40+8].rstrip(b'\0').decode():struct.unpack_from('<I',b,o+size+i*40+36)[0]for i in range(ns)}}
+if a.metadata_only:
+ root=t/'source';root_commit=subprocess.check_output(['git','-C',str(root),'rev-parse','HEAD'],text=True).strip()
+ if root_commit!=a.recipe_commit or subprocess.check_output(['git','-C',str(root),'status','--porcelain'],text=True).strip():raise ValueError('Clean final metadata recipe required')
+ n=load(pkg/'signed-manifest.json');baseline=load(old/'signed-manifest.json')
+ for row in n['outputs']:pin(pkg/row['name'],row['sha256'])
+ compiled_commit=n.get('kernel_binary_source_commit')
+ for arc in n['archives']:
+  if arc['role']not in('native','kmd'):continue
+  before=next(x for x in baseline['archives']if x['role']==arc['role']);old_members={x['name']:x['sha256']for x in before['members']}
+  for row in arc['members']:row['before_sha256']=old_members[row['name']]
+  if arc['role']=='native' and arc['sha256']!=before['sha256']:raise ValueError('Native must remain byte-identical')
+ n['unchanged_linked_object_count']=sum(x['sha256']==x['before_sha256']for arc in n['archives']if arc['role']in('native','kmd')for x in arc['members'])
+ n['package_source_commit']=a.recipe_commit;n['metadata_recipe_source_commit']=a.recipe_commit;n['actual_compile_source_commit']=compiled_commit
+ n['packaging_metadata_only_resume']=True;n['resume_compile_count']=0;n['resume_link_count']=0;n['resume_sign_count']=0
+ n.pop('build_manifest_sha256',None)
+ (out/'build-manifest.json').write_text(json.dumps(n,indent=2)+'\n');shutil.copyfile(out/'build-manifest.json',pkg/'present355-build-manifest.json')
+ n['build_manifest_sha256']=sha(pkg/'present355-build-manifest.json');(pkg/'signed-manifest.json').write_text(json.dumps(n,indent=2)+'\n')
+ with zipfile.ZipFile(t/'outputs-final.zip','w',zipfile.ZIP_DEFLATED)as z:
+  for f in out.rglob('*'):
+   if f.is_file():z.write(f,f.relative_to(out).as_posix())
+ print('PRESENT355_METADATA_ONLY_FINALIZED',sha(pkg/'signed-manifest.json'),n['unchanged_linked_object_count'])
+ raise SystemExit(0)
 if out.exists():raise ValueError('New output required')
 pin(old/'signed-manifest.json','04d69dff41f363e92bee6dcf5d4946f0aecb23be1c7c0e01fa7ce1e5e5fd08d1')
 m=load(old/'signed-manifest.json')
@@ -82,7 +104,7 @@ for archive in m['archives']:
    shutil.copyfile(a.umd_build/'ge8300-native-umd.lib',out/'ge8300-native-umd.lib');updated.update(sha256=sha(out/'ge8300-native-umd.lib'),members=um['archive_members'])
   archives.append(updated);continue
  if not any(all_units[n]['role']==archive['role'] for n in wanted):
-  shutil.copyfile(base/archive['file'],out/archive['file']);updated['members']=[dict(x,compiled=False)for x in archive['members']];archives.append(updated);continue
+  shutil.copyfile(base/archive['file'],out/archive['file']);updated['members']=[dict(x,before_sha256=x['sha256'],compiled=False)for x in archive['members']];archives.append(updated);continue
  objects=out/(archive['role']+'-objects');objects.mkdir()
  names=[ntpath.basename(n)for n in subprocess.check_output([str(ar),'t',str(base/archive['file'])],text=True).splitlines()]
  if len(names)!=len(archive['members']) or set(names)!={x['name']for x in archive['members']}:raise ValueError('Member closure mismatch')
