@@ -50,6 +50,28 @@ def make_draft(root):
       'capture_selection': {'required_capture_number': 154, 'fresh': None, 'recovery_boot_id': None,
         'same_recovery_unchanged_proof': None, 'native_actual': None, 'actual_selected_versions': None,
         'original_files': None, 'mutable_log_baseline': None, 'result153': None},
+      'run153_reported_result': {
+        'provenance': 'main report; actual154 files still pending',
+        'diagnostic_terminal': 21, 'finalization': 0, 'planned_restart_count': 1,
+        'GPU_node': {'target_index': 10, 'problem': 37, 'PB204': '0x25'},
+        'GPU_client_start_PB220_present': False, 'GPU_client_executed': False,
+        'Clear_executed': False, 'GPU_rendering_success': False,
+        'ModuleIdentity': None, 'InitCheckpoint': None,
+        'link_contract_comparison_reported': {
+          'old341': {'COFF': '0x122', 'LAA': True, 'DLL': '0x140'},
+          'new342': {'COFF': '0x102', 'LAA': False, 'DLL': '0x8140'},
+          'root_cause_confirmed': False, 'investigation_owner': 'main'}},
+      'optional_GPU343_adoption': {
+        'selected': False, 'artifact': None, 'main_seal': None,
+        'default_scope_remains_parent_only': True,
+        'actual154_GPU342_Code37_must_not_be_relabelled_as_started': True,
+        'requirements': [
+          'main completes evidence-backed link-contract fix and independently seals exact343 tuple',
+          'main explicitly selects combined parent1117+boot2e6+GPU343 scope',
+          'Bind real154 actual342 Code37 and actual ModuleIdentity/InitCheckpoint as baseline',
+          'Reconcile install mask/order, expected post identity, reader, clients/timeouts and final policy hash together',
+          'Do not arm343 using this parent-only draft or claim153 ran Clear'],
+        'GPU_client_execution_authorized_by_this_draft': False},
       'matched_candidate': {'main_seal': seal_ref, 'pins': pins_ref, 'verified_members': members,
         'parent_source_commit': PARENT, 'firmware_source_commit': FIRMWARE,
         'parent': sys_ref, 'boot': boot_ref, 'boot_write_required': True,
@@ -89,6 +111,8 @@ def make_draft(root):
         'missing_hashes_must_not_be_synthesized': True, 'BT_existing_ROOT_retained': True,
         'GPT_written': False, 'common_EDK_changed': False,
         'immutable_hive_driver_gate_retained': True,
+        'retained_GPU_problem_is_observation_not_driver_byte_mismatch': True,
+        'GPU_started_success_must_not_be_inferred_from_retention': True,
         'mutable_logs': 'archive/prefix observation separately; never immutable install admission'},
       'post_capture_number': 156,
       'adoption_requirements': [
