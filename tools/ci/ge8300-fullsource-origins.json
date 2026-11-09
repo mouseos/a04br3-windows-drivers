@@ -251,33 +251,25 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/kmd_clear.h",
-      "source_commit": "7b3c55705dd5032d51435391cc7ae9e9824bb106",
-      "sha256": "05eb1253f957383d7a0909f9bae075c4dd5bf19fd57c2e6af83979f704df4342",
-      "role": "Present355 bounded real Copy FIFO with OS index/rights and actual IRQ completion",
+      "source_commit": "a52476c0612b77c3457c9ebb53c393bf30000673",
+      "role": "submitted FIFO and PASSIVE preparation348; old origins preserved",
+      "sha256": "a1cb94c7700cee261b4cca651256b79b66c90aef7e4e74e979d971053ea6eedd",
       "previous_origins": [
         {
+          "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
+          "sha256": "a490ffb387231577d5749a2048034ad1a284c10d047976d6c324bacef81a5e18",
+          "role": "Texture326/327 explicit source overlay"
+        },
+        {
+          "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
+          "sha256": "96897a7e62d75e129c3f88c8507412e3d58dc3d430f5381aefd43d55404c55cd",
+          "role": "Reviewed ABI4 shader/native runtime source329"
+        },
+        {
           "path": "drivers/gpu/mt8167/wddm-render/kmd_clear.h",
-          "source_commit": "a52476c0612b77c3457c9ebb53c393bf30000673",
-          "role": "submitted FIFO and PASSIVE preparation348; old origins preserved",
-          "sha256": "a1cb94c7700cee261b4cca651256b79b66c90aef7e4e74e979d971053ea6eedd",
-          "previous_origins": [
-            {
-              "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
-              "sha256": "a490ffb387231577d5749a2048034ad1a284c10d047976d6c324bacef81a5e18",
-              "role": "Texture326/327 explicit source overlay"
-            },
-            {
-              "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
-              "sha256": "96897a7e62d75e129c3f88c8507412e3d58dc3d430f5381aefd43d55404c55cd",
-              "role": "Reviewed ABI4 shader/native runtime source329"
-            },
-            {
-              "path": "drivers/gpu/mt8167/wddm-render/kmd_clear.h",
-              "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
-              "role": "Matrix VS + sampled PS331 / explicit owned ABI5 composition",
-              "sha256": "b48f996567865925b9b3c22dfd5f748b182c57e4b25b70c42a39f2c948725381"
-            }
-          ]
+          "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
+          "role": "Matrix VS + sampled PS331 / explicit owned ABI5 composition",
+          "sha256": "b48f996567865925b9b3c22dfd5f748b182c57e4b25b70c42a39f2c948725381"
         }
       ]
     },

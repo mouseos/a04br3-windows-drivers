@@ -145,6 +145,7 @@ static NTSTATUS observed_query_adapter_info(HANDLE context,const DXGKARG_QUERYAD
  }
  return status;
 }
+DXGKDDI_PRESENT GeoPresent; /* Local linkage declaration; no shared layout/header change. */
 /* RT8.1 requires Present/interrupt slots on render-only adapters. Only a
  * bounded offscreen real-GPU Blt is supported; no display/flip is advertised. */
 static NTSTATUS APIENTRY render_present(HANDLE context,DXGKARG_PRESENT *present) {
