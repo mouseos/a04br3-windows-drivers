@@ -33,7 +33,7 @@ function Read-Mt6630StartCheckpoint {
  if($key){try {
   if($key.GetValueNames().Count -gt 64 -or $key.GetSubKeyNames().Count){throw 'Checkpoint bound exceeded'}
   $cp=[ordered]@{present=$true;Schema=(Fixed-Dword $key 'Schema');ReachedMask=(Fixed-Dword $key 'ReachedMask');stages=[ordered]@{};receipt=@{present=$false}}
-  $names=@('DeviceCreated','WaitLock','IoTarget','Timer','Queues','ChildCreated','SidebandQI','ControllerQI','StaticChild','D0Entry','BrokerTargetOpen','BrokerHciOpen','OptionalController','D0Return','D0Exit','Capabilities','BrokerReceipt')
+  $names=@('DeviceCreated','WaitLock','IoTarget','Timer','Queues','ChildCreated','SidebandQI','ControllerQI','StaticChild','D0Entry','BrokerTargetOpen','BrokerHciOpen','OptionalController','D0Return','D0Exit','Capabilities','BrokerReceipt','ProviderWait','BrokerAdmission','HciReady','ProviderWaitResult')
   for($i=0;$i -lt $names.Count;$i++){
    $v=Fixed-Dword $key $names[$i];$v.reached_in_saved_mask=$cp.ReachedMask.present -and (($cp.ReachedMask.value -band (1 -shl $i)) -ne 0)
    $v.old_unreached_value_may_be_stale=!$v.reached_in_saved_mask;$cp.stages[$names[$i]]=$v

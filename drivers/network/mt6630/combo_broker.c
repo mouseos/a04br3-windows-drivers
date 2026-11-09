@@ -8,6 +8,8 @@
 #include "../../bus/mt8167-shared/hfp_interface.h"
 #include "../../bluetooth/mt6630/transport_caps.h"
 #include "../../bluetooth/mt6630/start_status.h"
+#include "../../bluetooth/mt6630/admission_status.h"
+C_ASSERT(sizeof(struct a04_bt_admission_status)==32);
 static NDIS_SPIN_LOCK registry_lock;
 static NDIS_HANDLE registration;
 static struct a04_ndis_runtime *registered;
@@ -136,7 +138,17 @@ void a04_combo_worker(struct a04_ndis_runtime *a)
  if(a->closing){finish(irp,cleanup?STATUS_SUCCESS:STATUS_CANCELLED,0);return;}
  /* CLEANUP is mandatory rundown, not a cancellable HCI operation. */
  if(!cleanup&&irp->Cancel){finish(irp,STATUS_CANCELLED,0);return;}
- if(code==A04_BT_BROKER_START_STATUS){
+ if(code==A04_BT_BROKER_ADMISSION){
+  struct a04_bt_admission_status *state=irp->AssociatedIrp.SystemBuffer;
+  if(in||out!=sizeof(*state)||!state){s=STATUS_INVALID_PARAMETER;goto done;}
+  /* Single existing worker; observes software state before OPEN, no SDIO,
+   * WMT, owner acquire or power transition and no invented HCI readiness. */
+  RtlZeroMemory(state,sizeof(*state));state->version=1;state->bytes=sizeof(*state);
+  state->generation=a->session.generation;state->power=!!a->power;
+  state->initialized=!!a->radio.initialized;state->failed=!!a->radio.failed;state->uncertain=!!a->uncertain;
+  state->ready=state->generation&&state->power&&state->initialized&&!state->failed&&!state->uncertain;
+  used=sizeof(*state);s=STATUS_SUCCESS;
+ }else if(code==A04_BT_BROKER_START_STATUS){
   struct a04_bt_start_status *out_status=irp->AssociatedIrp.SystemBuffer;
   if(in||out!=sizeof(*out_status)||!out_status){s=STATUS_INVALID_PARAMETER;goto done;}
   if(start_file!=sp->FileObject||start_status.generation!=a->session.generation||!(start_status.flags&A04_BT_START_RETURNED)){s=STATUS_DEVICE_NOT_READY;goto done;}

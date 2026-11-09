@@ -12,6 +12,8 @@
 #include "transport_caps.h"
 #include "start_status.h"
 #include "start_checkpoint.h"
+#include "admission_status.h"
+#include "provider_wait.h"
 #define CONTEXT_BYTES FIELD_OFFSET(BTHX_HCI_READ_WRITE_CONTEXT,Data)
 C_ASSERT(sizeof(BTHX_VERSION)==4);
 C_ASSERT(sizeof(BTHX_CAPABILITIES)==16);
@@ -20,7 +22,8 @@ typedef struct _CLIENT {
  WDFDEVICE device,child;WDFIOTARGET target;WDFWAITLOCK lock;WDFTIMER timer;WDFQUEUE reads[2];
  struct a04_mt6630_radio_binding sideband;struct a04_combo_controller controller;NTSTATUS controller_status;
  ULONG start_mask;
- BOOLEAN running,negotiated,open,binding_active;unsigned count;struct a04_bt_broker_packet packets[32],scratch;
+ BOOLEAN running,negotiated,open,hci_open,child_reported,waiting,binding_active;
+ struct a04_provider_wait provider_wait;unsigned wait_phase;NTSTATUS wait_status;unsigned count;struct a04_bt_broker_packet packets[32],scratch;
 } CLIENT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(CLIENT,Context)
 EVT_WDF_DRIVER_DEVICE_ADD Add;
@@ -29,6 +32,7 @@ EVT_WDF_DEVICE_D0_EXIT Stop;
 EVT_WDF_TIMER Timer;
 EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL ComboInternal;
 EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL Forward;
+static NTSTATUS StartTransport(CLIENT *c);
 static void lock(CLIENT *c){(void)WdfWaitLockAcquire(c->lock,NULL);}
 static void unlock(CLIENT *c){WdfWaitLockRelease(c->lock);}
 static NTSTATUS call(CLIENT *c,ULONG code,struct a04_bt_broker_packet *packet)
@@ -115,17 +119,26 @@ static int RxPull(void *p)
 }
 VOID Timer(WDFTIMER timer)
 {
- CLIENT *c=Context(WdfTimerGetParentObject(timer));lock(c);
- if(c->running){
+ CLIENT *c=Context(WdfTimerGetParentObject(timer));BOOLEAN failed=FALSE;lock(c);
+ if(c->waiting){
+  NTSTATUS s=c->wait_status;
+  if(a04_provider_may_wait(&c->provider_wait,(ULONG)s,c->wait_phase,KeQueryInterruptTime(),c->child_reported)){
+   c->provider_wait.attempts++;s=StartTransport(c);
+   if(NT_SUCCESS(s)){c->waiting=FALSE;StartCheckpoint(c->device,&c->start_mask,20,s);}
+   else if(a04_provider_may_wait(&c->provider_wait,(ULONG)s,c->wait_phase,KeQueryInterruptTime(),c->child_reported))
+    WdfTimerStart(timer,WDF_REL_TIMEOUT_IN_MS(100));
+   else {c->waiting=FALSE;failed=TRUE;StartCheckpoint(c->device,&c->start_mask,20,s);}
+  }else{c->waiting=FALSE;failed=TRUE;StartCheckpoint(c->device,&c->start_mask,20,s);}
+ }else if(c->running){
   struct RX_DRAIN state={c,STATUS_SUCCESS};
   const struct mt6630_rx_drain_io io={&state,RxDeliver,RxRoom,RxPull};
-  /* CT3 STP worker drains pending RX. Keep the existing single SDIO worker
-   * and finite queues: at most32 packets, stop on empty/full/real error.
-   * No destructive broker read when pending BTHX requests cannot make room. */
   if(mt6630_rx_drain(&io)!=MT6630_RX_FAULT)WdfTimerStart(timer,WDF_REL_TIMEOUT_IN_MS(5));
   else {InterlockedExchange(&c->controller.uncertain,1);c->running=FALSE;WdfIoQueuePurge(c->reads[0],NULL,NULL);WdfIoQueuePurge(c->reads[1],NULL,NULL);}
  }
  unlock(c);
+ /* Never restart or certify a transport after a real failure. No pending
+  * child was reported while waiting. Let PnP report the failed bus explicitly. */
+ if(failed)WdfDeviceSetFailed(c->device,WdfDeviceFailedNoRestart);
 }
 VOID ComboInternal(WDFQUEUE q,WDFREQUEST r,size_t outlen,size_t inlen,ULONG code)
 {
@@ -182,31 +195,71 @@ VOID Forward(WDFQUEUE q,WDFREQUEST r,size_t outlen,size_t inlen,ULONG code)
  NTSTATUS s=WdfRequestForwardToParentDeviceIoQueue(r,WdfDeviceGetDefaultQueue(WdfPdoGetParent(WdfIoQueueGetDevice(q))),&o);
  if(!NT_SUCCESS(s))WdfRequestComplete(r,s);
 }
+static NTSTATUS Admission(CLIENT *c)
+{
+ struct a04_bt_admission_status state={0};WDF_MEMORY_DESCRIPTOR out;ULONG_PTR used=0;NTSTATUS s;
+ WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(&out,&state,sizeof(state));
+ s=WdfIoTargetSendIoctlSynchronously(c->target,WDF_NO_HANDLE,A04_BT_BROKER_ADMISSION,NULL,&out,NULL,&used);
+ if(NT_SUCCESS(s)){
+  if(used!=sizeof(state)||state.version!=1||state.bytes!=sizeof(state)||state.ready>1||state.power>1||state.initialized>1||state.failed>1||state.uncertain>1||
+    state.ready!=(!!state.generation&&state.power&&state.initialized&&!state.failed&&!state.uncertain))s=STATUS_DATA_ERROR;
+  else if(state.failed||state.uncertain)s=STATUS_IO_DEVICE_ERROR;
+  else if(!state.ready)s=STATUS_DEVICE_NOT_READY;
+ }
+ StartCheckpoint(c->device,&c->start_mask,18,s);return s;
+}
+static NTSTATUS StartTransport(CLIENT *c)
+{
+ NTSTATUS s;WDF_IO_TARGET_OPEN_PARAMS o;UNICODE_STRING name=RTL_CONSTANT_STRING(A04_BT_BROKER_NAME);
+ c->wait_phase=A04_PROVIDER_NAMESPACE;
+ if(!c->open){
+  WDF_IO_TARGET_OPEN_PARAMS_INIT_OPEN_BY_NAME(&o,&name,GENERIC_READ|GENERIC_WRITE);o.ShareAccess=FILE_SHARE_READ|FILE_SHARE_WRITE;
+  s=WdfIoTargetOpen(c->target,&o);StartCheckpoint(c->device,&c->start_mask,10,s);
+  if(!NT_SUCCESS(s)){c->wait_status=s;return s;}c->open=TRUE;
+ }
+ c->wait_phase=A04_PROVIDER_ADMISSION;s=Admission(c);
+ if(!NT_SUCCESS(s)){c->wait_status=s;return s;}
+ /* Admission only says the real provider is published. It does not grant
+  * HCI/physical success: execute OPEN exactly once after this gate. */
+ c->wait_phase=A04_PROVIDER_HCI;s=call(c,A04_BT_BROKER_OPEN,NULL);
+ StartCheckpoint(c->device,&c->start_mask,11,s);RecordBrokerOpen(c,s);
+ if(!NT_SUCCESS(s)){WdfIoTargetClose(c->target);c->open=FALSE;c->wait_status=s;return s;}
+ c->hci_open=TRUE;c->running=TRUE;
+ if(!c->child_reported){
+  s=WdfFdoAddStaticChild(c->device,c->child);StartCheckpoint(c->device,&c->start_mask,8,s);
+  if(!NT_SUCCESS(s)){c->running=FALSE;(void)call(c,A04_BT_BROKER_CLOSE,NULL);c->hci_open=FALSE;WdfIoTargetClose(c->target);c->open=FALSE;c->wait_status=s;return s;}
+  c->child_reported=TRUE;
+ }
+ c->controller_status=a04_combo_controller_start_locked(&c->controller);
+ StartCheckpoint(c->device,&c->start_mask,12,c->controller_status);
+ WdfIoQueueStart(c->reads[0]);WdfIoQueueStart(c->reads[1]);
+ StartCheckpoint(c->device,&c->start_mask,19,STATUS_SUCCESS);
+ WdfTimerStart(c->timer,WDF_REL_TIMEOUT_IN_MS(5));c->wait_status=STATUS_SUCCESS;return STATUS_SUCCESS;
+}
 NTSTATUS Start(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 {
- CLIENT *c=Context(device);NTSTATUS s;WDF_IO_TARGET_OPEN_PARAMS o;UNICODE_STRING name=RTL_CONSTANT_STRING(A04_BT_BROKER_NAME);
- UNREFERENCED_PARAMETER(previous);lock(c);c->start_mask&=(1u<<9)-1u;StartCheckpoint(device,&c->start_mask,9,STATUS_SUCCESS);
- WDF_IO_TARGET_OPEN_PARAMS_INIT_OPEN_BY_NAME(&o,&name,GENERIC_READ|GENERIC_WRITE);o.ShareAccess=FILE_SHARE_READ|FILE_SHARE_WRITE;
- s=WdfIoTargetOpen(c->target,&o);StartCheckpoint(device,&c->start_mask,10,s);if(!NT_SUCCESS(s))goto done;c->open=TRUE;
- s=call(c,A04_BT_BROKER_OPEN,NULL);StartCheckpoint(device,&c->start_mask,11,s);RecordBrokerOpen(c,s);if(!NT_SUCCESS(s)){WdfIoTargetClose(c->target);c->open=FALSE;goto done;}
- c->running=TRUE;
- /* Optional controller registration is separate from a real raw HCI OPEN.
-  * An absent/failed interface never grants an Audio controller lease;
-  * transport BTHX bypass caps retain the separate real broker predicate. */
- c->controller_status=a04_combo_controller_start_locked(&c->controller);
- StartCheckpoint(device,&c->start_mask,12,c->controller_status);
- WdfIoQueueStart(c->reads[0]);WdfIoQueueStart(c->reads[1]);WdfTimerStart(c->timer,WDF_REL_TIMEOUT_IN_MS(5));
-done:StartCheckpoint(device,&c->start_mask,13,s);unlock(c);return s;
+ CLIENT *c=Context(device);NTSTATUS s;UNREFERENCED_PARAMETER(previous);lock(c);
+ c->start_mask&=(1u<<9)-1u;StartCheckpoint(device,&c->start_mask,9,STATUS_SUCCESS);
+ c->provider_wait.began=KeQueryInterruptTime();c->provider_wait.attempts=1;c->waiting=FALSE;
+ s=StartTransport(c);
+ if(!NT_SUCCESS(s)&&a04_provider_may_wait(&c->provider_wait,(ULONG)s,c->wait_phase,KeQueryInterruptTime(),c->child_reported)){
+  /* This is a live software enumerator waiting for its real provider, not a
+   * started HCI radio. No BthMini child/caps/READ/WRITE exists before real OPEN.
+   * Do not block the PnP worker needed to load/start the provider itself. */
+  c->waiting=TRUE;StartCheckpoint(device,&c->start_mask,17,STATUS_PENDING);
+  WdfTimerStart(c->timer,WDF_REL_TIMEOUT_IN_MS(100));s=STATUS_SUCCESS;
+ }else if(!NT_SUCCESS(s)&&c->open){WdfIoTargetClose(c->target);c->open=FALSE;}
+ StartCheckpoint(device,&c->start_mask,13,s);unlock(c);return s;
 }
 NTSTATUS Stop(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
 {
  CLIENT *c=Context(device);NTSTATUS s=STATUS_SUCCESS;UNREFERENCED_PARAMETER(target);
  /* Audio must first remove its HFP endpoints and prove both DMA directions
   * quiescent. Keep transport/clock ownership while the binding remains. */
- lock(c);if(c->binding_active){StartCheckpoint(device,&c->start_mask,14,STATUS_DEVICE_BUSY);unlock(c);return STATUS_DEVICE_BUSY;}
+ lock(c);c->waiting=FALSE;if(c->binding_active){StartCheckpoint(device,&c->start_mask,14,STATUS_DEVICE_BUSY);unlock(c);return STATUS_DEVICE_BUSY;}
  s=a04_combo_controller_stop_locked(&c->controller);if(!NT_SUCCESS(s)){StartCheckpoint(device,&c->start_mask,14,s);unlock(c);return s;}c->running=FALSE;unlock(c);WdfTimerStop(c->timer,TRUE);
  WdfIoQueuePurgeSynchronously(c->reads[0]);WdfIoQueuePurgeSynchronously(c->reads[1]);lock(c);
- if(c->open){s=call(c,A04_BT_BROKER_CLOSE,NULL);WdfIoTargetClose(c->target);c->open=FALSE;}
+ if(c->open){if(c->hci_open)s=call(c,A04_BT_BROKER_CLOSE,NULL);c->hci_open=FALSE;WdfIoTargetClose(c->target);c->open=FALSE;}
  RtlSecureZeroMemory(c->packets,sizeof(c->packets));c->count=0;StartCheckpoint(device,&c->start_mask,14,s);unlock(c);return s;
 }
 static NTSTATUS child(CLIENT *c)
@@ -229,14 +282,14 @@ static NTSTATUS child(CLIENT *c)
  s=WdfDeviceAddQueryInterface(c->child,&query);StartCheckpoint(c->device,&c->start_mask,6,s);if(!NT_SUCCESS(s))return s;
  s=a04_combo_controller_init(&c->controller,c->device,c->child,c->target,c->lock);
  StartCheckpoint(c->device,&c->start_mask,7,s);
- if(NT_SUCCESS(s)){s=WdfFdoAddStaticChild(c->device,c->child);StartCheckpoint(c->device,&c->start_mask,8,s);}return s;
+ return s; /* Report the child only after real provider admission and HCI OPEN. */
 fail:WdfDeviceInitFree(init);return s;
 }
 /* Root removal is independent of physical parent removal. Revoke liveness
  * even while uncertain SCO references deliberately retain object storage. */
 static VOID Surprise(WDFDEVICE device)
 {
- CLIENT *c=Context(device);lock(c);InterlockedExchange(&c->controller.removed,1);c->running=FALSE;
+ CLIENT *c=Context(device);lock(c);InterlockedExchange(&c->controller.removed,1);c->running=FALSE;c->waiting=FALSE;
  if(c->controller.ready&&NT_SUCCESS(IoSetDeviceInterfaceState(&c->controller.ready_link,FALSE)))c->controller.ready=FALSE;
  unlock(c);WdfIoQueuePurge(c->reads[0],NULL,NULL);WdfIoQueuePurge(c->reads[1],NULL,NULL);
 }
