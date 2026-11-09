@@ -21,3 +21,7 @@ post158では14fixed initfields/ReachedMask/ModuleIdentity144B/actual SYS+select
 正式入力prepare-peripheral-followup156.py / combined156_policy.py、署名tools/ci/build-combined156-service.ps1、native clone専用prepare-offline-system-service.ps1、post158 reader read-combined156-post.ps1＋既存read-gpu-native-checkpoint.ps1。媒体--combined156-profile。
 main sealのca9d2687 manifest/SYS2090a01f、source0feb67ff、runtime BuildID GPU344-durable-progress-v1、追加import KeAreAllApcsDisabledだけの実RT81 export照合を固定。親1117/thermal1.10/boot2e6を保持しGPU344だけDIF。18full＋25raw values、原41、69logs、UMD/FW actual155回収byteを照合する。GPU payloadの修正とは呼ばない。APC guardは予防的制約で、ZwFlushKeyの公開PASSIVE条件やPC一点から前回reset原因を証明したとは扱わない。
 旧draft generatorは非arm入口として履歴保持し、正式map/header/service/native/mediaは完成artifactから別生成する。
+
+## 最終344のみ採用
+
+中間81b49/guarded2090の2候補は非採用未実機。正式候補はwindows-rt-durable-progress344-final、source d5b270b3、manifest bf456f3e、SYS4aad24d8。入口R06/R07/R08/R09/R15と既存34..39等のflushを含む。入口status0はcallback/lock前への到達であり成功ではない。最終main sealの4TU/変更4・不変76/59pins/6BCBFを結合。source/実機成功は主張しない。
