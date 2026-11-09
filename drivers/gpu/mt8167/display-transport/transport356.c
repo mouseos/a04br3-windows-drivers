@@ -2,6 +2,7 @@
  * DIS0 PnP resource/DMA/real frame-IRQ provider. No DxgkInitialize, second GPU
  * owner, framebuffer CPU blitter, root registration or user control device. */
 #include "interface356.h"
+#include "../start_checkpoint357.h"
 #include <acpiioct.h>
 #include "../vendor_m1_11/windows_shared_scanout.h"
 #include "barrier356.h"
@@ -37,7 +38,12 @@ struct display356 {
  ULONG old_address,old_source,old_con,old_rdma,old_pitch;struct map356 *active;
  ULONGLONG frame_serial,ovl_serial;volatile LONG frame_errors,in_blank,seen_vsync;NTSTATUS last_status;
  a04_display_frame_notify notify;void *notify_context;
+ struct geo_start357_record start357;BOOLEAN tracing357;volatile LONG d0_observed357;
 };
+static NTSTATUS fail357(struct display356 *d,ULONG id,NTSTATUS status){if(d->tracing357)Geo357Fail(&d->start357,id,status);return status;}
+static ULONG sample357(struct display356 *d,ULONG offset,ULONG word){ULONG value=READ_REGISTER_ULONG(d->ovl+offset/4u);if(d->tracing357){d->start357.words[word]=value;d->start357.valid_flags|=(1u<<(word-24));}return value;}
+static ULONG sample_addr357(struct display356 *d){ULONG value=READ_REGISTER_ULONG(d->ovl+OVL_ADDR0/4u);if(d->tracing357){d->start357.words[29]=(value?1u:0u)|((ULONGLONG)value>=0xbe9c0000ULL&&(ULONGLONG)value+FRAME_BYTES<=0xbf9c0000ULL?2u:0u);d->start357.valid_flags|=1u<<5;}return value;}
+static ULONG sample_rdma357(struct display356 *d){ULONG value=READ_REGISTER_ULONG(d->rdma);if(d->tracing357){d->start357.words[31]=value;d->start357.valid_flags|=1u<<7;}return value;}
 static ULONG rd(struct display356 *d,ULONG o){return READ_REGISTER_ULONG(d->ovl+o/4u);}
 static void wr(struct display356 *d,ULONG o,ULONG v){WRITE_REGISTER_ULONG(d->ovl+o/4u,v);}
 static const ULONG owned_offsets356[27]={0x020,0x024,0x028,
@@ -224,53 +230,63 @@ static NTSTATUS platform_proof(struct display356 *d){
  RtlZeroMemory(&in,sizeof(in));RtlZeroMemory(buffer,sizeof(buffer));in.Signature=ACPI_EVAL_INPUT_BUFFER_SIGNATURE;RtlCopyMemory(in.MethodName,"DMS0",4);
  KeInitializeEvent(&event,NotificationEvent,FALSE);
  irp=IoBuildDeviceIoControlRequest(IOCTL_ACPI_EVAL_METHOD,d->lower,&in,sizeof(in),buffer,sizeof(buffer),FALSE,&event,&iosb);
- if(!irp)return STATUS_INSUFFICIENT_RESOURCES;s=IoCallDriver(d->lower,irp);
+ if(!irp)return fail357(d,210,STATUS_INSUFFICIENT_RESOURCES);s=IoCallDriver(d->lower,irp);if(d->tracing357)d->start357.words[16]=(ULONG)s;
  if(s==STATUS_PENDING){KeWaitForSingleObject(&event,Executive,KernelMode,FALSE,NULL);s=iosb.Status;}
- if(!NT_SUCCESS(s))return s;
- if(out->Signature!=ACPI_EVAL_OUTPUT_BUFFER_SIGNATURE||out->Length>sizeof(buffer)||out->Count!=1||out->Argument[0].Type!=ACPI_METHOD_ARGUMENT_BUFFER||out->Argument[0].DataLength!=sizeof(words))return STATUS_DEVICE_CONFIGURATION_ERROR;
- RtlCopyMemory(words,out->Argument[0].Data,sizeof(words));
+ if(d->tracing357)d->start357.words[17]=(ULONG)s;
+ if(!NT_SUCCESS(s))return fail357(d,211,s);
+ if(d->tracing357){d->start357.words[18]=out->Signature;d->start357.words[19]=out->Length;d->start357.words[20]=out->Count;d->start357.words[21]=out->Argument[0].Type;d->start357.words[22]=out->Argument[0].DataLength;}
+ if(out->Signature!=ACPI_EVAL_OUTPUT_BUFFER_SIGNATURE||out->Length>sizeof(buffer)||out->Count!=1||out->Argument[0].Type!=ACPI_METHOD_ARGUMENT_BUFFER||out->Argument[0].DataLength!=sizeof(words))return fail357(d,212,STATUS_DEVICE_CONFIGURATION_ERROR);
+ RtlCopyMemory(words,out->Argument[0].Data,sizeof(words));if(d->tracing357){for(ULONG i=0;i<8;i++)d->start357.words[8+i]=words[i];d->start357.words[23]=1;}
  /* DMS0: live AML-owned SMI_LARB0_MMU_EN (OVL port0), SYSIRQ160,
   * and explicit fixed display profile. No guessed MMIO in this driver. */
+ if(d->tracing357){ULONG id=words[0]!=0x36354d44u?213u:words[1]!=1u?214u:(words[2]&1u)?215u:((words[3]&5u)!=5u)?216u:words[4]!=800u?217u:words[5]!=1280u?218u:words[6]!=3200u?219u:words[7]!=1u?220u:0u;if(id)Geo357Fail(&d->start357,id,STATUS_DEVICE_CONFIGURATION_ERROR);}
  return words[0]==0x36354d44u&&words[1]==1u&&!(words[2]&1u)&&((words[3]&5u)==5u)&&words[4]==800&&words[5]==1280&&words[6]==3200&&words[7]==1?STATUS_SUCCESS:STATUS_DEVICE_CONFIGURATION_ERROR;
 }
 static NTSTATUS start(struct display356 *d,PCM_RESOURCE_LIST resources,PCM_RESOURCE_LIST raw){
  PCM_PARTIAL_RESOURCE_DESCRIPTOR ovl=NULL,rdma=NULL,intr=NULL,ovl_intr=NULL,pwm=NULL,post=NULL;ULONG ovls=0,rdmas=0,irqs=0,pwms=0,posts=0;DEVICE_DESCRIPTION description;NTSTATUS s;
- if(!raw||raw->Count!=1||!resources||resources->Count!=1||raw->List[0].PartialResourceList.Count!=resources->List[0].PartialResourceList.Count||resources->List[0].PartialResourceList.Count>16||d->started||!IsListEmpty(&d->maps))return STATUS_INVALID_PARAMETER;
+ if(d->tracing357){d->start357.words[2]=raw?raw->Count:0xffffffffu;d->start357.words[3]=resources?resources->Count:0xffffffffu;if(raw&&raw->Count==1)d->start357.words[4]=raw->List[0].PartialResourceList.Count;if(resources&&resources->Count==1)d->start357.words[5]=resources->List[0].PartialResourceList.Count;}
+ if(!raw||raw->Count!=1||!resources||resources->Count!=1||raw->List[0].PartialResourceList.Count!=resources->List[0].PartialResourceList.Count||resources->List[0].PartialResourceList.Count>16||d->started||!IsListEmpty(&d->maps))return fail357(d,201,STATUS_INVALID_PARAMETER);
  s=platform_proof(d);if(!NT_SUCCESS(s))return s;
  for(ULONG j=0;j<resources->Count;j++){
   PCM_PARTIAL_RESOURCE_LIST list=&resources->List[j].PartialResourceList;
   for(ULONG i=0;i<list->Count;i++){
    PCM_PARTIAL_RESOURCE_DESCRIPTOR r=&list->PartialDescriptors[i];
+   if(d->tracing357){ULONG *w=&d->start357.words[48+i*8];w[0]=r->Type|((ULONG)r->ShareDisposition<<8)|((ULONG)r->Flags<<16);w[1]=raw->List[j].PartialResourceList.PartialDescriptors[i].Type;if(r->Type==CmResourceTypeMemory){w[2]=r->u.Memory.Length;w[3]=r->u.Memory.Start.QuadPart==0x14007000?1u:r->u.Memory.Start.QuadPart==0x14009000?2u:r->u.Memory.Start.QuadPart==0x14012000?3u:r->u.Memory.Start.QuadPart==0x14015000?4u:r->u.Memory.Start.QuadPart==0xbe9c0000?5u:r->u.Memory.Start.QuadPart==0x1100f000?6u:0u;}if(r->Type==CmResourceTypeInterrupt){w[4]=raw->List[j].PartialResourceList.PartialDescriptors[i].u.Interrupt.Vector;w[5]=r->u.Interrupt.Level;w[6]=r->u.Interrupt.Vector;w[7]=(ULONG)r->u.Interrupt.Affinity;}}
+
    if(r->Type==CmResourceTypeMemory&&r->u.Memory.Start.QuadPart==0x14007000&&r->u.Memory.Length==4096&&r->ShareDisposition==CmResourceShareDeviceExclusive){ovl=r;ovls++;}
    if(r->Type==CmResourceTypeMemory&&r->u.Memory.Start.QuadPart==0x14009000&&r->u.Memory.Length==4096&&r->ShareDisposition==CmResourceShareDeviceExclusive){rdma=r;rdmas++;}
    if(r->Type==CmResourceTypeMemory&&r->u.Memory.Start.QuadPart==0x1100f000&&r->u.Memory.Length==4096&&r->ShareDisposition==CmResourceShareDeviceExclusive){pwm=r;pwms++;}
    if(r->Type==CmResourceTypeMemory&&r->u.Memory.Start.QuadPart==0xbe9c0000&&r->u.Memory.Length==0x1000000&&r->ShareDisposition==CmResourceShareDeviceExclusive){post=r;posts++;}
    if(r->Type==CmResourceTypeInterrupt){
     PCM_PARTIAL_RESOURCE_DESCRIPTOR r0=&raw->List[j].PartialResourceList.PartialDescriptors[i];
-    if(r0->Type!=CmResourceTypeInterrupt)return STATUS_DEVICE_CONFIGURATION_ERROR;
-    if(r0->u.Interrupt.Vector==192)ovl_intr=r;else if(r0->u.Interrupt.Vector==194)intr=r;else return STATUS_DEVICE_CONFIGURATION_ERROR;irqs++;
+    if(r0->Type!=CmResourceTypeInterrupt)return fail357(d,230,STATUS_DEVICE_CONFIGURATION_ERROR);
+    if(r0->u.Interrupt.Vector==192)ovl_intr=r;else if(r0->u.Interrupt.Vector==194)intr=r;else return fail357(d,231,STATUS_DEVICE_CONFIGURATION_ERROR);irqs++;
    }
   }
  }
- if(pwms!=1||posts!=1||!pwm||!post||ovls!=1||rdmas!=1||irqs!=2||!ovl_intr||ovl_intr->ShareDisposition!=CmResourceShareDeviceExclusive||!intr||intr->ShareDisposition!=CmResourceShareDeviceExclusive||(intr->Flags&CM_RESOURCE_INTERRUPT_LATCHED))return STATUS_DEVICE_CONFIGURATION_ERROR;
- d->ovl=MmMapIoSpace(ovl->u.Memory.Start,4096,MmNonCached);if(!d->ovl)return STATUS_INSUFFICIENT_RESOURCES;
- d->rdma=MmMapIoSpace(rdma->u.Memory.Start,4096,MmNonCached);if(!d->rdma){s=STATUS_INSUFFICIENT_RESOURCES;goto failed;}
- if(!a04_post_profile356(rd(d,OVL_ROI),rd(d,OVL_PITCH0),rd(d,OVL_CON0),rd(d,OVL_SIZE0),rd(d,0x03cu))||!rd(d,OVL_ADDR0)||rd(d,OVL_INTEN)||READ_REGISTER_ULONG(d->rdma)){s=STATUS_DEVICE_CONFIGURATION_ERROR;goto failed;}
- if((ULONGLONG)rd(d,OVL_ADDR0)<(ULONGLONG)post->u.Memory.Start.QuadPart||(ULONGLONG)rd(d,OVL_ADDR0)+FRAME_BYTES>(ULONGLONG)post->u.Memory.Start.QuadPart+post->u.Memory.Length){s=STATUS_DEVICE_CONFIGURATION_ERROR;goto failed;}
+ if(d->tracing357){d->start357.words[6]=(ovls&15u)|((rdmas&15u)<<4)|((pwms&15u)<<8)|((posts&15u)<<12);d->start357.words[7]=irqs;}
+ if(pwms!=1||posts!=1||!pwm||!post||ovls!=1||rdmas!=1||irqs!=2||!ovl_intr||ovl_intr->ShareDisposition!=CmResourceShareDeviceExclusive||!intr||intr->ShareDisposition!=CmResourceShareDeviceExclusive||(intr->Flags&CM_RESOURCE_INTERRUPT_LATCHED))return fail357(d,232,STATUS_DEVICE_CONFIGURATION_ERROR);
+ d->ovl=MmMapIoSpace(ovl->u.Memory.Start,4096,MmNonCached);if(!d->ovl)return fail357(d,240,STATUS_INSUFFICIENT_RESOURCES);
+ d->rdma=MmMapIoSpace(rdma->u.Memory.Start,4096,MmNonCached);if(!d->rdma){s=fail357(d,241,STATUS_INSUFFICIENT_RESOURCES);goto failed;}
+ if(!a04_post_profile356(sample357(d,OVL_ROI,24),sample357(d,OVL_PITCH0,25),sample357(d,OVL_CON0,26),sample357(d,OVL_SIZE0,27),sample357(d,0x03cu,28))||!sample_addr357(d)||sample357(d,OVL_INTEN,30)||sample_rdma357(d)){s=fail357(d,242,STATUS_DEVICE_CONFIGURATION_ERROR);goto failed;}
+ if((ULONGLONG)sample_addr357(d)<(ULONGLONG)post->u.Memory.Start.QuadPart||(ULONGLONG)sample_addr357(d)+FRAME_BYTES>(ULONGLONG)post->u.Memory.Start.QuadPart+post->u.Memory.Length){s=fail357(d,243,STATUS_DEVICE_CONFIGURATION_ERROR);goto failed;}
  RtlZeroMemory(&d->brightness,sizeof(d->brightness));d->brightness.Count=1;
  d->brightness.List[0].InterfaceType=Internal;d->brightness.List[0].PartialResourceList.Version=1;d->brightness.List[0].PartialResourceList.Revision=1;
  d->brightness.List[0].PartialResourceList.Count=1;d->brightness.List[0].PartialResourceList.PartialDescriptors[0]=*pwm;
  for(ULONG i=0;i<27;i++)d->saved[i]=rd(d,owned_offsets356[i]);
- d->old_address=rd(d,OVL_ADDR0);d->old_source=rd(d,OVL_SRC);d->old_con=rd(d,OVL_CON0);d->old_rdma=rd(d,OVL_RDMA0);d->old_pitch=rd(d,OVL_PITCH0);
+ d->old_address=sample_addr357(d);d->old_source=rd(d,OVL_SRC);d->old_con=rd(d,OVL_CON0);d->old_rdma=rd(d,OVL_RDMA0);d->old_pitch=rd(d,OVL_PITCH0);
  RtlZeroMemory(&description,sizeof(description));description.Version=DEVICE_DESCRIPTION_VERSION3;description.Master=TRUE;description.ScatterGather=TRUE;description.DmaAddressWidth=32;description.InterfaceType=Internal;description.MaximumLength=FRAME_BYTES;
  d->dma=IoGetDmaAdapter(d->pdo,&description,&d->map_registers);
- if(!d->dma||!d->dma->DmaOperations||!d->dma->DmaOperations->GetScatterGatherList||!d->dma->DmaOperations->PutScatterGatherList||!d->dma->DmaOperations->PutDmaAdapter){s=STATUS_DEVICE_CONFIGURATION_ERROR;goto failed;}
+ if(d->tracing357){d->start357.words[33]=d->map_registers;d->start357.words[34]=(d->dma?1u:0u)|(d->dma&&d->dma->DmaOperations?2u:0u);if(d->dma&&d->dma->DmaOperations)d->start357.words[34]|=(d->dma->DmaOperations->GetScatterGatherList?4u:0u)|(d->dma->DmaOperations->PutScatterGatherList?8u:0u)|(d->dma->DmaOperations->PutDmaAdapter?16u:0u);}
+ if(!d->dma||!d->dma->DmaOperations||!d->dma->DmaOperations->GetScatterGatherList||!d->dma->DmaOperations->PutScatterGatherList||!d->dma->DmaOperations->PutDmaAdapter){s=fail357(d,250,STATUS_DEVICE_CONFIGURATION_ERROR);goto failed;}
  /* Genuine translated interrupt connection, not a timer-generated vblank. */
  s=IoConnectInterrupt(&d->ovl_interrupt,irq,d,NULL,ovl_intr->u.Interrupt.Vector,(KIRQL)ovl_intr->u.Interrupt.Level,(KIRQL)ovl_intr->u.Interrupt.Level,LevelSensitive,FALSE,ovl_intr->u.Interrupt.Affinity,FALSE);
- if(!NT_SUCCESS(s))goto failed;
+ if(d->tracing357)d->start357.words[35]=(ULONG)s;
+ if(!NT_SUCCESS(s)){fail357(d,260,s);goto failed;}
  s=IoConnectInterrupt(&d->interrupt,irq,d,NULL,intr->u.Interrupt.Vector,(KIRQL)intr->u.Interrupt.Level,(KIRQL)intr->u.Interrupt.Level,LevelSensitive,FALSE,intr->u.Interrupt.Affinity,FALSE);
- if(!NT_SUCCESS(s))goto failed;
- d->closing=FALSE;d->started=TRUE;s=IoSetDeviceInterfaceState(&d->link,TRUE);if(NT_SUCCESS(s))return s;
+ if(d->tracing357)d->start357.words[36]=(ULONG)s;
+ if(!NT_SUCCESS(s)){fail357(d,261,s);goto failed;}
+ d->closing=FALSE;d->started=TRUE;s=IoSetDeviceInterfaceState(&d->link,TRUE);if(d->tracing357)d->start357.words[37]=(ULONG)s;if(NT_SUCCESS(s))return s;fail357(d,270,s);
  d->started=FALSE;goto failed;
 failed:
  if(d->interrupt){IoDisconnectInterrupt(d->interrupt);d->interrupt=NULL;}
@@ -288,7 +304,7 @@ static NTSTATUS stop(struct display356 *d){
 }
 static NTSTATUS pnp(PDEVICE_OBJECT device,PIRP irp){
  struct display356 *d=device->DeviceExtension;PIO_STACK_LOCATION sp=IoGetCurrentIrpStackLocation(irp);NTSTATUS s;
- if(sp->MinorFunction==IRP_MN_START_DEVICE){s=synchronous(d,irp);if(NT_SUCCESS(s))s=start(d,sp->Parameters.StartDevice.AllocatedResourcesTranslated,sp->Parameters.StartDevice.AllocatedResources);d->last_status=s;return complete(irp,s);}
+ if(sp->MinorFunction==IRP_MN_START_DEVICE){Geo357Begin(&d->start357,2);d->tracing357=TRUE;s=synchronous(d,irp);d->start357.words[0]=(ULONG)s;if(NT_SUCCESS(s))s=start(d,sp->Parameters.StartDevice.AllocatedResourcesTranslated,sp->Parameters.StartDevice.AllocatedResources);else fail357(d,200,s);d->start357.words[1]=(ULONG)s;d->tracing357=FALSE;Geo357End(&d->start357,s);Geo357Store(&d->start357,1,0);d->last_status=s;return complete(irp,s);}
  if(sp->MinorFunction==IRP_MN_QUERY_INTERFACE&&sp->Parameters.QueryInterface.InterfaceType&&
     RtlCompareMemory(sp->Parameters.QueryInterface.InterfaceType,&A04DisplayTransport356Guid,sizeof(GUID))==sizeof(GUID)){
   struct a04_display_transport_v1 *out=(void *)sp->Parameters.QueryInterface.Interface;
@@ -321,13 +337,25 @@ static NTSTATUS pnp(PDEVICE_OBJECT device,PIRP irp){
  }
  return forward(device,irp);
 }
-static NTSTATUS power(PDEVICE_OBJECT device,PIRP irp){
- struct display356 *d=device->DeviceExtension;
- /* An interface/file reference is NOT a reason to retain a power IRP.
-  * The GPU miniport closes/drains display then GPU and releases backing.
-  * This resource provider always forwards the one incoming power IRP. */
- PoStartNextPowerIrp(irp);IoSkipCurrentIrpStackLocation(irp);return PoCallDriver(d->lower,irp);
+/* The one optional D0 receipt never holds the power IRP pending. The work
+ * item keeps its device object alive; its callback touches only its own copy,
+ * no MMIO or provider extension. No stop/remove/power admission uses it. */
+struct power357 {PIO_WORKITEM work;struct geo_start357_record record;};
+static void power_worker357(PDEVICE_OBJECT device,void *context){struct power357 *p=context;UNREFERENCED_PARAMETER(device);Geo357Store(&p->record,1,1);IoFreeWorkItem(p->work);ExFreePoolWithTag(p,TAG);}
+static NTSTATUS power_done357(PDEVICE_OBJECT device,PIRP irp,void *context){
+ struct power357 *p=context;UNREFERENCED_PARAMETER(device);p->record.words[3]=(ULONG)irp->IoStatus.Status;p->record.words[4]=irp->PendingReturned;p->record.words[5]=KeGetCurrentIrql();if(!NT_SUCCESS(irp->IoStatus.Status))Geo357Fail(&p->record,300,irp->IoStatus.Status);Geo357End(&p->record,irp->IoStatus.Status);
+ if(irp->PendingReturned)IoMarkIrpPending(irp);IoQueueWorkItem(p->work,power_worker357,DelayedWorkQueue,p);return STATUS_SUCCESS;
 }
+static NTSTATUS power(PDEVICE_OBJECT device,PIRP irp){
+ struct display356 *d=device->DeviceExtension;PIO_STACK_LOCATION sp=IoGetCurrentIrpStackLocation(irp);struct power357 *p=NULL;
+ if(sp->MinorFunction==IRP_MN_SET_POWER&&sp->Parameters.Power.Type==DevicePowerState&&sp->Parameters.Power.State.DeviceState==PowerDeviceD0&&KeGetCurrentIrql()==PASSIVE_LEVEL&&InterlockedCompareExchange(&d->d0_observed357,1,0)==0){
+  p=ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*p),TAG);if(p){RtlZeroMemory(p,sizeof(*p));p->work=IoAllocateWorkItem(device);if(!p->work){ExFreePoolWithTag(p,TAG);p=NULL;}else{Geo357Begin(&p->record,3);p->record.words[0]=sp->Parameters.Power.Type;p->record.words[1]=sp->MinorFunction;p->record.words[2]=sp->Parameters.Power.State.DeviceState;}}
+ }
+ PoStartNextPowerIrp(irp);
+ if(p){IoCopyCurrentIrpStackLocationToNext(irp);IoSetCompletionRoutine(irp,power_done357,p,TRUE,TRUE,TRUE);}else IoSkipCurrentIrpStackLocation(irp);
+ return PoCallDriver(d->lower,irp);
+}
+
 static NTSTATUS create_close(PDEVICE_OBJECT device,PIRP irp){UNREFERENCED_PARAMETER(device);return complete(irp,irp->RequestorMode==KernelMode?STATUS_SUCCESS:STATUS_ACCESS_DENIED);}
 static NTSTATUS unsupported(PDEVICE_OBJECT device,PIRP irp){UNREFERENCED_PARAMETER(device);return complete(irp,STATUS_INVALID_DEVICE_REQUEST);}
 static NTSTATUS add(PDRIVER_OBJECT driver,PDEVICE_OBJECT pdo){
