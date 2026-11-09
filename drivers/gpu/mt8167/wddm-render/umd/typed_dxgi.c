@@ -120,9 +120,29 @@ static HRESULT APIENTRY rotate(DXGI_DDI_ARG_ROTATE_RESOURCE_IDENTITIES *p){
  }
  return hr;
 }
-static HRESULT APIENTRY blt(DXGI_DDI_ARG_BLT *p){return p?DXGI_ERROR_UNSUPPORTED:E_INVALIDARG;}
+static HRESULT APIENTRY blt(DXGI_DDI_ARG_BLT *p){
+ D3D10DDI_HDEVICE h;struct geo_typed_device *d;struct geo_typed_resource *src,*dst;D3DDDIARG_BLT q;HRESULT hr,cleanup;
+ if(!p)return E_INVALIDARG;if(!A04_GE8300_UNIFIED_DISPLAY356)return DXGI_ERROR_UNSUPPORTED;
+ h=device(p->hDevice);d=geo_typed_device(h);if(!d)return E_INVALIDARG;if(FAILED(d->error))return d->error;
+ if(p->SrcSubresource||p->DstSubresource||(p->Flags.Value&~8u)||p->Rotate!=DXGI_DDI_MODE_ROTATION_IDENTITY||p->DstLeft||p->DstTop)return DXGI_ERROR_UNSUPPORTED;
+ src=geo_typed_resource(h,resource(p->hSrcResource));dst=geo_typed_resource(h,resource(p->hDstResource));
+ if(!src||!dst||src==dst||src->mapped||dst->mapped||!dst->primary||!(src->bind&D3D10_DDI_BIND_RENDER_TARGET)||
+    src->format!=DXGI_FORMAT_B8G8R8A8_UNORM||dst->format!=src->format||src->width!=dst->width||src->height!=dst->height||p->DstRight!=dst->width||p->DstBottom!=dst->height)return E_INVALIDARG;
+ geo_typed_resource_ref(src);geo_typed_resource_ref(dst);memset(&q,0,sizeof(q));q.hSrcResource=src->backend;q.hDstResource=dst->backend;
+ q.SrcRect.right=q.DstRect.right=src->width;q.SrcRect.bottom=q.DstRect.bottom=src->height;
+ hr=d->backend.frontend_flush(&d->backend);if(SUCCEEDED(hr))hr=d->memory.pfnBlt(&d->backend,&q);
+ cleanup=geo_typed_resource_unref(dst);if(SUCCEEDED(hr)&&FAILED(cleanup))hr=cleanup;
+ cleanup=geo_typed_resource_unref(src);if(SUCCEEDED(hr)&&FAILED(cleanup))hr=cleanup;return hr;
+}
 static HRESULT APIENTRY resolve(DXGI_DDI_ARG_RESOLVESHAREDRESOURCE *p){return p?DXGI_ERROR_UNSUPPORTED:E_INVALIDARG;}
-static HRESULT APIENTRY blt1(DXGI_DDI_ARG_BLT1 *p){return p?DXGI_ERROR_UNSUPPORTED:E_INVALIDARG;}
+static HRESULT APIENTRY blt1(DXGI_DDI_ARG_BLT1 *p){
+ DXGI_DDI_ARG_BLT q;struct geo_typed_resource *src;
+ if(!p)return E_INVALIDARG;if(!A04_GE8300_UNIFIED_DISPLAY356)return DXGI_ERROR_UNSUPPORTED;
+ src=geo_typed_resource(device(p->hDevice),resource(p->hSrcResource));
+ if(!src||p->SrcLeft||p->SrcTop||p->SrcRight!=src->width||p->SrcBottom!=src->height)return DXGI_ERROR_UNSUPPORTED;
+ memset(&q,0,sizeof(q));q.hDevice=p->hDevice;q.hSrcResource=p->hSrcResource;q.hDstResource=p->hDstResource;
+ q.SrcSubresource=p->SrcSubresource;q.DstSubresource=p->DstSubresource;q.DstLeft=p->DstLeft;q.DstTop=p->DstTop;q.DstRight=p->DstRight;q.DstBottom=p->DstBottom;q.Flags=p->Flags;q.Rotate=p->Rotate;return blt(&q);
+}
 void geo_typed_dxgi_install(DXGI1_2_DDI_BASE_FUNCTIONS *f) {
  if(!f)return;memset(f,0,sizeof(*f));f->pfnPresent=present;f->pfnGetGammaCaps=gamma;f->pfnSetDisplayMode=display;f->pfnSetResourcePriority=priority;f->pfnQueryResourceResidency=residency;f->pfnRotateResourceIdentities=rotate;f->pfnBlt=blt;f->pfnResolveSharedResource=resolve;f->pfnBlt1=blt1;f->pfnOfferResources=offer;f->pfnReclaimResources=reclaim;
 }
