@@ -1,0 +1,11 @@
+# GE8300 masked startup 346
+
+Windows RT実機run159/GPU345は初期化11段階成功後、初回ClearのFW開始まで進み、予定外watchdog再起動が1回発生した。R37 phase1は新しい値だが、phase2/R38/R22は今回値なし。KeDelay待機への変更だけでは解消していない。R37の永続値はZwFlushKey帰還そのものを証明せず、PC1点からPMU故障やIRQ stormを断定しない。
+
+起動順序の静的な不備：A04_VENDOR_IRQ_MASKEDはready eventのW1Cだけを行い、IRQ_ENABLEを0へ設定・検証していなかった。native_irq_bindによるmaskは初回GP fenceの後で、それ以前のinterrupt_eventはirq_gate0を拒否する。MASKED契約をreset既定値や前ownerの状態に依存させないため、FW開始前と開始後のsource mask/readbackを実装する。HANDLER_OWNS経路は変更しない。既存native_owner_irq.cのROGUE_CR_MIPS_WRAPPER_IRQ_ENABLE=0/readbackと同じregister定義・所有権を使用する。
+
+一次ソース：本機CT3 Linux rgxinit.cのSysInstallDeviceLISR登録、既存Windows windows_irq.cのmask→posted read→W1C、同梱pvr_rogue_cr_defs.hの0x08A0/enable bit0。これらは契約と順序の根拠であり、実run159でIRQ_ENABLEが1だったという測定証拠ではない。
+
+既固定40B FactoryCheckpointのR46は開始前、R47は開始後。fieldsはstage(0/1)、mask前値、mask後値、modeまたはexecute_start結果。成功記録の新たなflushは追加しない。readback失敗は実エラーとして返し、開始後は既存hardware_owned/attempted/停止条件を保持する。snapshotを成功判定やFW同期完了の代用にしない。
+
+GPU346-masked-start-v1、INF0.0.3.46。windows_start.cとminiport.cの2TUのみ再compileし、345の残り78objects・UMD・FW・clientを保持する。SDK/PCO/shader再構築なし。描画成功・watchdog解消・原因確定は実機未確認。次実機は同候補1回で、実SYS/選択INF/BuildID・今回FILETIME・R46/47・FW同期・画素を別々に照合する。mask前値0で再現する場合、IRQ継承仮説を再試験しない。

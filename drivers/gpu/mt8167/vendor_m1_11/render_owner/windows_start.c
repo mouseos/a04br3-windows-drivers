@@ -10,6 +10,8 @@
 #include "A04BR3RogueDeviceWords.h"
 #include "windows_uncached.h"
 #include "../../windows_hw.h"
+#include "../../fwif/pvr_rogue_cr_defs.h"
+#include "native_factory_checkpoint.h"
 #define TRAMPOLINE_BYTES 0x4000u
 #define TRAMPOLINE_ALLOCATION (2u*TRAMPOLINE_BYTES)
 struct start_io { struct a04_vendor_start *owner; NTSTATUS sync_status; };
@@ -127,8 +129,30 @@ NTSTATUS a04_vendor_m1_11_windows_start(struct a04_vendor_start *s,
         }
     }
 #endif
+    /* The cold native owner binds/enables its interrupt consumer only after
+     * the initial GP fence. MASKED therefore requires an actual source mask,
+     * not merely acknowledging the ready event below. Do not inherit a
+     * previous owner's enable bit or rely on reset defaults. HANDLER_OWNS
+     * deliberately leaves its connected consumer's register alone. */
+    if(irq_mode==A04_VENDOR_IRQ_MASKED) {
+        uint32_t before=rd32(&context,ROGUE_CR_MIPS_WRAPPER_IRQ_ENABLE),after;
+        if(before==0xffffffffu) {status=STATUS_IO_DEVICE_ERROR;goto fail;}
+        wr32(&context,ROGUE_CR_MIPS_WRAPPER_IRQ_ENABLE,0);
+        after=rd32(&context,ROGUE_CR_MIPS_WRAPPER_IRQ_ENABLE);
+        status=after==0?STATUS_SUCCESS:STATUS_IO_DEVICE_ERROR;
+        GeoFactoryCheckpoint(46,status,0,before,after,(ULONG)irq_mode);
+        if(!NT_SUCCESS(status))goto fail;
+    }
     m->hardware_owned=TRUE;s->attempted=TRUE;
     result=a04_rgx_execute_start(&input,&io,&irq,irq_mode==A04_VENDOR_IRQ_HANDLER_OWNS);
+    if(irq_mode==A04_VENDOR_IRQ_MASKED) {
+        uint32_t before=rd32(&context,ROGUE_CR_MIPS_WRAPPER_IRQ_ENABLE),after;
+        wr32(&context,ROGUE_CR_MIPS_WRAPPER_IRQ_ENABLE,0);
+        after=rd32(&context,ROGUE_CR_MIPS_WRAPPER_IRQ_ENABLE);
+        status=before!=0xffffffffu && after==0?STATUS_SUCCESS:STATUS_IO_DEVICE_ERROR;
+        GeoFactoryCheckpoint(47,status,1,before,after,(ULONG)result);
+        if(!NT_SUCCESS(status))result=A04_EXEC_BUS;
+    }
     if(!result) {
         uint32_t comp=(uint32_t)(input.init_pa+offsetof(RGXFWIF_INIT,sRGXCompChecks)+offsetof(RGXFWIF_COMPCHECKS,bUpdated));
         for(tries=0;tries<1000;tries++) {
