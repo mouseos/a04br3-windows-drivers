@@ -1847,7 +1847,7 @@
       "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_backing.c",
       "source_commit": "f96948533601f9fdcdcc22b9700aacd96dbf7204",
       "source_sha256": "a50d81d675bd9738be5969e4b9760a7c310e42072a67be229f280f984385273f",
-      "sha256": "9304213ce17eac68491cb656d5ed35bcca78f324b0740f9ff558417142efa97c",
+      "sha256": "bd48924161852c2514b72e4e9e43d96c4f388be561773efed0de269db8a9d8e1",
       "include_rewrites": [
         [
           "windows_native_cold_private.h",
@@ -1880,11 +1880,18 @@
       ],
       "rewrite_includes_only": false,
       "reviewed_delta": {
-        "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+        "source_commit": "14ac163b9e579d91f72a99e321da292412bf1f4c",
         "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_backing.c",
-        "sha256": "9304213ce17eac68491cb656d5ed35bcca78f324b0740f9ff558417142efa97c",
-        "baseline_destination_sha256": "621cb41a5adffb213e9550fb85ae11a974b2fceb8516d42e8d5614d01bbe1a56",
-        "role": "Unified356 explicit native geometry/full PT and same-owner display retirement"
+        "sha256": "bd48924161852c2514b72e4e9e43d96c4f388be561773efed0de269db8a9d8e1",
+        "baseline_destination_sha256": "9304213ce17eac68491cb656d5ed35bcca78f324b0740f9ff558417142efa97c",
+        "role": "357 bounded startup predicate record only; no control/capacity/return changes",
+        "previous_reviewed_delta": {
+          "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+          "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_backing.c",
+          "sha256": "9304213ce17eac68491cb656d5ed35bcca78f324b0740f9ff558417142efa97c",
+          "baseline_destination_sha256": "621cb41a5adffb213e9550fb85ae11a974b2fceb8516d42e8d5614d01bbe1a56",
+          "role": "Unified356 explicit native geometry/full PT and same-owner display retirement"
+        }
       }
     },
     {
