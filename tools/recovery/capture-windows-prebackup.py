@@ -29,6 +29,22 @@ DRIVERS = 'Windows/System32/Drivers/'
 ENGINE_STATE = ('Windows/System32/MT8167EngineProbe/attempted.bin',
                 'Windows/System32/MT8167EngineProbe/logs/service.log',
                 'Windows/System32/MT8167EngineProbe.exe')
+ENGINE_OPTIONAL_STATE = ('Windows/System32/MT8167CombinedFollowup142.exe',
+                         'Windows/System32/MT8167CombinedFollowup140.exe',
+                         'Windows/System32/MT8167CombinedFollowup138.exe',
+                         'Windows/System32/MT8167CombinedFollowup136.exe',
+'Windows/System32/MT8167CombinedFollowup134.exe',
+'Windows/System32/MT8167CombinedFollowup132.exe',
+'Windows/System32/MT8167CombinedFollowup130.exe',
+'Windows/System32/MT8167CombinedFollowup128.exe',
+'Windows/System32/MT8167CombinedFollowup126.exe',
+'Windows/System32/MT8167CombinedFollowup124.exe',
+                         'MT8167EngineProbe/brightness-native.log',
+                         'Windows/System32/MT8167EngineProbe/logs/brightness-native.log',
+                         'Windows/System32/MT8167CaptureProbe/capture.log',
+                         'Windows/System32/MT8167EngineProbe/logs/capture.stdout.txt',
+                         'Windows/System32/MT8167EngineProbe/logs/capture.stderr.txt',
+                         'Windows/System32/MT8167EngineProbe/logs/reboot.log',)
 HIVES = ('SYSTEM', 'SOFTWARE', 'DRIVERS')
 UUID = re.compile(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}')
 SHA256 = re.compile(r'[0-9a-f]{64}')
@@ -152,43 +168,72 @@ class Recovery:
                 entry['fs'] not in ('ntfs', 'fuseblk', 'fuse.ntfs-3g')):
             raise BackupError('The Windows mount is not verified read-only NTFS')
 
+    def source_stat(self, mount, source, optional=False):
+        # test -e/-f collapse EIO/EACCES into false. Only stat's explicit
+        # ENOENT diagnostic in the C locale authorizes an optional absence.
+        # Capture rc in-band so adb transport failures still fail separately.
+        path = shlex.quote(mount + '/' + source)
+        output = self.shell("LC_ALL=C; export LC_ALL; stat -c '%f %s' -- " + path +
+                            ' 2>&1; rc=$?; printf "\\nA04_STAT_RC=%s\\n" "$rc"',
+                            label='source path stat')
+        body, separator, status = output.rpartition('\nA04_STAT_RC=')
+        if not separator or not status.isdigit():
+            raise BackupError('Invalid source stat protocol: ' + source)
+        body = body.strip()
+        if int(status):
+            if (optional and len(body.splitlines()) == 1 and
+                    body.startswith('stat: ') and body.endswith(': No such file or directory')):
+                return None
+            reason = 'I/O error' if body.endswith(': Input/output error') else 'stat error (not absence)'
+            raise BackupError('Source ' + reason + ': ' + source)
+        if not re.fullmatch(r'[0-9a-fA-F]+ [0-9]+', body):
+            raise BackupError('Invalid source stat metadata: ' + source)
+        mode, size = body.split()
+        return int(mode, 16) & 0xf000, int(size)
+
     def snapshot(self, mount, specs):
         directories={'Windows', 'Windows/System32', CONFIG.rstrip('/'), DRIVERS.rstrip('/')}
         for source, required in specs:
-            directories.update(str(parent) for parent in PurePosixPath(source).parents if str(parent) != '.')
-        for directory in sorted(directories):
-            path = shlex.quote(mount + '/' + directory)
-            self.shell('test -d ' + path + ' && test ! -L ' + path, label='source directory check')
-        listings = {folder: set(self.shell('ls -1A ' + shlex.quote(mount + '/' + folder),
-                                           label='source directory listing').splitlines())
-                    for folder in sorted({source.rsplit('/', 1)[0] + '/' for source, required in specs})}
+            if required:
+                directories.update(str(parent) for parent in PurePosixPath(source).parents if str(parent) != '.')
+        optional_parents={str(parent) for source,required in specs if not required
+                          for parent in PurePosixPath(source).parents if str(parent)!='.'}
+        # Validate each ancestor itself, without listing unrelated siblings.
+        # A dangling symlink is rejected by mode, not treated as ENOENT.
+        for directory in sorted(directories | optional_parents,
+                                key=lambda p:(len(PurePosixPath(p).parts),p)):
+            metadata = self.source_stat(mount, directory, directory not in directories)
+            if metadata is not None and metadata[0] != 0x4000:
+                raise BackupError('Source parent is not a real directory: ' + directory)
         result = {}
         for source, required in specs:
-            folder, name = source.rsplit('/', 1)
-            if name not in listings[folder + '/']:
-                if required:
-                    raise BackupError('A required backup file is absent')
+            metadata = self.source_stat(mount, source, not required)
+            if metadata is None:
                 result[source] = None
                 continue
-            path = shlex.quote(mount + '/' + source)
-            data = self.shell('test -f ' + path + ' && test ! -L ' + path +
-                              ' && stat -c %s ' + path + ' && sha256sum ' + path,
-                              label='source file metadata').splitlines()
-            if len(data) != 2 or not data[0].isdigit():
-                raise BackupError('Invalid source size output')
-            digest = data[1].split()[0].lower()
-            size = int(data[0])
-            if not SHA256.fullmatch(digest) or size > MAX_FILE_BYTES:
-                raise BackupError('Source hash or bounded size check failed')
+            mode, size = metadata
+            if mode != 0x8000:
+                raise BackupError('Source is not a regular non-symlink file: ' + source)
+            if size > MAX_FILE_BYTES:
+                raise BackupError('Source bounded size check failed')
             if source in {CONFIG + hive for hive in HIVES} and size == 0:
                 raise BackupError('A required hive is empty')
+            path = shlex.quote(mount + '/' + source)
+            data = self.shell('sha256sum ' + path, label='source file hash').splitlines()
+            if len(data) != 1 or not data[0].split():
+                raise BackupError('Invalid source hash output')
+            digest = data[0].split()[0].lower()
+            if not SHA256.fullmatch(digest):
+                raise BackupError('Source hash check failed')
             result[source] = {'bytes': size, 'sha256': digest}
         if sum(x['bytes'] for x in result.values() if x) > MAX_TOTAL_BYTES:
             raise BackupError('Backup size limit exceeded')
         return result
 
 
-def file_specs(sys_names, allow_missing_sys, engine_state=False):
+def file_specs(sys_names, allow_missing_sys, engine_state=False, allow_missing_engine_log=False, sd_component_state=False):
+    if allow_missing_engine_log and not engine_state:
+        raise BackupError("Missing Engine log capture requires explicit --engine-probe-state")
     names = []
     for name in sys_names:
         if not SYS_NAME.fullmatch(name) or name.casefold() in [x.casefold() for x in names]:
@@ -196,7 +241,8 @@ def file_specs(sys_names, allow_missing_sys, engine_state=False):
         names.append(name)
     specs = [(CONFIG + hive, True) for hive in HIVES]
     specs += [(CONFIG + hive + suffix, True) for hive in HIVES for suffix in ('.LOG1', '.LOG2')]
-    return specs + [(DRIVERS + name, not allow_missing_sys) for name in names] + ([(name, True) for name in ENGINE_STATE] if engine_state else [])
+    if sd_component_state and 'mt8167-sd.sys' not in [n.casefold() for n in names]:specs.append((DRIVERS+'mt8167-sd.sys',False))
+    return specs + [(DRIVERS + name, not allow_missing_sys) for name in names] + ([(name, not (allow_missing_engine_log and name == ENGINE_STATE[1])) for name in ENGINE_STATE]+[(name,False) for name in ENGINE_OPTIONAL_STATE] if engine_state else [])
 
 
 def write_manifest(out, manifest):
@@ -216,7 +262,7 @@ def capture(args, recovery=None):
     compare_media=getattr(args,'compare_engine_media',None)
     compare_sha=getattr(args,'compare_engine_media_sha256',None)
     if bool(compare_media)!=bool(compare_sha):raise BackupError('Engine media comparison requires both manifest and SHA256')
-    specs = file_specs(args.target_sys, args.allow_missing_sys, getattr(args, 'engine_probe_state', False))
+    specs = file_specs(args.target_sys, args.allow_missing_sys, getattr(args, 'engine_probe_state', False), getattr(args, 'allow_missing_engine_service_log', False), getattr(args,'sd_component_state',False))
     recovery = recovery or Recovery(args.serial)
     out.mkdir(mode=0o700)
     os.chmod(out, 0o700)
@@ -224,8 +270,11 @@ def capture(args, recovery=None):
     manifest = {'schema_version': 1, 'status': 'capture-failed', 'files': [], 'missing_files': [],
                 'captured_at_utc': datetime.now(timezone.utc).isoformat(),
                 'capture_tool_sha256': sha(Path(__file__).resolve()),
+                'sd_component_state': bool(getattr(args,'sd_component_state',False)),
+                'engine_missing_service_log_opt_in': bool(getattr(args, 'allow_missing_engine_service_log', False)),
                 'validity': 'same Recovery boot only; no intervening Windows boot or Windows mutation',
-                'read_only': True, 'unmounted': False, 'errors': []}
+                'read_only': True, 'unmounted': False, 'errors': [],
+                'source_probe_scope': 'requested files and ancestors only; siblings not enumerated or verified'}
     mount_attempted = False
     made_mount_directory = False
     before = None
@@ -329,7 +378,7 @@ def verify_manifest(args, recovery=None):
     for item in manifest['files']:
         source = item['source_path']
         allowed_config = {CONFIG + hive + suffix for hive in HIVES for suffix in ('', '.LOG1', '.LOG2')}
-        if not (source in allowed_config or source in ENGINE_STATE or (source.startswith(DRIVERS) and SYS_NAME.fullmatch(source[len(DRIVERS):]))):
+        if not (source in allowed_config or source in ENGINE_STATE or source in ENGINE_OPTIONAL_STATE or (source.startswith(DRIVERS) and SYS_NAME.fullmatch(source[len(DRIVERS):]))):
             raise BackupError('Unexpected source path in pinned manifest')
         if item['backup_path'] != 'files/' + source or source in seen:
             raise BackupError('Invalid or repeated backup path')
@@ -361,7 +410,9 @@ def main():
     capture_parser.add_argument('--allow-missing-sys', action='store_true')
     capture_parser.add_argument('--compare-engine-media',type=Path)
     capture_parser.add_argument('--compare-engine-media-sha256')
-    capture_parser.add_argument('--engine-probe-state', action='store_true', help='capture fixed Engine marker, service.log and service EXE for explicit rearm')
+    capture_parser.add_argument('--allow-missing-engine-service-log', action='store_true', help='explicit missing-log snapshot only; Engine marker and EXE remain required')
+    capture_parser.add_argument('--sd-component-state', action='store_true', help='snapshot only the fixed optional mt8167-sd.sys, with explicit ENOENT; other required SYS remain required')
+    capture_parser.add_argument('--engine-probe-state', action='store_true', help='capture fixed Engine marker/log/EXE plus optional fixed brightness root log for explicit rearm')
     capture_parser.add_argument('--mount-driver', choices=('kernel-ntfs', 'ntfs-3g'), default='kernel-ntfs')
     capture_parser.add_argument('--ntfs3g-remote', default='/sbin/ntfs-3g', help='resident binary only; never pushed')
     verify_parser = sub.add_parser('verify', help='read-only writer preflight; performs no write')
