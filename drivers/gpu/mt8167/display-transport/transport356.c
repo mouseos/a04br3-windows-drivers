@@ -172,11 +172,16 @@ static NTSTATUS restore(void *p){
  KeWaitForSingleObject(&d->mutex,Executive,KernelMode,FALSE,NULL);
  if(!d->started){s=STATUS_DEVICE_NOT_READY;goto done;}
  s=disable_drain(d);if(!NT_SUCCESS(s))goto done;
+ restore_configuration356(d);
+ wr(d,OVL_CON0,d->old_con);wr(d,OVL_PITCH0,d->old_pitch);wr(d,OVL_ADDR0,d->old_address);wr(d,OVL_RDMA0,d->old_rdma);wr(d,OVL_SRC,d->old_source);display_barrier356();
+ /* Do not re-enable DMA or drop the exposed mapping on an unconfirmed
+  * address/configuration write. Idle alone does not prove future no-read. */
+ if(rd(d,OVL_ADDR0)!=d->old_address||rd(d,OVL_CON0)!=d->old_con||rd(d,OVL_PITCH0)!=d->old_pitch||rd(d,OVL_SRC)!=d->old_source){s=STATUS_IO_DEVICE_ERROR;d->quarantined=TRUE;if(d->active)d->active->quarantined=TRUE;goto done;}
+ wr(d,OVL_EN,1);display_barrier356();
+ if(!(rd(d,OVL_EN)&1u)){s=STATUS_IO_DEVICE_ERROR;d->quarantined=TRUE;if(d->active)d->active->quarantined=TRUE;goto done;}
  if(d->active){d->active->exposed=FALSE;d->active->quarantined=FALSE;d->active=NULL;}
  d->quarantined=FALSE;
- restore_configuration356(d);
- wr(d,OVL_CON0,d->old_con);wr(d,OVL_PITCH0,d->old_pitch);wr(d,OVL_ADDR0,d->old_address);wr(d,OVL_RDMA0,d->old_rdma);wr(d,OVL_SRC,d->old_source);display_barrier356();wr(d,OVL_EN,1);
- /* Retirement proved above; restored register write is not a new frame proof. */
+ /* Retirement proved above; restore is not a new GPU/frame completion. */
  done:d->last_status=s;KeReleaseMutex(&d->mutex,FALSE);return s;
 }
 static void emergency_restore(void *p){
