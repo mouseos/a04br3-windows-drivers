@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
-#include <intrin.h>
 #include "display_adapter356.h"
 #include "lifecycle.h"
 #include "../wddm-display/unified_display.h"
 #include "../display-transport/interface356.h"
+#include "../display-transport/barrier356.h"
 #define TAG '6PvG'
 struct display_map356 {struct display_map356 *next;struct geo_allocation *allocation;void *cookie;};
 struct display_adapter356 {
@@ -217,7 +217,7 @@ NTSTATUS APIENTRY GeoDisplay356Observe(HANDLE adapter,const DXGKARG_ESCAPE *p){
  /* The same passive_lock excludes the sole real prepare/submit worker.
   * wait_source proved all accepted work retired; this is an invalidate/read,
   * never a CPU write into the display or a replacement rendering path. */
- KeFlushIoBuffers(lease.mdl,TRUE,TRUE);KeMemoryBarrier();
+ KeFlushIoBuffers(lease.mdl,TRUE,TRUE);display_barrier356();
  RtlCopyMemory(o->pixels,cpu,GEO_SCANOUT_OBSERVE356_BYTES);
  o->width=800;o->height=1280;o->pitch=3200;o->bytes=GEO_SCANOUT_OBSERVE356_BYTES;
  o->frame_low=(UINT)snap.frame_serial;o->frame_high=(UINT)(snap.frame_serial>>32);

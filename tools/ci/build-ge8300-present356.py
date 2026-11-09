@@ -26,7 +26,9 @@ stage=None
 if o.exists():
  if not a.resume_stage_sha256:raise ValueError('Existing build requires the pinned failed-stage receipt')
  pin(t/'failed-link-inputs.json',a.resume_stage_sha256);stage=load(t/'failed-link-inputs.json')
- if stage['source_commit']!='ac16aa83abf3e6ebeb49ff1a4dbcc5be620c8b98':raise ValueError('Exact failed source required')
+ run(['git','-C',r,'merge-base','--is-ancestor',stage['source_commit'],a.source_commit])
+ previous_recipe=run(['git','-C',r,'show',stage['source_commit']+':tools/ci/build-ge8300-present356.py'])
+ if hashlib.sha256(previous_recipe.encode()).hexdigest()!=stage['recipe_sha256']:raise ValueError('Prior stage recipe provenance')
  for n,h in stage['objects'].items():pin(o/n,h)
 else:o.mkdir()
 (o/'deps').mkdir(exist_ok=True);(o/'logs').mkdir(exist_ok=True);pkg=o/'package356';pkg.mkdir(exist_ok=True)

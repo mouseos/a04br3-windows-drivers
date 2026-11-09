@@ -1,10 +1,11 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent
  * DIS0 PnP resource/DMA/real frame-IRQ provider. No DxgkInitialize, second GPU
  * owner, framebuffer CPU blitter, root registration or user control device. */
-#include <intrin.h>
 #include "interface356.h"
 #include <acpiioct.h>
 #include "../vendor_m1_11/windows_shared_scanout.h"
+#include "barrier356.h"
+#include "post_profile356.h"
 #define TAG '6DsG'
 #define FRAME_BYTES 4096000u
 #define FRAME_PAGES 1000u
@@ -32,12 +33,19 @@ struct display356 {
  PKINTERRUPT interrupt,ovl_interrupt;PDMA_ADAPTER dma;ULONG map_registers;
  CM_RESOURCE_LIST brightness;
  KMUTEX mutex;LIST_ENTRY maps;LONG references;BOOLEAN started,closing,quarantined;
+ ULONG saved[27];
  ULONG old_address,old_source,old_con,old_rdma,old_pitch;struct map356 *active;
  ULONGLONG frame_serial,ovl_serial;volatile LONG frame_errors,in_blank,seen_vsync;KEVENT frame_event;NTSTATUS last_status;
  a04_display_frame_notify notify;void *notify_context;
 };
 static ULONG rd(struct display356 *d,ULONG o){return READ_REGISTER_ULONG(d->ovl+o/4u);}
 static void wr(struct display356 *d,ULONG o,ULONG v){WRITE_REGISTER_ULONG(d->ovl+o/4u,v);}
+static const ULONG owned_offsets356[27]={0x020,0x024,0x028,
+ 0x030,0x038,0x03c,0x044,0x0c0,0xf40,
+ 0x050,0x058,0x05c,0x064,0x0e0,0xf60,
+ 0x070,0x078,0x07c,0x084,0x100,0xf80,
+ 0x090,0x098,0x09c,0x0a4,0x120,0xfa0};
+static void restore_configuration356(struct display356 *d){for(ULONG i=0;i<27;i++)wr(d,owned_offsets356[i],d->saved[i]);}
 static void reference(void *p){struct display356 *d=p;ObReferenceObject(d->self);InterlockedIncrement(&d->references);}
 static void dereference(void *p){struct display356 *d=p;InterlockedDecrement(&d->references);ObDereferenceObject(d->self);}
 static BOOLEAN irq(PKINTERRUPT interrupt,void *context){
@@ -73,7 +81,7 @@ static NTSTATUS idle(struct display356 *d){
  return STATUS_IO_TIMEOUT;
 }
 static NTSTATUS disable_drain(struct display356 *d){
- wr(d,OVL_INTEN,0);WRITE_REGISTER_ULONG(d->rdma,0);wr(d,OVL_EN,0);wr(d,OVL_RST,1);wr(d,OVL_RST,0);KeMemoryBarrier();
+ wr(d,OVL_INTEN,0);WRITE_REGISTER_ULONG(d->rdma,0);wr(d,OVL_EN,0);wr(d,OVL_RST,1);wr(d,OVL_RST,0);display_barrier356();
  NTSTATUS s=idle(d);if(!NT_SUCCESS(s))d->quarantined=TRUE;return s;
 }
 static NTSTATUS brightness_resources(void *p,PCM_RESOURCE_LIST *out){
@@ -144,9 +152,10 @@ static NTSTATUS select_backing(void *p,void *cookie){
  /* DMA has actually stopped, so the old scanout has retired. Retain the
   * new backing BEFORE the first register write; a timeout quarantines it. */
  d->active=m;m->exposed=TRUE;before=frame_serial(d);before_ovl=ovl_serial(d);KeClearEvent(&d->frame_event);
+ restore_configuration356(d);
  wr(d,OVL_ROI,(1280u<<16)|800u);wr(d,OVL_CON0,0x20ffu);wr(d,OVL_SIZE0,(1280u<<16)|800u);
- wr(d,OVL_PITCH0,3200u);wr(d,OVL_ADDR0,m->dma);wr(d,OVL_RDMA0,d->old_rdma);wr(d,OVL_SRC,1u);
- wr(d,OVL_INTSTA,0);WRITE_REGISTER_ULONG(d->rdma+1,0);wr(d,OVL_INTEN,2u);WRITE_REGISTER_ULONG(d->rdma,6u);KeMemoryBarrier();wr(d,OVL_EN,1u);
+ wr(d,OVL_PITCH0,(d->old_pitch&0xffff0000u)|3200u);wr(d,OVL_ADDR0,m->dma);wr(d,OVL_RDMA0,d->old_rdma);wr(d,OVL_SRC,1u);
+ wr(d,OVL_INTSTA,0);WRITE_REGISTER_ULONG(d->rdma+1,0);wr(d,OVL_INTEN,2u);WRITE_REGISTER_ULONG(d->rdma,6u);display_barrier356();wr(d,OVL_EN,1u);
  start=KeQueryInterruptTime();s=STATUS_IO_TIMEOUT;
  for(ULONG i=0;i<100;i++){
   if(frame_serial(d)>before&&ovl_serial(d)>before_ovl){s=STATUS_SUCCESS;break;}
@@ -165,7 +174,8 @@ static NTSTATUS restore(void *p){
  s=disable_drain(d);if(!NT_SUCCESS(s))goto done;
  if(d->active){d->active->exposed=FALSE;d->active->quarantined=FALSE;d->active=NULL;}
  d->quarantined=FALSE;
- wr(d,OVL_CON0,d->old_con);wr(d,OVL_PITCH0,d->old_pitch);wr(d,OVL_ADDR0,d->old_address);wr(d,OVL_RDMA0,d->old_rdma);wr(d,OVL_SRC,d->old_source);KeMemoryBarrier();wr(d,OVL_EN,1);
+ restore_configuration356(d);
+ wr(d,OVL_CON0,d->old_con);wr(d,OVL_PITCH0,d->old_pitch);wr(d,OVL_ADDR0,d->old_address);wr(d,OVL_RDMA0,d->old_rdma);wr(d,OVL_SRC,d->old_source);display_barrier356();wr(d,OVL_EN,1);
  /* Retirement proved above; restored register write is not a new frame proof. */
  done:d->last_status=s;KeReleaseMutex(&d->mutex,FALSE);return s;
 }
@@ -173,7 +183,8 @@ static void emergency_restore(void *p){
  struct display356 *d=p;if(!d||!d->started||!d->ovl||!d->rdma)return;
  /* Any-IRQL panic fallback. No wait, allocation, unmap or retirement claim. */
  d->quarantined=TRUE;wr(d,OVL_INTEN,0);WRITE_REGISTER_ULONG(d->rdma,0);wr(d,OVL_EN,0);
- wr(d,OVL_CON0,d->old_con);wr(d,OVL_PITCH0,d->old_pitch);wr(d,OVL_ADDR0,d->old_address);wr(d,OVL_RDMA0,d->old_rdma);wr(d,OVL_SRC,d->old_source);KeMemoryBarrier();wr(d,OVL_EN,1);
+ restore_configuration356(d);
+ wr(d,OVL_CON0,d->old_con);wr(d,OVL_PITCH0,d->old_pitch);wr(d,OVL_ADDR0,d->old_address);wr(d,OVL_RDMA0,d->old_rdma);wr(d,OVL_SRC,d->old_source);display_barrier356();wr(d,OVL_EN,1);
 }
 struct subscription {struct display356 *d;a04_display_frame_notify notify;void *context;};
 static BOOLEAN set_subscription(void *p){struct subscription *q=p;q->d->notify=q->notify;q->d->notify_context=q->context;return TRUE;}
@@ -238,12 +249,12 @@ static NTSTATUS start(struct display356 *d,PCM_RESOURCE_LIST resources,PCM_RESOU
  if(pwms!=1||posts!=1||!pwm||!post||ovls!=1||rdmas!=1||irqs!=2||!ovl_intr||ovl_intr->ShareDisposition!=CmResourceShareDeviceExclusive||!intr||intr->ShareDisposition!=CmResourceShareDeviceExclusive||(intr->Flags&CM_RESOURCE_INTERRUPT_LATCHED))return STATUS_DEVICE_CONFIGURATION_ERROR;
  d->ovl=MmMapIoSpace(ovl->u.Memory.Start,4096,MmNonCached);if(!d->ovl)return STATUS_INSUFFICIENT_RESOURCES;
  d->rdma=MmMapIoSpace(rdma->u.Memory.Start,4096,MmNonCached);if(!d->rdma){s=STATUS_INSUFFICIENT_RESOURCES;goto failed;}
- if(rd(d,OVL_ROI)!=((1280u<<16)|800u)||(rd(d,OVL_PITCH0)&0xffffu)!=3200u||
-    (rd(d,OVL_CON0)&0x30003600u)||((rd(d,OVL_CON0)>>12)&15u)!=2u||!rd(d,OVL_ADDR0)||rd(d,OVL_INTEN)||READ_REGISTER_ULONG(d->rdma)){s=STATUS_DEVICE_CONFIGURATION_ERROR;goto failed;}
+ if(!a04_post_profile356(rd(d,OVL_ROI),rd(d,OVL_PITCH0),rd(d,OVL_CON0),rd(d,OVL_SIZE0),rd(d,0x03cu))||!rd(d,OVL_ADDR0)||rd(d,OVL_INTEN)||READ_REGISTER_ULONG(d->rdma)){s=STATUS_DEVICE_CONFIGURATION_ERROR;goto failed;}
  if((ULONGLONG)rd(d,OVL_ADDR0)<(ULONGLONG)post->u.Memory.Start.QuadPart||(ULONGLONG)rd(d,OVL_ADDR0)+FRAME_BYTES>(ULONGLONG)post->u.Memory.Start.QuadPart+post->u.Memory.Length){s=STATUS_DEVICE_CONFIGURATION_ERROR;goto failed;}
  RtlZeroMemory(&d->brightness,sizeof(d->brightness));d->brightness.Count=1;
  d->brightness.List[0].InterfaceType=Internal;d->brightness.List[0].PartialResourceList.Version=1;d->brightness.List[0].PartialResourceList.Revision=1;
  d->brightness.List[0].PartialResourceList.Count=1;d->brightness.List[0].PartialResourceList.PartialDescriptors[0]=*pwm;
+ for(ULONG i=0;i<27;i++)d->saved[i]=rd(d,owned_offsets356[i]);
  d->old_address=rd(d,OVL_ADDR0);d->old_source=rd(d,OVL_SRC);d->old_con=rd(d,OVL_CON0);d->old_rdma=rd(d,OVL_RDMA0);d->old_pitch=rd(d,OVL_PITCH0);
  RtlZeroMemory(&description,sizeof(description));description.Version=DEVICE_DESCRIPTION_VERSION3;description.Master=TRUE;description.ScatterGather=TRUE;description.DmaAddressWidth=32;description.InterfaceType=Internal;description.MaximumLength=FRAME_BYTES;
  d->dma=IoGetDmaAdapter(d->pdo,&description,&d->map_registers);
