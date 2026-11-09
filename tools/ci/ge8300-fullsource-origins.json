@@ -59,27 +59,39 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/clear_engine.c",
-      "source_commit": "ab744bc6278fc1ed099e42f31b07444a2c860b61",
-      "role": "Integrated real Copy336 all-consumer/ownership contract",
-      "sha256": "c53644516d5ee264d04048d395a0e488cdfe1290b59dd50857d971c9c4a69b16",
+      "source_commit": "a52476c0612b77c3457c9ebb53c393bf30000673",
+      "role": "submitted FIFO and PASSIVE preparation348; old origins preserved",
+      "sha256": "82e6fbecac50e35c45fab0616c56a1c49e2fe929c2a94d27df112a82f63f5016",
       "previous_origins": [
         {
           "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
           "role": "Texture326/327 explicit source overlay",
           "sha256": "5b7a3f737eacfeb528d0055bf54a98fa076d3492be04abea177d6017bcd6661c"
+        },
+        {
+          "path": "drivers/gpu/mt8167/wddm-render/clear_engine.c",
+          "source_commit": "ab744bc6278fc1ed099e42f31b07444a2c860b61",
+          "role": "Integrated real Copy336 all-consumer/ownership contract",
+          "sha256": "c53644516d5ee264d04048d395a0e488cdfe1290b59dd50857d971c9c4a69b16"
         }
       ]
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/clear_engine.h",
-      "source_commit": "ab744bc6278fc1ed099e42f31b07444a2c860b61",
-      "role": "Integrated real Copy336 all-consumer/ownership contract",
-      "sha256": "9dadd768c10a53b08431692bbd1125b20af37fc0bd27e1ebb1025e43d11df11a",
+      "source_commit": "a52476c0612b77c3457c9ebb53c393bf30000673",
+      "role": "submitted FIFO and PASSIVE preparation348; old origins preserved",
+      "sha256": "5f05ee003e6fd8048710d7a93cb68c87b16a5408cef51b1962e71cff3e8ca9c4",
       "previous_origins": [
         {
           "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
           "role": "Texture326/327 explicit source overlay",
           "sha256": "feea25e4c2eb5d5db5e1203bff5a0593fca7e41e4f3b5eafe4a62e1cad19ab24"
+        },
+        {
+          "path": "drivers/gpu/mt8167/wddm-render/clear_engine.h",
+          "source_commit": "ab744bc6278fc1ed099e42f31b07444a2c860b61",
+          "role": "Integrated real Copy336 all-consumer/ownership contract",
+          "sha256": "9dadd768c10a53b08431692bbd1125b20af37fc0bd27e1ebb1025e43d11df11a"
         }
       ]
     },
@@ -152,9 +164,9 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/kmd_clear.c",
-      "source_commit": "960243225c2b3fb75be43894967ff6445ff5a5d2",
-      "role": "Render capture only / validated Patch native preparation347; prior origins preserved",
-      "sha256": "2322295e4aa22a6ca6e2ec21c9b38f77a796273672771585919ee65f0c7129ac",
+      "source_commit": "a52476c0612b77c3457c9ebb53c393bf30000673",
+      "role": "submitted FIFO and PASSIVE preparation348; old origins preserved",
+      "sha256": "9c2cc02b653f503f8215d98857d30edcba6ad9be4a7825267945fe7145953cfb",
       "previous_origins": [
         {
           "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
@@ -195,14 +207,20 @@
           "source_commit": "144a488bac2c1dec791c7122a97c1faf70e3ec4c",
           "role": "Durable PASSIVE existing progress344; previous origins preserved",
           "sha256": "339f4dd249fdb5dd329253083e5e141ad0b981c063d78d92f6cec272820dcff0"
+        },
+        {
+          "path": "drivers/gpu/mt8167/wddm-render/kmd_clear.c",
+          "source_commit": "960243225c2b3fb75be43894967ff6445ff5a5d2",
+          "role": "Render capture only / validated Patch native preparation347; prior origins preserved",
+          "sha256": "2322295e4aa22a6ca6e2ec21c9b38f77a796273672771585919ee65f0c7129ac"
         }
       ]
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/kmd_clear.h",
-      "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
-      "role": "Matrix VS + sampled PS331 / explicit owned ABI5 composition",
-      "sha256": "b48f996567865925b9b3c22dfd5f748b182c57e4b25b70c42a39f2c948725381",
+      "source_commit": "a52476c0612b77c3457c9ebb53c393bf30000673",
+      "role": "submitted FIFO and PASSIVE preparation348; old origins preserved",
+      "sha256": "a1cb94c7700cee261b4cca651256b79b66c90aef7e4e74e979d971053ea6eedd",
       "previous_origins": [
         {
           "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
@@ -213,14 +231,20 @@
           "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
           "sha256": "96897a7e62d75e129c3f88c8507412e3d58dc3d430f5381aefd43d55404c55cd",
           "role": "Reviewed ABI4 shader/native runtime source329"
+        },
+        {
+          "path": "drivers/gpu/mt8167/wddm-render/kmd_clear.h",
+          "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
+          "role": "Matrix VS + sampled PS331 / explicit owned ABI5 composition",
+          "sha256": "b48f996567865925b9b3c22dfd5f748b182c57e4b25b70c42a39f2c948725381"
         }
       ]
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/kmd_objects.c",
-      "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
-      "role": "Matrix VS + sampled PS331 / explicit owned ABI5 composition",
-      "sha256": "a77ad972cf1039f5551e513d993e23e9b9fee010dddddb6beb240ff88bb7870c",
+      "source_commit": "a52476c0612b77c3457c9ebb53c393bf30000673",
+      "role": "submitted FIFO and PASSIVE preparation348; old origins preserved",
+      "sha256": "5c01f00f546d8528ab4437498311e222d2c6764865d07ab33cc5cbfceaa4e4e6",
       "previous_origins": [
         {
           "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
@@ -231,6 +255,12 @@
           "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
           "sha256": "9326586d3aee4fbcdd909a9e7c0f6f962bc0050d8e555c188178a2064d710342",
           "role": "Reviewed ABI4 shader/native runtime source329"
+        },
+        {
+          "path": "drivers/gpu/mt8167/wddm-render/kmd_objects.c",
+          "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
+          "role": "Matrix VS + sampled PS331 / explicit owned ABI5 composition",
+          "sha256": "a77ad972cf1039f5551e513d993e23e9b9fee010dddddb6beb240ff88bb7870c"
         }
       ]
     },
@@ -242,22 +272,36 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/lifecycle.c",
-      "source_commit": "729d296b1f4710e9b162a85dca60560d0c22c8ee",
-      "role": "332 bounded readback, retention and durable boundary",
-      "sha256": "d5be902350d656d6a696240fa39f08a671a7bfd0ffca8d452a2adb22acb3660c",
+      "source_commit": "cfd4a2e429a7fc7c90e14a2c1f09f65d0a8540b8",
+      "role": "submitted FIFO and PASSIVE preparation348; old origins preserved",
+      "sha256": "36e055a37d342e6285256fa263bdc19ff2cf0c27387cb2ae625bc164c44f1023",
       "previous_origins": [
         {
           "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
           "sha256": "ee36fe35451cf7d6179260e177f7871a8a84b19323dbc2ee12e19b82eadefa90",
           "role": "KMD320"
+        },
+        {
+          "path": "drivers/gpu/mt8167/wddm-render/lifecycle.c",
+          "source_commit": "729d296b1f4710e9b162a85dca60560d0c22c8ee",
+          "role": "332 bounded readback, retention and durable boundary",
+          "sha256": "d5be902350d656d6a696240fa39f08a671a7bfd0ffca8d452a2adb22acb3660c"
         }
       ]
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/lifecycle.h",
-      "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
-      "role": "KMD320",
-      "sha256": "c10815f519f901dde219b1a186c910428a170fba1030b9863ee63ccc90940a2c"
+      "source_commit": "a52476c0612b77c3457c9ebb53c393bf30000673",
+      "role": "submitted FIFO and PASSIVE preparation348; old origins preserved",
+      "sha256": "9dccd8539578b1e0aefda6774bfa1feec4944842bfcdeab4d5e666802c6655bc",
+      "previous_origins": [
+        {
+          "path": "drivers/gpu/mt8167/wddm-render/lifecycle.h",
+          "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
+          "role": "KMD320",
+          "sha256": "c10815f519f901dde219b1a186c910428a170fba1030b9863ee63ccc90940a2c"
+        }
+      ]
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/mdl_pin.c",
@@ -273,9 +317,9 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
-      "source_commit": "960243225c2b3fb75be43894967ff6445ff5a5d2",
-      "role": "Render capture only / validated Patch native preparation347; prior origins preserved",
-      "sha256": "b155597f0dccef0dd257f62e1157b41948e3ca4a6a98b21b472ec5e4f38b4142",
+      "source_commit": "a52476c0612b77c3457c9ebb53c393bf30000673",
+      "role": "submitted FIFO and PASSIVE preparation348; old origins preserved",
+      "sha256": "9c640245ef1f7186b26e2c9db9dbb5ef347588f4313179205916bbf9dc44887c",
       "previous_origins": [
         {
           "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
@@ -321,6 +365,12 @@
           "source_commit": "eb0b870c9be6f824703d0c62e41de5488994f942",
           "role": "MASKED startup346 runtime identity; previous origins preserved",
           "sha256": "ae343db6ba440f4be53e7af871356fdb15d50fd27052073ba835f1aee49cf2ea"
+        },
+        {
+          "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
+          "source_commit": "960243225c2b3fb75be43894967ff6445ff5a5d2",
+          "role": "Render capture only / validated Patch native preparation347; prior origins preserved",
+          "sha256": "b155597f0dccef0dd257f62e1157b41948e3ca4a6a98b21b472ec5e4f38b4142"
         }
       ]
     },
@@ -404,14 +454,20 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/tests/lifecycle.c",
-      "source_commit": "ab744bc6278fc1ed099e42f31b07444a2c860b61",
-      "role": "Integrated real Copy336 all-consumer/ownership contract",
-      "sha256": "e8af9ac03ec376dd54cdb9569cdc7165c30557bb73537c615dca8408dde3cd5a",
+      "source_commit": "a52476c0612b77c3457c9ebb53c393bf30000673",
+      "role": "state4 logical-reference retention across VidMm eviction/rebind; old origin preserved",
+      "sha256": "b8ff484ae788038bbff35798beb2f6fdf09e5e467b88a9b0f247134298bf5346",
       "previous_origins": [
         {
           "source_commit": "f73da1e31755e08727958ac6f9160a0d5ccdff6b",
           "role": "KMD320",
           "sha256": "d2ef58033d16ae2b7ea92b371f90e107c187f4336d18cef8f144917e873d5f96"
+        },
+        {
+          "path": "drivers/gpu/mt8167/wddm-render/tests/lifecycle.c",
+          "source_commit": "ab744bc6278fc1ed099e42f31b07444a2c860b61",
+          "role": "Integrated real Copy336 all-consumer/ownership contract",
+          "sha256": "e8af9ac03ec376dd54cdb9569cdc7165c30557bb73537c615dca8408dde3cd5a"
         }
       ]
     },
@@ -2170,5 +2226,6 @@
   "durable_progress_source_commit": "144a488bac2c1dec791c7122a97c1faf70e3ec4c",
   "passive_waits_source_commit": "e4108dafe82745ba58af20245bf891b9feebd32f",
   "masked_start_source_commit": "eb0b870c9be6f824703d0c62e41de5488994f942",
-  "patch_prepare_source_commit": "960243225c2b3fb75be43894967ff6445ff5a5d2"
+  "patch_prepare_source_commit": "960243225c2b3fb75be43894967ff6445ff5a5d2",
+  "submit_worker_source_commit": "a52476c0612b77c3457c9ebb53c393bf30000673"
 }
