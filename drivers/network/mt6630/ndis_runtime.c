@@ -9,6 +9,10 @@
 #include "arm_clock.h"
 #include "windows_nvram_reader.h"
 #define TAG 'r40A'
+/* Existing paused field remains false/true to every other TU and wire query.
+ * Value2 is internal: paused datapath with one owed NDIS completion. */
+#define MT6630_NDIS_PAUSED 1
+#define MT6630_NDIS_PAUSING 2
 static NDIS_HANDLE driver_handle;
 static uint64_t checkpoint_driver_generation;
 #define CP(a,stage,phase,kind,raw,detail) (void)a04_cp_emit((a)->checkpoint,stage,phase,kind,(ULONG)(raw),(ULONG)(detail))
@@ -29,8 +33,25 @@ static void finish_tx(struct a04_ndis_runtime *a,PNET_BUFFER_LIST nbl,NDIS_STATU
 }
 void a04_ndis_tx_complete(void *context,PNET_BUFFER_LIST nbl,NDIS_STATUS status)
 {finish_tx(context,nbl,status,0);}
+/* Caller holds a->lock. A paused adapter cannot indicate new data or admit
+ * new TX, but the independent HCI broker and OIDs remain serviceable. Claim
+ * completion at the actual worker/API drain boundary, not by waiting on an
+ * event that those ongoing control operations are allowed to reset. */
+static int pause_complete_locked(struct a04_ndis_runtime *a)
+{
+ if(a->paused!=MT6630_NDIS_PAUSING||a->busy||a->api_refs||a->send||a->send_queue.count)return 0;
+ a->paused=MT6630_NDIS_PAUSED;return 1;
+}
 static void api_leave(struct a04_ndis_runtime *a)
-{NdisAcquireSpinLock(&a->lock);if(a->api_refs)--a->api_refs;if(!a->api_refs&&!a->busy)NdisSetEvent(&a->idle);NdisReleaseSpinLock(&a->lock);}
+{
+ int complete;NDIS_HANDLE adapter=a->adapter;
+ NdisAcquireSpinLock(&a->lock);if(a->api_refs)--a->api_refs;
+ if(!a->api_refs&&!a->busy)NdisSetEvent(&a->idle);
+ complete=pause_complete_locked(a);NdisReleaseSpinLock(&a->lock);
+ /* NDIS may initiate the next PnP transition from completion. No access to
+  * a follows this call; do not complete under the adapter spin lock. */
+ if(complete)NdisMPauseComplete(adapter);
+}
 int a04_ndis_excluded(const struct a04_ndis_runtime *a,const UCHAR *mac)
 {for(ULONG i=0;i<a->excluded_count;i++){unsigned d=0;for(unsigned j=0;j<6;j++)d|=mac[j]^a->excluded[i][j];if(!d)return 1;unsigned all=255;for(unsigned j=0;j<6;j++)all&=a->excluded[i][j];if(all==255)return 1;}return 0;}
 static int exclude_bssid(void *context,const uint8_t *mac)
@@ -407,7 +428,12 @@ again:
  if(a04_combo_requests_pending(&a->combo.requests)){NdisReleaseSpinLock(&a->lock);goto again;}
 #endif
  if(a->send_queue.count){NdisReleaseSpinLock(&a->lock);goto again;}
- NdisFreeIoWorkItem(work);a->busy=0;a->cancelled=0;if(!a->api_refs)NdisSetEvent(&a->idle);NdisReleaseSpinLock(&a->lock);
+ NdisFreeIoWorkItem(work);a->busy=0;a->cancelled=0;if(!a->api_refs)NdisSetEvent(&a->idle);
+ {int complete=pause_complete_locked(a);NDIS_HANDLE adapter=a->adapter;
+  NdisReleaseSpinLock(&a->lock);
+  /* Completion can reenter PnP; all worker data accesses end before it. */
+  if(complete)NdisMPauseComplete(adapter);}
+
 }
 static void poll_dpc(PKDPC dpc,PVOID context,PVOID x,PVOID y)
 {
@@ -538,7 +564,13 @@ failed:
 }
 VOID RuntimeHalt(NDIS_HANDLE p,NDIS_HALT_ACTION action){struct a04_ndis_runtime *a=p;UNREFERENCED_PARAMETER(action);close_worker(a);cleanup(a);}
 NDIS_STATUS RuntimePause(NDIS_HANDLE p,PNDIS_MINIPORT_PAUSE_PARAMETERS params)
-{struct a04_ndis_runtime *a=p;UNREFERENCED_PARAMETER(params);NdisAcquireSpinLock(&a->lock);a->paused=1;NdisReleaseSpinLock(&a->lock);while(!NdisWaitEvent(&a->idle,1000)){}NdisAcquireSpinLock(&a->lock);NdisReleaseSpinLock(&a->lock);return NDIS_STATUS_SUCCESS;}
+{
+ struct a04_ndis_runtime *a=p;NDIS_STATUS status;UNREFERENCED_PARAMETER(params);
+ NdisAcquireSpinLock(&a->lock);a->paused=1;
+ if(a->busy||a->api_refs||a->send||a->send_queue.count){a->paused=MT6630_NDIS_PAUSING;status=NDIS_STATUS_PENDING;}
+ else status=NDIS_STATUS_SUCCESS;
+ NdisReleaseSpinLock(&a->lock);return status;
+}
 NDIS_STATUS RuntimeRestart(NDIS_HANDLE p,PNDIS_MINIPORT_RESTART_PARAMETERS params)
 {struct a04_ndis_runtime *a=p;UNREFERENCED_PARAMETER(params);if(a->radio.failed||a->closing)return NDIS_STATUS_ADAPTER_NOT_READY;NdisAcquireSpinLock(&a->lock);a->paused=0;NdisReleaseSpinLock(&a->lock);return NDIS_STATUS_SUCCESS;}
 NDIS_STATUS RuntimeOid(NDIS_HANDLE p,PNDIS_OID_REQUEST request)
