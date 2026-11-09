@@ -3,6 +3,7 @@
  * user-token theft, desktop switching, credential prompt or hardware control.
  * It duplicates the caller's SYSTEM token into the active console session.
  */
+#define UNICODE 1
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <bcrypt.h>
@@ -33,7 +34,7 @@ static void open_log(void){
  disk=CreateFileW(path,GENERIC_WRITE,FILE_SHARE_READ,NULL,CREATE_NEW,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,NULL);if(disk==INVALID_HANDLE_VALUE)ExitProcess(2);value("LAUNCHER_PID",pid);
 }
 void mainCRTStartup(void){
- static WCHAR image[32768],command[32768];static BYTE user_buffer[256];
+ static WCHAR image[32768],command[32768];static union {ULONG_PTR alignment;BYTE data[256];} user_buffer;
  HANDLE token=NULL,duplicate=NULL,file=INVALID_HANDLE_VALUE;PROCESS_INFORMATION process={0};STARTUPINFOW startup={0};
  TOKEN_PRIVILEGES old[3];DWORD old_size[3]={0},enabled=0,current=0,target,n,error=ERROR_GEN_FAILURE,child_exit=1,wait;BOOL launched=FALSE;
  const WCHAR *names[3]={SE_TCB_NAME,SE_ASSIGNPRIMARYTOKEN_NAME,SE_INCREASE_QUOTA_NAME};
@@ -51,7 +52,7 @@ void mainCRTStartup(void){
  if(current!=target){
   if(current!=0){error=ERROR_ACCESS_DENIED;goto done;}
   if(!OpenProcessToken(GetCurrentProcess(),TOKEN_QUERY|TOKEN_DUPLICATE|TOKEN_ADJUST_PRIVILEGES,&token)){error=GetLastError();goto done;}
-  if(!GetTokenInformation(token,TokenUser,user_buffer,sizeof(user_buffer),&n)||!IsWellKnownSid(((TOKEN_USER *)user_buffer)->User.Sid,WinLocalSystemSid)){error=ERROR_ACCESS_DENIED;goto done;}
+  if(!GetTokenInformation(token,TokenUser,user_buffer.data,sizeof(user_buffer.data),&n)||!IsWellKnownSid(((TOKEN_USER *)user_buffer.data)->User.Sid,WinLocalSystemSid)){error=ERROR_ACCESS_DENIED;goto done;}
   for(enabled=0;enabled<3;enabled++)if(!privilege(token,names[enabled],&old[enabled],&old_size[enabled])){error=GetLastError();goto done;}
   if(!DuplicateTokenEx(token,TOKEN_QUERY|TOKEN_DUPLICATE|TOKEN_ASSIGN_PRIMARY|TOKEN_ADJUST_DEFAULT|TOKEN_ADJUST_SESSIONID,NULL,SecurityImpersonation,TokenPrimary,&duplicate)){error=GetLastError();goto done;}
   if(!SetTokenInformation(duplicate,TokenSessionId,&target,sizeof(target))){error=GetLastError();goto done;}
