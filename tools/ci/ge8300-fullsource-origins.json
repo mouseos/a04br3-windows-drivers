@@ -1311,9 +1311,9 @@
     },
     {
       "path": "drivers/gpu/mt8167/display-transport/transport356.c",
-      "source_commit": "369439d63e5da69ce1560a01e14cc0ffe6c57b0e",
-      "role": "Unified356r2 DIRQL-safe real IRQ serial; bounded PASSIVE observation",
-      "sha256": "779d46099e22dcefa4d77f268f1d7b981b0358b803455793d6d8ea9209f5bf10",
+      "source_commit": "7e3efc033523b21c742687eba8b8c656b4e93792",
+      "role": "Unified356r2 actual DIRQL serial-only ISR; bounded PASSIVE poll",
+      "sha256": "c936afab1fc4b802d755fb8b6113a87610df1d4a10648cdb87f12173b51534ab",
       "previous_origins": [
         {
           "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
@@ -1334,6 +1334,11 @@
           "source_commit": "149631411fa08812a79d332bee62d4317d5c6499",
           "sha256": "779d46099e22dcefa4d77f268f1d7b981b0358b803455793d6d8ea9209f5bf10",
           "role": "Unified356 POST restore address/config readback before exposure release"
+        },
+        {
+          "source_commit": "369439d63e5da69ce1560a01e14cc0ffe6c57b0e",
+          "sha256": "779d46099e22dcefa4d77f268f1d7b981b0358b803455793d6d8ea9209f5bf10",
+          "role": "Unified356r2 DIRQL-safe real IRQ serial; bounded PASSIVE observation"
         }
       ]
     },
