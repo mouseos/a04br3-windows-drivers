@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Keep resource-owned resident VBs; incrementally rebuild four GPU350 units."""
-import argparse,hashlib,json,shutil,struct,subprocess,zipfile,re
+import argparse,hashlib,json,shutil,struct,subprocess,zipfile,re,ntpath
 from pathlib import Path
 p=argparse.ArgumentParser();p.add_argument('--task-root',type=Path,required=True);p.add_argument('--recipe-commit',required=True);a=p.parse_args()
 t=a.task_root;base=t/'baseline';old=base/'package351';out=t/'build';pkg=out/'package352'
@@ -39,27 +39,36 @@ def relocate(x):
  return x
 all_rows=load(t/'all-units.json');all_units={Path(x['source']).name:x for x in all_rows}
 changed_paths=set(load(t/'changed-sources.json'));dependencies=[];wanted=set();(out/'dependencies').mkdir()
-for u in all_rows:
- args=[relocate(x)for x in u['arguments']];src=root/u['source'];log=out/'dependencies'/(u['object']+'.txt')
- if src.name=='mdl_pin.c':
-  # SEH source explicitly rejects Clang. Use its actual MSVC compiler for
-  # preprocessing only; no object/source recompilation is requested here.
-  pp=[str(link.with_name('cl.exe')),'/nologo','/EP','/showIncludes','/TC']+[('/D'+x[2:]) for x in args if x.startswith('-D')]+[('/I'+x[2:]) for x in args if x.startswith('-I') and '/llvm/' not in x.lower()]+['/I'+str(link.parents[3]/'include'),str(src)]
-  result=subprocess.run(pp,capture_output=True,text=True);deptext=result.stdout+'\n'+result.stderr
- else:
-  result=subprocess.run([str(llvm/'clang.exe'),*args,'-H','-E',str(src),'-o','NUL'],capture_output=True,text=True);deptext=result.stderr
- log.write_text(deptext)
- if result.returncode:raise ValueError('Preprocessor dependency scan failed '+u['source']+' '+result.stderr[-1000:])
- included={u['source']}
- for line in deptext.splitlines():
-  hit=re.match(r'^\.+ (.+)$',line) or re.match(r'^Note: including file:\s*(.+)$',line)
-  if hit:
-   path=Path(hit.group(1).strip())
-   try:included.add(path.resolve().relative_to(root.resolve()).as_posix())
-   except ValueError:pass
- affected=sorted(included&changed_paths)
- if affected:wanted.add(Path(u['source']).name)
- dependencies.append({'source':u['source'],'object':u['object'],'role':u['role'],'changed_includes':affected,'local_closure':{n:sha(root/n)for n in sorted(included)},'compile_required':bool(affected),'actual_preprocessor_exit_code':result.returncode,'dependency_log':str(log.relative_to(out))})
+reuse=t/'reuse-include-closure.json'
+if reuse.exists():
+ prior=load(reuse)
+ if prior['checked_units']!=80 or prior['changed_sources']!=sorted(changed_paths):raise ValueError('Reused include closure identity changed')
+ for row in prior['units']:
+  for n,h in row['local_closure'].items():pin(root/n,h)
+ dependencies=prior['units'];wanted=set(prior['affected_units'])
+ shutil.copytree(t/'reuse-dependencies',out/'dependencies',dirs_exist_ok=True)
+else:
+ for u in all_rows:
+  args=[relocate(x)for x in u['arguments']];src=root/u['source'];log=out/'dependencies'/(u['object']+'.txt')
+  if src.name=='mdl_pin.c':
+   # SEH source explicitly rejects Clang. Use its actual MSVC compiler for
+   # preprocessing only; no object/source recompilation is requested here.
+   pp=[str(link.with_name('cl.exe')),'/nologo','/EP','/showIncludes','/TC']+[('/D'+x[2:]) for x in args if x.startswith('-D')]+[('/I'+x[2:]) for x in args if x.startswith('-I') and '/llvm/' not in x.lower()]+['/I'+str(link.parents[3]/'include'),str(src)]
+   result=subprocess.run(pp,capture_output=True,text=True);deptext=result.stdout+'\n'+result.stderr
+  else:
+   result=subprocess.run([str(llvm/'clang.exe'),*args,'-H','-E',str(src),'-o','NUL'],capture_output=True,text=True);deptext=result.stderr
+  log.write_text(deptext)
+  if result.returncode:raise ValueError('Preprocessor dependency scan failed '+u['source']+' '+result.stderr[-1000:])
+  included={u['source']}
+  for line in deptext.splitlines():
+   hit=re.match(r'^\.+ (.+)$',line) or re.match(r'^Note: including file:\s*(.+)$',line)
+   if hit:
+    path=Path(hit.group(1).strip())
+    try:included.add(path.resolve().relative_to(root.resolve()).as_posix())
+    except ValueError:pass
+  affected=sorted(included&changed_paths)
+  if affected:wanted.add(Path(u['source']).name)
+  dependencies.append({'source':u['source'],'object':u['object'],'role':u['role'],'changed_includes':affected,'local_closure':{n:sha(root/n)for n in sorted(included)},'compile_required':bool(affected),'actual_preprocessor_exit_code':result.returncode,'dependency_log':str(log.relative_to(out))})
 (out/'include-closure.json').write_text(json.dumps({'schema':'352-actual-clang-preprocessor-include-closure','checked_units':len(all_rows),'changed_sources':sorted(changed_paths),'affected_units':sorted(wanted),'units':dependencies},indent=2)+'\n')
 if len(all_rows)!=80 or not wanted:raise ValueError('Actual full80 dependency closure required')
 units=[];archives=[]
