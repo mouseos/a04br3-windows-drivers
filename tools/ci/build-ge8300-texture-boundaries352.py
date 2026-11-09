@@ -44,7 +44,7 @@ for u in all_rows:
  if src.name=='mdl_pin.c':
   # SEH source explicitly rejects Clang. Use its actual MSVC compiler for
   # preprocessing only; no object/source recompilation is requested here.
-  pp=[str(link.with_name('cl.exe')),'/nologo','/EP','/showIncludes','/TC']+[('/D'+x[2:]) for x in args if x.startswith('-D')]+[('/I'+x[2:]) for x in args if x.startswith('-I')]+[str(src)]
+  pp=[str(link.with_name('cl.exe')),'/nologo','/EP','/showIncludes','/TC']+[('/D'+x[2:]) for x in args if x.startswith('-D')]+[('/I'+x[2:]) for x in args if x.startswith('-I') and '/llvm/' not in x.lower()]+['/I'+str(link.parents[3]/'include'),str(src)]
   result=subprocess.run(pp,capture_output=True,text=True);deptext=result.stdout+'\n'+result.stderr
  else:
   result=subprocess.run([str(llvm/'clang.exe'),*args,'-H','-E',str(src),'-o','NUL'],capture_output=True,text=True);deptext=result.stderr
