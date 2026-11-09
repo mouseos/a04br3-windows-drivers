@@ -68,6 +68,10 @@ try{
  }
  $k=[MT8167OfflineHive.Native]::OpenPath($root,"$cs\Services\GE8300Render\Parameters\FactoryCheckpoint",$false);if(!$k){$r.gpu_factory=@{present=$false}}else{try{$n=@($k.GetValueNames()|Where-Object{$_ -cmatch '^R[0-6][0-9]$'});$r.gpu_factory=@{present=$true;values=(Values $k $n)}}finally{$k.Dispose()}}
 
+ # Additive fixed init fields, interpreted only with ReachedMask and same-capture identity.
+ . "$PSScriptRoot\read-gpu-native-checkpoint.ps1"
+ $r.gpu_init=Read-GpuNativeCheckpoint $root $cs
+
  $identity=[MT8167OfflineHive.Native]::OpenPath($root,"$cs\Services\GE8300Render\Parameters\NativeCheckpoint",$false)
  if(!$identity){$r.module_identity=@{present=$false}}else{try{if('ModuleIdentityV1' -cin $identity.GetValueNames()){$hex=[MT8167OfflineHive.Native]::ReadFixedRawValue($identity,'ModuleIdentityV1',3,144);$bytes=New-Object byte[] 144;for($i=0;$i -lt 144;$i++){$bytes[$i]=[Convert]::ToByte($hex.Substring($i*2,2),16)};[IO.File]::WriteAllBytes("$OutputDirectory\module-identity.bin",$bytes);$source=[Text.Encoding]::ASCII.GetString($bytes,48,48).TrimEnd([char]0);$build=[Text.Encoding]::ASCII.GetString($bytes,96,48).TrimEnd([char]0);$matches=$source -ceq $p.module_identity_collection.expected_sourcebase -and $build -ceq $p.module_identity_collection.expected_buildid
 $r.module_identity=@{present=$true;bytes=144;sha256=(Hash "$OutputDirectory\module-identity.bin");observed_sourcebase=$source;observed_buildid=$build;expected_sourcebase=$p.module_identity_collection.expected_sourcebase;expected_buildid=$p.module_identity_collection.expected_buildid;baseline_buildid_reference_only=$p.baseline341_module_identity_reference_only.expected_buildid;expected_identity_matches=$matches;same_boot_correlation_required=$true}
