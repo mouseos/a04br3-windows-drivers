@@ -3,6 +3,7 @@
  * revision 3d2c74e252d6f34a5980deda96bdc04064108d74. Independent implementation.
  */
 #include "transport.h"
+#include "start_status.h"
 #include <string.h>
 static int fail(struct a04_bt_transport *b,int e)
 {if(!b->failed)b->failed=e;b->ready=0;b->bridge->failed=1;return b->failed;}
@@ -215,15 +216,19 @@ int a04_bt_open(struct a04_bt_transport *b,struct a04_wmt_bridge *bridge,void *p
 {return open_transport(b,bridge,p,rx,now_us,0);}
 int a04_bt_open_combo(struct a04_bt_transport *b,struct a04_wmt_bridge *bridge,void *p,int (*rx)(void *,unsigned,const uint8_t *,unsigned),uint64_t (*now_us)(void *))
 {return open_transport(b,bridge,p,rx,now_us,1);}
-int a04_bt_initialize(struct a04_bt_transport *b,const uint8_t nv[36])
+int a04_bt_initialize_observed(struct a04_bt_transport *b,const uint8_t nv[36],a04_bt_start_observer observe,void *observation)
 {
  uint8_t addr[6],pcm[4];unsigned any=0,all=255;int e;
  if(!valid(b)||!nv||b->enabled)return -1;
  for(unsigned i=0;i<6;i++){addr[i]=nv[5-i];any|=nv[i];all&=nv[i];}
  /* NVRAM uses human address order. Never invent a fallback address. */
- if(!any||all==255||(nv[0]&1))return -1;
- e=function(b,1);
- if(!e)e=command(b,0xfc1a,addr,6);
+ if(observe)observe(observation,A04_BT_START_ADDRESS_VALID,0,0,0);
+ if(!any||all==255||(nv[0]&1)){if(observe)observe(observation,A04_BT_START_ADDRESS_VALID,1,-1,0);return -1;}
+ if(observe)observe(observation,A04_BT_START_ADDRESS_VALID,1,0,0);
+ if(observe)observe(observation,A04_BT_START_FUNCTION,0,0,0);
+ e=function(b,1);if(observe)observe(observation,A04_BT_START_FUNCTION,1,e,0);
+ if(!e){if(observe)observe(observation,A04_BT_START_SET_ADDRESS,0,0,0xfc1a);
+  e=command(b,0xfc1a,addr,6);if(observe)observe(observation,A04_BT_START_SET_ADDRESS,1,e,0xfc1a);}
  for(volatile unsigned char *v=addr;v<addr+6;v++)*v=0;
  if(e)return fail(b,-10);
  /* Stock A04BR3 OTA 02.00 libbluetooth_mtk mtk_fw_cfg forces record[8]
@@ -232,29 +237,41 @@ int a04_bt_initialize(struct a04_bt_transport *b,const uint8_t nv[36])
   * bytes and the caller's record. This exact packet rule is not a decoded
   * PCM clock/format/latency qualification; no bit meanings are inferred. */
  pcm[0]=0x63;for(unsigned i=1;i<4;i++)pcm[i]=nv[8+i];
- e=command(b,0xfc72,pcm,sizeof(pcm));
+ if(observe)observe(observation,A04_BT_START_PCM,0,0,0xfc72);
+ e=command(b,0xfc72,pcm,sizeof(pcm));if(observe)observe(observation,A04_BT_START_PCM,1,e,0xfc72);
  for(volatile unsigned char *v=pcm;v<pcm+sizeof(pcm);v++)*v=0;
  if(e)return fail(b,-10);
  b->pcm_command_applied=1;
- if(command(b,0xfc79,nv+12,6)||
-    command(b,0xfc93,nv+27,3)||command(b,0xfc7a,nv+18,7)||command(b,0xfc22,nv+30,6)||
-    command(b,0x1001,NULL,0))return fail(b,-10);
- if(b->reply_length!=9)return fail(b,-11);
+ #define STEP(st,op,data,n) do{if(observe)observe(observation,st,0,0,op);e=command(b,op,data,n);if(observe)observe(observation,st,1,e,op);if(e)return fail(b,-10);}while(0)
+ STEP(A04_BT_START_RADIO,0xfc79,nv+12,6);
+ STEP(A04_BT_START_TX_POWER,0xfc93,nv+27,3);
+ STEP(A04_BT_START_SLEEP,0xfc7a,nv+18,7);
+ STEP(A04_BT_START_COEX,0xfc22,nv+30,6);
+ STEP(A04_BT_START_VERSION,0x1001,NULL,0);
+ #undef STEP
+ if(observe)observe(observation,A04_BT_START_VERSION_DECODE,0,0,0x1001);
+ if(b->reply_length!=9){if(observe)observe(observation,A04_BT_START_VERSION_DECODE,1,-11,0x1001);return fail(b,-11);}
  b->version.hci_version=b->reply[1];b->version.hci_revision=(uint16_t)a04_wmt_le16(b->reply+2);
  b->version.lmp_version=b->reply[4];b->version.manufacturer=(uint16_t)a04_wmt_le16(b->reply+5);
  b->version.lmp_subversion=(uint16_t)a04_wmt_le16(b->reply+7);b->version_valid=1;
+ if(observe)observe(observation,A04_BT_START_VERSION_DECODE,1,0,0x1001);
  /* Standard HCI Read BD_ADDR (Core, Linux hci_rp_read_bd_addr): status +
   * six wire-order bytes. FC1A acceptance alone is not readback evidence.
   * Compare against the checksum-verified dynamic record, never a default.
   * Always erase the private command reply, including failure/short replies. */
- e=command(b,0x1009,NULL,0);unsigned different=b->reply_length!=7;
+ if(observe)observe(observation,A04_BT_START_READ_ADDRESS,0,0,0x1009);
+ e=command(b,0x1009,NULL,0);if(observe)observe(observation,A04_BT_START_READ_ADDRESS,1,e,0x1009);unsigned different=b->reply_length!=7;
  if(!e&&!different)for(unsigned i=0;i<6;i++)different|=b->reply[1+i]^nv[5-i];
  for(volatile unsigned char *v=b->reply;v<b->reply+sizeof(b->reply);v++)*v=0;
  b->reply_length=0;
  if(e)return e;
- if(different)return fail(b,-13);
- b->ready=1;return 0;
+ if(observe)observe(observation,A04_BT_START_ADDRESS_COMPARE,0,0,0x1009);
+ if(different){if(observe)observe(observation,A04_BT_START_ADDRESS_COMPARE,1,-13,0x1009);return fail(b,-13);}
+ if(observe)observe(observation,A04_BT_START_ADDRESS_COMPARE,1,0,0x1009);
+ b->ready=1;if(observe)observe(observation,A04_BT_START_READY,1,0,0);return 0;
 }
+int a04_bt_initialize(struct a04_bt_transport *b,const uint8_t nv[36])
+{return a04_bt_initialize_observed(b,nv,NULL,NULL);}
 int a04_bt_disable(struct a04_bt_transport *b)
 {
  uint64_t started;int e;

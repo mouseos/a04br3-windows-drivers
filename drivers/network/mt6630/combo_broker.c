@@ -7,10 +7,27 @@
 #include "../../bluetooth/mt6630/physical_owner.h"
 #include "../../bus/mt8167-shared/hfp_interface.h"
 #include "../../bluetooth/mt6630/transport_caps.h"
+#include "../../bluetooth/mt6630/start_status.h"
 static NDIS_SPIN_LOCK registry_lock;
 static NDIS_HANDLE registration;
 static struct a04_ndis_runtime *registered;
 static struct a04_combo_client_file client_file;
+/* Sole NDIS worker writes/reads this receipt. No adapter layout/ABI change. */
+static struct a04_bt_start_status start_status;static PFILE_OBJECT start_file;
+C_ASSERT(sizeof(struct a04_bt_start_status)==64);
+static void start_nt(unsigned stage,unsigned returned,NTSTATUS result)
+{
+ start_status.last_stage=stage;start_status.entered_mask|=1u<<stage;
+ if(returned){start_status.returned_mask|=1u<<stage;if(NT_SUCCESS(result))start_status.succeeded_mask|=1u<<stage;}
+ start_status.broker_ntstatus=(ULONG)result;
+}
+static void start_backend(void *unused,unsigned stage,unsigned returned,int result,unsigned opcode)
+{
+ UNREFERENCED_PARAMETER(unused);start_status.last_stage=stage;start_status.last_opcode=opcode;
+ start_status.entered_mask|=1u<<stage;
+ if(returned){start_status.returned_mask|=1u<<stage;if(!result)start_status.succeeded_mask|=1u<<stage;start_status.backend_status=result;start_status.flags|=A04_BT_START_BACKEND_VALID;}
+}
+
 static NTSTATUS finish(PIRP irp,NTSTATUS s,ULONG_PTR bytes)
 {irp->IoStatus.Status=s;irp->IoStatus.Information=bytes;IoCompleteRequest(irp,IO_NO_INCREMENT);return s;}
 static NTSTATUS dispatch(PDEVICE_OBJECT device,PIRP irp)
@@ -119,18 +136,31 @@ void a04_combo_worker(struct a04_ndis_runtime *a)
  if(a->closing){finish(irp,cleanup?STATUS_SUCCESS:STATUS_CANCELLED,0);return;}
  /* CLEANUP is mandatory rundown, not a cancellable HCI operation. */
  if(!cleanup&&irp->Cancel){finish(irp,STATUS_CANCELLED,0);return;}
- if(code==A04_BT_BROKER_OPEN){
-  UCHAR record[36]={0};
+ if(code==A04_BT_BROKER_START_STATUS){
+  struct a04_bt_start_status *out_status=irp->AssociatedIrp.SystemBuffer;
+  if(in||out!=sizeof(*out_status)||!out_status){s=STATUS_INVALID_PARAMETER;goto done;}
+  if(start_file!=sp->FileObject||start_status.generation!=a->session.generation||!(start_status.flags&A04_BT_START_RETURNED)){s=STATUS_DEVICE_NOT_READY;goto done;}
+  RtlCopyMemory(out_status,&start_status,sizeof(*out_status));used=sizeof(*out_status);s=STATUS_SUCCESS;
+ }else if(code==A04_BT_BROKER_OPEN){
+  UCHAR record[36]={0};int backend;
   if(in||out){s=STATUS_INVALID_PARAMETER;goto done;}
   if(b->file){s=STATUS_SHARING_VIOLATION;goto done;}
-  if(!a->power||!a->radio.initialized||a->radio.failed||a->uncertain){s=STATUS_DEVICE_NOT_READY;goto done;}
-  s=a04_windows_bt_nvram_read(record);
+  ULONG sequence=start_status.sequence==MAXULONG?MAXULONG:start_status.sequence+1;
+  RtlZeroMemory(&start_status,sizeof(start_status));start_status.version=1;start_status.bytes=sizeof(start_status);start_status.generation=a->session.generation;start_status.sequence=sequence;start_file=sp->FileObject;
+  start_nt(A04_BT_START_ADMISSION,0,STATUS_PENDING);
+  if(!a->power||!a->radio.initialized||a->radio.failed||a->uncertain){s=STATUS_DEVICE_NOT_READY;start_nt(A04_BT_START_ADMISSION,1,s);goto open_done;}
+  start_nt(A04_BT_START_ADMISSION,1,STATUS_SUCCESS);start_nt(A04_BT_START_NVRAM,0,STATUS_PENDING);
+  s=a04_windows_bt_nvram_read(record);start_nt(A04_BT_START_NVRAM,1,s);
   if(NT_SUCCESS(s)){
-   if(a04_bt_open_combo(&b->bt,a->radio.bridge,b,receive,clock_us)||a04_bt_initialize(&b->bt,record))s=STATUS_IO_DEVICE_ERROR;
+   start_backend(NULL,A04_BT_START_ATTACH,0,0,0);backend=a04_bt_open_combo(&b->bt,a->radio.bridge,b,receive,clock_us);start_backend(NULL,A04_BT_START_ATTACH,1,backend,0);
+   if(!backend)backend=a04_bt_initialize_observed(&b->bt,record,start_backend,NULL);
+   if(backend)s=STATUS_IO_DEVICE_ERROR;
    else {b->file=sp->FileObject;ObReferenceObject(b->file);
     a->radio.bridge->service_context=a;a->radio.bridge->service_other=service;s=STATUS_SUCCESS;}
   }
-  RtlSecureZeroMemory(record,sizeof(record));
+open_done:
+ if(cleanup&&start_file==sp->FileObject)start_file=NULL;
+  RtlSecureZeroMemory(record,sizeof(record));start_status.broker_ntstatus=(ULONG)s;start_status.flags|=A04_BT_START_RETURNED|A04_BT_START_NT_VALID;
  }else if(!b->file||b->file!=sp->FileObject){s=cleanup?STATUS_SUCCESS:STATUS_DEVICE_NOT_READY;}
  else if(code==A04_BT_BROKER_CLOSE){
   if(in||out){s=STATUS_INVALID_PARAMETER;goto done;}
@@ -205,6 +235,7 @@ void a04_combo_worker(struct a04_ndis_runtime *a)
   RtlSecureZeroMemory(&b->rx[--b->count],sizeof(b->rx[0]));s=STATUS_SUCCESS;
  }
 done:
+ if(cleanup&&start_file==sp->FileObject)start_file=NULL;
  if(b->bt.failed){a->radio.failed=-1;/* preserve the real combo fault, never report WLAN healthy */}
  (void)finish(irp,s,used);
 }

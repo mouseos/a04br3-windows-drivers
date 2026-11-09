@@ -5,7 +5,7 @@ Signature="$WINDOWS NT$"
 Class=System
 ClassGuid={4d36e97d-e325-11ce-bfc1-08002be10318}
 Provider=%Provider%
-DriverVer=11/08/2026,2026.11.9.2014
+DriverVer=11/08/2026,2026.11.9.2015
 CatalogFile=mt6630-combo-bluetooth.cat
 [Manufacturer]
 %Provider%=Models,NTARM
@@ -29,7 +29,10 @@ ServiceType=1
 StartType=3
 ErrorControl=1
 Dependencies=Mt6630Runtime
+AddReg=StartEvidence
 ServiceBinary=%12%\mt6630-combo-bluetooth.sys
+[StartEvidence]
+HKR,Parameters,,0x00000010
 [Install.NT.Wdf]
 KmdfService=Mt6630ComboBluetooth,Wdf
 [Wdf]

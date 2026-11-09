@@ -10,6 +10,7 @@
 #include "combo_controller.h"
 #include "rx_drain.h"
 #include "transport_caps.h"
+#include "start_status.h"
 #include "start_checkpoint.h"
 #define CONTEXT_BYTES FIELD_OFFSET(BTHX_HCI_READ_WRITE_CONTEXT,Data)
 C_ASSERT(sizeof(BTHX_VERSION)==4);
@@ -56,16 +57,31 @@ static NTSTATUS UnbindSideband(PVOID p,ULONG generation)
  CLIENT *c=p;NTSTATUS s=a04_mt6630_binding_unbind(&c->sideband,generation);
  if(NT_SUCCESS(s)){lock(c);c->binding_active=FALSE;unlock(c);WdfDeviceResumeIdle(c->device);}return s;
 }
-static BOOLEAN TransportBypassCapable(CLIENT *c)
+static NTSTATUS TransportBypassStatus(CLIENT *c)
 {
- struct a04_bt_transport_caps state={0};WDF_MEMORY_DESCRIPTOR buffer;ULONG_PTR used=0;NTSTATUS s;BOOLEAN capable;
+ struct a04_bt_transport_caps state={0};WDF_MEMORY_DESCRIPTOR buffer;ULONG_PTR used=0;NTSTATUS s;
  WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(&buffer,&state,sizeof(state));lock(c);
- if(!c->running||!c->open){unlock(c);return FALSE;}
+ if(!c->running||!c->open){s=STATUS_DEVICE_NOT_READY;goto done;}
  s=WdfIoTargetSendIoctlSynchronously(c->target,WDF_NO_HANDLE,A04_BT_BROKER_TRANSPORT_CAPS,NULL,&buffer,NULL,&used);
- capable=NT_SUCCESS(s)&&used==sizeof(state)&&a04_mt6630_transport_bypass(&state);
- /* No audio callback or active peer is needed for the real HCI bypass route.
-  * Audio Bind/endpoint creation keeps its own PCM/latency/drain checks. */
- unlock(c);return capable;
+ if(!NT_SUCCESS(s))goto done;
+ if(used!=sizeof(state)||state.version!=1||state.ready>1){s=STATUS_DATA_ERROR;goto done;}
+ if(!state.ready){s=STATUS_DEVICE_NOT_READY;goto done;}
+ if(!a04_mt6630_transport_bypass(&state))s=STATUS_DATA_ERROR;
+done:
+ StartCheckpoint(c->device,&c->start_mask,15,s);unlock(c);return s;
+}
+static void RecordBrokerOpen(CLIENT *c,NTSTATUS actual_open_status)
+{
+ struct a04_bt_start_status receipt={0};WDF_MEMORY_DESCRIPTOR buffer;ULONG_PTR used=0;NTSTATUS s;
+ WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(&buffer,&receipt,sizeof(receipt));
+ s=WdfIoTargetSendIoctlSynchronously(c->target,WDF_NO_HANDLE,A04_BT_BROKER_START_STATUS,NULL,&buffer,NULL,&used);
+ if(NT_SUCCESS(s)&&used==sizeof(receipt)&&receipt.version==1&&receipt.bytes==sizeof(receipt)&&receipt.sequence&&
+    (receipt.flags&A04_BT_START_RETURNED)&&(receipt.flags&A04_BT_START_NT_VALID)&&
+    receipt.broker_ntstatus==(ULONG)actual_open_status&&!(receipt.entered_mask&~0x1fffeu)&&
+    !(receipt.returned_mask&~receipt.entered_mask)&&!(receipt.succeeded_mask&~receipt.returned_mask)&&
+    receipt.last_stage<=A04_BT_START_READY)BrokerStartCheckpoint(c->device,&receipt);
+ /* Unknown/old provider or failed observation never changes the real OPEN. */
+ RtlSecureZeroMemory(&receipt,sizeof(receipt));
 }
 static void deliver(CLIENT *c)
 {
@@ -118,9 +134,9 @@ VOID ComboInternal(WDFQUEUE q,WDFREQUEST r,size_t outlen,size_t inlen,ULONG code
   s=WdfRequestRetrieveOutputBuffer(r,sizeof(BTHX_CAPABILITIES),&out,&bytes);
   if(NT_SUCCESS(s)){PBTHX_CAPABILITIES caps=out;RtlZeroMemory(caps,sizeof(*caps));
    caps->MaxAclTransferInSize=A04_BT_BROKER_MAX_HCI;
-   if(TransportBypassCapable(c)){caps->ScoSupport=ScoSupportHCIBypass;caps->MaxScoChannels=1;}
-   else caps->ScoSupport=ScoSupportNone;
-   used=sizeof(*caps);
+   s=TransportBypassStatus(c);
+   if(NT_SUCCESS(s)){caps->ScoSupport=ScoSupportHCIBypass;caps->MaxScoChannels=1;used=sizeof(*caps);}
+   /* Failure is an actual NTSTATUS, not a successful None/0 capability. */
   }
   WdfRequestCompleteWithInformation(r,s,used);return;
  }
@@ -170,7 +186,7 @@ NTSTATUS Start(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
  UNREFERENCED_PARAMETER(previous);lock(c);c->start_mask&=(1u<<9)-1u;StartCheckpoint(device,&c->start_mask,9,STATUS_SUCCESS);
  WDF_IO_TARGET_OPEN_PARAMS_INIT_OPEN_BY_NAME(&o,&name,GENERIC_READ|GENERIC_WRITE);o.ShareAccess=FILE_SHARE_READ|FILE_SHARE_WRITE;
  s=WdfIoTargetOpen(c->target,&o);StartCheckpoint(device,&c->start_mask,10,s);if(!NT_SUCCESS(s))goto done;c->open=TRUE;
- s=call(c,A04_BT_BROKER_OPEN,NULL);StartCheckpoint(device,&c->start_mask,11,s);if(!NT_SUCCESS(s)){WdfIoTargetClose(c->target);c->open=FALSE;goto done;}
+ s=call(c,A04_BT_BROKER_OPEN,NULL);StartCheckpoint(device,&c->start_mask,11,s);RecordBrokerOpen(c,s);if(!NT_SUCCESS(s)){WdfIoTargetClose(c->target);c->open=FALSE;goto done;}
  c->running=TRUE;
  /* Optional controller registration is separate from a real raw HCI OPEN.
   * An absent/failed interface never grants an Audio controller lease;
@@ -228,7 +244,7 @@ NTSTATUS Add(WDFDRIVER driver,PWDFDEVICE_INIT init)
  WDFDEVICE d;CLIENT *c;WDF_OBJECT_ATTRIBUTES a;WDF_PNPPOWER_EVENT_CALLBACKS p;WDF_TIMER_CONFIG timer;WDF_IO_QUEUE_CONFIG q;NTSTATUS s;UNREFERENCED_PARAMETER(driver);
  WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&p);p.EvtDeviceD0Entry=Start;p.EvtDeviceD0Exit=Stop;p.EvtDeviceSurpriseRemoval=Surprise;WdfDeviceInitSetPnpPowerEventCallbacks(init,&p);
  WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&a,CLIENT);a.EvtDestroyCallback=Destroy;a.ExecutionLevel=WdfExecutionLevelPassive;
- s=WdfDeviceCreate(&init,&a,&d);if(!NT_SUCCESS(s))return s;c=Context(d);c->device=d;StartCheckpoint(d,&c->start_mask,0,STATUS_SUCCESS);
+ DriverStartCheckpoint(driver,L"AddEntered",STATUS_SUCCESS);s=WdfDeviceCreate(&init,&a,&d);DriverStartCheckpoint(driver,L"DeviceCreateStatus",s);if(!NT_SUCCESS(s))return s;c=Context(d);c->device=d;StartCheckpoint(d,&c->start_mask,0,STATUS_SUCCESS);
  WDF_OBJECT_ATTRIBUTES_INIT(&a);a.ParentObject=d;s=WdfWaitLockCreate(&a,&c->lock);StartCheckpoint(d,&c->start_mask,1,s);if(!NT_SUCCESS(s))return s;
  s=WdfIoTargetCreate(d,WDF_NO_OBJECT_ATTRIBUTES,&c->target);StartCheckpoint(d,&c->start_mask,2,s);if(!NT_SUCCESS(s))return s;
  WDF_TIMER_CONFIG_INIT(&timer,Timer);timer.AutomaticSerialization=FALSE;a.ExecutionLevel=WdfExecutionLevelPassive;
@@ -238,4 +254,4 @@ NTSTATUS Add(WDFDRIVER driver,PWDFDEVICE_INIT init)
  s=WdfIoQueueCreate(d,&q,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE);StartCheckpoint(d,&c->start_mask,4,s);return NT_SUCCESS(s)?child(c):s;
 }
 NTSTATUS DriverEntry(PDRIVER_OBJECT object,PUNICODE_STRING path)
-{WDF_DRIVER_CONFIG c;WDF_DRIVER_CONFIG_INIT(&c,Add);return WdfDriverCreate(object,path,WDF_NO_OBJECT_ATTRIBUTES,&c,WDF_NO_HANDLE);}
+{WDF_DRIVER_CONFIG c;WDFDRIVER driver;NTSTATUS s;WDF_DRIVER_CONFIG_INIT(&c,Add);s=WdfDriverCreate(object,path,WDF_NO_OBJECT_ATTRIBUTES,&c,&driver);if(NT_SUCCESS(s))DriverStartCheckpoint(driver,L"DriverCreated",s);return s;}
