@@ -350,8 +350,8 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
-      "source_commit": "7b3c55705dd5032d51435391cc7ae9e9824bb106",
-      "sha256": "3368ddb9b8a99c14f0e19e8a635f3ad22203ebc77b3acb34278c95ca05037dc8",
+      "source_commit": "84bf96a22b4d7c64879f99a92c82d728c1d00147",
+      "sha256": "a963e262121daf6caca337d58e27bb3cf2f391d3e5cbfee374eeca9d7edcceed",
       "role": "Present355 bounded real Copy FIFO with OS index/rights and actual IRQ completion",
       "previous_origins": [
         {
