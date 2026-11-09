@@ -205,10 +205,11 @@ static NTSTATUS GeoRenderDrawImpl(struct geo_kmd_context *c,DXGKARG_RENDER *r) {
  if(!c->adapter->synchronize(c->adapter->sync_context,begin_prepare,&call)){status=STATUS_DEVICE_NOT_READY;goto done;}
  if(call.status!=STATUS_SUCCESS){status=call.status;goto done;}
  t=call.ticket;c->adapter->pending[t.slot].generation=t.generation;c->adapter->pending[t.slot].draw=packet;packet=NULL;
- /* Render may run before VidMm residency. Prepatch only when all addresses are valid. */
- if(r->pAllocationList[0].SegmentId&&r->pAllocationList[1].SegmentId&&(!x||r->pAllocationList[2].SegmentId)) {
-  status=prepare_pending(c->adapter,&t);if(status!=STATUS_SUCCESS)goto done;
- }else status=STATUS_SUCCESS;
+ /* Render captures commands; residency does not mean the scheduler is about
+  * to submit this packet. Preparing here can reserve the single native job
+  * for an unsent Clear and deadlock a following Draw inside Render. Keep
+  * the retained capture/ticket pending until validated DxgkDdiPatch. */
+ status=STATUS_SUCCESS;
  if(GeoWriteTicket(r->pDmaBuffer,&t)!=STATUS_SUCCESS||GeoWriteTicket(r->pDmaBufferPrivateData,&t)!=STATUS_SUCCESS){status=STATUS_INVALID_PARAMETER;goto done;}
  r->pDmaBuffer=(UCHAR *)r->pDmaBuffer+sizeof(t);
  r->pDmaBufferPrivateData=(UCHAR *)r->pDmaBufferPrivateData+sizeof(t);
@@ -236,7 +237,7 @@ static NTSTATUS fail_copy_render(struct geo_kmd_adapter *a,NTSTATUS status) {
  return status;
 }
 static NTSTATUS GeoRenderCopyImpl(struct geo_kmd_context *c,DXGKARG_RENDER *r,const struct geo_copy_packet *p) {
- struct copy_begin x;UINT i;NTSTATUS status;
+ struct copy_begin x;UINT i;
  if(p->magic!=GEO_COPY_MAGIC||p->size!=sizeof(*p)||p->version!=1||p->destination_index||p->source_index!=1||p->width!=800||p->height!=600||p->reserved||
     r->AllocationListSize<2||r->PatchLocationListOutSize<2||!r->pAllocationList[0].WriteOperation||r->pAllocationList[1].WriteOperation)return STATUS_INVALID_PARAMETER;
  RtlZeroMemory(&x,sizeof(x));x.context=c;x.dh=r->pAllocationList[0].hDeviceSpecificAllocation;x.sh=r->pAllocationList[1].hDeviceSpecificAllocation;
@@ -245,7 +246,7 @@ static NTSTATUS GeoRenderCopyImpl(struct geo_kmd_context *c,DXGKARG_RENDER *r,co
  if(!c->adapter->synchronize(c->adapter->sync_context,begin_copy,&x))return fail_copy_render(c->adapter,STATUS_DEVICE_NOT_READY);
  if(x.status!=STATUS_SUCCESS)return x.status;
  c->adapter->pending[x.ticket.slot].generation=x.ticket.generation;
- if(r->pAllocationList[0].SegmentId&&r->pAllocationList[1].SegmentId){status=prepare_pending(c->adapter,&x.ticket);if(status!=STATUS_SUCCESS)return fail_copy_render(c->adapter,status);}
+ /* Patch supplies the final residency and prepares this queued Copy. */
  if(GeoWriteTicket(r->pDmaBuffer,&x.ticket)!=STATUS_SUCCESS||GeoWriteTicket(r->pDmaBufferPrivateData,&x.ticket)!=STATUS_SUCCESS)return fail_copy_render(c->adapter,STATUS_INVALID_PARAMETER);
  r->pDmaBuffer=(UCHAR*)r->pDmaBuffer+sizeof(x.ticket);r->pDmaBufferPrivateData=(UCHAR*)r->pDmaBufferPrivateData+sizeof(x.ticket);
  for(i=0;i<2;i++){RtlZeroMemory(r->pPatchLocationListOut,sizeof(*r->pPatchLocationListOut));r->pPatchLocationListOut->AllocationIndex=i;r->pPatchLocationListOut->DriverId=GEO_COPY_MAGIC;r->pPatchLocationListOut++;}return STATUS_SUCCESS;
@@ -269,9 +270,7 @@ static NTSTATUS GeoRenderImpl(HANDLE context,DXGKARG_RENDER *r) {
  if(!c->adapter->synchronize(c->adapter->sync_context,begin_prepare,&call))return STATUS_DEVICE_NOT_READY;
  if(call.status!=STATUS_SUCCESS)return call.status;
  t=call.ticket;c->adapter->pending[t.slot].generation=t.generation;c->adapter->pending[t.slot].clear=p;
- if(r->pAllocationList[0].SegmentId) {
-  call.status=prepare_pending(c->adapter,&t);if(call.status!=STATUS_SUCCESS)return call.status;
- }
+ /* Capture only, including resident allocations: Patch owns native prepare. */
  if(GeoWriteTicket(r->pDmaBuffer,&t)!=STATUS_SUCCESS||GeoWriteTicket(r->pDmaBufferPrivateData,&t)!=STATUS_SUCCESS)return STATUS_INVALID_PARAMETER;
  r->pDmaBuffer=(UCHAR *)r->pDmaBuffer+sizeof(t);
  /* RT 8.1 computes private submission length from this returned cursor.
