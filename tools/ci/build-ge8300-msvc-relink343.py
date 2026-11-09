@@ -22,7 +22,9 @@ for x in m['archives']:
  if x['role'] in ['kmd','native']:pin(base/x['file'],x['sha256']);libs.append(base/x['file'])
 link=Path('C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/14.29.30133/bin/Hostx64/arm/link.exe')
 pin(link,'f8b2e9c5341419525f915b61b87d1bc8aa307adca6e1e022071175912e965938')
-out.mkdir();pkg.mkdir();kit=Path('C:/mt8167-public-fullsource323/wdk81/Lib/winv6.3/km/arm')
+out.mkdir();pkg.mkdir()
+for lib in libs:shutil.copyfile(lib,out/lib.name)
+kit=Path('C:/mt8167-public-fullsource323/wdk81/Lib/winv6.3/km/arm')
 kmd=next(base/x['file']for x in m['archives']if x['role']=='kmd');native=next(base/x['file']for x in m['archives']if x['role']=='native')
 args=['/nologo','/driver','/subsystem:native,6.03','/machine:arm','/entry:DriverEntry','/nodefaultlib','/incremental:no','/largeaddressaware','/tsaware:no','/base:0x400000',kmd,native,*[kit/(n+'.lib')for n in ['displib','ntoskrnl','hal','libcntpr','bufferoverflowfastfailk']],'/out:'+str(out/'ge8300-render.sys'),'/map:'+str(out/'ge8300-render.map')]
 run([link,*args]);h=header(out/'ge8300-render.sys')
@@ -41,7 +43,7 @@ cat=Path('C:/mt8167-hp1033/inputs/signing/bin/Inf2Cat.exe');run([cat,'/driver:'+
 for n in ['ge8300-render.inf','ge8300-render.sys','ge8300-umd.dll','ge8300-mips.fw']:run([sign,'verify','/pa','/c',pkg/'ge8300-render.cat',pkg/n])
 for x in m['outputs']:
  if x['name']not in ['ge8300-render.sys','ge8300-render.cat','ge8300-render.inf']:pin(pkg/x['name'],x['sha256'])
-new=dict(m);new.update(schema='msvc-relink343-reuse-complete342-objects-v1',package_source_commit=a.recipe_commit,link_recipe_source_commit=a.recipe_commit,kernel_binary_source_commit=m['kernel_binary_source_commit'],compiled_units=[],reused_342_compiled_units=m['compiled_units'],compiler_reexecuted=False,source_changed=False,linker_changed=True,linker_path=str(link),linker_sha256=sha(link),link_arguments=[str(x)for x in args],PE_contract=h,runtime_build_id='GPU342-tq-clear-v1',inf_driverver='11/08/2026,0.0.3.43',baseline_manifest_file='baseline342-signed-manifest.json',baseline_manifest_sha256=sha(pkg/'baseline342-signed-manifest.json'),build_manifest_file='msvc-relink343-build-manifest.json',hardware_verified=False,runtime_verified=False,root_reset_fix_proven=False)
+new=dict(m);new.update(schema='msvc-relink343-reuse-complete342-objects-v1',package_source_commit=a.recipe_commit,link_recipe_source_commit=a.recipe_commit,kernel_binary_source_commit=m['kernel_binary_source_commit'],compiled_units=[],reused_342_compiled_units=m['compiled_units'],compiler_reexecuted=False,source_changed=False,native_owner_changed=False,linker_changed=True,linker_path=str(link),linker_sha256=sha(link),link_arguments=[str(x)for x in args],PE_contract=h,runtime_build_id='GPU342-tq-clear-v1',inf_driverver='11/08/2026,0.0.3.43',baseline_manifest_file='baseline342-signed-manifest.json',baseline_manifest_sha256=sha(pkg/'baseline342-signed-manifest.json'),build_manifest_file='msvc-relink343-build-manifest.json',hardware_verified=False,runtime_verified=False,root_reset_fix_proven=False)
 new['outputs']=[{'name':x['name'],'sha256':sha(pkg/x['name'])}for x in m['outputs']]
 new['retained_provenance']=[{'name':f.name,'sha256':sha(f)}for f in pkg.iterdir()if f.is_file()and f.name not in {x['name']for x in new['outputs']}]
 (out/'build-manifest.json').write_text(json.dumps(new,indent=2)+'\n');shutil.copyfile(out/'build-manifest.json',pkg/'msvc-relink343-build-manifest.json');new['build_manifest_sha256']=sha(pkg/'msvc-relink343-build-manifest.json');(pkg/'signed-manifest.json').write_text(json.dumps(new,indent=2)+'\n')
