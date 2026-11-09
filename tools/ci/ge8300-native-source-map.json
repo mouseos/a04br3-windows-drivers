@@ -2366,7 +2366,7 @@
       "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_start.c",
       "source_commit": "f96948533601f9fdcdcc22b9700aacd96dbf7204",
       "source_sha256": "fbc58b1c4d2bea2cd19a1139ceb64a1b2ee7add8bf643d357bfed26e290c215c",
-      "sha256": "1e49d05cdba53c1d18a1cf6128380f6e631f8df0e2ffb97a0f1c4d0049e4dac8",
+      "sha256": "1ae7819e63719d92756bbecebe422df4b4d722191d5e3a3413ff8f415aad6fd3",
       "include_rewrites": [
         [
           "windows_render_cold.h",
@@ -2405,7 +2405,14 @@
           "../../windows_hw.h"
         ]
       ],
-      "rewrite_includes_only": true
+      "rewrite_includes_only": true,
+      "reviewed_delta": {
+        "source_commit": "eb0b870c9be6f824703d0c62e41de5488994f942",
+        "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_start.c",
+        "sha256": "1ae7819e63719d92756bbecebe422df4b4d722191d5e3a3413ff8f415aad6fd3",
+        "baseline_destination_sha256": "1e49d05cdba53c1d18a1cf6128380f6e631f8df0e2ffb97a0f1c4d0049e4dac8",
+        "role": "MASKED startup source-mask and posted-read before initial GP fence346"
+      }
     },
     {
       "source": "drivers/gpu/mt8167/vendor_m1_11/windows_start.h",

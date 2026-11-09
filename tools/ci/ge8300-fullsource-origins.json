@@ -2133,6 +2133,13 @@
       "sha256": "e856fe9ae0efcad4fc2b09899b2f513845e46cb705c2f745755963307e5b62ea",
       "baseline_destination_sha256": "02d088314ffa281f3b7ffe10ec24d1d73429a6a530fc0e636b3a8b611aa5c225",
       "role": "Windows PASSIVE firmware acknowledgement/drain waits345"
+    },
+    {
+      "source_commit": "eb0b870c9be6f824703d0c62e41de5488994f942",
+      "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_start.c",
+      "sha256": "1ae7819e63719d92756bbecebe422df4b4d722191d5e3a3413ff8f415aad6fd3",
+      "baseline_destination_sha256": "1e49d05cdba53c1d18a1cf6128380f6e631f8df0e2ffb97a0f1c4d0049e4dac8",
+      "role": "MASKED startup source-mask and posted-read before initial GP fence346"
     }
   ],
   "viewport_source_commit": "1e4ca5d11701a809653c518e07b75aa6c8cfb409",
@@ -2143,5 +2150,6 @@
   "HAL_packet_DMA_operations": 0,
   "resident_tq_clear_source_commit": "59ded879bab1c4c54abac73bd2b673adada33d4c",
   "durable_progress_source_commit": "144a488bac2c1dec791c7122a97c1faf70e3ec4c",
-  "passive_waits_source_commit": "e4108dafe82745ba58af20245bf891b9feebd32f"
+  "passive_waits_source_commit": "e4108dafe82745ba58af20245bf891b9feebd32f",
+  "masked_start_source_commit": "eb0b870c9be6f824703d0c62e41de5488994f942"
 }
