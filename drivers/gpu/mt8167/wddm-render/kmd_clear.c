@@ -169,6 +169,11 @@ static NTSTATUS prepare_pending(struct geo_kmd_adapter *a,const struct geo_dma_t
    * The queued worker owns rundown and passive_lock already. Service that
    * receipt here, without re-preparing, re-queuing a fake IRQ, or notifying
    * the scheduler. The real submission is retried under the IRQ lock. */
+  /* Consume only the real-IRQ work reservation that we are servicing now.
+   * Clear BEFORE service/rearm: a new IRQ after rearm must keep its own bit.
+   * Leaving this old bit set queues a second service after publication,
+   * when SUBMITTED/unmasked correctly has no claim receipt to process. */
+  InterlockedAnd(&a->service_pending,~1L);
   if(!a->session || !a->session->control.service)service=STATUS_INVALID_DEVICE_STATE;
   else service=a->session->control.service(a->session->lease.cookie,a->session->lease.epoch);
   GeoFactoryCheckpoint(51,service,kind,t->slot,t->generation,attempt);
