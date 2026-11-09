@@ -170,9 +170,9 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/kmd_clear.c",
-      "source_commit": "0d4d197ae03b70bc86c6dcaf4af024b775299098",
-      "role": "Real claimed startup IRQ service before submitted DMA349; previous origins retained",
-      "sha256": "7ed32c667e749d992cc13f72420a4a62dd67923bc6856254872d578a554fc35e",
+      "source_commit": "108f152ce5e61ed5b5d45ee7f095be950d35aa83",
+      "role": "Consume the serviced real-IRQ work bit before rearm349-r2; prior origins retained",
+      "sha256": "7e87cfc4391af512d8fb3625bd3ff1edc4725f601ca864ebbf7dd4330a926754",
       "previous_origins": [
         {
           "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
@@ -225,6 +225,12 @@
           "source_commit": "a52476c0612b77c3457c9ebb53c393bf30000673",
           "role": "submitted FIFO and PASSIVE preparation348; old origins preserved",
           "sha256": "9c2cc02b653f503f8215d98857d30edcba6ad9be4a7825267945fe7145953cfb"
+        },
+        {
+          "path": "drivers/gpu/mt8167/wddm-render/kmd_clear.c",
+          "source_commit": "0d4d197ae03b70bc86c6dcaf4af024b775299098",
+          "role": "Real claimed startup IRQ service before submitted DMA349; previous origins retained",
+          "sha256": "7ed32c667e749d992cc13f72420a4a62dd67923bc6856254872d578a554fc35e"
         }
       ]
     },

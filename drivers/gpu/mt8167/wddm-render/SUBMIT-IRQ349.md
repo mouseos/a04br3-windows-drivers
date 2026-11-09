@@ -13,3 +13,5 @@ run165のGPU348は、最初のClearを受理してPASSIVE準備を終えた後�
 `tests/submit_queue.c`はproduction engineへIRQ継続を注入し、未送信中の参照保持、後続ジョブの追越し禁止、preempt境界と実完了の区別を確認する。ホスト試験はWDK/IRQL/実GPUの証明ではない。
 
 既存の署名済み348を基点に `tools/ci/build-ge8300-submit-irq349.py` で4TUだけ再compileする。miniport、KMD clear、engine、native owner factoryが対象で、残る76objects、UMD、FW、client、SDK/compilerを再構築しない。全ソースからの通常ビルドの出自は既存fullsource gateで確認する。実機での成功は未確認。
+
+投入前の再レビューで、inline service後に古いservice_pending bit1が残る経路を修正した。bit1はservice/rearm前に原子的に消費し、その後の新しい実IRQが立てたbitを消さない。r1は未実機のまま投入を撤回し、r2でKMD clearの1TUだけ差分再構築する。他79objects/UMD/FW/clientは保持、INF3.49は維持し、正式SYS hashとsource commitでr1と区別する。
