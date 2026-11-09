@@ -35,7 +35,7 @@ struct display356 {
  KMUTEX mutex;LIST_ENTRY maps;LONG references;BOOLEAN started,closing,quarantined;
  ULONG saved[27];
  ULONG old_address,old_source,old_con,old_rdma,old_pitch;struct map356 *active;
- ULONGLONG frame_serial,ovl_serial;volatile LONG frame_errors,in_blank,seen_vsync;KEVENT frame_event;NTSTATUS last_status;
+ ULONGLONG frame_serial,ovl_serial;volatile LONG frame_errors,in_blank,seen_vsync;NTSTATUS last_status;
  a04_display_frame_notify notify;void *notify_context;
 };
 static ULONG rd(struct display356 *d,ULONG o){return READ_REGISTER_ULONG(d->ovl+o/4u);}
@@ -61,7 +61,7 @@ static BOOLEAN irq(PKINTERRUPT interrupt,void *context){
  raw=READ_REGISTER_ULONG(d->rdma+1);status=raw&READ_REGISTER_ULONG(d->rdma);if(!status)return FALSE;
  InterlockedOr(&d->frame_errors,(LONG)((raw&0x18u)<<16));WRITE_REGISTER_ULONG(d->rdma+1,~status);
  if(status&2u)InterlockedExchange(&d->in_blank,0);
- if(status&4u){InterlockedExchange(&d->in_blank,1);InterlockedExchange(&d->seen_vsync,1);d->frame_serial++;KeSetEvent(&d->frame_event,IO_NO_INCREMENT,FALSE);
+ if(status&4u){InterlockedExchange(&d->in_blank,1);InterlockedExchange(&d->seen_vsync,1);d->frame_serial++;
   if(d->notify)d->notify(d->notify_context,d->frame_serial);}
  return TRUE;
 }
@@ -151,7 +151,7 @@ static NTSTATUS select_backing(void *p,void *cookie){
  old=d->active;if(old)old->exposed=FALSE;
  /* DMA has actually stopped, so the old scanout has retired. Retain the
   * new backing BEFORE the first register write; a timeout quarantines it. */
- d->active=m;m->exposed=TRUE;before=frame_serial(d);before_ovl=ovl_serial(d);KeClearEvent(&d->frame_event);
+ d->active=m;m->exposed=TRUE;before=frame_serial(d);before_ovl=ovl_serial(d);
  restore_configuration356(d);
  wr(d,OVL_ROI,(1280u<<16)|800u);wr(d,OVL_CON0,0x20ffu);wr(d,OVL_SIZE0,(1280u<<16)|800u);
  wr(d,OVL_PITCH0,(d->old_pitch&0xffff0000u)|3200u);wr(d,OVL_ADDR0,m->dma);wr(d,OVL_RDMA0,d->old_rdma);wr(d,OVL_SRC,1u);
@@ -160,7 +160,8 @@ static NTSTATUS select_backing(void *p,void *cookie){
  for(ULONG i=0;i<100;i++){
   if(frame_serial(d)>before&&ovl_serial(d)>before_ovl){s=STATUS_SUCCESS;break;}
   if(KeQueryInterruptTime()-start>=1000000u)break;
-  timeout.QuadPart=-10000;KeClearEvent(&d->frame_event);(void)KeWaitForSingleObject(&d->frame_event,Executive,KernelMode,FALSE,&timeout);
+  /* No event signalling at DIRQL. Success still requires actual IRQ serial progress. */
+  timeout.QuadPart=-10000;(void)KeDelayExecutionThread(KernelMode,FALSE,&timeout);
  }
  if(s!=STATUS_SUCCESS||d->frame_errors||rd(d,OVL_ADDR0)!=m->dma){m->quarantined=TRUE;d->quarantined=TRUE;s=STATUS_IO_TIMEOUT;}
 
@@ -331,7 +332,7 @@ static NTSTATUS create_close(PDEVICE_OBJECT device,PIRP irp){UNREFERENCED_PARAME
 static NTSTATUS unsupported(PDEVICE_OBJECT device,PIRP irp){UNREFERENCED_PARAMETER(device);return complete(irp,STATUS_INVALID_DEVICE_REQUEST);}
 static NTSTATUS add(PDRIVER_OBJECT driver,PDEVICE_OBJECT pdo){
  PDEVICE_OBJECT device;struct display356 *d;NTSTATUS s=IoCreateDevice(driver,sizeof(*d),NULL,FILE_DEVICE_UNKNOWN,FILE_DEVICE_SECURE_OPEN,FALSE,&device);if(!NT_SUCCESS(s))return s;
- d=device->DeviceExtension;RtlZeroMemory(d,sizeof(*d));d->self=device;d->pdo=pdo;KeInitializeMutex(&d->mutex,0);InitializeListHead(&d->maps);KeInitializeEvent(&d->frame_event,NotificationEvent,FALSE);
+ d=device->DeviceExtension;RtlZeroMemory(d,sizeof(*d));d->self=device;d->pdo=pdo;KeInitializeMutex(&d->mutex,0);InitializeListHead(&d->maps);
  d->lower=IoAttachDeviceToDeviceStack(device,pdo);if(!d->lower){IoDeleteDevice(device);return STATUS_NO_SUCH_DEVICE;}
  s=IoRegisterDeviceInterface(pdo,&A04DisplayTransport356Guid,NULL,&d->link);if(!NT_SUCCESS(s)){IoDetachDevice(d->lower);IoDeleteDevice(device);return s;}
  device->Flags|=DO_POWER_PAGABLE;device->Flags&=~DO_DEVICE_INITIALIZING;return STATUS_SUCCESS;
