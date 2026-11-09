@@ -124,7 +124,7 @@ ulib=Path('C:/Program Files (x86)/Windows Kits/10/Lib/10.0.17763.0/um/arm')
 run([link,'/nologo','/machine:arm','/subsystem:console,6.03','/entry:mainCRTStartup','/nodefaultlib','/largeaddressaware','/tsaware:no',o/'dxgi-present356.obj',o/'memory.obj',*[ulib/(n+'.lib')for n in ['kernel32','user32','d3d11','dxgi','setupapi'] ],'/out:'+str(pkg/'mt8167-dxgi-present356.exe')],o/'logs/link-client.log')
 # Baseline clients retained as evidence only; next batch executes Present356.
 for n in ['ge8300-mips.fw','ge8300-d3d-clear.exe','ge8300-d3d-texture.exe','ge8300-d3d-texture-boundary.exe','mt8167-development.cer']:shutil.copyfile(base/'package355'/n,pkg/n)
-s=(base/'package355/ge8300-render.inf').read_text(encoding='utf-8-sig');s=s.replace('0.0.3.55','0.0.3.56');(pkg/'ge8300-render.inf').write_text(s,encoding='utf-8')
+b=(base/'package355/ge8300-render.inf').read_bytes();encoding='utf-16' if b[:2] in (b'\xff\xfe',b'\xfe\xff') else 'utf-8-sig';s=b.decode(encoding);s=s.replace('0.0.3.55','0.0.3.56');(pkg/'ge8300-render.inf').write_text(s,encoding=encoding)
 shutil.copyfile(r/'drivers/gpu/mt8167/display-transport/mt8167-display-transport.inf',transport/'mt8167-display-transport.inf')
 sign=Path('C:/mt8167-minimal-service-host/cache/kit81/bin/x86/signtool.exe');thumb='BCBF6C456C6F0DD0818434763B189488FBF13570'
 for q in [pkg/'ge8300-render.sys',pkg/'ge8300-umd.dll',pkg/'mt8167-dxgi-present356.exe',transport/'mt8167-display-transport.sys']:run([sign,'sign','/fd','SHA256','/sha1',thumb,q]);run([sign,'verify','/pa',q])
