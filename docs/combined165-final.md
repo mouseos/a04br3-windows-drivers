@@ -1,0 +1,11 @@
+# 165：fresh164/GPU348＋MT6630対の一括候補
+
+正本はfresh164 manifest d71ad4abf3425f345b993eab4da7f91261870348ab9b42fba82adb8e41dbba6c、Recovery9bfb3e9b-2837-4250-a5df-c8a08ff05ba2。原41、18fullfingerprints、旧40named＋実service162停止5値の45を別々に照合する。mutable GPU logs85は保存・prefix比較に分離しimmutable導入guardへ混ぜない。
+
+GPU348 source14fd9610b4f0ee0eb530177fb0bcfbcda4a58f1f/mainseal＋BT2016/provider1025 source6ca61e186eb2c235bcc3a21579eb8cbae8fd9edeを結合。DIFはwifi idx3/bt idx12/render idx10、予定restart1、新root登録0、親1117/boot2e6/thermal・MSDC1.10/AFE1034他actual保持。BT両packageは対で必須。
+
+BTstatusは新診断1TU、--statusを1回起動し最大35s/250ms/141samplesのsoftware PnP/radio到着のみ観測、terminal CM problemまたはradio成功で早期終了する。clienttimeout45s。HCI OPEN/登録/scan/pair/connect/FW/MMIO/RF再実行0。初回child0は最終失敗ではなくRESULT/WAIT_ELAPSED_MS/TERMINAL_CM_PROBLEMを判定する。root D0Return0もHCI成功とは扱わない。built-in BTreadはoff、同一statusEXEを追加起動しない。
+
+BTstatus idx0→GPU9934 idx1が最後の1回、GPU900s/preGPU180s。温度/status/audio/WLAN/benchmark等無変更機能client0。bootwait180sは別枠、最初phase1 PB286でpreGPU180を開始、現在GPU idx1 PB220で900sへ一度だけ切替。繰返しeventによる無期限延長無し。
+
+正式source policy/validator/read-combined164-post/helper/service1TU/native/mediaのhash整合とmain独立sealが必要。ARM build署名成功と実機描画/HCI成功は別。全実機操作はmainのみ。旧163/347の固定物へ変更しない。
