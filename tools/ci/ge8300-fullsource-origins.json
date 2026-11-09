@@ -1311,8 +1311,8 @@
     },
     {
       "path": "drivers/gpu/mt8167/display-transport/transport356.c",
-      "source_commit": "149631411fa08812a79d332bee62d4317d5c6499",
-      "role": "Unified356 POST restore address/config readback before exposure release",
+      "source_commit": "369439d63e5da69ce1560a01e14cc0ffe6c57b0e",
+      "role": "Unified356r2 DIRQL-safe real IRQ serial; bounded PASSIVE observation",
       "sha256": "779d46099e22dcefa4d77f268f1d7b981b0358b803455793d6d8ea9209f5bf10",
       "previous_origins": [
         {
@@ -1329,6 +1329,11 @@
           "source_commit": "4576e10a0c69b86f510c58ce87a3d8b8583d1c83",
           "sha256": "4cc1be69e99a9b8b72116c6b2b78418136fcb883e11747ecbaaed0a4f4687ef5",
           "role": "Unified356 exact firmware POST profile and reset configuration preservation"
+        },
+        {
+          "source_commit": "149631411fa08812a79d332bee62d4317d5c6499",
+          "sha256": "779d46099e22dcefa4d77f268f1d7b981b0358b803455793d6d8ea9209f5bf10",
+          "role": "Unified356 POST restore address/config readback before exposure release"
         }
       ]
     },
