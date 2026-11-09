@@ -33,19 +33,20 @@ static int matches(volatile void *source,const void *expected,unsigned bytes)
     }
     return 0;
 }
-static volatile void *data_span(struct a04_vendor_native_cold *n,uint64_t gpu,unsigned bytes)
+/* GPU VA is linear but storage consists of independent common buffers.
+ * A whole TPC range is not a CPU pointer: 800x1280 spans several blocks.
+ * Keep the complete zero policy and fail on any missing/read/nonzero byte. */
+static int data_zero(struct a04_vendor_native_cold *n,uint64_t gpu,unsigned bytes)
 {
-    if(gpu<A04_NATIVE_DATA_VA || gpu-A04_NATIVE_DATA_VA>n->used || bytes>n->used-(gpu-A04_NATIVE_DATA_VA))return NULL;
-    return a04_vendor_native_storage_pointer(n,0,(ULONG)(gpu-A04_NATIVE_DATA_VA),bytes);
-}
-static int zeros(volatile void *source,unsigned bytes)
-{
-    _Alignas(8) uint32_t read[64];volatile uint8_t *src=source;unsigned n,i;
+    _Alignas(8) uint32_t read[64];ULONG at;unsigned count,i;
+    if(!n || !bytes || (bytes&3u) || gpu<A04_NATIVE_DATA_VA ||
+       gpu-A04_NATIVE_DATA_VA>n->used || bytes>n->used-(gpu-A04_NATIVE_DATA_VA))return 1;
+    at=(ULONG)(gpu-A04_NATIVE_DATA_VA);
     while(bytes){
-        n=bytes>sizeof(read)?sizeof(read):bytes;
-        if((n&3u) || a04_rgx_device_read_words(read,src,n))return 1;
-        for(i=0;i<n/4u;i++)if(read[i])return 1;
-        bytes-=n;src+=n;
+        count=bytes>sizeof(read)?sizeof(read):bytes;
+        if(a04_vendor_native_storage_read(n,0,at,read,count))return 1;
+        for(i=0;i<count/4u;i++)if(read[i])return 1;
+        at+=count;bytes-=count;
     }
     return 0;
 }
@@ -67,12 +68,9 @@ static NTSTATUS prepare_job_cold(struct a04_vendor_native_cold *n,uint32_t pixel
        !n->code[0].cpu || !n->code[1].cpu || !n->data.cpu || !a04_vendor_native_output_ready(n))
         return STATUS_INVALID_DEVICE_STATE;
     if(a04_m111_build_single_rt_hwrt_profile(profile,n->width,n->height,&n->target,&n->mlists))return status;
-    if(!data_span(n,n->target.region_gpu[0],n->target.region_used) ||
-       !data_span(n,n->target.tail_ptrs_gpu,n->target.tpc_vheap_used) ||
-       !data_span(n,n->mlists.gpu[0],n->mlists.used) ||
-       zeros(data_span(n,n->target.region_gpu[0],n->target.region_used),n->target.region_used) ||
-       zeros(data_span(n,n->target.tail_ptrs_gpu,n->target.tpc_vheap_used),n->target.tpc_vheap_used) ||
-       zeros(data_span(n,n->mlists.gpu[0],n->mlists.used),n->mlists.used))return status;
+    if(data_zero(n,n->target.region_gpu[0],n->target.region_used) ||
+       data_zero(n,n->target.tail_ptrs_gpu,n->target.tpc_vheap_used) ||
+       data_zero(n,n->mlists.gpu[0],n->mlists.used))return status;
     if(n->auxiliary.dummy_region_gpu<A04_NATIVE_DATA_VA ||
        n->auxiliary.dummy_region_gpu-A04_NATIVE_DATA_VA>n->used-128u ||
        n->auxiliary.dummy_stencil_gpu<A04_NATIVE_DATA_VA ||
@@ -87,8 +85,8 @@ static NTSTATUS prepare_job_cold(struct a04_vendor_native_cold *n,uint32_t pixel
     /* Verified Windows cold policy, NOT a claim about unread Android memory.
      * Matches same-version Linux fresh-PMR ZERO_ALL_PAGES/__GFP_ZERO and the
      * flags3 UM allocation path with no explicit CPU initialization. */
-    if(zeros(data_span(n,n->auxiliary.dummy_region_gpu,128),128) ||
-       zeros(data_span(n,n->auxiliary.dummy_stencil_gpu,2048),2048) ||
+    if(data_zero(n,n->auxiliary.dummy_region_gpu,128) ||
+       data_zero(n,n->auxiliary.dummy_stencil_gpu,2048) ||
        a04_rgx_device_read_words(native_sync,(UCHAR *)r->buffer[0].cpu+0x4c00u,sizeof(native_sync)) ||
        native_sync[0] || native_sync[1])return status;
     a04_vendor_native_diagnose(n,A04_NATIVE_PREP_JOB,0,sizeof(*c)+8192u);
