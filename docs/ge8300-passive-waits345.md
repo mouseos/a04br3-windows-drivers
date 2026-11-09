@@ -7,3 +7,5 @@ Windows commandのFW ackポーリングはPASSIVE_LEVELであり、KeStallExecut
 同じPASSIVE退役処理のIRQ drainもビジーウェイトを1msのKernelMode非alertable待機へ変更し、KeQueryInterruptTimeによる既1秒budgetと最大1000回の上限を設ける。GPUレジスター、CCB、shader、PTE、IRQ所有権や正常retirement proofは変更しない。短いハードウェア初期化用delayやDIRQL submitには待機を追加しない。
 
 Windows kernelの待機APIを用いた本修正候補であり、実機同期完了・2色の画素・Draw/texture・長期安定は未検証。344の同boot処理段階記録を維持して一括評価する。
+
+一次資料：Microsoft [KeStallExecutionProcessor](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-kestallexecutionprocessor) は一般に50µs未満の短いstallを推奨し、長い待機には別の同期方法を求める。[KeDelayExecutionThread](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-kedelayexecutionthread) はKernelMode/非alertable待機と、システムclock粒度による精度制約を定義する。PCのPMU読み命令だけからPMU故障やHALの不具合を断定しない。
