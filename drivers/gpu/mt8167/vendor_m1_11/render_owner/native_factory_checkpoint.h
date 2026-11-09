@@ -8,7 +8,9 @@ static void GeoFactoryCheckpoint(ULONG stage,NTSTATUS status,ULONG a,ULONG b,ULO
  UNICODE_STRING path=RTL_CONSTANT_STRING(L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\GE8300Render\\Parameters\\FactoryCheckpoint");
  WCHAR label[4]={L'R',L'0',L'0',0};UNICODE_STRING name;OBJECT_ATTRIBUTES oa;HANDLE key=NULL;ULONG disposition;
  LARGE_INTEGER now;struct geo_factory_record r={2,sizeof(r),stage,(ULONG)status,a,b,c,d,0,0};
- if(stage>63||KeGetCurrentIrql()!=PASSIVE_LEVEL)return;
+ /* Registry I/O requires special kernel APCs enabled as well as PASSIVE.
+  * A graphics callback's guarded region must never be made to wait for it. */
+ if(stage>63||KeGetCurrentIrql()!=PASSIVE_LEVEL||KeAreAllApcsDisabled())return;
  KeQuerySystemTime(&now);r.time_low=now.LowPart;r.time_high=(ULONG)now.HighPart;
  label[1]=(WCHAR)(L'0'+stage/10);label[2]=(WCHAR)(L'0'+stage%10);RtlInitUnicodeString(&name,label);
  InitializeObjectAttributes(&oa,&path,OBJ_KERNEL_HANDLE|OBJ_CASE_INSENSITIVE,NULL,NULL);
