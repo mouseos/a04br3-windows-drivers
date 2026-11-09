@@ -565,7 +565,7 @@
       "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_draw_job.c",
       "source_commit": "f96948533601f9fdcdcc22b9700aacd96dbf7204",
       "source_sha256": "e51bc1bfde053d806cf9af1652e08197f2067b30d0b6696501efa7d3bf4c6251",
-      "sha256": "2c2f9b239c90de8cb9bdb042902573ea13ce3afef41257d61ed1319919aeac50",
+      "sha256": "9dc0970d278ec76d260934e465eaebc7adc9abb5f4f9daa1c12aea6587471828",
       "include_rewrites": [
         [
           "native_draw_job.h",
@@ -598,29 +598,36 @@
       ],
       "rewrite_includes_only": true,
       "reviewed_delta": {
-        "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
+        "source_commit": "3ee34eea349744d003479467ee538de33f212a06",
         "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_draw_job.c",
-        "sha256": "2c2f9b239c90de8cb9bdb042902573ea13ce3afef41257d61ed1319919aeac50",
-        "baseline_destination_sha256": "e51bc1bfde053d806cf9af1652e08197f2067b30d0b6696501efa7d3bf4c6251",
-        "role": "Matrix VS + sampled PS331 / explicit owned ABI5 composition",
+        "sha256": "9dc0970d278ec76d260934e465eaebc7adc9abb5f4f9daa1c12aea6587471828",
+        "baseline_destination_sha256": "2c2f9b239c90de8cb9bdb042902573ea13ce3afef41257d61ed1319919aeac50",
+        "role": "SAMPLE354 exact six-temp finite profile; unchanged code/ISA guard",
         "previous_reviewed_delta": {
-          "source_commit": "9aa8386cf967e8348e0130a23d419cc9b627d0e6",
+          "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
           "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_draw_job.c",
-          "sha256": "9fe1d09ee143a6f8b6a2be5f6e2d9305d5bea9bc180e79217985df51169cabf1",
+          "sha256": "2c2f9b239c90de8cb9bdb042902573ea13ce3afef41257d61ed1319919aeac50",
           "baseline_destination_sha256": "e51bc1bfde053d806cf9af1652e08197f2067b30d0b6696501efa7d3bf4c6251",
-          "role": "VS CB330 / bounded owned code and uniform spans",
+          "role": "Matrix VS + sampled PS331 / explicit owned ABI5 composition",
           "previous_reviewed_delta": {
-            "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
+            "source_commit": "9aa8386cf967e8348e0130a23d419cc9b627d0e6",
             "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_draw_job.c",
-            "sha256": "87b92790b8f0b28622a8f62363cb9aeac4fe525016ec23b436fbefebd6b5f563",
+            "sha256": "9fe1d09ee143a6f8b6a2be5f6e2d9305d5bea9bc180e79217985df51169cabf1",
             "baseline_destination_sha256": "e51bc1bfde053d806cf9af1652e08197f2067b30d0b6696501efa7d3bf4c6251",
-            "role": "ABI4 real ALU shader witness / ownership-preserving native overlay329",
+            "role": "VS CB330 / bounded owned code and uniform spans",
             "previous_reviewed_delta": {
-              "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
+              "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
               "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_draw_job.c",
-              "sha256": "04843a5ac72c3ba668cf570663ce55ef1dad1c8b9fbc147572d2a003dbd4fda3",
+              "sha256": "87b92790b8f0b28622a8f62363cb9aeac4fe525016ec23b436fbefebd6b5f563",
               "baseline_destination_sha256": "e51bc1bfde053d806cf9af1652e08197f2067b30d0b6696501efa7d3bf4c6251",
-              "role": "Texture326 binding + source filter327"
+              "role": "ABI4 real ALU shader witness / ownership-preserving native overlay329",
+              "previous_reviewed_delta": {
+                "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
+                "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_draw_job.c",
+                "sha256": "04843a5ac72c3ba668cf570663ce55ef1dad1c8b9fbc147572d2a003dbd4fda3",
+                "baseline_destination_sha256": "e51bc1bfde053d806cf9af1652e08197f2067b30d0b6696501efa7d3bf4c6251",
+                "role": "Texture326 binding + source filter327"
+              }
             }
           }
         }
@@ -2580,34 +2587,50 @@
     {
       "source": "drivers/gpu/mt8167/vendor_m1_11/native_texture2d_program.c",
       "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_texture2d_program.c",
-      "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
+      "source_commit": "3ee34eea349744d003479467ee538de33f212a06",
       "source_sha256": "5d8c52b7058ad726876ab72555911f8ab505fc3f494f166ea6392bbaddd4f611",
-      "sha256": "5d8c52b7058ad726876ab72555911f8ab505fc3f494f166ea6392bbaddd4f611",
+      "sha256": "e17fef2fd7c4a1fa391e8eac877070d64fe6f1aaf526c065dda761469a537038",
       "include_rewrites": [],
       "rewrite_includes_only": false,
       "reviewed_delta": {
-        "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
+        "source_commit": "3ee34eea349744d003479467ee538de33f212a06",
         "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_texture2d_program.c",
-        "sha256": "5d8c52b7058ad726876ab72555911f8ab505fc3f494f166ea6392bbaddd4f611",
-        "baseline_destination_sha256": null,
-        "role": "New source texture implementation326/327",
+        "sha256": "e17fef2fd7c4a1fa391e8eac877070d64fe6f1aaf526c065dda761469a537038",
+        "baseline_destination_sha256": "5d8c52b7058ad726876ab72555911f8ab505fc3f494f166ea6392bbaddd4f611",
+        "role": "SAMPLE354 exact six-temp finite profile; unchanged code/ISA guard",
+        "previous_reviewed_delta": {
+          "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
+          "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_texture2d_program.c",
+          "sha256": "5d8c52b7058ad726876ab72555911f8ab505fc3f494f166ea6392bbaddd4f611",
+          "baseline_destination_sha256": null,
+          "role": "New source texture implementation326/327",
+          "new_source": true
+        },
         "new_source": true
       }
     },
     {
       "source": "drivers/gpu/mt8167/vendor_m1_11/native_texture2d_program.h",
       "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_texture2d_program.h",
-      "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
+      "source_commit": "3ee34eea349744d003479467ee538de33f212a06",
       "source_sha256": "00f51f0ebcd346448c00522b17271f841e8e15f667411fa4353e0baa8f59bfcc",
-      "sha256": "00f51f0ebcd346448c00522b17271f841e8e15f667411fa4353e0baa8f59bfcc",
+      "sha256": "d0e442b45d9ac467f2c8c5d009f00b38775e227a83c1220bed094c7c68eb47f7",
       "include_rewrites": [],
       "rewrite_includes_only": false,
       "reviewed_delta": {
-        "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
+        "source_commit": "3ee34eea349744d003479467ee538de33f212a06",
         "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_texture2d_program.h",
-        "sha256": "00f51f0ebcd346448c00522b17271f841e8e15f667411fa4353e0baa8f59bfcc",
-        "baseline_destination_sha256": null,
-        "role": "New source texture implementation326/327",
+        "sha256": "d0e442b45d9ac467f2c8c5d009f00b38775e227a83c1220bed094c7c68eb47f7",
+        "baseline_destination_sha256": "00f51f0ebcd346448c00522b17271f841e8e15f667411fa4353e0baa8f59bfcc",
+        "role": "SAMPLE354 exact six-temp finite profile; unchanged code/ISA guard",
+        "previous_reviewed_delta": {
+          "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
+          "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_texture2d_program.h",
+          "sha256": "00f51f0ebcd346448c00522b17271f841e8e15f667411fa4353e0baa8f59bfcc",
+          "baseline_destination_sha256": null,
+          "role": "New source texture implementation326/327",
+          "new_source": true
+        },
         "new_source": true
       }
     },
