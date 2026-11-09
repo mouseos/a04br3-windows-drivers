@@ -153,7 +153,8 @@ static NTSTATUS discard_allocation_prepares(struct geo_kmd_adapter *a,struct geo
 static NTSTATUS prepare_pending(struct geo_kmd_adapter *a,const struct geo_dma_ticket *t) {
  struct geo_job *j;struct geo_pending_payload *payload;struct geo_draw_packet *p;struct geo_draw_packet_v2 *v2;
  struct prepare_call call;UINT header,kind,attempt=0;void *blob;
- ULONGLONG began;LARGE_INTEGER interval;NTSTATUS service;
+ ULONGLONG began,service_started,service_elapsed;LARGE_INTEGER interval;NTSTATUS service=STATUS_SUCCESS;
+ UINT trace_waited=0,trace_attempt=0,trace_service_ms=0,trace_sync_failed=0;
  if(!a||!t||t->slot>=GEO_MAX_JOBS||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  j=&a->engine.jobs[t->slot];payload=&a->pending[t->slot];
  if(j->generation!=t->generation||payload->generation!=t->generation)return STATUS_INVALID_PARAMETER;
@@ -168,42 +169,49 @@ static NTSTATUS prepare_pending(struct geo_kmd_adapter *a,const struct geo_dma_t
   call.status=p->version==5?a->draw_v5.prepare_draw(a->draw_v5.context,&((struct geo_draw_packet_v5 *)p)->request,blob,p->request.blob_bytes,&call.token):p->version==4?a->draw_v4.prepare_draw(a->draw_v4.context,&((struct geo_draw_packet_v4 *)p)->request,blob,p->request.blob_bytes,&call.token):p->version==3?a->draw_v3.prepare_draw(a->draw_v3.context,&((struct geo_draw_packet_v3 *)p)->request,blob,p->request.blob_bytes,&call.token):p->version==2?a->draw_v2.prepare_draw(a->draw_v2.context,&v2->request,blob,p->request.blob_bytes,&call.token):
     a->draw.prepare_draw(a->draw.context,&p->request,blob,p->request.blob_bytes,&call.token);
  }else return STATUS_INVALID_PARAMETER;
+ /* Persist entry before starting the bounded real-IRQ continuation budget. */
  if(kind==GEO_DRAW_MAGIC)GeoFactoryCheckpoint(55,STATUS_PENDING,t->slot,t->generation,0,8);
  began=KeQueryInterruptTime();interval.QuadPart=-10000;
  for(;;) {
   if(!a->synchronize(a->sync_context,finish_prepare,&call)){
-   if(kind==GEO_DRAW_MAGIC)GeoFactoryCheckpoint(55,STATUS_DEVICE_NOT_READY,t->slot,t->generation,attempt,2);
-   return STATUS_DEVICE_NOT_READY;
+   call.status=STATUS_DEVICE_NOT_READY;trace_sync_failed=1;goto record_result;
   }
   if(call.status!=GEO_SUBMIT_WAIT_IRQ)break;
-  GeoFactoryCheckpoint(50,call.status,kind,t->slot,t->generation,attempt);
-  /* Only the owner's exact real-claim continuation reaches this branch.
-   * The queued worker owns rundown and passive_lock already. Service that
-   * receipt here, without re-preparing, re-queuing a fake IRQ, or notifying
-   * the scheduler. The real submission is retried under the IRQ lock. */
-  /* Consume only the real-IRQ work reservation that we are servicing now.
-   * Clear BEFORE service/rearm: a new IRQ after rearm must keep its own bit.
-   * Leaving this old bit set queues a second service after publication,
-   * when SUBMITTED/unmasked correctly has no claim receipt to process. */
-  InterlockedAnd(&a->service_pending,~1L);
+  trace_waited=1;trace_attempt=attempt;
+  /* The actual synchronized submit predicate gets the first decision after
+   * successful IRQ service. Expiry only forbids another wait/service; it
+   * must not replace a completed rearm with an invented submit failure. */
+  if(attempt>=100 || KeQueryInterruptTime()-began>=1000000u){call.status=STATUS_IO_TIMEOUT;goto fail_claim;}
+  InterlockedAnd(&a->service_pending,~1L); /* consume BEFORE service/rearm */
+  service_started=KeQueryInterruptTime();
   if(!a->session || !a->session->control.service)service=STATUS_INVALID_DEVICE_STATE;
   else service=a->session->control.service(a->session->lease.cookie,a->session->lease.epoch);
-  GeoFactoryCheckpoint(51,service,kind,t->slot,t->generation,attempt);
-  if(service!=STATUS_SUCCESS && service!=STATUS_DEVICE_BUSY)call.status=service;
-  else if(++attempt>=100 || KeQueryInterruptTime()-began>=1000000u)call.status=STATUS_IO_TIMEOUT;
-  else {
-   if(service==STATUS_DEVICE_BUSY)(void)KeDelayExecutionThread(KernelMode,FALSE,&interval);
-   call.status=STATUS_SUCCESS;continue;
+  service_elapsed=KeQueryInterruptTime()-service_started;
+  trace_service_ms=(ULONG)(service_elapsed/10000u>MAXULONG?MAXULONG:service_elapsed/10000u);
+  ++attempt;
+  if(service!=STATUS_SUCCESS && service!=STATUS_DEVICE_BUSY){call.status=service;goto fail_claim;}
+  if(service==STATUS_DEVICE_BUSY){
+   if(attempt>=100 || KeQueryInterruptTime()-began>=1000000u){call.status=STATUS_IO_TIMEOUT;goto fail_claim;}
+   (void)KeDelayExecutionThread(KernelMode,FALSE,&interval);
   }
-  /* Fail closed with the same retained token if the real source cannot be
-   * serviced within the existing 100ms FW synchronization budget. */
-  if(!a->synchronize(a->sync_context,finish_prepare,&call)){
-   if(kind==GEO_DRAW_MAGIC)GeoFactoryCheckpoint(55,STATUS_DEVICE_NOT_READY,t->slot,t->generation,attempt,2);
-   return STATUS_DEVICE_NOT_READY;
-  }
-  break;
+  /* No fake completion: this only retries the SAME state8/token through
+   * real owner.submit under the real IRQ lock. A renewed IRQ claim must
+   * still satisfy the unchanged count/elapsed bound above before service. */
+  call.status=STATUS_SUCCESS;
  }
- if(kind==GEO_DRAW_MAGIC)GeoFactoryCheckpoint(55,call.status,t->slot,t->generation,attempt,4|(call.trace_submit_eligible?1:0));
+ goto record_result;
+fail_claim:
+ /* Preserve the existing poisoned/retained-token failure path. */
+ if(!a->synchronize(a->sync_context,finish_prepare,&call)){
+  call.status=STATUS_DEVICE_NOT_READY;trace_sync_failed=1;
+ }
+record_result:
+ /* Registry IO is outside the bounded loop. R50/R51 now describe its last
+  * actual claim/service; their FILETIME is persistence time, not call time.
+  * R51.d is measured service elapsed milliseconds (record contract353). */
+ if(trace_waited)GeoFactoryCheckpoint(50,GEO_SUBMIT_WAIT_IRQ,kind,t->slot,t->generation,trace_attempt);
+ if(attempt)GeoFactoryCheckpoint(51,service,kind,t->slot,t->generation,trace_service_ms);
+ if(kind==GEO_DRAW_MAGIC)GeoFactoryCheckpoint(55,call.status,t->slot,t->generation,attempt,trace_sync_failed?2:4|(call.trace_submit_eligible?1:0));
  GeoFactoryCheckpoint(23,call.status,kind,t->slot,t->generation,0);return call.status;
 }
 struct claim_prepare_call {struct geo_kmd_adapter *adapter;struct geo_dma_ticket ticket;NTSTATUS status;};

@@ -393,7 +393,13 @@ static NTSTATUS service(void *p,uint64_t epoch)
         if(!e_native_synchronize(c,copy_arm_visibility,&arm))return leave(c,STATUS_IO_DEVICE_ERROR);
         return leave(c,arm.status);
     }
-    s=a04_native_dispatch_service(&c->allocation->dispatch);native_progress(c,39,s);return leave(c,s);
+    /* PREPARED service is the inline real-claim continuation inside the
+     * existing 100ms submit budget. Do not perform registry IO there: KMD
+     * persists its real result/duration in R50/R51 after the decision. */
+    BOOLEAN preparing=c->job_state==E_JOB_PREPARED;
+    s=a04_native_dispatch_service(&c->allocation->dispatch);
+    if(!preparing)native_progress(c,39,s);
+    return leave(c,s);
 }
 static NTSTATUS acquire(void *p,struct geo_owner_lease *out)
 {
