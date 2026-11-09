@@ -1311,14 +1311,19 @@
     },
     {
       "path": "drivers/gpu/mt8167/display-transport/transport356.c",
-      "source_commit": "4f3ae862b406ec14623199711596c6112ceea203",
-      "role": "Unified356 reviewed driver support link closure",
-      "sha256": "da21ba6bf2af55f0ceb6865f36461c3267c5c0c6e7fc9910ae80d6241571cce3",
+      "source_commit": "4576e10a0c69b86f510c58ce87a3d8b8583d1c83",
+      "role": "Unified356 exact firmware POST profile and reset configuration preservation",
+      "sha256": "4cc1be69e99a9b8b72116c6b2b78418136fcb883e11747ecbaaed0a4f4687ef5",
       "previous_origins": [
         {
           "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
           "sha256": "0fd06205cade46fdd04bd9fb2147aabbc7b40ca2a755535178068aefd337e63a",
           "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8"
+        },
+        {
+          "source_commit": "4f3ae862b406ec14623199711596c6112ceea203",
+          "sha256": "da21ba6bf2af55f0ceb6865f36461c3267c5c0c6e7fc9910ae80d6241571cce3",
+          "role": "Unified356 reviewed driver support link closure"
         }
       ]
     },
@@ -1464,14 +1469,19 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/display_adapter356.c",
-      "source_commit": "4f3ae862b406ec14623199711596c6112ceea203",
-      "role": "Unified356 reviewed driver support link closure",
-      "sha256": "4f659977f4652b8728c940a0a89f3fefb7ad88281b4641ec47864ef65c74c97f",
+      "source_commit": "4576e10a0c69b86f510c58ce87a3d8b8583d1c83",
+      "role": "Unified356 exact firmware POST profile and reset configuration preservation",
+      "sha256": "38db4d71c0f5a1c23837793c6be4cd97f93881618515eae691a0abc130111c6a",
       "previous_origins": [
         {
           "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
           "sha256": "1ca805978dde12898a3b4438dce6488988d2ddb52d2a56d043534b69ef382609",
           "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8"
+        },
+        {
+          "source_commit": "4f3ae862b406ec14623199711596c6112ceea203",
+          "sha256": "4f659977f4652b8728c940a0a89f3fefb7ad88281b4641ec47864ef65c74c97f",
+          "role": "Unified356 reviewed driver support link closure"
         }
       ]
     },
@@ -1498,6 +1508,18 @@
       "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
       "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8",
       "sha256": "314560866641e0e5b04bc3f21a114e96c907d1423d0e36f95dce57346bb9c654"
+    },
+    {
+      "path": "drivers/gpu/mt8167/display-transport/barrier356.h",
+      "source_commit": "4576e10a0c69b86f510c58ce87a3d8b8583d1c83",
+      "sha256": "ae2cc7250c05d28d42793bb5254b762df7c5521ee38f6768afbf4ea1f09d17fe",
+      "role": "Unified356 explicit platform contract"
+    },
+    {
+      "path": "drivers/gpu/mt8167/display-transport/post_profile356.h",
+      "source_commit": "4576e10a0c69b86f510c58ce87a3d8b8583d1c83",
+      "sha256": "bbb96ad416aebf960e7aa50ac531a161c2d1c1f39694a4085f039a9c9022a547",
+      "role": "Unified356 explicit platform contract"
     }
   ],
   "legacy_files_preserved": [
