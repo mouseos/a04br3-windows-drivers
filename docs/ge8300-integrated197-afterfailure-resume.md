@@ -62,3 +62,28 @@ helperは失敗時に停止し、compile fallbackを持たない。
 
 公開時点の検証はLinuxでの実回収input検証まで。Windows client/SYS link成功、署名、
 実機、DWM成功は未確認。RT/SRV兼用・blendは未実装のまま。
+
+## mainが先に生成した両SYSを再linkしない場合
+
+mainの既存SYS link完了後、同じhelperに以下を追加する。
+このmodeではLINK/llvm-libを起動しない。client linkとmetadata生成のみ行う。
+
+```powershell
+python -B tools/ci/resume-ge8300-integrated197-afterfailure.py --enable-candidate --acknowledge-reconstructed-afterfailure --source-root C:/mt8167-shared-integrated197 --build-directory C:/mt8167-shared-integrated197/build/integrated-kernel-aa661-umd --output C:/mt8167-shared-integrated197/build/integrated197-metadata-resume --um-arm-libraries "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.17763.0/um/arm" --existing-sys-directory C:/mt8167-shared-integrated197/build/integrated-kernel-aa661-umd --existing-link-record C:/mt8167-shared-integrated197/build/integrated-kernel-aa661-umd/main-link-resume.json --acknowledge-existing-fixed-input-links
+```
+
+existing-sys-directory内にge8300-render.sys、mt8167-display-transport.sys、
+kernel-link.json、transport-link.json、ge8300-render.map、transport.mapが必要。
+mainが別名で保存した場合はその実ファイルを同名へcopyして用意する。
+main-link-resume.jsonは元のpending/wholewrapperfalseを保持してcopyし、
+一括manifestにも元記録として残す。mainのrecord実保存先が違う場合は引数で指定する。
+mainbuildloglink-existing-host.logが同directoryにあればhash/copyする。
+
+両SYSはPE ARMNT、output SHA、metadataに記録されたLINK14.29 SHAとdisplib SHA、
+map実体を検査し、処理完了時に元hashを再照合する。
+元link-kmd scriptのmetadataにはinput archiveのhash/argumentsがないため、
+そのmetadataだけで入力archiveまで独立に証明したとは主張しない。
+existing_link_input_archives_independently_bound_by_link_metadata=falseを記録する。
+固定3dのinput115個は別途照合し、既存SYSがその固定入力から生成された点は
+mainの記録と明示acknowledgementを証拠として保持する。
+SYS_relink_invocations=0、全TU再compile=0。
