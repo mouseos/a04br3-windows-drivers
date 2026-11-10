@@ -97,7 +97,7 @@ def main():
     for row in spec['baseline_tools']: pin(tools[row['name']],row['sha256'])
     native=baseline/'native/ge8300-native-owner-core.lib'
     for row in read(baseline/'native/build-manifest.json')['wdk_inputs']: pin(Path(re.sub(r'\\+',r'\\',row['path'])),row['sha256'])
-    out.mkdir();(out/'logs').mkdir();(out/'objects').mkdir();(out/'baseline-members').mkdir()
+    out.mkdir(parents=True);(out/'logs').mkdir();(out/'objects').mkdir();(out/'baseline-members').mkdir()
     env=dict(os.environ,VSLANG='1033',TEMP=str(out/'logs'),TMP=str(out/'logs'))
     receipt=dict(schema='panel-timing-fixed198-incremental-v1',source_commit=commit,baseline_compiled_source_commit=BASE,whole_driver_fresh_build=False,native_compiled_source_commit=BASE,UMD_compiled_source_commit=BASE,native_recompiled=0,UMD_recompiled=0,PCO_recompiled=0,SDK_rebuilt=0,historical_include_closure_reconstructed=False,new_compiles=[],tools=[],commands=[],success=False,signed=False,hardware_verified=False,deployment_performed=False)
     def run(args,name):
