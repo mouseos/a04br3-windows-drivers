@@ -9,6 +9,7 @@ SERVICE='MT8167CombinedFollowup200'
 KNOWN_PROFILES={
  'run201':dict(run=201,fresh=200,capture=202,profile=PROFILE,service=SERVICE),
  'run203':dict(run=203,fresh=202,capture=204,profile='combined-features-fresh202-gpu368-v1',service='MT8167CombinedFollowup202'),
+ 'run216':dict(run=216,fresh=215,capture=217,profile='combined-features-fresh215-gpu373-clients-v1',service='MT8167CombinedFollowup215',client373=True),
  'run213':dict(run=213,fresh=212,capture=214,profile='combined-features-fresh212-gpu371-output-v1',service='MT8167CombinedFollowup212',output371=True),
  'run209':dict(run=209,fresh=208,capture=210,profile='combined-features-fresh208-gpu369-timing-v1',service='MT8167CombinedFollowup208',timing=True),
 }
@@ -34,9 +35,9 @@ test "$rows" -gt 0'
 def contract(name):
  require(name in KNOWN_PROFILES,'未知のcontroller profile')
  k=dict(KNOWN_PROFILES[name]);k.update(
-  schema=('GPU371' if k.get('output371') else 'GPU369' if k.get('timing') else 'GPU368')+'_RUN%d_MAIN_SEAL_V1'%k['run'],transaction='combined-run%d'%k['run'],
+  schema=('GPU373' if k.get('client373') else 'GPU371' if k.get('output371') else 'GPU369' if k.get('timing') else 'GPU368')+'_RUN%d_MAIN_SEAL_V1'%k['run'],transaction='combined-run%d'%k['run'],
   capture_output='port/xnu/out/private-windows-rt-prebackup-run%d'%k['capture'],
-  diagnostics_output='port/xnu/out/private-windows-rt-%s-run%d-diagnostics'%('gpu371' if k.get('output371') else 'gpu369' if k.get('timing') else 'gpu368',k['run']),
+  diagnostics_output='port/xnu/out/private-windows-rt-%s-run%d-diagnostics'%('gpu373' if k.get('client373') else 'gpu371' if k.get('output371') else 'gpu369' if k.get('timing') else 'gpu368',k['run']),
   runtime_output='port/gsi/logs/ios-feasibility/windows-rt-combined-run%d-runtime'%k['run'])
  return k
 
@@ -74,7 +75,7 @@ def validate_seal(root,path,digest,known_profile="run201",entrypoint=None):
  require(c['target_tools']=='port/gsi/logs/ios-feasibility/windows-rt-target-tools.sh' and c['reset_script']=='unixnu/UniXNU-a04br3/scripts/a04br3-reset.sh','既target/reset実装のみ')
  require(c['boot_written'] is False and c['gpt_written'] is False and c['hardware_success_claimed'] is False,'sealは実行前状態、GPT変更/成功主張は禁止')
  require(c['service_name']==c['data_directory']==service and re.fullmatch('[A-Za-z0-9_-]{1,100}',c['gpu_log_directory']),'service/data directory不一致')
- require(c['planned_windows_reboots']==1 and c['GPU_client_index']==0 and c['globaldiag_client_index']==1 and c['diagnostic_client_count']==2,'render install/reboot1＋Present1/helper1のみ')
+ require(c['planned_windows_reboots'] in ((0,1) if k.get('client373') else (1,)) and c['GPU_client_index']==0 and c['globaldiag_client_index']==1 and c['diagnostic_client_count']==2,'render install/reboot1＋Present1/helper1のみ')
  require(c['install_timeout_seconds']==900 and c['diagnostic_boot_wait_seconds']==180 and c['diagnostic_timeout_seconds']==1140 and c['terminal_settle_seconds'] in range(3,46),'固定timeout契約不一致')
  pins={}
  for row in c['pinned_files']:
@@ -83,17 +84,31 @@ def validate_seal(root,path,digest,known_profile="run201",entrypoint=None):
   p=rooted(root,c[key]);require(p.relative_to(root).as_posix() in pins,'sealに必要tool/input pinがない: '+key);return p
  for key in ('capture_tool','crc_decoder','diagnostics_collector','ntfs3g','reset_script','target_tools','fresh_manifest','normal_esp','controller_path'):pinned(key)
  require(pinned('controller_path')==Path(entrypoint or __file__).resolve(),'別controllerのseal')
- if known_profile in ('run203','run209','run213'):
+ if known_profile in ('run203','run209','run213','run216'):
   require(pinned('controller_engine')==Path(__file__).resolve(),'共通controller engine pin不一致')
   require(pinned('collector_present_helper')==Path(__file__).resolve().with_name('collect-present356.py'),'collector helper pin不一致')
  source=rooted(root,c['source_tree']);media=rooted(root,c['media_directory']);m=read(media/'manifest.json');p=m['policy']
  require((media/'manifest.json').relative_to(root).as_posix() in pins and sha(media/'manifest.json')==c['media_manifest_sha256'],'media manifest pin不一致')
  require(sha(media/'update.wim')==m['wim_sha256']==c['wim_sha256'],'WIM pin不一致')
  require(sha(media/'update-esp.img')==m['esp_sha256']==c['esp_sha256'] and sha(pinned('normal_esp'))==c['normal_esp_sha256'],'ESP pin不一致')
- expected_targets=['render'] if k.get('output371') else (['display','render','wifi'] if c.get('wifi_activation') is True else ['display','render']) if k.get('timing') else ['render']
- require(p['profile']==k['profile'] and p['service']==p['data_directory']==service and p['install_targets']==expected_targets and p['planned_reboots']==1,'既知freshと更新対象の結合必須')
+ expected_targets=(['wifi'] if c.get('wifi_activation') is True else []) if k.get('client373') else ['render'] if k.get('output371') else (['display','render','wifi'] if c.get('wifi_activation') is True else ['display','render']) if k.get('timing') else ['render']
+ require(p['profile']==k['profile'] and p['service']==p['data_directory']==service and p['install_targets']==expected_targets and p['planned_reboots']==c['planned_windows_reboots'],'既知freshと更新対象の結合必須')
  require(p['backup_manifest_sha256']==c['fresh_manifest_sha256'] and p['capture_selection']['capture_number']==k['fresh'],'選択fresh結合不一致')
- if k.get('output371'):
+ if k.get('client373'):
+  import sys
+  sys.path.insert(0,str(Path(__file__).resolve().parent))
+  from gpu373_client_admission import admit,validate_runtime_policy
+  require(pinned('generator_path')==Path(__file__).resolve().with_name('prepare-gpu373-client-inputs.py'),'固定373 generator pin')
+  transition=p['gpu373_client_contract'];validate_runtime_policy(p,transition)
+  require(c['boot_write_required'] is False and c['matched_boot_sha256']==MATCHED_BOOT,'373 boot/GPT書込み0')
+  require(transition['runtime']['planned_reboots']==c['planned_windows_reboots'] and bool(p['install_targets'])==c.get('wifi_activation',False),'wifi-only restart mode一致')
+  # Every original admission input remains immutable and sealed; no flat manifest adapter.
+  actual=admit(root,read(pinned('private_map')))
+  require(actual==transition,'373実signed pair/capture/source admission再検証')
+  for ref in (actual['capture'],actual['native'],actual['supplement']):require(pins.get(ref['path'])==ref['sha256'],'実215入力seal pin')
+  for row in actual['client_replacements'].values():
+   for key in ('candidate','manifest','import_proof'):require(pins.get(row[key]['path'])==row[key]['sha256'],'実署名pair seal pin')
+ elif k.get('output371'):
   module_spec=importlib.util.spec_from_file_location('gpu371_fixed_inputs',Path(__file__).with_name('prepare-gpu371-output-inputs.py'))
   variant=importlib.util.module_from_spec(module_spec);module_spec.loader.exec_module(variant)
   require(pinned('generator_path')==Path(__file__).resolve().with_name('prepare-gpu371-output-inputs.py'),'固定371 generator pin必須')
@@ -149,8 +164,9 @@ def validate_seal(root,path,digest,known_profile="run201",entrypoint=None):
 
 class Observation:
  """実機APIを持たないPB状態機械。UART code0をGPU機能成功とは扱わない。"""
- def __init__(self):
-  self.phase=0;self.seen_os=False;self.await_resume=False;self.run=None;self.pid=None;self.flush=None;self.install_3010=False;self.waiter_3010=False;self.restarts=0;self.clients={0:{},1:{}};self.terminal=None
+ def __init__(self,planned_reboots=1):
+  require(planned_reboots in (0,1),'既知restart数のみ');self.planned_reboots=planned_reboots
+  self.phase=0 if planned_reboots else 1;self.seen_os=False;self.await_resume=False;self.run=None;self.pid=None;self.flush=None;self.install_3010=False;self.waiter_3010=False;self.restarts=0;self.clients={0:{},1:{}};self.terminal=None
  def line(self,line):
   actions=[]
   if b'ExitBootServices event signaled' in line or b'A04GPU NATIVE D0 ENTER' in line:self.seen_os=True;self.await_resume=False
@@ -193,9 +209,9 @@ HOLD_STATUS='terminal-windows-held'
 def candidate_identity(c):
  return hashlib.sha256((c['fresh_manifest_sha256']+c['policy_sha256']+c['esp_sha256']).encode()).hexdigest()
 def canonical(value):return json.dumps(value,sort_keys=True,separators=(',',':'))
-def replay_boundary(raw):
+def replay_boundary(raw,planned_reboots=1):
  """保存UARTから同boot/run/PID/flushを再検証。新たな実機アクセスはしない。"""
- observer=Observation()
+ observer=Observation(planned_reboots)
  for line in raw.split(b'\n'):
   for action,value in observer.line(line):
    if action=='exception':return observer.terminal,'runtime-exception-await-collection'
@@ -208,7 +224,7 @@ def replay_boundary(raw):
  return observer.terminal,None
 
 def hold_terminal(out,st,c,digest):
- terminal,danger=replay_boundary((out/'normal-uart-deinterleaved.log').read_bytes())
+ terminal,danger=replay_boundary((out/'normal-uart-deinterleaved.log').read_bytes(),c['planned_windows_reboots'])
  if danger:
   st.update(status=danger,safe_flush_terminal=False,late_runtime_fault_observed=True);return False
  require(st['status'] in TERMINAL_BOUNDARIES and terminal is not None and
@@ -235,7 +251,7 @@ def verify_collection(out,c,digest,k,latch):
  require(proof['collection_boundary'] in TERMINAL_BOUNDARIES and
          st['collection_boundary']==proof['collection_boundary'] and
          sha(out/'normal-uart-deinterleaved.log')==proof['uart_sha256'],'保存terminal UART変更検出')
- terminal,danger=replay_boundary((out/'normal-uart-deinterleaved.log').read_bytes())
+ terminal,danger=replay_boundary((out/'normal-uart-deinterleaved.log').read_bytes(),c['planned_windows_reboots'])
  require(not danger and terminal is not None and terminal['flush']==0 and
          canonical(terminal)==canonical(proof['terminal'])==canonical(st['terminal']),
          '同boot/run/PID/flushのterminal再検証に失敗')
@@ -250,8 +266,8 @@ def main(known_profile="run201",entrypoint=None,argv=None):
  if a.validate_only and not a.collect_only:print('GPU%d_SEAL_VALIDATED_NO_DEVICE_OPERATION'%k['run']);return
  require(out.is_relative_to(root),'root内のログ出力必須')
  require(not (root/c['capture_output']).exists() and not (root/c['diagnostics_output']).exists(),'既存capture/diagnosticsを上書きしない')
- if (k.get('timing') or k.get('output371')) and not a.collect_only:stage_preflight(root,c,out,a.seal_sha256)
- latches=root/('port/gsi/logs/ios-feasibility/%s-run%d-executions'%('gpu371' if k.get('output371') else 'gpu369' if k.get('timing') else 'gpu368',k['run']));latch=latches/(k['transaction']+'.json')
+ if (k.get('timing') or k.get('output371') or k.get('client373')) and not a.collect_only:stage_preflight(root,c,out,a.seal_sha256)
+ latches=root/('port/gsi/logs/ios-feasibility/%s-run%d-executions'%('gpu373' if k.get('client373') else 'gpu371' if k.get('output371') else 'gpu369' if k.get('timing') else 'gpu368',k['run']));latch=latches/(k['transaction']+'.json')
  if a.collect_only:
   require(out.is_dir(),'既存held runtime出力必須')
   held_out=out;st=verify_collection(out,c,a.seal_sha256,k,latch)
@@ -319,7 +335,7 @@ adb shell 'set -e; test "$(id -u)" = 0; test "$(readlink -f /dev/block/by-name/b
   if not a.collect_only:
    save()
    if k.get('timing'):matched_boot()
-   offset=deploy(root/c['media_directory']/'update-esp.img',c['esp_sha256'],'prepare-write.log',not (k.get('timing') or k.get('output371')));st.update(status='prepare-observing',prepare_uart_offset=offset);save()
+   offset=deploy(root/c['media_directory']/'update-esp.img',c['esp_sha256'],'prepare-write.log',not (k.get('timing') or k.get('output371') or k.get('client373')));st.update(status='prepare-observing',prepare_uart_offset=offset);save()
    spec=importlib.util.spec_from_file_location('gpu%d_crc'%k['run'],root/c['crc_decoder']);decoder=importlib.util.module_from_spec(spec);spec.loader.exec_module(decoder)
    report=None;deadline=time.monotonic()+900
    with uart.open('rb') as f:
@@ -331,7 +347,7 @@ adb shell 'set -e; test "$(id -u)" = 0; test "$(readlink -f /dev/block/by-name/b
    require(report is not None,'CRC terminalなし。timeout reset/normal boot禁止')
    (out/'prepare-report.txt').write_bytes(report);lines=report.decode().splitlines();require(all(lines.count(x)==1 for x in ('UPDATE_STATUS=COMMITTED','UPDATE_RELEASE_EXIT=0','UPDATE_EXIT=0')),'CRC内のCOMMITTED/release0/exit0が必要')
    st.update(status='prepared-volume-released',prepare_crc_committed_released=True);save();recovery('prepare-to-recovery.log');offset=deploy(root/c['normal_esp'],c['normal_esp_sha256'],'normal-esp-write.log')
-   st.update(status='install-observing',normal_uart_offset=offset);save();observer=Observation();deadline=time.monotonic()+900;batch_cap=None;finished=False
+   st.update(status='install-observing',normal_uart_offset=offset);save();observer=Observation(c['planned_windows_reboots']);deadline=time.monotonic()+900;batch_cap=None;finished=False
    with uart.open('rb') as f:
     f.seek(offset);raw=b'';processed=0
     while time.monotonic()<deadline and not finished:

@@ -136,7 +136,7 @@ def build_policy(root,spec):
    if role=='wifi':
     for name in old['names'].values():
      q=rooted(root,Path(old['directory'])/name);pins[q.relative_to(root).as_posix()]=sha(q)
-  elif role=='render':
+  elif not TIMING and role=='render':
    old.update(directory=gp.as_posix(),manifest=spec['GPU368_manifest']['path'],manifest_sha256=MANIFEST,source_commit=SOURCE,driver_version='0.0.3.68',driver_date='11/10/2026')
    for x in old['extra_members']:
     name='Windows/System32/'+x['installed'].replace('\\','/');f=originals.get(name)
@@ -153,11 +153,16 @@ def build_policy(root,spec):
   if name.startswith('Windows/System32/') and name not in witnesses and name not in ({'Windows/System32/Drivers/'+TARGETS[r][3] for r in INSTALL} if TIMING else {'Windows/System32/Drivers/ge8300-render.sys'}):
    if name.startswith('Windows/System32/Drivers/') or name.endswith(('.exe','.dll','.fw')):
     preserved[name]=f['sha256'];sources[name]=origin_sources[name]
- client=copy.deepcopy(prior['diagnostic_clients'][0]);require(client['name']=='gpu_present' and client['exe']=='mt8167-dxgi-console-launch363.exe' and client['sha256']==PRESENT and client['dependencies']==[dict(exe='mt8167-dxgi-present356.exe',sha256=PRESENTER)],'Present363/356固定')
- client['phase']=1
- for a in [client]+client['dependencies']:
-  q=rooted(root,Path(client['directory'])/a['exe']);require(sha(q)==a['sha256'],'Present署名済実byte');pins[q.relative_to(root).as_posix()]=sha(q)
-  require(originals['Windows/System32/'+a['exe']]['sha256']==a['sha256'],'Present assetsもfresh200で同byte確認')
+ if TIMING and hasattr(TIMING,'client'):
+  client=TIMING.client(prior,originals,origin_sources,preserved,sources,witnesses,pin_file=None)
+  for entry in [client]+client['dependencies']:
+   q=rooted(root,Path(client['directory'])/entry['exe']);require(sha(q)==entry['sha256'],'Signed373 pair file');pins[q.relative_to(root).as_posix()]=sha(q)
+ else:
+  client=copy.deepcopy(prior['diagnostic_clients'][0]);require(client['name']=='gpu_present' and client['exe']=='mt8167-dxgi-console-launch363.exe' and client['sha256']==PRESENT and client['dependencies']==[dict(exe='mt8167-dxgi-present356.exe',sha256=PRESENTER)],'Present363/356固定')
+  client['phase']=1
+  for a in [client]+client['dependencies']:
+   q=rooted(root,Path(client['directory'])/a['exe']);require(sha(q)==a['sha256'],'Present署名済実byte');pins[q.relative_to(root).as_posix()]=sha(q)
+   require(originals['Windows/System32/'+a['exe']]['sha256']==a['sha256'],'Present assetsもfresh200で同byte確認')
  helper=pin(spec['globaldiag_manifest']);proof=pin(spec['globaldiag_import_proof']);directory=Path(spec['globaldiag_manifest']['path']).parent;exe='dxg-global-diag198.exe';q=rooted(root,directory/exe)
  require(spec['globaldiag_manifest']['sha256']=='1dcacdd1c70dacdc69a2e08e1294188d7805a2fbab77f9a24a73bcd28b1e28e6' and spec['globaldiag_import_proof']['sha256']=='896137838e17694cc3cedc506ae31aa9b25e1fffd228f4094e2ca6145f7d3828','実globaldiag署名/proof pin')
  require(helper['source_commit']=='a5d8048c3e1572015d09bd308e4304333d9a53f4' and helper['schema']=='DXG_GLOBAL_DIAG198_BUILD_V1' and helper['API_Type']==9 and helper['raw_capacity']==262144 and helper['executed'] is False and helper['compiled_TUs']==1 and helper['signer']==THUMB and helper['exe_sha256']==sha(q)=='9be80b8176696302a0e4408e6871d41792c780a37bcf6caca817c817b97061ac','実署名helper source/byte')

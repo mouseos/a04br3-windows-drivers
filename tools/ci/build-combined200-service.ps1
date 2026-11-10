@@ -1,16 +1,18 @@
 ﻿# One SCM TU and (separately) the corrected capture client TU; no driver rebuild.
-param([int]$CaptureNumber=200,[switch]$Gpu369Timing,[switch]$Gpu371Output,[Parameter(Mandatory=$true)][ValidateSet('CaptureClient','Service')][string]$Mode,
+param([int]$CaptureNumber=200,[switch]$Gpu369Timing,[switch]$Gpu371Output,[switch]$Gpu373Client,[Parameter(Mandatory=$true)][ValidateSet('CaptureClient','Service')][string]$Mode,
  [Parameter(Mandatory=$true)][string]$Workspace,[string]$PackageMap,[Parameter(Mandatory=$true)][string]$OutputDirectory,
  [Parameter(Mandatory=$true)][string]$KitHeaderRoot,[Parameter(Mandatory=$true)][string]$LibraryRoot,[Parameter(Mandatory=$true)][string]$SigntoolPath)
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
-if($Gpu369Timing -and $Gpu371Output){throw 'Select one GPU variant'}
-if($Gpu371Output){if($CaptureNumber -ne 212){throw 'GPU371 requires actual212'}}elseif($Gpu369Timing){if($CaptureNumber -lt 204 -or $CaptureNumber -gt 999){throw 'Actual timing capture204..999 required'}}elseif($CaptureNumber -notin @(200,202)){throw 'Legacy200/202 only without Gpu369Timing'}
+if(@($Gpu369Timing,$Gpu371Output,$Gpu373Client|Where-Object {$_}).Count -gt 1){throw 'Select one GPU variant'}
+if($Gpu373Client){if($CaptureNumber -ne 215){throw 'GPU373 requires actual215'}}elseif($Gpu371Output){if($CaptureNumber -ne 212){throw 'GPU371 requires actual212'}}elseif($Gpu369Timing){if($CaptureNumber -lt 204 -or $CaptureNumber -gt 999){throw 'Actual timing capture204..999 required'}}elseif($CaptureNumber -notin @(200,202)){throw 'Legacy200/202 only without Gpu369Timing'}
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'));$out=[IO.Path]::GetFullPath($OutputDirectory);$thumb='BCBF6C456C6F0DD0818434763B189488FBF13570'
 if(@(& git -C $root status --porcelain).Count -or (Test-Path $out) -or !$out.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Clean checkout/new checkout-local output required'}
 $inc=[IO.Path]::GetFullPath($KitHeaderRoot);$lib=[IO.Path]::GetFullPath($LibraryRoot);$sign=[IO.Path]::GetFullPath($SigntoolPath)
 $cert=Get-Item "Cert:\CurrentUser\My\$thumb";if(!$cert.HasPrivateKey){throw 'Existing BCBF private identity required'}
 if($Mode -ne 'Service' -or !$PackageMap){throw 'Combined service-only final map required'}
-if($Gpu371Output){
+if($Gpu373Client){
+ & python -B "$root\tools\recovery\prepare-gpu373-client-inputs.py" --workspace $Workspace --map $PackageMap --out $out --finalize
+}elseif($Gpu371Output){
  & python -B "$root\tools\recovery\prepare-gpu371-output-inputs.py" --workspace $Workspace --map $PackageMap --out $out --finalize
 }elseif($Gpu369Timing){
  & python -B "$root\tools\recovery\prepare-gpu369-timing-inputs.py" --workspace $Workspace --inputs $PackageMap --out $out --finalize
@@ -20,7 +22,7 @@ if($Gpu371Output){
 if($LASTEXITCODE){throw 'Final combined contract rejected'}
 $name="MT8167CombinedFollowup$CaptureNumber";$source="$root\tools\winpe\mt8167-peripheral-update.c"
 $policy=Get-Content "$out\peripheral-policy.json" -Raw|ConvertFrom-Json
-$expectedProfile=if($Gpu371Output){"combined-features-fresh212-gpu371-output-v1"}elseif($Gpu369Timing){"combined-features-fresh$CaptureNumber-gpu369-timing-v1"}else{"combined-features-fresh$CaptureNumber-gpu368-v1"}
+$expectedProfile=if($Gpu373Client){"combined-features-fresh215-gpu373-clients-v1"}elseif($Gpu371Output){"combined-features-fresh212-gpu371-output-v1"}elseif($Gpu369Timing){"combined-features-fresh$CaptureNumber-gpu369-timing-v1"}else{"combined-features-fresh$CaptureNumber-gpu368-v1"}
 if($policy.service -cne $name -or $policy.data_directory -cne $name -or $policy.profile -cne $expectedProfile){throw 'Generated policy identity mismatch'}
 $oldTmp=$env:TMP;$oldTemp=$env:TEMP
 try{
@@ -34,7 +36,9 @@ try{
  & $sign sign /fd SHA256 /s My /sha1 $thumb "$out\$name.exe";if($LASTEXITCODE){throw 'BCBF signing failed'}
  $sig=Get-AuthenticodeSignature "$out\$name.exe";if($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Thumbprint -cne $thumb){throw 'Signed EXE identity/trust mismatch'}
  $isCapture=if($Mode -eq 'CaptureClient'){'True'}else{'False'}
- if($Gpu371Output){
+ if($Gpu373Client){
+  & python -B -c "import importlib.util,sys;from pathlib import Path;s=importlib.util.spec_from_file_location('client373',Path(sys.argv[1]));m=importlib.util.module_from_spec(s);s.loader.exec_module(m);m.assert_paths(Path(sys.argv[2]))" "$root\tools\recovery\prepare-gpu373-client-inputs.py" "$out\$name.exe"
+ }elseif($Gpu371Output){
   & python -B -c "import importlib.util,sys;from pathlib import Path;s=importlib.util.spec_from_file_location('output371',Path(sys.argv[1]));m=importlib.util.module_from_spec(s);s.loader.exec_module(m);m.configure(m.MANIFEST);m.assert_paths(Path(sys.argv[2]))" "$root\tools\recovery\prepare-gpu371-output-inputs.py" "$out\$name.exe"
  }elseif($Gpu369Timing){
   & python -B -c "import importlib.util,sys;from pathlib import Path;s=importlib.util.spec_from_file_location('timing',Path(sys.argv[1]));m=importlib.util.module_from_spec(s);s.loader.exec_module(m);m.configure_capture(int(sys.argv[3]));m.assert_paths(Path(sys.argv[2]))" "$root\tools\recovery\prepare-gpu369-timing-inputs.py" "$out\$name.exe" $CaptureNumber
