@@ -23,3 +23,5 @@
 ## SSH維持とキャッシュ復元
 
 開発runnerは既存のSDK/WDK/compiler/signing inputsを復元するcache-only modeを使う。SSH中継のaliasだけが失われてVMのプロセスが残る場合に備え、60秒間隔でalias経由のSSH bannerを確認し、失われていれば同じVM上でトンネルだけ再接続する。通常のビルド完了や実機試験待ちを環境破棄の条件にしない。旧署名済みtupleと実機証拠は変更しない。
+
+MMA8652も実配置1.10の源泉9ad5ef0aと11source pathを照合し、古いsensor_hid.c/INF/方向説明だけを実配置へ合わせた。既存の180度補正を二重に適用していない。実機binaryは更新せず、物理的な上下逆申告を解決済みとは扱わない。
