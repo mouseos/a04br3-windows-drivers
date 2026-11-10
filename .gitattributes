@@ -42,3 +42,8 @@ drivers/gpu/mt8167/start_gap359.h text eol=lf
 tools/ci/build-ge8300-compiler-source.py text eol=lf
 tools/ci/ge8300_compiler_cache.py text eol=lf
 tools/ci/build-ge8300-from-source.ps1 text eol=lf
+# GPU368 signing pins/recipe retain identical bytes in Windows clones.
+tools/ci/sign-ge8300-fixed198-368.py text eol=lf
+tools/ci/gpu368-sign-inputs.json text eol=lf
+tools/ci/verify-gpu368-certificates.ps1 text eol=lf
+tools/ci/README-gpu368-sign.md text eol=lf

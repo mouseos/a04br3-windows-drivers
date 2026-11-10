@@ -1,0 +1,86 @@
+{
+  "baseline366_manifest_sha256": "deca993fd78b79552c5a886d062ef4aaf18a5c12d1f73bbf1f44fd4e51a93d30",
+  "baseline366_schema": "GPU-post-release366-source-overlay-v1",
+  "baseline366_outputs": {
+    "display-transport/mt8167-display-transport.cat": "66645368cd9836564fc5eadc347de3c908685bfcc71e10b21d15a4877e29497e",
+    "display-transport/mt8167-display-transport.inf": "e2cc28e52c9fee0b920d24eb5b99d243701d7919cf1b1523659bbd36312580ef",
+    "display-transport/mt8167-display-transport.sys": "902009a9201a416c6a160504d47809f1e7fbfccf08ce32376b40caa60ae829c5",
+    "ge8300-d3d-clear.exe": "f3af58c14f7a3efdee119dac971d59b5e92c069bd649a6499006242d37698597",
+    "ge8300-d3d-texture-boundary.exe": "055bbff39b5e28a8e64f5a1b358b6084f68e03bfcdcebf7425d2e1b60fae6789",
+    "ge8300-d3d-texture.exe": "2727328f3072d9cfcacc4758acf3701c7795471c76860eeac70206c82d759206",
+    "ge8300-mips.fw": "5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1",
+    "ge8300-render.cat": "dadb0e817caf19a8650750637a529bc3df898a43a7af503a0c1d2815d6a1e8ad",
+    "ge8300-render.inf": "b4742d8ebf31bb7c72dc894f0f5784bda3c3434a6b0144123dac36ad46f8635f",
+    "ge8300-render.sys": "ab730da8975e9a6751178768fcf1d7d01226dfaeb89861d244f8125beab9e4b3",
+    "ge8300-umd.dll": "a952df2c06d7d91a14a1023b8efe664db0cbb8b529da3f4ff9579250afa5dd4a",
+    "ge8300-umd.lib": "58a3c45bddbe096f08a980ba53d61d9317b4c8299f08a3b5542fe9455b86112d",
+    "mt8167-development.cer": "33680a69f647193e7f7adcecf137db525262019c3a8f971ab3095d40f894d72a",
+    "mt8167-dxgi-present356.exe": "eaa30760ebc38a1955ccb3bbd834ee5c3972ce8842b90e6a58bc5084109ef8d5"
+  },
+  "signer_thumbprint": "BCBF6C456C6F0DD0818434763B189488FBF13570",
+  "render_INF_hardware": [
+    "Device=\"PowerVR GE8300\"",
+    "%Device%=Install,ACPI\\MOU0006",
+    "AddService=GE8300Render"
+  ],
+  "transport_INF_hardware": [
+    "Device=\"MediaTek MT8167 display DMA transport\"",
+    "%Device%=Transport,ACPI\\MOU0007",
+    "AddService=MT8167DisplayTransport"
+  ],
+  "module_identity": {
+    "runtime_source_base": "e0727eb0d840883a31d3c501b0ee17652ebdcad4",
+    "runtime_build_id": "GPU359-start-gap-v1",
+    "source": "drivers/gpu/mt8167/wddm-render/miniport.c",
+    "source_sha256": "92b660eb9e00353d215c180eca6bd49a4582283034ec2a3291d602649d3e42f1",
+    "record_schema": 1,
+    "record_bytes": 144
+  },
+  "schema": "GPU368_FIXED198_SIGN_ONLY_PINS_V1",
+  "compiled_source_commit": "a04e22489709db79d7c5a4355419bc7aaf95b057",
+  "inf_driverver": "11/10/2026,0.0.3.68",
+  "artifact_files": {
+    "source-build-manifest.json": "169a862a5fc3a219594e238ec24220448fd60d1b8ca384cf83759883cb333120",
+    "kernel-link.json": "e389ba368062caf447695c2ac8ba0c9ffd768e1257f8912008ae41c81c806456",
+    "transport-link.json": "c07f695086aa5d8f9ead6fd63f17d3ec51a6084cb6707b80773babee78f25a87",
+    "native/build-manifest.json": "1ac08685ae97127983415cfa7f268eb92a994628ffc2f0a7fdb4e91d2dace7e8",
+    "modules/build-manifest.json": "bb2df717a4a3c5977061544373bd665a01066ffa3be5c7040ad604256e5f3f7b",
+    "umd/build-manifest.json": "9f20e4908b647f3e4da1f685e56c8639581ad6cda5a35abdd7201fbeef36d98c",
+    "compiler375-cache.zip.receipt.json": "512630214498134e40ce6ae3da5c0bb41624aaea2ae61bfce0ff05903dd1958b",
+    "source-origins.json": "8b89544e393a6cde798d317fa73d122b02a1cc39af5a838f428447cff0534d09"
+  },
+  "main_review_sha256": "8cc2253f8e396f3d19ed03726009b5484453d926600c4a5c09ce7966adbb9eb7",
+  "import_proof_sha256": "b85712d80ac11175e9ec0d3acc906cc59dd3a5af59c35d6cadf1638ae65a92c8",
+  "unsigned_linked_outputs": {
+    "ge8300-render.sys": "2ac6d1dbac6c9b6c46c428a192a25d7751e7b5a29f472742b892699697815e80",
+    "ge8300-umd.dll": "703f59147d8aed126cd97128e6fdd9201e7906fafe8ea413efc889ab34d9c5f0",
+    "ge8300-d3d-clear.exe": "7318127160273a5e927e8c0b5ee48819f475c3cea867e3917d01191b418545ca",
+    "ge8300-d3d-texture.exe": "9796c43cda941329939069548e41ce36a381ecee1c595cd5abce3cdc750c1aae",
+    "ge8300-d3d-texture-boundary.exe": "0b5da9f920490917814d135ad561d4021ce498909826592fdb7499a32ba54b34",
+    "ge8300-d3d-ui-texture.exe": "c8473efc005bf680b60c7b993d58424dba2f998b153b0282fd841ecb50042b63",
+    "mt8167-display-transport.sys": "d163ac6d5cde0b25a703de4fcee042446e207ef8157eba73c33ac3be88681445"
+  },
+  "render_INF368_sha256": "e7ae27579da40ad27d67f132074afdeef0e6317e7e627d97cc0e1d248de614bc",
+  "transport_policy": {
+    "adopt_a04_transport": false,
+    "actual_transport_compile_source": "efaf1008add44565f6c5fc4597e67804b22570fb",
+    "declared_transport_source": "14ac163b9e579d91f72a99e321da292412bf1f4c",
+    "actual_local_compile_dependencies": {
+      "drivers/gpu/mt8167/display-transport/barrier356.h": "ae2cc7250c05d28d42793bb5254b762df7c5521ee38f6768afbf4ea1f09d17fe",
+      "drivers/gpu/mt8167/display-transport/interface356.h": "9f315889b3ac62ca0e12b37acaa9eb6ffd9ff40829f824ce0574f2a919d03977",
+      "drivers/gpu/mt8167/display-transport/post_profile356.h": "bbb96ad416aebf960e7aa50ac531a161c2d1c1f39694a4085f039a9c9022a547",
+      "drivers/gpu/mt8167/display-transport/transport356.c": "bae0cd2f6c3c03cdbea3ddbdfe44d4c8f6e9a25818b9fb17b97b40bd41094d8f",
+      "drivers/gpu/mt8167/start_checkpoint357.h": "0a072282cb8bca1841811dd5f3834f6a7ea48353bc06c902846fd2faf6ce9006",
+      "drivers/gpu/mt8167/vendor_m1_11/windows_shared_scanout.h": "46eb15334eb1dc09433c9cc7a221607f6515094917018a617b6529358f5baf11",
+      "drivers/gpu/mt8167/wddm-render/frontend_memory.h": "68c61ffc70ae8e9849cfcbe796f168a371365ee9dac57c4a5bddba482591e683"
+    },
+    "unchanged_secondary_linked_source": {
+      "drivers/gpu/mt8167/vendor_m1_11/windows_shared_scanout.c": "ff05ccc809f0c8405ada4014a773fa9efeb4862d721fde9576e9c6cb72a43682",
+      "drivers/gpu/mt8167/dma_pages.h": "6235a791b38b9041612a6c0fe9109b018e9831e8579d98bcab4412e4496e4932",
+      "drivers/gpu/mt8167/gpu_mmu.h": "a824315f19b81e801e897333c4f08f06d5a3a4b5ff94b0156bd0ec07a1df5c39"
+    },
+    "ABI_source_compatible": true,
+    "a04_binary_identical_claimed": false,
+    "hardware_verified": false
+  }
+}
