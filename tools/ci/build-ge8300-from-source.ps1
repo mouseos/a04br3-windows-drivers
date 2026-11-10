@@ -51,7 +51,11 @@ try{
  & "$scRoot\drivers\gpu\mt8167\wddm-render\build-wdk81.ps1" -EnableCandidate -OutputDirectory "$scOut\modules" -MicrosoftArmCompiler $scCl -MicrosoftArmCompilerSha256 (Get-FileHash $scCl -Algorithm SHA256).Hash -MicrosoftCrtInclude "$scVc\include" -MicrosoftUcrtInclude "$scKit10\Include\$WindowsKit10Version\ucrt" -UnifiedDisplay:$UnifiedDisplay
  & "$scRoot\drivers\gpu\mt8167\wddm-render\link-kmd-msvc-wdk81.ps1" -KernelLibrary "$scOut\modules\ge8300-kmd-clear.lib" -NativeLibrary "$scOut\native\ge8300-native-owner-core.lib" -OutputFile "$scOut\ge8300-render.sys" -MapFile "$scOut\ge8300-render.map" -MetadataFile "$scOut\kernel-link.json" -MicrosoftLinker "$scVc\bin\Hostx64\arm\link.exe" -UnifiedDisplay:$UnifiedDisplay
  if($UnifiedDisplay){
-  & "$scRoot\drivers\gpu\mt8167\wddm-render\link-kmd-msvc-wdk81.ps1" -KernelLibrary "$scOut\modules\transport356.obj" -NativeLibrary "$scOut\modules\scanout_vidmm356.obj" -OutputFile "$scOut\mt8167-display-transport.sys" -MapFile "$scOut\transport.map" -MetadataFile "$scOut\transport-link.json" -MicrosoftLinker "$scVc\bin\Hostx64\arm\link.exe" -UnifiedDisplay
+  # The transport's shared scanout calls the source-built DMA/MMU helpers.
+  # Archive its two entry objects and let LINK pull only referenced native units.
+  & llvm-lib /machine:arm "/out:$scOut\modules\ge8300-display-transport.lib" "$scOut\modules\transport356.obj" "$scOut\modules\scanout_vidmm356.obj"
+  if($LASTEXITCODE){throw 'Display transport source archive failed'}
+  & "$scRoot\drivers\gpu\mt8167\wddm-render\link-kmd-msvc-wdk81.ps1" -KernelLibrary "$scOut\modules\ge8300-display-transport.lib" -NativeLibrary "$scOut\native\ge8300-native-owner-core.lib" -OutputFile "$scOut\mt8167-display-transport.sys" -MapFile "$scOut\transport.map" -MetadataFile "$scOut\transport-link.json" -MicrosoftLinker "$scVc\bin\Hostx64\arm\link.exe" -UnifiedDisplay
  }
  & python -B "$PSScriptRoot\build-ge8300-compiler-source.py" --vc-include "$scVc\include" --ucrt-include "$scKit10\Include\$WindowsKit10Version\ucrt" --sdk-shared "$scKit81\Include\shared" --sdk-um "$scKit81\Include\um" --vc-arm-libraries "$scVc\lib\arm" --sdk-arm-libraries "$scKit81\Lib\winv6.3\um\arm" --ucrt-arm-libraries "$scKit10\Lib\$WindowsKit10Version\ucrt\arm" --output "$scOut\compiler" --jobs $CompilerJobs
  if($LASTEXITCODE){throw 'Source compiler closure failed'}
