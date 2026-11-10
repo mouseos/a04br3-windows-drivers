@@ -33,3 +33,13 @@ drivers/gpu/mt8167/fwif/pvr_rogue_cr_defs.h -text
 # The normal texture source gate pins these additional source bytes too.
 drivers/gpu/mt8167/wddm-render/testclient/*.hlsl text eol=lf
 drivers/gpu/mt8167/wddm-render/testclient/*.inc text eol=lf
+# GPU368 fresh200 recipe/policy bytes are shared by Windows and host gates.
+tools/recovery/prepare-peripheral-followup200.py text eol=lf
+tools/recovery/seal-gpu368-capture200.py text eol=lf
+tools/recovery/gpu368-fresh200-map.pending.json text eol=lf
+tools/winpe/combined200_policy.py text eol=lf
+tools/ci/build-combined200-service.ps1 text eol=lf
+tools/recovery/read-combined200-post.ps1 text eol=lf
+tools/recovery/collect-combined200.sh text eol=lf
+tests/test-gpu368-profile-contract.py text eol=lf
+docs/gpu368-fresh200-profile.md text eol=lf

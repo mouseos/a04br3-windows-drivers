@@ -426,6 +426,9 @@ static DWORD persist_before_gpu(DWORD peripheral_result){
  e=combined_snapshot(L"Peripheral",peripheral_result,1);if(!e)e=flush_fixed_system_volume();record(0,0x282,e);return e;
 }
 /* Exactly the two pinned signed clients; one process each, no shell/retry. */
+#ifndef A04_GPU368_DUAL_DIAGNOSTICS
+#define A04_GPU368_DUAL_DIAGNOSTICS 0
+#endif
 static DWORD run_clients(DWORD peripheral_result)
 {
  unsigned i;DWORD first=peripheral_result;
@@ -434,8 +437,17 @@ static DWORD run_clients(DWORD peripheral_result)
   if(i>=8||c->phase>1)return ERROR_INVALID_DATA;
   if(c->phase==1){
    if(A04_FEATURE148&&!A04_GPU_PHASE1_ENABLED)return ERROR_INVALID_PARAMETER;
-   DWORD boundary;if(i+1!=A04_DIAGNOSTIC_CLIENT_COUNT||(PERIPHERAL_TARGET_COUNT!=11&&!(A04_FEATURE148&&PERIPHERAL_TARGET_COUNT==12)&&!(A04_FEATURE160&&PERIPHERAL_TARGET_COUNT==13))||A04_CANDIDATE_EXTRA_COUNT!=2||!combined_gpu_node_ready)return ERROR_NOT_READY;
+   DWORD boundary;
+#if A04_GPU368_DUAL_DIAGNOSTICS
+   if(A04_DIAGNOSTIC_CLIENT_COUNT!=2||PERIPHERAL_TARGET_COUNT!=13||A04_CANDIDATE_EXTRA_COUNT!=2||lstrcmpW(diagnostic_clients[0].name,L"gpu_present")||lstrcmpW(diagnostic_clients[1].name,L"gpu_globaldiag"))return ERROR_INVALID_DATA;
+   if(i==0){boundary=persist_before_gpu(first);if(boundary)return boundary;}
+   /* Present readiness is not relaxed. The read-only OS diagnostic still runs
+      once when the render node failed, with a distinct result and PID. */
+   if(i==0&&!combined_gpu_node_ready){combined_clients[i].observed=1;combined_clients[i].phase=1;combined_clients[i].client_id=i;combined_clients[i].created=0;combined_clients[i].exit_valid=0;combined_clients[i].result=ERROR_NOT_READY;record(i,0x221,ERROR_NOT_READY);if(!first)first=ERROR_NOT_READY;continue;}
+#else
+   if(i+1!=A04_DIAGNOSTIC_CLIENT_COUNT||(PERIPHERAL_TARGET_COUNT!=11&&!(A04_FEATURE148&&PERIPHERAL_TARGET_COUNT==12)&&!(A04_FEATURE160&&PERIPHERAL_TARGET_COUNT==13))||A04_CANDIDATE_EXTRA_COUNT!=2||!combined_gpu_node_ready)return ERROR_NOT_READY;
    boundary=persist_before_gpu(first);if(boundary)return boundary;
+#endif
   }
   combined_clients[i].observed=1;combined_clients[i].phase=c->phase;combined_clients[i].client_id=i;combined_clients[i].created=0;combined_clients[i].exit_valid=0;
   memset(&sa,0,sizeof(sa));sa.nLength=sizeof(sa);sa.bInheritHandle=TRUE;memset(&start,0,sizeof(start));memset(&process,0,sizeof(process));start.cb=sizeof(start);
@@ -456,7 +468,7 @@ static DWORD run_clients(DWORD peripheral_result)
   if(nul!=INVALID_HANDLE_VALUE)CloseHandle(nul);
   combined_clients[i].wait_status=wait;combined_clients[i].exit_valid=exit_valid;combined_clients[i].exit_code=exit;combined_clients[i].result=e;
   if(c->phase==1){
-   if(A04_FEATURE148&&!A04_GPU_PHASE1_ENABLED)return ERROR_INVALID_PARAMETER;struct {DWORD schema,bytes,result,exit_valid,exit_code;} g={1,20,e,exit_valid,exit};DWORD saved=save_blob(L"gpu-result.bin",&g,sizeof(g));record(i,0x284,saved);if(saved&&!e)e=saved;}
+   if(A04_FEATURE148&&!A04_GPU_PHASE1_ENABLED)return ERROR_INVALID_PARAMETER;struct {DWORD schema,bytes,result,exit_valid,exit_code;} g={1,20,e,exit_valid,exit};DWORD saved=save_blob((A04_GPU368_DUAL_DIAGNOSTICS&&i==1)?L"globaldiag-result.bin":L"gpu-result.bin",&g,sizeof(g));record(i,0x284,saved);if(saved&&!e)e=saved;}
   record(i,0x221,e);if(e&&!first)first=e;
  }
  {DWORD e=combined_snapshot(L"Final",first,0);if(e&&!first)first=e;}

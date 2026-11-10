@@ -1,0 +1,29 @@
+{
+  "schema": "GPU368_FRESH200_MAP_PENDING_V1",
+  "profile": "combined-features-fresh200-gpu368-v1",
+  "hardware_owner": "main",
+  "install_targets": [
+    "render"
+  ],
+  "fresh": null,
+  "native": null,
+  "capture_contract": null,
+  "supplement": null,
+  "template_policy": null,
+  "actual_package_rows": null,
+  "boot_witness": null,
+  "mutable_baseline": null,
+  "GPU368_manifest": {
+    "path": "port/xnu/out/windows-rt-gpu368-signed/package368/signed-manifest.json",
+    "sha256": "eef81706cf51711e375ddd7f6b46b6ef05fe7ed73c0ebd97dd64d484565fc32e"
+  },
+  "GPU368_handoff": null,
+  "globaldiag_manifest": {
+    "path": "port/xnu/out/windows-rt-globaldiag198-signed/signed-manifest.json",
+    "sha256": "1dcacdd1c70dacdc69a2e08e1294188d7805a2fbab77f9a24a73bcd28b1e28e6"
+  },
+  "globaldiag_import_proof": {
+    "path": "port/xnu/out/windows-rt-globaldiag198-signed/main-rt81-import-proof.json",
+    "sha256": "896137838e17694cc3cedc506ae31aa9b25e1fffd228f4094e2ca6145f7d3828"
+  }
+}
