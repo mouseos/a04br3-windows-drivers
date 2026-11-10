@@ -48,7 +48,7 @@ def main():
     out.mkdir(mode=0o700)
     uart = root / 'port/gsi/logs/ios-feasibility/windows-rt-uart-workspace.log'
     state = dict(status='started', media_manifest_sha256=a.manifest_sha256,
-                 boot_written=False, gpt_written=False, normal_windows_preserved=False)
+                 boot_written=False, gpt_written=False, normal_boot_requested=False)
 
     def save(status):
         state['status'] = status
@@ -134,7 +134,8 @@ def main():
     run(adb('root'), 'normal-root.log', timeout=30)
     run(adb('wait-for-recovery'), 'normal-root-wait.log', timeout=60)
     state['normal_uart_offset'] = deploy(root / NORMAL, NORMAL_SHA, 'normal')
-    state['normal_windows_preserved'] = True
+    state['normal_boot_requested'] = True
+    state['post_request_device_operations'] = 0
     state['connection_verified'] = False
     state['loaded_driver_version_verified'] = False
     save('offline-update-committed-normal-boot-requested-hold')
