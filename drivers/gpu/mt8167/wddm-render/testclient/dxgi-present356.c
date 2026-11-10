@@ -168,6 +168,35 @@ static void factory_current(IDXGIFactory *factory,const char *key){
  line("FACTORY1_QUERY_HRESULT",hr);
  if(SUCCEEDED(hr)){line(key,IDXGIFactory1_IsCurrent(version1));IDXGIFactory1_Release(version1);}
 }
+/* Public CCD state from this session, not the registry's saved topology.
+ * A bounded observation cannot block the functional probe or expose names. */
+static void live_paths(UINT phase,LUID id){
+ static DISPLAYCONFIG_PATH_INFO paths[16];
+ static DISPLAYCONFIG_MODE_INFO modes[64];
+ for(UINT kind=0;kind<2;kind++){
+  UINT32 flags=kind?QDC_ALL_PATHS:QDC_ONLY_ACTIVE_PATHS,pc=0,mc=0;LONG status;
+  line("CCD_PHASE",phase);line("CCD_QUERY_FLAGS",flags);
+  status=GetDisplayConfigBufferSizes(flags,&pc,&mc);line("CCD_SIZE_STATUS",status);
+  line("CCD_REQUIRED_PATHS",pc);line("CCD_REQUIRED_MODES",mc);
+  if(status!=ERROR_SUCCESS||pc>16||mc>64)continue;
+  pc=16;mc=64;
+  status=QueryDisplayConfig(flags,&pc,paths,&mc,modes,NULL);line("CCD_QUERY_STATUS",status);
+  if(status!=ERROR_SUCCESS)continue;
+  line("CCD_PATH_COUNT",pc);line("CCD_MODE_COUNT",mc);
+  for(UINT i=0;i<pc;i++){
+   const DISPLAYCONFIG_PATH_INFO *p=&paths[i];
+   line("CCD_PATH_INDEX",i);line("CCD_PATH_FLAGS",p->flags);
+   line("CCD_SOURCE_LUID_HIGH",p->sourceInfo.adapterId.HighPart);line("CCD_SOURCE_LUID_LOW",p->sourceInfo.adapterId.LowPart);
+   line("CCD_SOURCE_MATCH",p->sourceInfo.adapterId.HighPart==id.HighPart&&p->sourceInfo.adapterId.LowPart==id.LowPart);
+   line("CCD_SOURCE_ID",p->sourceInfo.id);line("CCD_SOURCE_STATUS",p->sourceInfo.statusFlags);
+   line("CCD_TARGET_LUID_HIGH",p->targetInfo.adapterId.HighPart);line("CCD_TARGET_LUID_LOW",p->targetInfo.adapterId.LowPart);
+   line("CCD_TARGET_ID",p->targetInfo.id);line("CCD_TARGET_STATUS",p->targetInfo.statusFlags);
+   line("CCD_TARGET_AVAILABLE",p->targetInfo.targetAvailable);
+   line("CCD_ROTATION",p->targetInfo.rotation);line("CCD_SCALING",p->targetInfo.scaling);
+   line("CCD_REFRESH_NUMERATOR",p->targetInfo.refreshRate.Numerator);line("CCD_REFRESH_DENOMINATOR",p->targetInfo.refreshRate.Denominator);
+  }
+ }
+}
 /* A factory owns a topology snapshot. Creating a new factory alone does not
  * refresh adapters retained from the old one; join the same hardware LUID. */
 static HRESULT refreshed_adapter(LUID id,IDXGIFactory **factory,IDXGIAdapter **chosen){
@@ -197,10 +226,12 @@ static HRESULT run_swapchain(IDXGIFactory *factory,IDXGIAdapter *adapter,LUID id
  if(!window){hr=HRESULT_FROM_WIN32(GetLastError());goto done;}
  ShowWindow(window,SW_SHOW);UpdateWindow(window);
  factory_current(factory,"FACTORY_CURRENT_BEFORE_DEVICE");
+ live_paths(0,id);
  hr=D3D11CreateDevice(adapter,D3D_DRIVER_TYPE_UNKNOWN,NULL,D3D11_CREATE_DEVICE_BGRA_SUPPORT,&wanted,1,D3D11_SDK_VERSION,&dev,&fl,&ctx);
  line("CREATE_DEVICE_HRESULT",hr);if(FAILED(hr))goto done;
  line("DEVICE_FEATURE_LEVEL",fl);if(fl!=wanted){hr=E_UNEXPECTED;goto done;}
  factory_current(factory,"FACTORY_CURRENT_AFTER_DEVICE");
+ live_paths(1,id);
  hr=IDXGIAdapter_EnumOutputs(adapter,0,&output);line("ENUM_SAME_ADAPTER_OUTPUT_HRESULT",hr);
  if(FAILED(hr)&&hr!=DXGI_ERROR_NOT_FOUND)goto done;
  if(output){IDXGIOutput_Release(output);output=NULL;}
