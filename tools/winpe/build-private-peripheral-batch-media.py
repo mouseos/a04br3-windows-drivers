@@ -142,7 +142,7 @@ def main():
   subprocess.run(['git','-C',str(repo),'merge-base','--is-ancestor',signed_source,a.source_commit],check=True)
   changed=set(subprocess.check_output(['git','-C',str(repo),'diff','--name-only',signed_source,a.source_commit],text=True).splitlines())
   if a.combined180_profile:
-   allowed={'tools/recovery/collect-combined182.sh','tools/recovery/verify-combined180-preservation.ps1','tools/winpe/build-private-peripheral-batch-media.py'}
+   allowed={'tools/winpe/private_hardware_probe_input.py','tools/recovery/collect-combined182.sh','tools/recovery/verify-combined180-preservation.ps1','tools/winpe/build-private-peripheral-batch-media.py'}
   elif a.combined178_profile:
    allowed={'tools/recovery/collect-combined180.sh','tools/recovery/verify-combined178-preservation.ps1','tools/winpe/build-private-peripheral-batch-media.py'}
    require(changed and changed<=allowed,'179 final source permits only its exact collection/media helper closure')
