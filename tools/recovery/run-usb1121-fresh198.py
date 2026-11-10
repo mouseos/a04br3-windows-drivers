@@ -15,7 +15,7 @@ def main():
  assert c['schema']=='MT8167_USB1121_RUN199_MAIN_SEAL_V1' and c['status']=='validated-main-seal'
  assert c['fresh_manifest_sha256']=='4cfe2edfded6ff752ff145b46c33af910b30370e99079f9c75704cf17e2467a3'
  assert c['boot_written'] is False and c['gpt_written'] is False
- assert c['max_planned_reboots'] in (1,2,3) and c['hardware_success_claimed'] is False
+ assert c['max_planned_reboots'] in (1,2,3,4) and c['hardware_success_claimed'] is False
  for x in c['pinned_files']:assert sha(rooted(x['path']))==x['sha256']
  src=rooted(c['source_tree']);media=rooted(c['media_directory']);m=json.loads((media/'manifest.json').read_text())
  assert m['schema']=='MT8167_USB1121_MEDIA198_V1' and m['fresh_sha256']==c['fresh_manifest_sha256']
@@ -92,7 +92,8 @@ adb reboot
       assert key in runs,'event without current-boot START';runs[key][e]=code
       st['events'].append(dict(boot=key[0],run=run,pid=pid,event=e,code=code,time=time.time()))
       if e==6:
-       q=runs[key];assert q.get(1)==0 and 2 in q and q.get(4)==0 and q.get(5)==0,'terminal missing matching start/result/stop/flush'
+       q=runs[key];assert 1 in q and 2 in q and q.get(4)==0 and q.get(5)==0,'terminal missing matching start/result/stop/flush'
+       if code==0:assert q[1]==0 and q[2]==0,'successful terminal contradicts start/result'
        if code==3010:
         assert q.get(2)==3010 and q.get(3)==3010 and q.get(7)==0
         pending=True;st['status']='planned-reboot-pending'
