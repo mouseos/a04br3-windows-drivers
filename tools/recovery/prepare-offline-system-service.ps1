@@ -449,7 +449,10 @@ function Peripheral-CapturedValues200($Root,$ControlSet,$Expected) {
     if($ControlSet -ne 1 -or @($Expected).Count -lt 1 -or @($Expected).Count -gt 2048){throw 'Bounded actual fresh200 values required'}
     $result=[ordered]@{};$seen=@{}
     foreach($v in $Expected){
-        if($v.key -cnotmatch '^SYSTEM\\CurrentControlSet\\Services\\[A-Za-z0-9_-]{1,100}(\\[A-Za-z0-9_-]{1,100})*$' -or !$v.name -or $v.name.Length -gt 255 -or $v.raw_hex -cnotmatch '^([0-9a-f]{2}){1,4096}$' -or $v.type -notin @(1,2,3,4,7,11)){throw 'Exact bounded fresh200 named-value schema required'}
+        $btRootTypes=@{Service=1;ClassGUID=1;Driver=1;HardwareID=7;ConfigFlags=4}
+        $fixedBtRoot=$v.key -ceq 'SYSTEM\CurrentControlSet\Enum\ROOT\SYSTEM\0001'
+        $serviceValue=$v.key -cmatch '^SYSTEM\\CurrentControlSet\\Services\\[A-Za-z0-9_-]{1,100}(\\[A-Za-z0-9_-]{1,100})*$'
+        if((!$serviceValue -and !$fixedBtRoot) -or !$v.name -or $v.name.Length -gt 255 -or $v.raw_hex -cnotmatch '^([0-9a-f]{2}){1,4096}$' -or $v.type -notin @(1,2,3,4,7,11) -or ($fixedBtRoot -and (!$btRootTypes.ContainsKey($v.name) -or $v.type -ne $btRootTypes[$v.name]))){throw 'Exact bounded fresh200 service or BT root named-value schema required'}
         $id=$v.key+'\'+$v.name;if($seen.ContainsKey($id)){throw 'Duplicate fresh200 named value'};$seen[$id]=$true
         $path=$v.key.Replace('SYSTEM\CurrentControlSet\','ControlSet001\')
         $k=[MT8167OfflineHive.Native]::OpenPath($Root,$path,$false);if(!$k){throw 'Captured fresh200 key absent'}

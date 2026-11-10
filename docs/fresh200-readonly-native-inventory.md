@@ -37,3 +37,33 @@ Get-FileHash "$Workspace/native200-readonly.zip" -Algorithm SHA256
 bootは0dc155acのretained-chain対応をそのまま含む。既boot0943のsealed host artifact／最後の書込みcontroller／trial199 no-writeをSHA結合し、physical_read_this_capture=falseを保存する。新たなboot物理readは不要。UMD/FW/log inventoryは実同boot supplementを使い、未取得値を作らない。USB199の1790は別案件であり、この入口からPnP/service起動/trust変更をしない。
 
 ローカルhostでは実manifestと三本のSHA、およびclone限定／writer拒否／旧125関数byte保持のソース契約を検査済み。Windows PS parser/CLR実compile/実hive loadは未実行で、mainの上記実行が必要。生成したreceiptをまだ存在すると扱わない。GPU368 trial・DWM成功は未確認。
+
+## attempt1の実guard失敗と限定修正
+
+実receiptは44 services取得後、named値5件で`Bounded named service value required`。load/unload/privilege復元は全0、原本不変。templateの先頭5件はservice146で、次5件が`SYSTEM\CurrentControlSet\Enum\ROOT\SYSTEM\0001`のService/ClassGUID/Driver/HardwareID/ConfigFlagsだった。Services限定guardがこの既BT leafを拒否した。
+
+新readerとfresh200専用後段比較関数へ、この**1 leaf・5名前・型**だけを追加した。Service/ClassGUID/DriverはREG_SZ(1)、HardwareIDはREG_MULTI_SZ(7)、ConfigFlagsはREG_DWORD(4)。他のEnum leaf、子key、未知名、型違いは許可しない。C# open権限・clone限定・旧125関数・原本は変更しない。新しい実値を再読取りし、templateの旧raw値をコピーしない。
+
+mainは既`C:/mt8167-native200-main`のinputをそのまま再利用できる。新公開source ZIPを`C:/mt8167-native200-source-attempt2.zip`へuploadし、**新しいsource展開先とoutput**で実行する。attempt1を消さない。外側PowerShellのNativeCommandErrorによって回収が飛ばされないよう、子のstdout/stderr取得中だけContinueにし、rc取得後はStopに戻して必ずarchiveする。
+
+```powershell
+$w='C:/mt8167-native200-main'
+Expand-Archive C:/mt8167-native200-source-attempt2.zip "$w/source-attempt2"
+$reader="$w/source-attempt2/tools/recovery/read-fresh200-native-inventory.ps1"
+$t=$null;$parseErrors=$null
+[void][Management.Automation.Language.Parser]::ParseFile($reader,[ref]$t,[ref]$parseErrors)
+if ($parseErrors.Count) { $parseErrors | Format-List | Out-File "$w/parser-errors-attempt2.txt"; throw 'Keep parser errors; no clone execution' }
+$oldPreference=$ErrorActionPreference
+try {
+ $ErrorActionPreference='Continue'
+ & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $reader -WorkspaceRoot $w -Manifest "$w/port/xnu/out/private-windows-rt-prebackup-run200/manifest.json" -ExpectedManifestSha256 fbba59d9561ca61f9ff1b41e6bbe0a451330b91741abf487a5caaeeb420b2ed9 -SourceDirectory "$w/port/xnu/out/private-windows-rt-prebackup-run200/files/Windows/System32/config" -PolicyPath "$w/port/xnu/out/windows-rt-combined197-fresh196/service/peripheral-policy.json" -ExpectedPolicyFileSha256 d3efa3d8c3a4b60efd7c44cddb267ef22cd5d388d7817e44796aec9f7d6c0b4f -OutputDirectory "$w/native200-readonly-attempt2" *> "$w/reader-host-attempt2.log"
+ $rc=$LASTEXITCODE
+} finally { $ErrorActionPreference=$oldPreference }
+$items=@("$w/reader-host-attempt2.log")
+if(Test-Path "$w/native200-readonly-attempt2"){$items+="$w/native200-readonly-attempt2"}
+Compress-Archive -Path $items -DestinationPath C:/mt8167-native200-result-attempt2.zip
+Get-FileHash C:/mt8167-native200-result-attempt2.zip -Algorithm SHA256
+if($rc){throw "Reader exit $rc; collect the result ZIP and inspect actual receipt"}
+```
+
+host regressionは実attempt1 receiptと実template125件の名前/型を使って、既5件の失敗位置、新BT5件の限定受理、近隣leaf/子key/未知名/型違い拒否を確認する。Windows再実行成功はmainの実receiptが届くまで未確認。

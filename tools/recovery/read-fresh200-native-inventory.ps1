@@ -100,11 +100,18 @@ try{
  }
  if($requests.Count -gt 2048){throw 'Named-value inventory bound exceeded'}
  foreach($id in $requests.Keys){
-  $v=$requests[$id];if(!$v.key.StartsWith('SYSTEM\CurrentControlSet\Services\',[StringComparison]::Ordinal) -or !$v.name -or $v.name.Length -gt 255){throw 'Bounded named service value required'}
+  $v=$requests[$id]
+  # Actual canonical template positions5..9: existing BT ROOT/SYSTEM/0001.
+  # This is one fixed enum leaf and five typed values, not a general Enum allowance.
+  $btRootTypes=@{Service=1;ClassGUID=1;Driver=1;HardwareID=7;ConfigFlags=4}
+  $fixedBtRoot=$v.key -ceq 'SYSTEM\CurrentControlSet\Enum\ROOT\SYSTEM\0001'
+  $serviceValue=$v.key.StartsWith('SYSTEM\CurrentControlSet\Services\',[StringComparison]::Ordinal)
+  if((!$serviceValue -and !$fixedBtRoot) -or !$v.name -or $v.name.Length -gt 255 -or ($fixedBtRoot -and !$btRootTypes.ContainsKey($v.name))){throw 'Bounded named service or exact BT root value required'}
   $relative=$v.key.Replace('SYSTEM\CurrentControlSet\',$cs+'\');$key=[MT8167OfflineHive.Native]::OpenPath($root,$relative,$false)
   $value=$null;try{if($key){$value=[MT8167OfflineHive.Native]::ReadRawValue($key,$v.name,4096)}}finally{if($key){$key.Dispose()}}
   if(!$value -or !$value.Present){if($v.required){$r.missing_named_values+=@($id)};continue}
   if($value.Type -notin @(1,2,3,4,7,11) -or $value.Bytes -le 0){throw 'Unsupported captured named value type/size'}
+  if($fixedBtRoot -and $value.Type -ne $btRootTypes[$v.name]){throw 'Exact BT root named-value type mismatch'}
   $r.captured_named_values[$id]=@{type=[int]$value.Type;bytes=$value.Bytes;raw_hex=$value.RawHex;present=$true}
  }
  if($r.missing_named_values.Count){throw 'Required template names are missing in actual fresh200; keep receipt, do not synthesize values'}
