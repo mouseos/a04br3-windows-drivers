@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "bytes": 384,
+  "build": 359,
+  "registry_key": "ControlSet001/Services/GE8300Render/Parameters/StartGap359",
+  "records": [
+    "MiniportV1",
+    "BridgeV1",
+    "BddV1",
+    "TransportQueryV1"
+  ],
+  "layout": "8u32 header; begin/end FILETIME+interrupttime 4u64; status[16] at64; value[64] at128",
+  "status_sentinel": "FFFFFFFF; completed_mask, not a zero initialized slot, qualifies a returned step",
+  "persistence": "begin and end only; bounded startup writes, no extra ZwFlushKey; record optional; missing/entry-only is not success",
+  "join": "sameboot actual SYS/INF/ModuleIdentity359/sourcebasee0727eb0/CombinedRunId and FILETIME+interrupttime required",
+  "miniport_steps": {
+    "1": "GetDrawOpsV3 actual return",
+    "2": "V3 strict tuple accepted",
+    "3": "GetDrawOpsV4 actual return",
+    "4": "V4 strict tuple accepted",
+    "5": "GetDrawOpsV5 actual return",
+    "6": "V5 strict tuple accepted",
+    "7": "GeoDisplay356Start actual return"
+  },
+  "bridge_steps": {
+    "0": "original input validation accepted",
+    "1": "allocation",
+    "2": "find_transport",
+    "3": "Snapshot",
+    "4": "Snapshot strict21/800/1280/3200 accepted",
+    "5": "GeoDisplayCreate",
+    "6": "BrightnessResources",
+    "7": "GeoDisplaySetBrightnessResources",
+    "8": "GeoDisplayStart/BDD",
+    "9": "GeoDisplayPostInfo",
+    "10": "strict POST tuple accepted",
+    "11": "Subscribe"
+  },
+  "bdd_steps": {
+    "0": "GetDeviceInformation",
+    "1": "AcquirePostDisplayOwnership actual status",
+    "2": "original layout/overflow predicate accepted"
+  },
+  "transport_steps": {
+    "0": "IoGetDeviceInterfaces",
+    "1": "exactly one link accepted",
+    "2": "IoGetDeviceObjectPointer",
+    "3": "IoAllocateIrp",
+    "4": "IRP_MN_QUERY_INTERFACE final IoStatus",
+    "5": "strict interface tuple accepted"
+  },
+  "miniport_values": "v3 size/version/context_present/function_present at0..3; v4 at4..7; v5 at8..11; sources/children at12/13",
+  "bridge_values": "snapshot ready,width,height,pitch,format,postPAlo,hi at0..6; views/children at7/8; PostInfo width,height,pitch,format,PAlo,hi,target,acpi at9..16 (only after successful PostInfo)",
+  "bdd_values": "AcquirePost width,height,pitch,format,PAlo,hi,target,acpi at0..7; validity requires actual callback status and original strict checks",
+  "transport_values": "anylink,multiplelink,size,version,presenceMask at0..4; mask context/deref/Map/Unmap/Select/Restore/Subscribe/Unsubscribe/Brightness/Snapshot/Raster/EmergencyRestore",
+  "hardware_verified": false,
+  "rootfix_claim": false,
+  "FW_change": 0,
+  "POST_PA_is_GPU_DMA": false
+}
