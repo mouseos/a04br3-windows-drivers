@@ -9,11 +9,12 @@ sp=importlib.util.spec_from_file_location('base200',Path(__file__).with_name('pr
 PROFILE='combined-features-fresh200-gpu368-v1';SERVICE=DIRECTORY='MT8167CombinedFollowup200';INSTALL=['render'];ROLES=base.ROLES;TARGETS=base.TARGETS
 base.PROFILE=PROFILE;base.SERVICE=base.DIRECTORY=SERVICE;base.INSTALL=INSTALL
 SOURCE='a04e22489709db79d7c5a4355419bc7aaf95b057';MANIFEST='eef81706cf51711e375ddd7f6b46b6ef05fe7ed73c0ebd97dd64d484565fc32e'
+CAPTURE=200
 THUMB='BCBF6C456C6F0DD0818434763B189488FBF13570'
 PRESENT='ab17ed4cf69e6407fa5b017375d39318a89cf544a193ba89fb8a104173eff423';PRESENTER='eaa30760ebc38a1955ccb3bbd834ee5c3972ce8842b90e6a58bc5084109ef8d5'
 def paths():return base.paths()
 def inventory_contract(c,n,prior):
- require(c['capture_number']==200 and c['schema']=='GPU368_FRESH200_CAPTURE_CONTRACT_V1','実fresh200専用capture contract')
+ require(c['capture_number']==CAPTURE and c['schema']==f'GPU368_FRESH{CAPTURE}_CAPTURE_CONTRACT_V1','実fresh200専用capture contract')
  names=c['service_names'];ids=c['named_value_ids']
  require(len(names)==len(set(names)) and names and len(names)<=128 and SERVICE not in names,'service集合の重複/範囲')
  require(len(ids)==len(set(ids)) and ids and len(ids)<=2048,'named値集合の重複/範囲')
@@ -52,6 +53,12 @@ def retained_boot_chain_evidence(boot,transition,pin,pin_file):
  seal199=pin(boot['trial199_seal']);controller199=pin(boot['trial199_controller'])
  require(seal199['schema']=='MT8167_USB1121_RUN199_MAIN_SEAL_V1' and seal199['status']=='validated-main-seal' and seal199['boot_written'] is False and seal199['gpt_written'] is False,'trial199 sealed no-write scope')
  require(controller199['boot_written'] is False and controller199['gpt_written'] is False,'trial199実controllerのno-write記録必須')
+ if CAPTURE==202:
+  trial_seal=pin(boot['trial201_seal']);trial=pin(boot['trial201_controller'])
+  require(trial_seal['schema']=='GPU368_RUN201_MAIN_SEAL_V1' and trial_seal['status']=='validated-main-seal' and trial_seal['boot_written'] is False and trial_seal['gpt_written'] is False,'実201保持seal')
+  media=pin(dict(path=trial_seal['media_directory']+'/manifest.json',sha256=trial_seal['media_manifest_sha256']))
+  require(media['policy']['boot_transition']['boot_sha256']==BOOT0943 and media['policy']['boot_transition']['boot_write_required'] is False,'201実mediaのmatchedboot保持契約')
+  require(trial['seal_sha256']==boot['trial201_seal']['sha256'] and trial['boot_written'] is False and trial['gpt_written'] is False and trial['capture_manifest_sha256']==boot['source_manifest_sha256'],'実201controllerとcapture202の結合')
  # 新しい物理byteの一致・全履歴の独立監視を主張しない。
  return dict(kind='retained-chain',physical_read_this_capture=False,boot_sha256=BOOT0943,host_artifact_verified=True,last_write_controller_verified=True,trial199_no_boot_or_gpt_write_verified=True,no_intervening_write_reported_by_main=True,evidence_scope='hash-bound saved write/controller/sealed-host provenance; no physical read or byte comparison this capture',hardware_success_inferred=False)
 
@@ -70,7 +77,7 @@ def build_policy(root,spec):
   require(isinstance(ref,dict) and re.fullmatch('[0-9a-f]{64}',ref.get('sha256','')) and ref['sha256']!='0'*64,'未確定入力は拒否')
   q=rooted(root,ref['path']);require(sha(q)==ref['sha256'],'実入力SHA不一致 '+ref['path']);pins[q.relative_to(root).as_posix()]=ref['sha256'];return read(q)
  require(spec['profile']==PROFILE and spec['hardware_owner']=='main' and spec['install_targets']==INSTALL,'GPU368 renderのみ')
- require(spec['fresh']['path'].endswith('private-windows-rt-prebackup-run200/manifest.json'),'実fresh200 manifest pathのみ')
+ require(spec['fresh']['path'].endswith(f'private-windows-rt-prebackup-run{CAPTURE}/manifest.json'),'実fresh200 manifest pathのみ')
  fm=pin(spec['fresh']);n=pin(spec['native']);c=pin(spec['capture_contract']);prior=pin(spec['template_policy'])
  require(fm['status']=='captured-unmounted' and fm['read_only'] is True and fm['unmounted'] is True and fm['errors']==[],'完了済み実capture必須')
  require(c['fresh_manifest_sha256']==spec['fresh']['sha256'] and c['native_receipt_sha256']==spec['native']['sha256'] and c['recovery_boot_id']==fm['recovery_boot_id'],'同capture/boot結合')
@@ -154,12 +161,18 @@ def build_policy(root,spec):
  p=copy.deepcopy(prior)
  for k in list(p):
   if re.match(r'GPU\d+_|baseline\d+_|previous_combined\d+_',k):p.pop(k)
- p.update(profile=PROFILE,service=SERVICE,data_directory=SERVICE,draft=False,normal_install_allowed=True,backup_manifest=spec['fresh']['path'],backup_manifest_sha256=spec['fresh']['sha256'],recovery_boot_id=fm['recovery_boot_id'],capture_selection=dict(schema=1,profile=PROFILE,capture_number=200,manifest_sha256=spec['fresh']['sha256'],recovery_boot_id=fm['recovery_boot_id'],gpu_policy_sha256=n['policy_sha256'],unchanged_since_capture=True),source_files={name:{k:originals['Windows/System32/config/'+name][k] for k in ('bytes','sha256')} for name in ('SYSTEM','SYSTEM.LOG1','SYSTEM.LOG2')},packages=packages,baselines=baselines,service_preservation=n['old_services'],captured_registry_values=values,preserved_files=preserved,preserved_sources=sources,baseline_witnesses=witnesses,install_targets=INSTALL,diagnostic_clients=[client,diag],gpu_client_execute=True,gpu_client_count=2,diagnostic_only=False,driver_updates=True,planned_reboots=1,boot_transition=transition,first_install_mask=0,deferred_unbound_mask=0,GPU368_manifest=spec['GPU368_manifest'],GPU368_handoff=spec['GPU368_handoff'],capture_contract=spec['capture_contract'],fresh200_inventory=dict(service_names=c['service_names'],named_value_ids=c['named_value_ids'],service_count=len(c['service_names']),named_value_count=len(values),file_count=len(originals)),baseline200_module_identity_reference_only=n['module_identity'],post_ownership_policy_retained=post,rootfix_claim=False)
- p['mutable_diagnostic_logs'].update(files=ml,baseline=spec['mutable_baseline']);p['service_baseline_generation']['source']=spec['native'];p['observer_contract'].update(fresh_basis=200,planned_reboots=1,GPU_client_index=0,globaldiag_client_index=1,diagnostic_clients=2,GPU_timeout_ms=900000,absolute_batch_timeout_seconds=1140)
+ p.update(profile=PROFILE,service=SERVICE,data_directory=SERVICE,draft=False,normal_install_allowed=True,backup_manifest=spec['fresh']['path'],backup_manifest_sha256=spec['fresh']['sha256'],recovery_boot_id=fm['recovery_boot_id'],capture_selection=dict(schema=1,profile=PROFILE,capture_number=CAPTURE,manifest_sha256=spec['fresh']['sha256'],recovery_boot_id=fm['recovery_boot_id'],gpu_policy_sha256=n['policy_sha256'],unchanged_since_capture=True),source_files={name:{k:originals['Windows/System32/config/'+name][k] for k in ('bytes','sha256')} for name in ('SYSTEM','SYSTEM.LOG1','SYSTEM.LOG2')},packages=packages,baselines=baselines,service_preservation=n['old_services'],captured_registry_values=values,preserved_files=preserved,preserved_sources=sources,baseline_witnesses=witnesses,install_targets=INSTALL,diagnostic_clients=[client,diag],gpu_client_execute=True,gpu_client_count=2,diagnostic_only=False,driver_updates=True,planned_reboots=1,boot_transition=transition,first_install_mask=0,deferred_unbound_mask=0,GPU368_manifest=spec['GPU368_manifest'],GPU368_handoff=spec['GPU368_handoff'],capture_contract=spec['capture_contract'],fresh200_inventory=dict(service_names=c['service_names'],named_value_ids=c['named_value_ids'],service_count=len(c['service_names']),named_value_count=len(values),file_count=len(originals)),baseline200_module_identity_reference_only=n['module_identity'],post_ownership_policy_retained=post,rootfix_claim=False)
+ p['mutable_diagnostic_logs'].update(files=ml,baseline=spec['mutable_baseline']);p['service_baseline_generation']['source']=spec['native'];p['observer_contract'].update(fresh_basis=CAPTURE,planned_reboots=1,GPU_client_index=0,globaldiag_client_index=1,diagnostic_clients=2,GPU_timeout_ms=900000,absolute_batch_timeout_seconds=1140)
  p['standard_present_contract'].update(diagnostic_clients=2,execution_index=0,driver_package_source_commit=SOURCE,driver_signed_manifest_sha256=MANIFEST)
  p['display_transition']['DIF_order']=['render'];p['display_transition']['old_DOD_retirement']='historical177; transport357 retained; GPU368 render only'
  p['globaldiag_contract']=dict(Present_existing_readiness_gate_retained=True,Present_skipped_if_GPU_not_ready=True,read_only_diag_runs_even_if_Present_skipped=True,execution_index=1,same_boot_as_present=True,maximum_invocations=1,prefix=diag['arguments'][0],result_files=['-response.bin','-raw.bin','-records.txt'],helper_manifest=spec['globaldiag_manifest'],helper_import_proof=spec['globaldiag_import_proof'],hardware_success_inferred=False)
  p['boot_witness']=spec['boot_witness'];p['boot_witness_evidence']=boot_evidence;p['physical_read_this_capture']=boot_evidence['physical_read_this_capture']
+ if CAPTURE!=200:
+  p[f'fresh{CAPTURE}_inventory']=p.pop('fresh200_inventory')
+  p['service_baseline_generation'].pop('all18_next_generation_full_hashes_strict',None)
+  p['service_baseline_generation']['all_retained_full_hashes_strict']=True
+  p['service_baseline_generation']['retained_service_count']=len(n['old_services'])
+  p[f'baseline{CAPTURE}_module_identity_reference_only']=p.pop('baseline200_module_identity_reference_only')
  p['input_pins']=[dict(path=k,sha256=v) for k,v in sorted(pins.items())];return p
 
 def generate(p):
@@ -185,5 +198,5 @@ def main():
  a=argparse.ArgumentParser();a.add_argument('--workspace',type=Path,required=True);a.add_argument('--map',type=Path,required=True);a.add_argument('--out',type=Path,required=True);a.add_argument('--finalize',action='store_true');x=a.parse_args();require(x.finalize,'実fresh200固定後だけfinalize');root=x.workspace.resolve(strict=True);out=x.out.resolve();require(out.is_relative_to(root) and not out.exists(),'新規root内output');p=load_map(rooted(root,x.map),root);out.mkdir(parents=True)
  for n,s in [('peripheral-service-path-policy.h',paths()),('peripheral-batch-policy.h',generate(p))]: (out/n).write_text(s)
  for n in ['peripheral-policy.json','peripheral-preservation-plan.json']:(out/n).write_text(json.dumps(p,indent=2)+'\n')
- print('GPU368_FRESH200_FINALIZED_NOT_DEPLOYED')
+ print(f'GPU368_FRESH{CAPTURE}_FINALIZED_NOT_DEPLOYED')
 if __name__=='__main__':main()

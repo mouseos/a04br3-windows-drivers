@@ -51,3 +51,5 @@ docs/fresh200-readonly-native-inventory.md text eol=lf
 tests/test-fresh200-bt-root-values.py text eol=lf
 
 tools/recovery/read-fresh202-native-inventory.ps1 text eol=lf
+tools/recovery/prepare-peripheral-followup202.py text eol=lf
+tools/winpe/combined202_policy.py text eol=lf
