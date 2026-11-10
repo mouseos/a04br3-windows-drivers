@@ -91,6 +91,18 @@ GEO_WRAP_CONST(monitor,DXGKARG_RECOMMENDMONITORMODES,RecommendMonitorModes)
 GEO_WRAP(hwcap,DXGKARG_QUERYVIDPNHWCAPABILITY,QueryVidPnHWCapability)
 GEO_WRAP_CONST(pointer_pos,DXGKARG_SETPOINTERPOSITION,SetPointerPosition)
 GEO_WRAP_CONST(pointer_shape,DXGKARG_SETPOINTERSHAPE,SetPointerShape)
+/* The RT8.1 full render+display interface requires SetPalette even when
+ * its only exposed scanout mode is 32-bit true colour. DOD omitted it.
+ * No indexed mode/CLUT is advertised, so never acknowledge a palette write.
+ * REA dxgkrnl 2f0fe1db: 87534 tests adapter+EC when render interface 4BC
+ * exists; 87BBC copies this slot from the registered SetPalette callback. */
+C_ASSERT(FIELD_OFFSET(DRIVER_INITIALIZATION_DATA,DxgkDdiSetPalette)==0x74);
+static NTSTATUS APIENTRY palette(HANDLE h,const DXGKARG_SETPALETTE *p){
+ PAGED_CODE();
+ if(!p||p->VidPnSourceId!=0)return STATUS_INVALID_PARAMETER;
+ if(!from_adapter(h))return STATUS_DEVICE_NOT_READY;
+ return STATUS_NOT_SUPPORTED;
+}
 static NTSTATUS child_relations(HANDLE h,DXGK_CHILD_DESCRIPTOR *p,ULONG bytes){BASIC_DISPLAY_DRIVER *d=from_adapter(h);return d?d->QueryChildRelations(p,bytes):STATUS_DEVICE_NOT_READY;}
 static NTSTATUS child_status(HANDLE h,DXGK_CHILD_STATUS *p,BOOLEAN nondestructive){BASIC_DISPLAY_DRIVER *d=from_adapter(h);return d?d->QueryChildStatus(p,nondestructive):STATUS_DEVICE_NOT_READY;}
 static NTSTATUS descriptor(HANDLE h,ULONG id,DXGK_DEVICE_DESCRIPTOR *p){BASIC_DISPLAY_DRIVER *d=from_adapter(h);return d?d->QueryDeviceDescriptor(id,p):STATUS_DEVICE_NOT_READY;}
@@ -116,6 +128,7 @@ extern "C" NTSTATUS GeoDisplayFillVidPnCallbacks(DRIVER_INITIALIZATION_DATA *t) 
  t->DxgkDdiEnumVidPnCofuncModality=enum_modes;t->DxgkDdiSetVidPnSourceVisibility=visibility;
  t->DxgkDdiCommitVidPn=commit;t->DxgkDdiUpdateActiveVidPnPresentPath=update;
  t->DxgkDdiRecommendMonitorModes=monitor;t->DxgkDdiQueryVidPnHWCapability=hwcap;
+ t->DxgkDdiSetPalette=palette;
  t->DxgkDdiSetPointerPosition=pointer_pos;t->DxgkDdiSetPointerShape=pointer_shape;
  t->DxgkDdiQueryChildRelations=child_relations;t->DxgkDdiQueryChildStatus=child_status;
  t->DxgkDdiQueryDeviceDescriptor=descriptor;t->DxgkDdiDispatchIoRequest=dispatch;

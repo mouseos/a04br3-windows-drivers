@@ -5,3 +5,12 @@
 標準D3D11評価clientは4ケース（3x5/257x129 × BGRA/RGBA）について、DEFAULT textureの全面更新、先頭texelの描画、末尾1texelの部分更新、末尾と先頭の再描画を実行する。全12DrawのMap READ結果を既存の画素oracleで比較する。部分更新の入力はsource先頭から取り、destination boxの座標をsourceへ加算しない。先頭を再描画して、部分更新で他のtexelが変わらないことを確認する。upload padding/canaryも保持する。
 
 このsource統合だけでは、実機GPUのCode 43解消、通常Present、DWM描画の成功を意味しない。既存run185はPOST取得とStartDevice成功の後にCode 43で停止している。保存済みREAと回収イベントから原因を調べ、必要な修正を含めて最終SYS/UMD/INF/CATを再生成する。新DLLを旧CATと混載しない。clientは変更した2TUのみ増分ビルドし、旧12/8Draw契約と混同せず同一bootの実byte/選択版/実行PID/結果を照合する。
+
+
+## POST後のCode 43を引き起こす必須DDI欠落
+
+実RT8.1 dxgkrnl（SHA256 2f0fe1db882ba83862a6ece3c2de0cf08c2b20767e6640dc4de5b97255b6d941）のREA解析では、FUN_0008775cがrender interfaceを生成した後、FUN_00087534がdisplay interfaceを検証する。FUN_00014f44はadapter+0x4bc（生成済みrender interface）の存在を返し、この場合87534はSetVidPnSourceAddress/GetScanLine/SetPaletteの3slotを要求する。最後のSetPaletteだけが未登録だった。DOD専用のコールバック表を統合描画に転用した際の契約漏れであり、色補正や新しいGPU機能が必要という意味ではない。
+
+32bit true colourのみを公開する現実装に合わせ、SetPaletteは不正なsourceを拒否し、存在するdisplay contextに対してもSTATUS_NOT_SUPPORTEDを返す。パレット設定を偽成功にせず、indexed mode/CLUT/capabilityを追加しない。実WDK ARM構造体のcallback offset0x74もcompile-time検査する。WindowsのCode 43が消えるかは、この修正版の実機結果で判断する。
+
+一次資料: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/nc-d3dkmddi-dxgkddi_setpalette
