@@ -434,6 +434,8 @@ jobs:
           authorized-key: ${{ secrets.A04BR3_RUNNER_SSH_PUBLIC_KEY }}
 
   development:
+    env:
+      A04_CACHED_TOOLCHAIN_ONLY: '1'
     if: ${{ inputs.ssh_debug && inputs.dev_ssh_only }}
     runs-on: windows-2022
     timeout-minutes: 360

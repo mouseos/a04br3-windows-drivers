@@ -51,8 +51,40 @@ runs:
         $alias = "wdk-$env:GITHUB_RUN_ID"
         $known = Join-Path $env:ACTION_PATH 'ssh-j-known-hosts'
         $tunnelLog = Join-Path $env:RUNNER_TEMP 'a04br3-ssh-tunnel.log'
-        $args = @('-v','-N','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o',"UserKnownHostsFile=$known",'-o','ExitOnForwardFailure=yes','-o','ServerAliveInterval=20','-R',"${alias}:2222:127.0.0.1:2222","${jumpUser}@ssh-j.com")
-        $process = Start-Process -FilePath 'ssh.exe' -ArgumentList $args -RedirectStandardError $tunnelLog -PassThru -NoNewWindow
+        $tunnelArguments = @('-v','-N','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o',"UserKnownHostsFile=$known",'-o','ExitOnForwardFailure=yes','-o','ServerAliveInterval=20','-R',"${alias}:2222:127.0.0.1:2222","${jumpUser}@ssh-j.com")
+        $nextTunnelProbe = [DateTime]::UtcNow.AddSeconds(60)
+        function Test-ForwardAlias {
+          $probeOut = Join-Path $env:RUNNER_TEMP 'a04br3-forward-probe.stdout'
+          $probeErr = Join-Path $env:RUNNER_TEMP 'a04br3-forward-probe.stderr'
+          $probeArgs = @('-o','BatchMode=yes','-o','ConnectTimeout=8','-o','StrictHostKeyChecking=yes','-o',"UserKnownHostsFile=$known",'-W',"${alias}:2222","${jumpUser}@ssh-j.com")
+          $probe = Start-Process ssh.exe -ArgumentList $probeArgs -RedirectStandardOutput $probeOut -RedirectStandardError $probeErr -PassThru -NoNewWindow
+          try {
+            for($probeTick=0;$probeTick -lt 20;$probeTick++){
+              Start-Sleep -Milliseconds 500
+              if((Test-Path $probeOut) -and ((Get-Content $probeOut -Raw) -match 'SSH-2\.0-')){return $true}
+              $probe.Refresh();if($probe.HasExited){break}
+            }
+            return $false
+          } finally {if(!$probe.HasExited){Stop-Process -Id $probe.Id -ErrorAction SilentlyContinue}}
+        }
+        function Maintain-Tunnel {
+          $process.Refresh()
+          if(!$process.HasExited -and [DateTime]::UtcNow -lt $script:nextTunnelProbe){return}
+          $script:nextTunnelProbe=[DateTime]::UtcNow.AddSeconds(60)
+          if(!$process.HasExited -and (Test-ForwardAlias)){return}
+          Write-Host 'SSH forward unavailable; reconnecting while preserving the runner and setup.'
+          if(!$process.HasExited){Stop-Process -Id $process.Id -ErrorAction SilentlyContinue}
+          $retryLog=Join-Path $env:RUNNER_TEMP ('a04br3-ssh-reconnect-'+[DateTime]::UtcNow.Ticks+'.log')
+          $script:process=Start-Process -FilePath 'ssh.exe' -ArgumentList $tunnelArguments -RedirectStandardError $retryLog -PassThru -NoNewWindow
+          for($retryTick=0;$retryTick -lt 40;$retryTick++){
+            Start-Sleep -Milliseconds 500
+            $script:process.Refresh()
+            if($script:process.HasExited){break}
+            if((Test-Path $retryLog) -and ((Get-Content $retryLog -Raw) -match 'remote forward success')){return}
+          }
+          throw 'SSH forward reconnect failed; runner setup and caches were not deleted'
+        }
+        $process = Start-Process -FilePath 'ssh.exe' -ArgumentList $tunnelArguments -RedirectStandardError $tunnelLog -PassThru -NoNewWindow
         $ready = $false
         for ($i = 0; $i -lt 40; $i++) {
           Start-Sleep -Milliseconds 500
@@ -70,7 +102,7 @@ runs:
           while (!$setup.HasExited) {
             Start-Sleep -Seconds 5
             $setup.Refresh(); $process.Refresh()
-            if ($process.HasExited) { Get-Content $tunnelLog; Stop-Process -Id $setup.Id -ErrorAction SilentlyContinue; throw 'SSH tunnel exited during setup' }
+            Maintain-Tunnel
           }
           if (Test-Path $stdout) { Get-Content $stdout }
           if (Test-Path $stderr) { Get-Content $stderr }
@@ -83,6 +115,6 @@ runs:
         while ((Get-Date) -lt $until -and -not (Test-Path $stop)) {
           Start-Sleep -Seconds 5
           $process.Refresh()
-          if ($process.HasExited) { Get-Content $tunnelLog; throw 'SSH tunnel exited unexpectedly' }
+          Maintain-Tunnel
         }
         Stop-Process -Id $process.Id -ErrorAction SilentlyContinue
