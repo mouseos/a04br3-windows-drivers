@@ -3,6 +3,7 @@
 #define UNICODE
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <reason.h>
 #include <bcrypt.h>
 #include <wintrust.h>
 #include <softpub.h>
@@ -42,4 +43,4 @@ static void WINAPI main_service(DWORD argc,WCHAR **argv){DWORD e,d;(void)argc;(v
 void mainCRTStartup(void){SERVICE_TABLE_ENTRYW t[2]={{(LPWSTR)service,main_service},{NULL,NULL}};SetErrorMode(SEM_FAILCRITICALERRORS|SEM_NOOPENFILEERRORBOX);ExitProcess(StartServiceCtrlDispatcherW(t)?0:GetLastError());}
 
 void *memset(void *p,int v,size_t n){volatile unsigned char *q=p;while(n--)*q++=(unsigned char)v;return p;}
-void *memcpy(void *p,const void *s,size_t n){volatile unsigned char *d=p;const unsigned char *q=s;while(n--)*d++=*q++;return p;}
+void *memcpy(void *p,const void *s,size_t n){volatile unsigned char *d=p;const volatile unsigned char *q=s;while(n--)*d++=*q++;return p;}
