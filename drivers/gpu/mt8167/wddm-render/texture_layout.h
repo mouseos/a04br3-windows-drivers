@@ -31,7 +31,7 @@ static inline int geo_texture_upload_rows(void *dst,uint32_t dst_pitch,
  uint32_t y,row;
  if(!dst||!src||!geo_texture_layout_valid(width,height,dst_pitch))return 1;
  row=width*4u;
- if(src_pitch<row||(uint64_t)(height-1u)*src_pitch+row>SIZE_MAX)return 1;
+ if((height>1u&&src_pitch<row)||(uint64_t)(height-1u)*src_pitch+row>SIZE_MAX)return 1;
  for(y=0;y<height;y++)memcpy((uint8_t*)dst+(size_t)y*dst_pitch,(const uint8_t*)src+(size_t)y*src_pitch,row);
  return 0;
 }

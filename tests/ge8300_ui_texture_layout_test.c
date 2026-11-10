@@ -27,7 +27,9 @@ int main(void){
   assert(!geo_texture_upload_rows(dst,pitch,src,srcpitch,w,h));
   for(unsigned y=0;y<h;y++){assert(!memcmp(dst+(size_t)y*pitch,src+(size_t)y*srcpitch,w*4));for(unsigned x=w*4;x<pitch;x++)assert(dst[(size_t)y*pitch+x]==0xa5);}
   struct a04_texture2d_state saved=out;unsigned oldpitch=s.row_pitch;s.row_pitch=131076;s.bytes=s.row_pitch*h;assert(a04_m111_texture2d_state(&out,&s)&&!memcmp(&out,&saved,sizeof(out)));s.row_pitch=oldpitch;s.bytes=s.row_pitch*h;
-  assert(geo_texture_upload_rows(dst,pitch,src,w*4-1,w,h));free(src);free(dst);cases++;
+  if(h>1)assert(geo_texture_upload_rows(dst,pitch,src,w*4-1,w,h));
+  else assert(!geo_texture_upload_rows(dst,pitch,src,0,w,h));
+  free(src);free(dst);cases++;
  }
  assert(!geo_texture_layout_valid(16385,1,65540));assert(!geo_texture_layout_valid(1,16385,4));
  assert(!geo_texture_layout_valid(16384,65,65536)); /* existing per-MDL4MiB budget */
