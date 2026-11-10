@@ -9,6 +9,9 @@ def fn(sig):
  return src[start:end]
 install=fn('static NDIS_STATUS install(');install=install[:install.index(' RtlZeroMemory(command')]+ '\n firmware_calls++;return NDIS_STATUS_FAILURE;\n}\n'
 body='\n'.join([fn('static int same('),fn('static int cipher_active('),install,fn('static NDIS_STATUS decode_key('),fn('NDIS_STATUS a04_os_security_oid(')])
+control=(r/'drivers/network/mt6630/native_control.c').read_text()
+gate=control[control.index(' if((!a->power'):control.index(' if(q->RequestType==NdisRequestMethod)')]
+body+='\nstatic NDIS_STATUS dispatch(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q){\n ULONG oid=q->DATA.SET_INFORMATION.Oid;\n'+gate+' return a04_os_security_oid(a,q);\n}\n'
 fixture=r'''
 #include <assert.h>
 #include <stdint.h>
@@ -24,6 +27,12 @@ fixture=r'''
 #define OID_DOT11_CIPHER_KEY_MAPPING_KEY 12
 #define OID_DOT11_CIPHER_DEFAULT_KEY 13
 #define OID_DOT11_PORT_STATE_NOTIFICATION 14
+#define OID_DOT11_CONNECT_REQUEST 15
+#define OID_DOT11_DISCONNECT_REQUEST 16
+#define OID_DOT11_RESET_REQUEST 17
+#define OID_DOT11_ENUM_BSS_LIST 18
+#define NdisRequestQueryInformation 2
+#define NdisRequestQueryStatistics 3
 #define DOT11_EXEMPT_BOTH 3
 #define A04_CT_KEY_CID7 124
 #define A04_CP_RETURN_PREPARED 3
@@ -36,7 +45,7 @@ typedef struct {NDIS_OBJECT_HEADER Header;uint8_t PeerMac[6];BOOLEAN bOpen;} DOT
 struct a04_os_key {unsigned valid,seen,wlan,uncertain;uint8_t fingerprint[32];uint64_t pn[16];};
 struct a04_os_security {ULONG auth,unicast,multicast;unsigned failed,port_open,ptk_pending;struct a04_os_key ptk,gtk[4];};
 struct a04_wmt_bridge {int unused;};
-struct a04_ndis_runtime {struct a04_os_security os_security;struct{unsigned connected;struct a04_wmt_bridge *bridge;struct{struct{uint8_t mac[6];}ap;}station;}radio;struct{void*pending;}tx;unsigned receive_epoch;};
+struct a04_ndis_runtime {struct a04_os_security os_security;struct{unsigned connected;int failed;struct a04_wmt_bridge *bridge;struct{struct{uint8_t mac[6];}ap;}station;}radio;struct{void*pending;}tx;unsigned receive_epoch,power;};
 static unsigned firmware_calls;
 ''' + body + r'''
 static NDIS_STATUS request(struct a04_ndis_runtime*a,unsigned pairwise,unsigned id,unsigned remove,unsigned invalid){
@@ -51,7 +60,9 @@ static NDIS_STATUS request(struct a04_ndis_runtime*a,unsigned pairwise,unsigned 
   length=FIELD_OFFSET(DOT11_CIPHER_DEFAULT_KEY_VALUE,ucKey);q.DATA.SET_INFORMATION.Oid=13;
  }
  q.DATA.SET_INFORMATION.InformationBuffer=buf.data;q.DATA.SET_INFORMATION.InformationBufferLength=length;
- return a04_os_security_oid(a,&q);
+ NDIS_STATUS status=dispatch(a,&q);
+ if(status==NDIS_STATUS_SUCCESS)assert(q.DATA.SET_INFORMATION.BytesRead==length);
+ return status;
 }
 int main(void){
  struct a04_ndis_runtime a={0};a.radio.station.ap.mac[0]=2;
@@ -68,7 +79,18 @@ int main(void){
   assert(request(&a,pair,0,1,1)==NDIS_STATUS_INVALID_DATA);assert(!firmware_calls);
  }
  assert(request(&a,0,4,1,0)==NDIS_STATUS_INVALID_DATA&&!firmware_calls);
- puts("PASS actual two security OID validators/admission: absent repeat-delete succeeds disconnected/no-cipher/failed/TXpending; active-key/add/input rejection retained; FW branch0");
+ a.power=1;a.radio.failed=-1;a.radio.connected=0;memset(&a.os_security,0,sizeof(a.os_security));a.os_security.failed=1;a.tx.pending=&a;
+ for(unsigned id=0;id<4;id++){
+  assert(request(&a,0,id,1,0)==NDIS_STATUS_SUCCESS&&!firmware_calls);
+  a.os_security.gtk[id].valid=1;assert(request(&a,0,id,1,0)==NDIS_STATUS_ADAPTER_NOT_READY&&!firmware_calls);a.os_security.gtk[id].valid=0;
+  a.os_security.gtk[id].uncertain=1;assert(request(&a,0,id,1,0)==NDIS_STATUS_ADAPTER_NOT_READY&&!firmware_calls);a.os_security.gtk[id].uncertain=0;
+  a.os_security.ptk_pending=1;assert(request(&a,0,id,1,0)==NDIS_STATUS_ADAPTER_NOT_READY&&!firmware_calls);a.os_security.ptk_pending=0;
+  assert(request(&a,0,id,0,0)==NDIS_STATUS_ADAPTER_NOT_READY&&!firmware_calls);
+  assert(request(&a,0,id,1,1)==NDIS_STATUS_INVALID_DATA&&!firmware_calls);
+ }
+ assert(request(&a,0,4,1,0)==NDIS_STATUS_INVALID_DATA&&!firmware_calls);
+ assert(request(&a,1,0,1,0)==NDIS_STATUS_ADAPTER_NOT_READY&&!firmware_calls);
+ puts("PASS actual outer radio gate + two security validators/admission: four proven-absent GTK slots delete successfully after radio failure; present/add/pending/uncertain/mapping remain blocked; BytesRead set; FW branch0");
 }
 '''
 out=r/'build/mt6630-absent-delete';out.mkdir(parents=True,exist_ok=True);(out/'actual.c').write_text(fixture)

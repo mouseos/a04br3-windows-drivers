@@ -216,7 +216,10 @@ static NDIS_STATUS control_impl(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
  /* Retained radio-OFF must still expose identity/capabilities and accept
   * software MIB settings. Only real scan/connect require a powered radio. */
  if((!a->power||a->radio.failed)&&(oid==OID_DOT11_SCAN_REQUEST||oid==OID_DOT11_CONNECT_REQUEST))return NDIS_STATUS_ADAPTER_NOT_READY;
- if(a->power&&a->radio.failed&&q->RequestType!=NdisRequestQueryInformation&&q->RequestType!=NdisRequestQueryStatistics&&oid!=OID_DOT11_DISCONNECT_REQUEST&&oid!=OID_DOT11_RESET_REQUEST&&oid!=OID_DOT11_ENUM_BSS_LIST)return NDIS_STATUS_ADAPTER_NOT_READY;
+ /* Default-key cleanup must reach its validator even after a radio failure.
+  * The security handler admits only a proven-absent delete in that state. */
+ if(a->power&&a->radio.failed&&q->RequestType!=NdisRequestQueryInformation&&q->RequestType!=NdisRequestQueryStatistics&&oid!=OID_DOT11_DISCONNECT_REQUEST&&oid!=OID_DOT11_RESET_REQUEST&&oid!=OID_DOT11_ENUM_BSS_LIST&&
+    !(q->RequestType==NdisRequestSetInformation&&oid==OID_DOT11_CIPHER_DEFAULT_KEY))return NDIS_STATUS_ADAPTER_NOT_READY;
  if(q->RequestType==NdisRequestMethod){if(oid==OID_DOT11_RESET_REQUEST)return reset_request(a,q);if(oid==OID_DOT11_ENUM_BSS_LIST)return bss_list(a,q);return NDIS_STATUS_NOT_SUPPORTED;}
  if(q->RequestType==NdisRequestSetInformation){
   UCHAR *p=q->DATA.SET_INFORMATION.InformationBuffer;ULONG n=q->DATA.SET_INFORMATION.InformationBufferLength;

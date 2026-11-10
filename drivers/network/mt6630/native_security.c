@@ -114,6 +114,13 @@ NDIS_STATUS a04_os_security_oid(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
   if(entry.Header.Type!=NDIS_OBJECT_TYPE_DEFAULT||entry.Header.Revision!=1||entry.Header.Size!=sizeof(entry)||entry.uKeyIndex>3||entry.AlgorithmId!=DOT11_CIPHER_ALGO_CCMP||entry.bStatic||entry.usKeyLength!=n-base)return NDIS_STATUS_INVALID_DATA;
   for(unsigned i=0;i<6;i++){zero|=entry.MacAddr[i];ff|=entry.MacAddr[i]^255;}
   if(zero&&ff)return NDIS_STATUS_NOT_SUPPORTED;
+  /* The outer radio-failure gate delegates only this SET OID. Keep every
+   * hardware-changing or uncertain operation blocked, but permit the WDK
+   * required repeat-delete no-op after full input validation. */
+  if(a->power&&a->radio.failed){
+   const struct a04_os_key *slot=&a->os_security.gtk[entry.uKeyIndex];
+   if(!entry.bDelete||slot->valid||slot->uncertain||a->os_security.ptk_pending)return NDIS_STATUS_ADAPTER_NOT_READY;
+  }
   status=decode_key(a,0,entry.uKeyIndex,entry.bDelete,p+base,entry.usKeyLength);if(status==NDIS_STATUS_SUCCESS)q->DATA.SET_INFORMATION.BytesRead=n;return status;
  }
  if(oid==OID_DOT11_PORT_STATE_NOTIFICATION){
