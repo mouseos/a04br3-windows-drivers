@@ -23,7 +23,7 @@ static HRESULT unref(struct geo_typed_srv *v) {
 static HRESULT validate(D3D10DDI_HDEVICE h,const D3D11DDIARG_CREATESHADERRESOURCEVIEW *p) {
  struct geo_typed_resource *r;if(!p||!(r=geo_typed_resource(h,p->hDrvResource)))return E_INVALIDARG;
  if(r->bind!=D3D10_DDI_BIND_SHADER_RESOURCE||r->dimension!=D3D10DDIRESOURCE_TEXTURE2D||p->ResourceDimension!=D3D10DDIRESOURCE_TEXTURE2D||
-    p->Format!=DXGI_FORMAT_B8G8R8A8_UNORM||p->Format!=r->format||p->Tex2D.MostDetailedMip||p->Tex2D.FirstArraySlice||p->Tex2D.MipLevels!=1||p->Tex2D.ArraySize!=1)return E_NOTIMPL;
+    (p->Format!=DXGI_FORMAT_B8G8R8A8_UNORM&&p->Format!=DXGI_FORMAT_R8G8B8A8_UNORM)||p->Format!=r->format||p->Tex2D.MostDetailedMip||p->Tex2D.FirstArraySlice||p->Tex2D.MipLevels!=1||p->Tex2D.ArraySize!=1)return E_NOTIMPL;
  return S_OK;
 }
 static SIZE_T APIENTRY size(D3D10DDI_HDEVICE h,const D3D11DDIARG_CREATESHADERRESOURCEVIEW *p) {

@@ -111,11 +111,12 @@ static void APIENTRY check_format(D3D10DDI_HDEVICE h,DXGI_FORMAT format,UINT *su
  if(!support){geo_typed_error(h,E_INVALIDARG);return;}*support=0;
  if(format==DXGI_FORMAT_R32G32B32A32_FLOAT)*support=D3D11_1DDI_FORMAT_SUPPORT_VERTEX_BUFFER;
  if(format==DXGI_FORMAT_B8G8R8A8_UNORM)*support=D3D10_DDI_FORMAT_SUPPORT_RENDERTARGET|D3D10_DDI_FORMAT_SUPPORT_SHADER_SAMPLE;
- /* BGRA8 has a real noncomparison SMP path for all regular filters and
+ if(format==DXGI_FORMAT_R8G8B8A8_UNORM)*support=D3D10_DDI_FORMAT_SUPPORT_SHADER_SAMPLE;
+ /* BGRA8/RGBA8 have a real noncomparison SMP path for all regular filters and
   * anisotropy. No comparison/gather/load/blend/depth/MIP claims are added. */
 }
 static void APIENTRY check_samples(D3D10DDI_HDEVICE h,DXGI_FORMAT format,UINT samples,UINT *levels) {
- if(!levels){geo_typed_error(h,E_INVALIDARG);return;}*levels=(format==DXGI_FORMAT_B8G8R8A8_UNORM&&samples==1)?1u:0u;
+ if(!levels){geo_typed_error(h,E_INVALIDARG);return;}*levels=((format==DXGI_FORMAT_B8G8R8A8_UNORM||format==DXGI_FORMAT_R8G8B8A8_UNORM)&&samples==1)?1u:0u;
 }
 static void APIENTRY destroy_device(D3D10DDI_HDEVICE h) {
  struct geo_typed_device *d=geo_typed_device(h);D3DDDICB_DESTROYCONTEXT q;HRESULT hr;

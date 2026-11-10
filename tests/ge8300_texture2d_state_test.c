@@ -16,7 +16,7 @@ int main(void){
  assert(((p>>41)&7)==2&&((p>>44)&7)==2&&((p>>56)&7)==2&&(p&8191)==4095&&((p>>13)&1023)==0&&((p>>23)&1023)==0);
  assert(!out.sampler[2]&&!out.sampler[3]);old=out;
  #define BAD(field,value) do{struct a04_texture2d_storage bad=s;bad.field=value;assert(a04_m111_texture2d_state(&out,&bad)!=0&&!memcmp(&out,&old,sizeof(out)));}while(0)
- BAD(row_pitch,27);BAD(row_pitch,24);BAD(bytes,159);BAD(gpu,UINT64_C(0xfffffffffc));BAD(gpu,4097);BAD(gpu,0);BAD(width,0);BAD(width,129);BAD(mip_levels,2);BAD(array_size,2);BAD(sample_count,4);BAD(format,28);BAD(reserved,1);BAD(version,2);BAD(row_pitch,0xfffffffc);
+ BAD(row_pitch,27);BAD(row_pitch,24);BAD(bytes,159);BAD(gpu,UINT64_C(0xfffffffffc));BAD(gpu,4097);BAD(gpu,0);BAD(width,0);BAD(width,16385);BAD(mip_levels,2);BAD(array_size,2);BAD(sample_count,4);BAD(format,29);BAD(reserved,1);BAD(version,2);BAD(row_pitch,0xfffffffc);
  for(unsigned w=1;w<=128;w++)for(unsigned h=1;h<=128;h++){
   s.width=w;s.height=h;s.row_pitch=w*4;s.bytes=s.row_pitch*h;assert(!a04_m111_texture2d_state(&out,&s));
   a=qw(out.image);b=qw(out.image+2);assert(((a>>48)&16383)==h-1&&((a>>34)&16383)==w-1&&(b&32767)==w-1);
