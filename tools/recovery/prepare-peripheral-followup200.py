@@ -78,6 +78,7 @@ def build_policy(root,spec):
   require(isinstance(ref,dict) and re.fullmatch('[0-9a-f]{64}',ref.get('sha256','')) and ref['sha256']!='0'*64,'未確定入力は拒否')
   q=rooted(root,ref['path']);require(sha(q)==ref['sha256'],'実入力SHA不一致 '+ref['path']);pins[q.relative_to(root).as_posix()]=ref['sha256'];return read(q)
  require(spec['profile']==PROFILE and spec['hardware_owner']=='main' and spec['install_targets']==INSTALL,'GPU368 renderのみ')
+ if TIMING:require(INSTALL==(['display','render','wifi'] if TIMING.wifi_activation else ['display','render']),'明示WiFi activationとINSTALL一致')
  require(spec['fresh']['path'].endswith(f'private-windows-rt-prebackup-run{CAPTURE}/manifest.json'),'実fresh200 manifest pathのみ')
  fm=pin(spec['fresh']);n=pin(spec['native']);c=pin(spec['capture_contract']);prior=pin(spec['template_policy'])
  require(fm['status']=='captured-unmounted' and fm['read_only'] is True and fm['unmounted'] is True and fm['errors']==[],'完了済み実capture必須')
@@ -131,6 +132,9 @@ def build_policy(root,spec):
    baselines[role]=dict(mode='selected' if (role in INSTALL if TIMING else role=='render') else 'retained',version_u64=old['version_u64'],date_filetime=old['date_filetime'],sys_sha256=sysfile['sha256'],inf=sel['InfPath']['value'])
   if TIMING and role in INSTALL:
    old=TIMING.adopt(role,old,originals,hashes)
+   if role=='wifi':
+    for name in old['names'].values():
+     q=rooted(root,Path(old['directory'])/name);pins[q.relative_to(root).as_posix()]=sha(q)
   elif role=='render':
    old.update(directory=gp.as_posix(),manifest=spec['GPU368_manifest']['path'],manifest_sha256=MANIFEST,source_commit=SOURCE,driver_version='0.0.3.68',driver_date='11/10/2026')
    for x in old['extra_members']:

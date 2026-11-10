@@ -15,6 +15,16 @@ FD='c731f8d68ed39c7a812b427d181468123c58b040fe07fbc666bd8b23e6f0b326'
 SIGN_SOURCE='2ffc193078da9badbfff67cba2868f34a47b99f8'
 COMPILE_SOURCE='15c64bf3a77bd0d27a49db55f80dc0a12f15d3f5'
 NATIVE_SOURCE='a04e22489709db79d7c5a4355419bc7aaf95b057'
+WIFI_SOURCE='c11981553cc10e9730565390f5d9f9e09a919992'
+WIFI_MANIFEST='d974239fbcf96d7baad96b84fccaa7462a7481058a7c2d80c0d19d4745ef1599'
+WIFI_BASE_MANIFEST='fbe1a4dc4101726d21120212ce371740421d1491c3d8a94e33369aec9a3277a2'
+WIFI_BASE_SYS='97dcede955d813a7d72ba8d6e950ceae1215c94351187cf18c73cc15d3f47334'
+
+def wifi_activation(spec):
+    value=spec.get('wifi_activation',False)
+    require(type(value) is bool,'wifi_activationは明示boolのみ')
+    require(value == (spec.get('wifi_update_package') is not None),'wifi_activationとcandidate refは両方指定')
+    return value
 
 def prepare(root,inputs,out):
     pins={}
@@ -98,6 +108,7 @@ def main():
 class TimingInputs:
     def __init__(self,root,spec,pending):
         self.root,self.spec,self.pending=root,spec,pending
+        self.wifi_activation=wifi_activation(spec);self.wifi_candidate=None
     def validate_manifest(self,gm,review,spec):
         require(spec['GPU368_manifest']['sha256']==MANIFEST and gm['schema']=='panel-timing369-sign-only-v1' and gm['success'] is True and gm['signed'] is True,'実369署名成功pin')
         require(gm['new_display_source_commit']==COMPILE_SOURCE and gm['native_owner_source_commit']==gm['umd_source_commit']==NATIVE_SOURCE,'実混合compile出自保持')
@@ -108,12 +119,25 @@ class TimingInputs:
         overrides=self.spec.get('retained_package_overrides',{})
         require(set(overrides)<= {'wifi'},'明示retained overrideはWiFiのみ')
         rows=copy.deepcopy(rows)
+        if self.wifi_activation:
+            require('wifi' not in overrides,'1029をretained baselineへ混ぜずwifi_update_packageを使用')
+            row=pin(self.spec['wifi_update_package'])
+            require(row['source_commit']==WIFI_SOURCE and row['manifest_sha256']==WIFI_MANIFEST and row['driver_version']=='2026.11.11.1029','固定署名1029 candidate row必須')
+            manifest=pin(dict(path=row['manifest'],sha256=row['manifest_sha256']))
+            require(manifest['source_commit']==WIFI_SOURCE and manifest['version']=='2026.11.11.1029' and manifest['signature_status']=='Valid' and manifest['signer_thumbprint']=='BCBF6C456C6F0DD0818434763B189488FBF13570','実native1029署名manifest必須')
+            self.wifi_candidate=base.package(self.root,row,'wifi')
+            # Baseline rows stay actual1027; candidate is adopted after selection checks.
         if 'wifi' in overrides:
             row=pin(overrides['wifi'])
             require(row['source_commit']=='c11981553cc10e9730565390f5d9f9e09a919992' and row['manifest_sha256']=='d974239fbcf96d7baad96b84fccaa7462a7481058a7c2d80c0d19d4745ef1599' and row['driver_version']=='2026.11.11.1029','最終署名1029の明示retained rowのみ')
             rows['wifi']=row
         return rows
     def adopt(self,role,old,originals,hashes):
+        if role=='wifi':
+            require(self.wifi_activation and self.wifi_candidate is not None,'WiFi candidate未検証')
+            require(old['driver_version']=='2026.11.9.1027' and old['manifest_sha256']==WIFI_BASE_MANIFEST and old['hashes']['sys']==WIFI_BASE_SYS,'actual選択1027/SYS97dceのbaselineのみ')
+            require(originals['Windows/System32/Drivers/mt6630-combo-runtime.sys']['sha256']==WIFI_BASE_SYS,'actual freshの1027 SYS必須')
+            return copy.deepcopy(self.wifi_candidate)
         row=copy.deepcopy(self.pending['candidate_rows'][role])
         if role=='render':
             for member in row.get('extra_members',[]):
@@ -145,23 +169,26 @@ class TimingInputs:
         for ref in lock['original_input_pins']:pin_file(ref)
         p['GPU369_manifest']=p.pop('GPU368_manifest');p['GPU369_handoff']=p.pop('GPU368_handoff')
         p['candidate_manifest_view']=self.pending['candidate_manifest_view'];pin(p['candidate_manifest_view'])
-        p['display_transition'].update(DIF_order=['display','render'],old_DOD_retirement='historical177; display369 and render369 deferred update',firmware_dependency='new matched98de DTM0 boot required before candidate start')
+        p['display_transition'].update(DIF_order=list(shared.INSTALL),old_DOD_retirement='historical177; display369 and render369 deferred update',firmware_dependency='new matched98de DTM0 boot required before candidate start')
         p['diagnostic_clients'][1]['arguments']=['"C:\\Windows\\System32\\'+p['service']+'\\logs\\global-diag369"']
         p['globaldiag_contract']['prefix']=p['diagnostic_clients'][1]['arguments'][0]
         p['retained_package_overrides']=copy.deepcopy(self.spec.get('retained_package_overrides',{}))
+        if self.wifi_activation:
+            require(p['baselines']['wifi']['mode']=='selected' and p['baselines']['wifi']['sys_sha256']==WIFI_BASE_SYS,'WiFi actual selected baseline保持')
+            p['wifi_activation']=True;p['wifi_update_package']=copy.deepcopy(self.spec['wifi_update_package'])
         p['main_execution_approved']=self.spec.get('main_execution_approved',False)
         p['gpu369_timing_contract']=dict(schema=1,record_method='DTM0',record_bytes=64,transport_QI_version=2,matched_boot_sha256=BOOT,manifest_sha256=MANIFEST,compile_source_commit=COMPILE_SOURCE,baseline_native_UMD_source_commit=NATIVE_SOURCE)
 
 shared=None
 PROFILE=SERVICE=DIRECTORY=None
 
-def configure_capture(capture):
+def configure_capture(capture,activate_wifi=False):
     global shared,PROFILE,SERVICE,DIRECTORY
     require(type(capture) is int and 204<=capture<=999,'実capture番号204..999のみ')
     module_spec=importlib.util.spec_from_file_location('gpu369_shared200',Path(__file__).with_name('prepare-peripheral-followup200.py'))
     shared=importlib.util.module_from_spec(module_spec);module_spec.loader.exec_module(shared)
     PROFILE=f'combined-features-fresh{capture}-gpu369-timing-v1';SERVICE=DIRECTORY=f'MT8167CombinedFollowup{capture}'
-    shared.CAPTURE=capture;shared.PROFILE=PROFILE;shared.SERVICE=shared.DIRECTORY=SERVICE;shared.INSTALL=['display','render']
+    shared.CAPTURE=capture;shared.PROFILE=PROFILE;shared.SERVICE=shared.DIRECTORY=SERVICE;shared.INSTALL=['display','render']+(['wifi'] if activate_wifi else [])
     shared.SOURCE=COMPILE_SOURCE;shared.MANIFEST=MANIFEST
     shared.base.PROFILE=PROFILE;shared.base.SERVICE=shared.base.DIRECTORY=SERVICE;shared.base.INSTALL=shared.INSTALL
 
@@ -170,7 +197,7 @@ def load_map(path,root):
     contract_ref=spec['capture_contract'];require(isinstance(contract_ref,dict),'実capture contract未取得')
     contract_path=rooted(root,contract_ref['path']);require(sha(contract_path)==contract_ref['sha256'],'実capture contract SHA')
     contract=read(contract_path);capture=contract['capture_number']
-    require(spec.get('capture_number') in (None,capture),'指定captureと実contract不一致');configure_capture(capture)
+    require(spec.get('capture_number') in (None,capture),'指定captureと実contract不一致');configure_capture(capture,wifi_activation(spec))
     require(spec.get('profile') in (None,PROFILE),'実captureと369 profile結合');spec['profile']=PROFILE;spec['capture_number']=capture
     def pinned(ref):
         q=rooted(root,ref['path']);require(sha(q)==ref['sha256'],'準備済みref SHA不一致');return read(q)
@@ -179,13 +206,14 @@ def load_map(path,root):
     for ref in lock['original_input_pins']:require(sha(rooted(root,ref['path']))==ref['sha256'],'原本入力変化')
     require(pending['candidate_signed_manifest']['sha256']==MANIFEST,'準備manifest pin')
     current=copy.deepcopy(spec)
-    require(spec['install_targets']==['display','render'] and spec['hardware_owner']=='main','369対象のみ')
+    require(spec['install_targets']==shared.INSTALL and spec['hardware_owner']=='main','369 display/renderと明示WiFiだけ')
     current['GPU368_manifest']=pending['candidate_signed_manifest'];current['GPU368_handoff']=next(r for r in lock['original_input_pins'] if r['path'].endswith('windows-rt-panel-timing369-complete/independent-review.json'))
     shared.TIMING=TimingInputs(root,spec,pending)
     return shared.build_policy(root,current)
 
 def generate(policy):
-    configure_capture(policy['capture_selection']['capture_number'])
+    configure_capture(policy['capture_selection']['capture_number'],policy.get('wifi_activation',False))
+    require(policy['install_targets']==shared.INSTALL,'生成時も同じWiFi選択を保持')
     return shared.generate(policy)
 
 def generate_paths():
