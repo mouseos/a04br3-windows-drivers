@@ -16,6 +16,8 @@ static const WCHAR service[]=L"MT8167Usb1121Install198";
 #include "usb1121-system-volume-flush.h"
 #include "usb1121-service-uart.h"
 static const WCHAR base[]=L"C:\\Windows\\System32\\MT8167Usb1121Install198";
+/* Exact inbox image: actual Recovery200 == Microsoft recovery install.wim[1]. */
+static const BYTE powershell_system_hash[32]={0x82,0x66,0xb9,0x56,0x65,0x86,0x81,0xfe,0x18,0xf3,0x85,0x13,0x84,0xca,0x8b,0xb7,0xf9,0x1a,0x57,0xa9,0x3d,0xc2,0x9b,0x91,0xfd,0x45,0x19,0xa6,0xee,0xa7,0x20,0x52};
 static HANDLE hold(const WCHAR *p,const BYTE *want){
  HANDLE f=CreateFileW(p,GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,NULL);
  BCRYPT_ALG_HANDLE a=NULL;BCRYPT_HASH_HANDLE h=NULL;BYTE buf[1024],sum[32];DWORD n,i;BY_HANDLE_FILE_INFORMATION info;int ok=0;
@@ -27,19 +29,22 @@ static HANDLE hold(const WCHAR *p,const BYTE *want){
  for(i=0;i<32;i++)if(sum[i]!=want[i])goto done;ok=1;
  done:if(h)BCryptDestroyHash(h);if(a)BCryptCloseAlgorithmProvider(a,0);if(!ok){CloseHandle(f);f=INVALID_HANDLE_VALUE;}return f;
 }
-static DWORD trust(const WCHAR *p){WINTRUST_FILE_INFO f={0};WINTRUST_DATA d={0};GUID g=WINTRUST_ACTION_GENERIC_VERIFY_V2;LONG e;f.cbStruct=sizeof(f);f.pcwszFilePath=p;d.cbStruct=sizeof(d);d.dwUIChoice=WTD_UI_NONE;d.dwUnionChoice=WTD_CHOICE_FILE;d.pFile=&f;d.dwProvFlags=WTD_CACHE_ONLY_URL_RETRIEVAL;d.dwStateAction=WTD_STATEACTION_VERIFY;e=WinVerifyTrust(NULL,&g,&d);d.dwStateAction=WTD_STATEACTION_CLOSE;WinVerifyTrust(NULL,&g,&d);return e?ERROR_TRUST_FAILURE:0;}
+static DWORD trust(const WCHAR *p){WINTRUST_FILE_INFO f={0};WINTRUST_DATA d={0};GUID g=WINTRUST_ACTION_GENERIC_VERIFY_V2;LONG e;f.cbStruct=sizeof(f);f.pcwszFilePath=p;d.cbStruct=sizeof(d);d.dwUIChoice=WTD_UI_NONE;d.dwUnionChoice=WTD_CHOICE_FILE;d.pFile=&f;d.dwProvFlags=WTD_CACHE_ONLY_URL_RETRIEVAL;d.dwStateAction=WTD_STATEACTION_VERIFY;e=WinVerifyTrust(NULL,&g,&d);d.dwStateAction=WTD_STATEACTION_CLOSE;WinVerifyTrust(NULL,&g,&d);(void)uart_only(U198_OBSERVER_FILE_TRUST_HRESULT,(DWORD)e);return e?ERROR_TRUST_FAILURE:0;}
 static DWORD disable(void){SC_HANDLE m=OpenSCManagerW(NULL,NULL,SC_MANAGER_CONNECT),s;DWORD e;if(!m)return GetLastError();s=OpenServiceW(m,service,SERVICE_CHANGE_CONFIG);if(!s){e=GetLastError();CloseServiceHandle(m);return e;}e=ChangeServiceConfigW(s,SERVICE_NO_CHANGE,SERVICE_DISABLED,SERVICE_NO_CHANGE,NULL,NULL,NULL,NULL,NULL,NULL,NULL)?0:GetLastError();CloseServiceHandle(s);CloseServiceHandle(m);return e;}
 static DWORD run(void){
  WCHAR ps[MAX_PATH]=L"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
  WCHAR script[MAX_PATH]=L"C:\\Windows\\System32\\MT8167Usb1121Install198\\run-usb1121-service.ps1";
  WCHAR profile[MAX_PATH]=L"C:\\Windows\\System32\\MT8167Usb1121Install198\\profile.json";
  WCHAR cmd[1024]=L"\"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"C:\\Windows\\System32\\MT8167Usb1121Install198\\run-usb1121-service.ps1\"";
- HANDLE a=INVALID_HANDLE_VALUE,b=INVALID_HANDLE_VALUE;STARTUPINFOW si={0};PROCESS_INFORMATION pi={0};DWORD e=0,code=1;
+ HANDLE a=INVALID_HANDLE_VALUE,b=INVALID_HANDLE_VALUE,image=INVALID_HANDLE_VALUE;STARTUPINFOW si={0};PROCESS_INFORMATION pi={0};DWORD e=0,code=1;
  a=hold(script,launcher_hash);b=hold(profile,profile_hash);if(a==INVALID_HANDLE_VALUE||b==INVALID_HANDLE_VALUE)e=ERROR_CRC;
- if(!e)e=trust(ps);
+ if(!e){image=hold(ps,powershell_system_hash);e=image==INVALID_HANDLE_VALUE?ERROR_CRC:0;record(U198_PS_IMAGE_PIN,e);}
  si.cb=sizeof(si);
- if(!e){if(!CreateProcessW(ps,cmd,NULL,NULL,FALSE,CREATE_NO_WINDOW,NULL,base,&si,&pi))e=GetLastError();else{CloseHandle(pi.hThread);if(WaitForSingleObject(pi.hProcess,INFINITE)!=WAIT_OBJECT_0||!GetExitCodeProcess(pi.hProcess,&code))e=GetLastError();else e=code;CloseHandle(pi.hProcess);}}
- if(a!=INVALID_HANDLE_VALUE)CloseHandle(a);if(b!=INVALID_HANDLE_VALUE)CloseHandle(b);return e;
+ if(!e){if(!CreateProcessW(ps,cmd,NULL,NULL,FALSE,CREATE_NO_WINDOW,NULL,base,&si,&pi)){e=GetLastError();if(!e)e=ERROR_GEN_FAILURE;record(U198_PS_CREATEPROCESS,e);}else{record(U198_PS_CREATEPROCESS,0);CloseHandle(pi.hThread);if(WaitForSingleObject(pi.hProcess,INFINITE)!=WAIT_OBJECT_0||!GetExitCodeProcess(pi.hProcess,&code)){e=GetLastError();if(!e)e=ERROR_GEN_FAILURE;}else e=code;CloseHandle(pi.hProcess);}}
+ if(a!=INVALID_HANDLE_VALUE)CloseHandle(a);
+ if(b!=INVALID_HANDLE_VALUE)CloseHandle(b);
+ if(image!=INVALID_HANDLE_VALUE)CloseHandle(image);
+ return e;
 }
 static DWORD reboot(void){HANDLE token;TOKEN_PRIVILEGES p={0};DWORD e;if(!OpenProcessToken(GetCurrentProcess(),TOKEN_ADJUST_PRIVILEGES|TOKEN_QUERY,&token))return GetLastError();p.PrivilegeCount=1;if(!LookupPrivilegeValueW(NULL,SE_SHUTDOWN_NAME,&p.Privileges[0].Luid)){e=GetLastError();CloseHandle(token);return e;}p.Privileges[0].Attributes=SE_PRIVILEGE_ENABLED;SetLastError(0);if(!AdjustTokenPrivileges(token,FALSE,&p,0,NULL,NULL)){e=GetLastError();CloseHandle(token);return e;}e=GetLastError();CloseHandle(token);if(e)return e;return InitiateSystemShutdownExW(NULL,L"MediaTek MT8167 USB ABI3 PnP requested reboot",30,FALSE,TRUE,SHTDN_REASON_MAJOR_APPLICATION|SHTDN_REASON_FLAG_PLANNED)?0:GetLastError();}
 static void WINAPI control(DWORD c){(void)c;}

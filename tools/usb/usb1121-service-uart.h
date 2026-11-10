@@ -13,6 +13,9 @@ static int uart_quarantined;
 #define U198_VOLUME_FLUSH 5u
 #define U198_TERMINAL 6u
 #define U198_REBOOT_REQUEST 7u
+#define U198_OBSERVER_FILE_TRUST_HRESULT 8u
+#define U198_PS_IMAGE_PIN 9u
+#define U198_PS_CREATEPROCESS 10u
 static char *hex(char *p,DWORD x){static const char h[]="0123456789ABCDEF";unsigned i;for(i=0;i<8;i++)*p++=h[(x>>(28-4*i))&15];return p;}
 struct uart_packet {OVERLAPPED operation;char text[96];DWORD bytes;};
 /* Same bounded UART queue/cancel ownership as the existing updater. */

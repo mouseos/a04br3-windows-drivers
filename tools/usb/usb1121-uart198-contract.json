@@ -17,7 +17,10 @@
     "SCM_STOP": 4,
     "VOLUME_FLUSH": 5,
     "TERMINAL": 6,
-    "REBOOT_REQUEST": 7
+    "REBOOT_REQUEST": 7,
+    "OBSERVER_FILE_TRUST_HRESULT": 8,
+    "PS_IMAGE_PIN": 9,
+    "PS_CREATEPROCESS": 10
   },
   "reboot_required_code": 3010,
   "collection_gate": "same boot/run/PID START, RUN_RESULT, SCM_STOP(code0), final VOLUME_FLUSH(code0), TERMINAL(code!=3010); no later REBOOT_REQUIRED without successful request; actual observed UART only",
@@ -30,5 +33,7 @@
   "maximum_planned_reboots": 4,
   "reboot_budget": "logs/planned-reboots.bin, durable per deployment; fifth request returns ERROR_RETRY(1237), no reboot",
   "SCM_stop_observer": "same signed EXE --uart-terminal RUN PID RESULT; QueryServiceStatusEx confirms STOPPED; original SCM callback performs no work after SetServiceStatus(STOPPED)",
-  "observer_job_policy": "IsProcessInJob(parent); request CREATE_BREAKAWAY_FROM_JOB only if parent is in a job; create suspended; require IsProcessInJob(child)==FALSE before ResumeThread; query/create/resume errors or child still in job fail closed with no bound-child fallback"
+  "observer_job_policy": "IsProcessInJob(parent); request CREATE_BREAKAWAY_FROM_JOB only if parent is in a job; create suspended; require IsProcessInJob(child)==FALSE before ResumeThread; query/create/resume errors or child still in job fail closed with no bound-child fallback",
+  "diagnostic_events_do_not_grant_collection": "events8..10 are evidence only; original START/RESULT/SCM_STOP/FLUSH/TERMINAL gates remain required",
+  "PowerShell_image_policy": "constant actual200/Microsoft recovery byte hash 8266b956658681fe18f3851384ca8bb7f91a57a93dc29b91fd4519a6eea72052; hold FILE_SHARE_READ; normal CreateProcessW OS CI; no FILE-choice WVT gate on inbox PS; no altered image or arbitrary fallback"
 }

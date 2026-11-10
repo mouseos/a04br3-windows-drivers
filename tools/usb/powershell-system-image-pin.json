@@ -1,0 +1,23 @@
+{
+  "schema": "MT8167_INBOX_POWERSHELL_EXACT_IMAGE_PIN_V1",
+  "runtime_path": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+  "sha256": "8266b956658681fe18f3851384ca8bb7f91a57a93dc29b91fd4519a6eea72052",
+  "bytes": 458240,
+  "machine": "ARMNT",
+  "certificate_bytes": 0,
+  "capture_number": 200,
+  "capture_manifest_sha256": "fbba59d9561ca61f9ff1b41e6bbe0a451330b91741abf487a5caaeeb420b2ed9",
+  "capture_boot_id": "64657ae7-390c-431b-ae4d-ae5de209793b",
+  "capture_record_sha256": "fd8194758b52411059d9a54ea2432166cde90a345f63dd4d2e46d00bcd0d88d7",
+  "official_comparison_record_sha256": "3161e1a64527d2e881f4304ed4af3ad93f6f3b311f0c88e3b3b95619de554553",
+  "official_install_wim_sha256": "b949656175c4e6c2d2c0c0b0915982b15c35387aaea6c3c267e7781e89b1216a",
+  "official_image_index": 1,
+  "official_member": "Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+  "official_member_sha256": "8266b956658681fe18f3851384ca8bb7f91a57a93dc29b91fd4519a6eea72052",
+  "actual_official_bytes_equal": true,
+  "PS_FILE_choice_barrier_removed": true,
+  "OS_CreateProcess_CI_preserved": true,
+  "catalog_identity_resolved": false,
+  "trial199_raw_FILE_hresult": "not captured; generic1790 only",
+  "fresh202_native_or_media_finalized": false
+}
