@@ -55,7 +55,7 @@ decoder tools/winpe/decode-mt6630-checkpoint.pyと固定clone readerを新stage�
 
 ## build/signと検証
 
-公開recipe tools/ci/build-mt6630-provider1029.ps1（UTF8BOM）。INF11/11/2026,2026.11.11.1029。
+公開recipe tools/ci/build-mt6630-provider1029.ps1（UTF8BOM）。INF11/10/2026,2026.11.11.1029。
 元NDIS630/ARMNT/Net class、既1027 compile flags/BCBF signerを保持。
 18TUは変更header依存を含む必須再compile、残25TUのみ記録source closureと実obj SHAを照合してreuse。
 SDK/PCO/GPU/共有親/音声/BTclientの再buildやmachine環境変更はしない。
@@ -64,3 +64,7 @@ SDK/PCO/GPU/共有親/音声/BTclientの再buildやmachine環境変更はしな�
 既state-machine/実checkpoint writer、actual OID wrapper、実2securityOIDの空slot削除admission、
 translated RX/security/credit/budget、async Pauseを限定host検証する。
 registry/NDIS/実機の最終挙動はWindows buildやhost fixtureの成功だけで認定しない。
+
+runner11/10に対するpostdated INFを日付のみ11/10へ修正。ResumeDirectory/ResumePlan/SHA入口は
+旧18TUのsource closure/tool SHA/実obj byteを検査して再compile0でlink/signする。
+actual compiled_source_commitと現在source_commitを区別しnew_compiled_unitsは空のまま記録する。
