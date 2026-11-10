@@ -1,0 +1,43 @@
+{
+  "schema": "USB1121_HELPER42796448681_INPUT_PINS_V1",
+  "frozen_source_commit": "90e4132b7d7e62e9629d1bd768e5c09ad063c517",
+  "source_base_commit": "6741f2a1cac2cb6622c3b1d49bd2ac118c76471f",
+  "source_files": {
+    "tools/usb/UsbAbi3Pnp.cs": "afdacd06d6b20eec50aa9bf19eb7495a509742cb88ece3e2d35306a95b10b3e7",
+    "tools/usb/install-usb1121-first.ps1": "a41210c286cc003621790dbf443a743fe7df0fc555d34521e4a9878b32e50989",
+    "tools/ci/build-usb1121-pnp-helper.ps1": "3ab5fbd1803b4cbb65d5d47fbb64840ccde6523bc54a028046de9b2c8adb2563",
+    "tools/ci/prepare-usb1121-first-install.py": "7a409e18bdb6fe68b6bf4ebe656eadb11a0989312300149072fcc022ee172f2c"
+  },
+  "install_plan_sha256": "94f5927ba8093ee27784cc23042e7147298f6102ea2ecf01f81037c9258070e5",
+  "install_bundle_files": {
+    "candidate/parent/mt8167-shared-musb1121.cat": "63c54258faf876a3f3d2d96aa49cf29bd1b6fa77703b7d50e31f1ce8d578561a",
+    "candidate/parent/mt8167-shared.sys": "75419c5e76dc44444663577d402c20aa735839eeb1999f00c1da079c08b6e409",
+    "candidate/parent/shared-parent-musb1121.inf": "7a3e3b5d66dc3e17f7d35455bfe7789bcf107315c22d8f6d10a74a68e19b6cd6",
+    "candidate/hcd/mt8167-musb-hcd.cat": "f9d0a0480375fc000a4b280fdf3d1d1bd4cdcd0a5c09e8839d192d4c882645a0",
+    "candidate/hcd/mt8167-musb-hcd.inf": "0d517cea32f2ac3ccb8a8f73f6141a50d9cebb783b2babf4cadfe6dfa50f7c5f",
+    "candidate/hcd/mt8167-musb-hcd.sys": "3f11285a7f3f9b198995dfdc77fbc12adc114f101e5c40377b996c8e31418e1f",
+    "rollback/parent/shared-parent-clock1120.inf": "bc8b234e52e48f772d4e7d7adf68155a0a3ca5082e3db4b5e52daef3ee775bd1",
+    "rollback/parent/mt8167-shared.sys": "903a96d777501af0e679f48fc852a313bc3cce04dfe4240f28ad0f2fc2a8c605",
+    "rollback/parent/mt8167-shared-clock1120.cat": "a25ec143ab94eccc18b067a07f7bf6d637fd94fab72400c531bcfc4ec002a3c6",
+    "rollback/legacy/mt8167-usb20.inf": "6cefb108d8becbdcfadd012c78899fb5a964166b68f10d7d1b6169cd3e2113cf",
+    "rollback/legacy/mt8167-usb20.sys": "4d547ed45597395088c89bd52de2ffd83180322b753c9ab30842966cc50fee31",
+    "rollback/legacy/mt8167-usb20.cat": "cbe7e8f51122a4e47b6ad4e230c766eec30ea407cdfb0aba4b82b9794f5ba904",
+    "recipe/UsbAbi3Pnp.cs": "afdacd06d6b20eec50aa9bf19eb7495a509742cb88ece3e2d35306a95b10b3e7",
+    "recipe/install-usb1121-first.ps1": "a41210c286cc003621790dbf443a743fe7df0fc555d34521e4a9878b32e50989"
+  },
+  "signed_tuple_manifest_sha256": "15433a4037b4d739f9525d87967f5782e6576c337ac4c2d6d0ada69d6deeb55f",
+  "capture_sha256": "7e6c1316961a1dc0807595552434488ff0efa43d3f43629bea8aef599a2ff8d2",
+  "native_receipt_sha256": "552d78c6bdc9c77e0b2d4075d5d499c3bc32207fe25727edd9552586a0acc23f",
+  "signer": "BCBF6C456C6F0DD0818434763B189488FBF13570",
+  "Csc_arguments": [
+    "/nologo",
+    "/target:library",
+    "/platform:arm",
+    "/optimize+"
+  ],
+  "new_driver_or_SDK_build": false,
+  "build_targets": [
+    "MT8167UsbAbi3Pnp.dll"
+  ],
+  "installation_requested": false
+}
