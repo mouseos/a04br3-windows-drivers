@@ -89,7 +89,8 @@ def validate_seal(root,path,digest,known_profile="run201",entrypoint=None):
  require((media/'manifest.json').relative_to(root).as_posix() in pins and sha(media/'manifest.json')==c['media_manifest_sha256'],'media manifest pin不一致')
  require(sha(media/'update.wim')==m['wim_sha256']==c['wim_sha256'],'WIM pin不一致')
  require(sha(media/'update-esp.img')==m['esp_sha256']==c['esp_sha256'] and sha(pinned('normal_esp'))==c['normal_esp_sha256'],'ESP pin不一致')
- require(p['profile']==k['profile'] and p['service']==p['data_directory']==service and p['install_targets']==(['display','render'] if k.get('timing') else ['render']) and p['planned_reboots']==1,'既知freshと更新対象の結合必須')
+ expected_targets=(['display','render','wifi'] if c.get('wifi_activation') is True else ['display','render']) if k.get('timing') else ['render']
+ require(p['profile']==k['profile'] and p['service']==p['data_directory']==service and p['install_targets']==expected_targets and p['planned_reboots']==1,'既知freshと更新対象の結合必須')
  require(p['backup_manifest_sha256']==c['fresh_manifest_sha256'] and p['capture_selection']['capture_number']==k['fresh'],'選択fresh結合不一致')
  if k.get('timing'):
   transition=p['boot_transition'];boot=pinned('matched_boot');manifest=read(pinned('matched_boot_manifest'))
@@ -99,6 +100,10 @@ def validate_seal(root,path,digest,known_profile="run201",entrypoint=None):
   require(manifest['preserved_shim_defines']['A04BR3_FOUR_CPU_L1_CLEAN']==1 and manifest['baseline_reproduced_byte_identically'] is True,'実0943のL1 cleanと再現出自を保持')
   require(0<boot.stat().st_size<=33554432 and boot.open('rb').read(8)==b'ANDROID!','boot Android形式/容量')
   require(p['packages']['display']['driver_version']==p['packages']['render']['driver_version']=='0.0.3.69','timingの両SYS369結合')
+  require(p.get('wifi_activation',False)==c.get('wifi_activation',False),'WiFi切替の明示指定不一致')
+  if c.get('wifi_activation') is True:
+   require(p['packages']['wifi']['source_commit']=='c11981553cc10e9730565390f5d9f9e09a919992' and p['packages']['wifi']['manifest_sha256']=='d974239fbcf96d7baad96b84fccaa7462a7481058a7c2d80c0d19d4745ef1599' and p['packages']['wifi']['driver_version']=='2026.11.11.1029','WiFi1029の既署名候補だけ')
+   require(p['baselines']['wifi']['sys_sha256']=='97dcede955d813a7d72ba8d6e950ceae1215c94351187cf18c73cc15d3f47334','実1027からの明示切替だけ')
  else:
   require(p['boot_transition']['boot_write_required'] is False and p['boot_transition']['gpt_written'] is False,'旧368では新boot/GPT操作禁止')
  require(hashlib.sha256(json.dumps(p,sort_keys=True,separators=(',',':')).encode()).hexdigest()==c['policy_sha256'],'policy semantic hash不一致')

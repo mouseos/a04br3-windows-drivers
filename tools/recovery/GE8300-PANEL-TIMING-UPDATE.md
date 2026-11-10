@@ -24,6 +24,9 @@ SCM・私用媒体。主担当のsealは旧GPU368契約に加えて次を持つ�
 - `matched_boot_sha256=98de46d30349379669c4a7300d54d7652b40883f01febb10c5b65992a987e322`
 - `boot_write_required=true`。sealの`boot_written=false`は実行前の値。
 - 更新対象はdisplay・render、予定Windows再起動1回、Present/helper各1回。
+- 実208はWiFi1027の選択・配置SYSだったため、`wifi_activation=true`を明示した
+  最終map/sealでは既署名1029も同じDIFへ含める。対象順はdisplay・render・wifi、
+  mask1064。baselineを1029へ偽装せず、実1027/SYS97dceからの切替だけを許す。
 
 実行順は、同Recoveryのread-only preflight→排他的latch→boot17書込み→
 maintenance ESP→CRCでCOMMITTED/release0/exit0→通常ESP→更新／予定再起動→
