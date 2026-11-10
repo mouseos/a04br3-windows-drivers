@@ -8,6 +8,15 @@ def fnv(b):
  for v in b:h=((h^v)*16777619)&0xffffffff
  return h
 
+def parse_log(path):
+ # Launchers emit plain eight-digit hex; the evaluator prefixes it with 0x.
+ # Preserve repeated fields so single-value identity checks still reject them.
+ vals={}
+ for line in path.read_text().splitlines():
+  m=re.fullmatch(r'([A-Z0-9_]+)=(?:0x)?([0-9a-fA-F]{8})',line)
+  if m:vals.setdefault(m[1],[]).append(int(m[2],16))
+ return vals
+
 def verify(root,launcher_pid):
  index=json.loads((root/'capture-index.json').read_text());assert not index['errors'];files={}
  for x in index['files']:
@@ -16,11 +25,7 @@ def verify(root,launcher_pid):
  def one(pattern):
   a=[n for n in files if re.fullmatch(pattern,n)];assert len(a)==1,('Exact one evidence file',pattern,a);return a[0]
  def log(n):
-  vals={}
-  for line in files[n].read_text().splitlines():
-   m=re.fullmatch(r'([A-Z0-9_]+)=0x([0-9a-fA-F]{8})',line)
-   if m:vals.setdefault(m[1],[]).append(int(m[2],16))
-  return vals
+  return parse_log(files[n])
  def single(v,k):assert len(v[k])==1,k;return v[k][0]
  launch=one(r'launch356-%08x-[0-9a-f]{8}\.log'%launcher_pid);l=log(launch);assert single(l,'LAUNCHER_PID')==launcher_pid
  assert single(l,'FIXED_EVALUATOR_SHA256_MATCH')==1 and single(l,'EVALUATOR_EXIT')==0 and single(l,'LAUNCH_RESULT')==0 and single(l,'CHILD_WAIT')==0
