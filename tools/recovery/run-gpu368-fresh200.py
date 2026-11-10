@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""main専用GPU368共通engine。既知sealごとに一回だけEFI更新と実UART回収を行う。"""
+"""main専用GPU368共通engine。terminal後はWindows保持、回収は明示再開。"""
 import argparse,hashlib,importlib.util,json,re,subprocess,time
 from pathlib import Path
 
@@ -117,19 +117,85 @@ class Observation:
   if re.search(rb'A04(?:GPU|WIN) BUGCHECK(?: [0-9A-F]{8}| DATA_UNAVAILABLE)',line) or b'Unhandled Exception' in line:actions.append(('exception',1))
   return actions
 
-def main(known_profile="run201",entrypoint=None):
+TERMINAL_BOUNDARIES={'diagnostic-terminal-await-disk-verification','install-failed-await-disk-verification'}
+HOLD_STATUS='terminal-windows-held'
+def candidate_identity(c):
+ return hashlib.sha256((c['fresh_manifest_sha256']+c['policy_sha256']+c['esp_sha256']).encode()).hexdigest()
+def canonical(value):return json.dumps(value,sort_keys=True,separators=(',',':'))
+def replay_boundary(raw):
+ """保存UARTから同boot/run/PID/flushを再検証。新たな実機アクセスはしない。"""
+ observer=Observation()
+ for line in raw.split(b'\n'):
+  for action,value in observer.line(line):
+   if action=='exception':return observer.terminal,'runtime-exception-await-collection'
+   if action=='unexpected-restart':return observer.terminal,'unexpected-second-runtime-restart'
+   if action=='unproven-restart':return observer.terminal,'runtime-restarted-requires-install-disk-proof'
+   require(action!='unproven-terminal','flush未確認のterminalは回収許可にしない')
+ # An exception marker can arrive before the final newline.
+ if re.search(rb'A04(?:GPU|WIN) BUGCHECK(?: [0-9A-F]{8}| DATA_UNAVAILABLE)',raw) or b'Unhandled Exception' in raw:
+  return observer.terminal,'runtime-exception-await-collection'
+ return observer.terminal,None
+
+def hold_terminal(out,st,c,digest):
+ terminal,danger=replay_boundary((out/'normal-uart-deinterleaved.log').read_bytes())
+ if danger:
+  st.update(status=danger,safe_flush_terminal=False,late_runtime_fault_observed=True);return False
+ require(st['status'] in TERMINAL_BOUNDARIES and terminal is not None and
+         canonical(terminal)==canonical(st.get('terminal')) and terminal['flush']==0,
+         'terminalと保存UARTのboot/run/PID/flushが一致しない')
+ proof=dict(schema='GPU368_TERMINAL_HOLD_V1',transaction=st['transaction'],candidate=candidate_identity(c),
+            seal_sha256=digest,collection_boundary=st['status'],terminal=terminal,
+            uart_sha256=sha(out/'normal-uart-deinterleaved.log'))
+ with (out/'terminal-proof.json').open('x') as f:json.dump(proof,f,indent=2);f.write('\n')
+ st.update(status=HOLD_STATUS,collection_boundary=proof['collection_boundary'],safe_flush_terminal=True,
+           terminal_proof_sha256=sha(out/'terminal-proof.json'),hardware_success=False)
+ return True
+
+def verify_collection(out,c,digest,k,latch):
+ """既実行のheld境界だけを再開。latch/result/proof/UARTを一切変更しない。"""
+ st=read(out/'result.json');receipt=read(latch);proof=read(out/'terminal-proof.json')
+ require(st['status']==HOLD_STATUS and st['transaction']==k['transaction'] and
+         st['seal_sha256']==digest and st.get('safe_flush_terminal') is True,'回収可能なheld resultがない')
+ require(receipt['candidate']==candidate_identity(c) and receipt['seal_sha256']==digest and
+         Path(receipt['output']).resolve()==out,'同candidateの既実行latchがない')
+ require(sha(out/'terminal-proof.json')==st['terminal_proof_sha256'] and
+         proof['schema']=='GPU368_TERMINAL_HOLD_V1' and proof['transaction']==k['transaction'] and
+         proof['seal_sha256']==digest and proof['candidate']==receipt['candidate'],'terminal proof不一致')
+ require(proof['collection_boundary'] in TERMINAL_BOUNDARIES and
+         st['collection_boundary']==proof['collection_boundary'] and
+         sha(out/'normal-uart-deinterleaved.log')==proof['uart_sha256'],'保存terminal UART変更検出')
+ terminal,danger=replay_boundary((out/'normal-uart-deinterleaved.log').read_bytes())
+ require(not danger and terminal is not None and terminal['flush']==0 and
+         canonical(terminal)==canonical(proof['terminal'])==canonical(st['terminal']),
+         '同boot/run/PID/flushのterminal再検証に失敗')
+ require(proof['collection_boundary']==('diagnostic-terminal-await-disk-verification' if terminal['phase'] else 'install-failed-await-disk-verification'),'terminal phase不一致')
+ return st
+
+def main(known_profile="run201",entrypoint=None,argv=None):
  k=contract(known_profile)
- ap=argparse.ArgumentParser();ap.add_argument('--workspace',type=Path,required=True);ap.add_argument('--seal',type=Path,required=True);ap.add_argument('--seal-sha256',required=True);ap.add_argument('--output',type=Path,required=True);ap.add_argument('--validate-only',action='store_true');a=ap.parse_args()
+ ap=argparse.ArgumentParser();ap.add_argument('--workspace',type=Path,required=True);ap.add_argument('--seal',type=Path,required=True);ap.add_argument('--seal-sha256',required=True);ap.add_argument('--output',type=Path,required=True);ap.add_argument('--validate-only',action='store_true');ap.add_argument('--collect-only','--resume-collect',dest='collect_only',action='store_true',help='held terminalから回収のみ。install/診断を再実行しない');a=ap.parse_args(argv)
  root=a.workspace.resolve(strict=True);seal=rooted(root,a.seal);c,m=validate_seal(root,seal,a.seal_sha256,known_profile,entrypoint)
  out=a.output.resolve();require(known_profile=='run201' or out==(root/k['runtime_output']).resolve(),'run203専用runtime出力必須')
- if a.validate_only:print('GPU%d_SEAL_VALIDATED_NO_DEVICE_OPERATION'%k['run']);return
- require(out.is_relative_to(root) and not out.exists(),'root内の新規ログ出力必須')
+ if a.validate_only and not a.collect_only:print('GPU%d_SEAL_VALIDATED_NO_DEVICE_OPERATION'%k['run']);return
+ require(out.is_relative_to(root),'root内のログ出力必須')
  require(not (root/c['capture_output']).exists() and not (root/c['diagnostics_output']).exists(),'既存capture/diagnosticsを上書きしない')
- identity=hashlib.sha256((c['fresh_manifest_sha256']+c['policy_sha256']+c['esp_sha256']).encode()).hexdigest();latches=root/('port/gsi/logs/ios-feasibility/gpu368-run%d-executions'%k['run']);latches.mkdir(exist_ok=True)
- # Global per-candidate latch, not merely a new log directory. No automatic retry.
- with (latches/(k['transaction']+'.json')).open('x') as f:json.dump(dict(candidate=identity,seal_sha256=a.seal_sha256,output=str(out),started=time.time()),f)
- out.mkdir(mode=0o700);uart=rooted(root,'port/gsi/logs/ios-feasibility/windows-rt-uart-workspace.log')
- st=dict(transaction=k['transaction'],status='starting',seal_sha256=a.seal_sha256,events=[],planned_runtime_restarts=0,boot_written=False,gpt_written=False,hardware_success=False,same_candidate_reexecution=False)
+ latches=root/('port/gsi/logs/ios-feasibility/gpu368-run%d-executions'%k['run']);latch=latches/(k['transaction']+'.json')
+ if a.collect_only:
+  require(out.is_dir(),'既存held runtime出力必須')
+  held_out=out;st=verify_collection(out,c,a.seal_sha256,k,latch)
+  if a.validate_only:print('GPU%d_HELD_COLLECTION_VALIDATED_NO_DEVICE_OPERATION'%k['run']);return
+  out=held_out/'collection'
+  # Exclusive output prevents a second collector/reset after partial failure.
+  out.mkdir(mode=0o700)
+  st=dict(st,status=st['collection_boundary'],held_result_sha256=sha(held_out/'result.json'),collection_only=True)
+ else:
+  require(not out.exists(),'root内の新規ログ出力必須')
+  latches.mkdir(exist_ok=True)
+  # Global per-candidate latch, not merely a new log directory. No automatic retry.
+  with latch.open('x') as f:json.dump(dict(candidate=candidate_identity(c),seal_sha256=a.seal_sha256,output=str(out),started=time.time()),f)
+  out.mkdir(mode=0o700)
+  st=dict(transaction=k['transaction'],status='starting',seal_sha256=a.seal_sha256,events=[],planned_runtime_restarts=0,boot_written=False,gpt_written=False,hardware_success=False,same_candidate_reexecution=False)
+ uart=None if a.collect_only else rooted(root,'port/gsi/logs/ios-feasibility/windows-rt-uart-workspace.log')
  def save():(out/'result.json').write_text(json.dumps(st,indent=2)+'\n')
  def command(body,name,args=(),timeout=400,flash=False):
   require(sha(root/c['target_tools'])==next(x['sha256'] for x in c['pinned_files'] if x['path']==c['target_tools']),'target tools変更検出')
@@ -167,45 +233,49 @@ adb reboot
 ''',name,(root/c['capture_tool'],root/c['fresh_manifest'],image,digest,k['run']),flash=True)
   return offset
  try:
-  save();offset=deploy(root/c['media_directory']/'update-esp.img',c['esp_sha256'],'prepare-write.log',True);st.update(status='prepare-observing',prepare_uart_offset=offset);save()
-  spec=importlib.util.spec_from_file_location('gpu%d_crc'%k['run'],root/c['crc_decoder']);decoder=importlib.util.module_from_spec(spec);spec.loader.exec_module(decoder)
-  report=None;deadline=time.monotonic()+900
-  with uart.open('rb') as f:
-   f.seek(offset);raw=b''
-   while time.monotonic()<deadline:
-    time.sleep(2);raw+=f.read();(out/'prepare-uart.log').write_bytes(raw)
-    if b'Unhandled Exception' in raw:raise RuntimeError('WinPE例外。normal bootへ進まない')
-    if re.search(rb'A04AU2E '+c['prepare_token'].encode()+rb' [0-9A-F]{8}\r?\n',raw):report=decoder.decode(raw,c['prepare_token']);break
-  require(report is not None,'CRC terminalなし。timeout reset/normal boot禁止')
-  (out/'prepare-report.txt').write_bytes(report);lines=report.decode().splitlines();require(all(lines.count(x)==1 for x in ('UPDATE_STATUS=COMMITTED','UPDATE_RELEASE_EXIT=0','UPDATE_EXIT=0')),'CRC内のCOMMITTED/release0/exit0が必要')
-  st.update(status='prepared-volume-released',prepare_crc_committed_released=True);save();recovery('prepare-to-recovery.log');offset=deploy(root/c['normal_esp'],c['normal_esp_sha256'],'normal-esp-write.log')
-  st.update(status='install-observing',normal_uart_offset=offset);save();observer=Observation();deadline=time.monotonic()+900;batch_cap=None;finished=False
-  with uart.open('rb') as f:
-   f.seek(offset);raw=b'';processed=0
-   while time.monotonic()<deadline and not finished:
-    time.sleep(.25);raw+=f.read();(out/'normal-uart.log').write_bytes(raw);clean=re.sub(STORAGE_TRACE,b'',raw);(out/'normal-uart-deinterleaved.log').write_bytes(clean);parts=clean.split(b'\n')[:-1]
-    for line in parts[processed:]:
-     for action,value in observer.line(line):
-      now=time.monotonic()
-      if action=='event':value['host_time']=time.time();st['events'].append(value)
-      elif action=='planned-restart':st.update(planned_runtime_restarts=1,status='post-reboot-diagnostic-observing');deadline=now+180
-      elif action=='resume':command('info=$(fastboot getvar product 2>&1)\n[[ "$info" =~ product:[[:space:]]*A04BR3 ]]\nfastboot reboot\n','planned-restart-resume.log',timeout=45,flash=True)
-      elif action=='service-start' and observer.phase==1:batch_cap=now+1140;deadline=min(batch_cap,now+180)
-      elif action=='client-start':require(batch_cap is not None,'diagnostic service未結合');deadline=min(batch_cap,now+(930 if value==0 else 90))
-      elif action=='client-end':
-       if value==1 and batch_cap is not None:deadline=min(batch_cap,now+60)
-      elif action=='terminal':st.update(terminal=observer.terminal,status='diagnostic-terminal-await-disk-verification' if observer.phase else 'install-failed-await-disk-verification');finished=True
-      elif action=='exception':st.update(status='runtime-exception-await-collection',runtime_exception_observed=True,safe_flush_terminal=False);finished=True
-      elif action in ('unexpected-restart','unproven-restart'):st.update(status='unexpected-second-runtime-restart' if action=='unexpected-restart' else 'runtime-restarted-requires-install-disk-proof',safe_flush_terminal=False);finished=True
-      elif action=='unproven-terminal':raise RuntimeError('terminalはあるが同boot flush0未確認。resetせずmain review')
-     if finished:break
-    processed=len(parts);save()
-  require(finished,'観測timeout。実行中を推測resetせず証拠保持')
-  if st.get('terminal'):st['safe_flush_terminal']=True;save();time.sleep(c['terminal_settle_seconds'])
-  with uart.open('rb') as f:f.seek(offset);drained=f.read()
-  (out/'normal-uart.log').write_bytes(drained);(out/'normal-uart-deinterleaved.log').write_bytes(re.sub(STORAGE_TRACE,b'',drained))
-  if re.search(rb'A04(?:GPU|WIN) BUGCHECK(?: [0-9A-F]{8}| DATA_UNAVAILABLE)',drained[len(raw):]) or b'Unhandled Exception' in drained[len(raw):]:st.update(status='runtime-exception-await-collection',late_runtime_exception_observed=True)
-  recovery('terminal-to-recovery.log');st['collection_boundary']=st['status'];save()
+  if not a.collect_only:
+   save();offset=deploy(root/c['media_directory']/'update-esp.img',c['esp_sha256'],'prepare-write.log',True);st.update(status='prepare-observing',prepare_uart_offset=offset);save()
+   spec=importlib.util.spec_from_file_location('gpu%d_crc'%k['run'],root/c['crc_decoder']);decoder=importlib.util.module_from_spec(spec);spec.loader.exec_module(decoder)
+   report=None;deadline=time.monotonic()+900
+   with uart.open('rb') as f:
+    f.seek(offset);raw=b''
+    while time.monotonic()<deadline:
+     time.sleep(2);raw+=f.read();(out/'prepare-uart.log').write_bytes(raw)
+     if b'Unhandled Exception' in raw:raise RuntimeError('WinPE例外。normal bootへ進まない')
+     if re.search(rb'A04AU2E '+c['prepare_token'].encode()+rb' [0-9A-F]{8}\r?\n',raw):report=decoder.decode(raw,c['prepare_token']);break
+   require(report is not None,'CRC terminalなし。timeout reset/normal boot禁止')
+   (out/'prepare-report.txt').write_bytes(report);lines=report.decode().splitlines();require(all(lines.count(x)==1 for x in ('UPDATE_STATUS=COMMITTED','UPDATE_RELEASE_EXIT=0','UPDATE_EXIT=0')),'CRC内のCOMMITTED/release0/exit0が必要')
+   st.update(status='prepared-volume-released',prepare_crc_committed_released=True);save();recovery('prepare-to-recovery.log');offset=deploy(root/c['normal_esp'],c['normal_esp_sha256'],'normal-esp-write.log')
+   st.update(status='install-observing',normal_uart_offset=offset);save();observer=Observation();deadline=time.monotonic()+900;batch_cap=None;finished=False
+   with uart.open('rb') as f:
+    f.seek(offset);raw=b'';processed=0
+    while time.monotonic()<deadline and not finished:
+     time.sleep(.25);raw+=f.read();(out/'normal-uart.log').write_bytes(raw);clean=re.sub(STORAGE_TRACE,b'',raw);(out/'normal-uart-deinterleaved.log').write_bytes(clean);parts=clean.split(b'\n')[:-1]
+     for line in parts[processed:]:
+      for action,value in observer.line(line):
+       now=time.monotonic()
+       if action=='event':value['host_time']=time.time();st['events'].append(value)
+       elif action=='planned-restart':st.update(planned_runtime_restarts=1,status='post-reboot-diagnostic-observing');deadline=now+180
+       elif action=='resume':command('info=$(fastboot getvar product 2>&1)\n[[ "$info" =~ product:[[:space:]]*A04BR3 ]]\nfastboot reboot\n','planned-restart-resume.log',timeout=45,flash=True)
+       elif action=='service-start' and observer.phase==1:batch_cap=now+1140;deadline=min(batch_cap,now+180)
+       elif action=='client-start':require(batch_cap is not None,'diagnostic service未結合');deadline=min(batch_cap,now+(930 if value==0 else 90))
+       elif action=='client-end':
+        if value==1 and batch_cap is not None:deadline=min(batch_cap,now+60)
+       elif action=='terminal':st.update(terminal=observer.terminal,status='diagnostic-terminal-await-disk-verification' if observer.phase else 'install-failed-await-disk-verification');finished=True
+       elif action=='exception':st.update(status='runtime-exception-await-collection',runtime_exception_observed=True,safe_flush_terminal=False);finished=True
+       elif action in ('unexpected-restart','unproven-restart'):st.update(status='unexpected-second-runtime-restart' if action=='unexpected-restart' else 'runtime-restarted-requires-install-disk-proof',safe_flush_terminal=False);finished=True
+       elif action=='unproven-terminal':raise RuntimeError('terminalはあるが同boot flush0未確認。resetせずmain review')
+      if finished:break
+     processed=len(parts);save()
+   require(finished,'観測timeout。実行中を推測resetせず証拠保持')
+   if st.get('terminal'):st['safe_flush_terminal']=True;save();time.sleep(c['terminal_settle_seconds'])
+   with uart.open('rb') as f:f.seek(offset);drained=f.read()
+   (out/'normal-uart.log').write_bytes(drained);(out/'normal-uart-deinterleaved.log').write_bytes(re.sub(STORAGE_TRACE,b'',drained))
+   if st['status'] in TERMINAL_BOUNDARIES:
+    if hold_terminal(out,st,c,a.seal_sha256):
+     save();print('GPU%d_TERMINAL_WINDOWS_HELD_NOT_GPU_FUNCTIONAL_SUCCESS'%k['run']);return
+    save()
+  save();recovery('terminal-to-recovery.log');st['collection_boundary']=st['status'];save()
   command('''[ "$(adb get-state)" = recovery ]
 ! adb shell cat /proc/mounts | grep -q ntfs
 adb push "$2" /tmp/rt-ntfs3g
