@@ -22,7 +22,9 @@ Add-Type -Path "$PSScriptRoot\OfflineSystemHiveNative.cs"
 $t=$null;$e=$null;$ast=[Management.Automation.Language.Parser]::ParseFile("$PSScriptRoot\prepare-offline-system-service.ps1",[ref]$t,[ref]$e);if($e.Count){throw 'Production snapshot parse failed'}
 $f=@($ast.FindAll({param($n)$n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -ceq 'Peripheral-ServiceSnapshot'},$true));if($f.Count -ne 1){throw 'One bounded production snapshot reader required'};Invoke-Expression $f[0].Extent.Text
 function Values($k,[string[]]$only,[int]$limit=64){
- if($limit -notin @(64,90) -or ($limit -eq 90 -and !$k.Name.EndsWith("\ControlSet001\Services\GE8300Render\Parameters\FactoryCheckpoint",[StringComparison]::OrdinalIgnoreCase))){throw 'Explicit FactoryCheckpoint90 bound required'}
+ # Native.OpenPath uses RegistryKey.FromHandle; its Name is not a path authority.
+ # Only the fixed FactoryCheckpoint call site supplies90 and R00..R69 names.
+ if($limit -notin @(64,90) -or ($limit -eq 90 -and @($only|Where-Object{$_ -cnotmatch '^R[0-6][0-9]$'}).Count)){throw 'Explicit FactoryCheckpoint90 bound required'}
  $r=[ordered]@{};$names=@($k.GetValueNames());if($names.Count -gt $limit -or $k.GetSubKeyNames().Count -gt 32){throw 'Fixed key bound exceeded'}
  foreach($n in $only){if($n -cnotin $names){$r[$n]=@{present=$false};continue};$kind=[string]$k.GetValueKind($n);if($kind -cnotin @('String','ExpandString','MultiString','Binary','DWord','QWord','None')){throw 'Unknown fixed value type'};$v=$k.GetValue($n,$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames);if($v -is [byte[]]){if($v.Length -gt 65536){throw 'Value byte bound exceeded'};$v=[BitConverter]::ToString($v).Replace('-','')}elseif($v -is [string]){if($v.Length -gt 32767){throw 'String byte bound exceeded'}}elseif($v -is [string[]]){if(2*(($v -join '').Length+$v.Count+1) -gt 65536){throw 'MultiString byte bound exceeded'}};$r[$n]=@{present=$true;kind=$kind;value=$v}}
  return $r
