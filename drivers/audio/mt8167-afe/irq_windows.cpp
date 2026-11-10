@@ -32,9 +32,14 @@ static BOOLEAN Mt8167Isr(PKINTERRUPT interrupt, PVOID context)
         irq->engine->state == MT8167_DL1_STOPPED) return FALSE;
     result = mt8167_dl1_interrupt(irq->engine, &notify);
     if (result < 0) {
+        /* Source ownership was established before an ACK/DAC fault, or is
+         * unknown after a status-read failure. Contain IRQ1 under this ISR
+         * lock; software disarming alone would leave a level IRQ asserted.
+         * A failed mask is still a failure and all resources remain pinned. */
+        (void)mt8167_dl1_mask_fault(irq->engine);
         InterlockedExchange(&irq->fault, 1);
         KeInsertQueueDpc(&irq->dpc, (PVOID)(ULONG_PTR)InterlockedCompareExchange(&irq->generation,0,0), NULL);
-        return FALSE;
+        return notify<0 ? TRUE : FALSE;
     }
     if (notify) {
         LONG old;
@@ -87,6 +92,12 @@ static BOOLEAN Mt8167StartLocked(PVOID context)
     call->result = mt8167_dl1_start(call->irq->engine, call->plan);
 #endif
     if(!call->result)InterlockedExchange(&call->irq->armed,1);
+    else {
+        /* A partial start may already have enabled hardware IRQ1 although
+         * armed is still zero. Do not leave an unserviceable level source. */
+        (void)mt8167_dl1_mask_fault(call->irq->engine);
+        InterlockedExchange(&call->irq->fault,1);
+    }
     return TRUE;
 }
 static BOOLEAN Mt8167StopLocked(PVOID context)
@@ -103,6 +114,10 @@ static BOOLEAN Mt8167StopLocked(PVOID context)
         InterlockedExchange(&call->irq->fault,1);
     }
 #endif
+    if(call->result) {
+        (void)mt8167_dl1_mask_fault(call->irq->engine);
+        InterlockedExchange(&call->irq->fault,1);
+    }
 #if defined(A04_AUDIO_DIAGNOSTIC_TRACE) && A04_AUDIO_DIAGNOSTIC_TRACE
     if (!call->result && call->irq->engine->io.read32) {
         struct mt8167_dl1_io *io=&call->irq->engine->io;

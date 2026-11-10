@@ -85,13 +85,27 @@ int mt8167_dl1_stop(struct mt8167_dl1_engine *e)
     e->state = MT8167_DL1_STOPPED;
     return 0;
 }
+int mt8167_dl1_mask_fault(struct mt8167_dl1_engine *e)
+{
+    uint32_t irq,status;
+    if(!e || !e->io.read32 || !e->io.write32)return -1;
+    e->state=MT8167_DL1_POISONED;
+    /* Stock mt8167_afe_disable_irq(IRQ_1): MCU_CON bit0=0, IRQ_CLR bit0.
+     * The source's other IRQ bits belong to other memifs: do not clear them.
+     * Bounded readback, no delay loop, no inferred DMA/fabric quiescence. */
+    if(update(e,IRQ_CON,1u,0) || e->io.write32(e->io.context,IRQ_CLEAR,1u) ||
+       e->io.read32(e->io.context,IRQ_CON,&irq) || (irq&1u) ||
+       e->io.read32(e->io.context,IRQ_STATUS,&status) || (status&1u))return -1;
+    return 0;
+}
 int mt8167_dl1_interrupt(struct mt8167_dl1_engine *e, int *notify)
 {
     uint32_t status, dac;
+    if(notify)*notify=0;
     if (!e || !notify || e->state != MT8167_DL1_RUNNING) return -1;
-    *notify = 0;
     if (e->io.read32(e->io.context, IRQ_STATUS, &status)) return bad(e);
     if (!(status & 1u)) return 0;
+    *notify = -1; /* Own pending IRQ even if the following operation fails. */
     if (e->io.read32(e->io.context, DAC0, &dac) ||
         e->io.write32(e->io.context, IRQ_CLEAR, 1u)) return bad(e);
     if (!(dac & 2u)) return bad(e);

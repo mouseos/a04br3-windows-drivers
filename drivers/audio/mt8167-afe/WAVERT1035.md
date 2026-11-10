@@ -23,6 +23,16 @@ fresh198の保存SYS SHA256は`b6d2592a618723b808a4fc55e002637c57ae91afab47e6a60
 
 `Mt8167StreamBackend`末尾に内部callbackを追加するため、全23TUを同じflagで再生成する。1034のobjectを新layoutへ再利用してはならない。外部audio QI v11、capture v1、HP v2、snapshot型は親1121固定source `6741f2a1cac2cb6622c3b1d49bd2ac118c76471f`とbyte一致し、変更しない。共有親・GPU・USB・EDK2をこのbranch差分で変更／再buildしない。
 
+## IRQ異常の封じ込め
+
+旧経路には、開始途中でIRQ1 enableが反映された後に失敗すると、softwareのarmed=0のままhardwareだけが割込みを発生し得る欠陥があった。停止失敗もarmedを先に0にしてから戻り、ISR異常も元sourceをmaskせずFALSEを返していた。level IRQの封じ込めが不足する具体的source欠陥であり、今回の通常WASAPI失敗原因を実測で特定したという意味ではない。
+
+`mt8167_dl1_mask_fault`をISR／開始・停止の同期lock内で呼び、MCU_CON bit0をmask→IRQ_CLR bit0をclear→mask/status readbackを一度実行する。根拠はCT3 `mt8167-afe-pcm.c:653`～`:656`のIRQ1 disable。外のIRQ bit、clock、codec、DL1 DMA enable、DMA mappingは変更せず、poisonと元の失敗結果を維持する。mask操作自体が失敗した場合も成功へ変換しない。
+
+IRQ1 pendingを既に確認してからDAC/ACKで失敗した場合は、ISRはTRUE（自device由来）を返す。これはperiod完了や音声処理成功を表さない。status読取り自体が失敗して由来不明ならFALSE。DPCはfaultとして一度wakeし、GetPosition/次RUNは失敗する。Microsoft [Writing an ISR](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/writing-an-isr)と[KSERVICE_ROUTINE](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-kservice_routine)の所有元判定に従う。
+
+既存frontend/backend/plannerに加え、`make test-mt8167-dl1-engine test-mt8167-audio-irq-integration test-mt8167-irq-windows`で確認する。ambiguousなwriteをmock hardwareへ実際に反映してから失敗させ、IRQ mask/clear、別source保持、DMA enableやexposed/pages/leaseが解放済みに変化しないことを確認する。DMA drainや物理interrupt解除を実測した証拠にはしない。
+
 ## 一括buildと署名の引渡し
 
 既存Windows VM／既存SDK／既存clang・lldで次を一度実行する。出力はclean checkout内の新directoryを指定する。ParentTupleは`compile-plan.json`、`signed-tuple-manifest.json`、`package/parent`、`package/hcd`を持つ回収済み1121tupleのroot。

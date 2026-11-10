@@ -243,17 +243,44 @@ static void engineLifecycle(PDMA_ADAPTER adapter,Resources *resources) {
     assert(!api->checkin(api->context,&first,mdl));
     assert(!api->checkout(api->context,&second,4096,&again,&bytes) && again==mdl && bytes==8192);
     assert(first.allocations==1 && second.allocations==0 && dmaMaps==1 && !dmaReleases);
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+    KEVENT secondEvent;
+    assert(!api->notificationCount(api->context,&second,2));
+    assert(!api->notificationEvent(api->context,&second,&secondEvent,TRUE));
+#endif
     assert(!api->setState(api->context,&second,KSSTATE_RUN));
 #if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
     irq->pending=1;irq->dpc.fn(&irq->dpc,irq,(PVOID)(ULONG_PTR)irq->generation,NULL);
     assert(event.signals==1 && other.signals==1); // checkout/checkin cleared old events
 #endif
     assert(voice_starts==1 && digitalCalls==1 && !voice_stops);
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+    *reinterpret_cast<uint32_t *>(mmio+0x10)&=~2u; // unexpected DAC disable while IRQ1 is pending
+    *reinterpret_cast<uint32_t *>(mmio+0x3a0)|=0x100u;
+    *reinterpret_cast<uint32_t *>(mmio+0x3a4)=3;
+    assert(test_interrupt.fn(&test_interrupt,test_interrupt.ctx)); // owned fault, not a period
+    assert(irq->fault && !(*reinterpret_cast<uint32_t *>(mmio+0x3a0)&1u));
+    assert(*reinterpret_cast<uint32_t *>(mmio+0x3a0)&0x100u);
+    assert(*reinterpret_cast<uint32_t *>(mmio+0x3a4)==2u);
+    assert(secondEvent.signals==1); // previous normal IRQ-DPC wake
+    irq->dpc.fn(&irq->dpc,irq,(PVOID)(ULONG_PTR)irq->generation,NULL);
+    assert(secondEvent.signals==2); // one fault wake, GetPosition must now fail
+    assert(api->position(api->context,&position)==STATUS_DEVICE_NOT_READY);
+#else
     irq->fault=1; /* A previous ISR fault must stay poisoned even if stop reads back. */
+#endif
     assert(api->setState(api->context,&second,KSSTATE_STOP)==STATUS_DEVICE_NOT_READY);
     assert(api->setState(api->context,&second,KSSTATE_RUN)==STATUS_DEVICE_NOT_READY);
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+    assert(api->checkin(api->context,&second,mdl)==STATUS_DEVICE_NOT_READY); // RUN failed to stop, keep pages/owner
+#else
     assert(!api->checkin(api->context,&second,mdl));
+#endif
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+    assert(api->checkout(api->context,&first,8192,&again,&bytes)==STATUS_DEVICE_BUSY && !again && !dmaReleases);
+#else
     assert(api->checkout(api->context,&first,8192,&again,&bytes)==STATUS_DEVICE_NOT_READY);
+#endif
     Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner);
     assert(!dmaReleases && !first.frees && !second.frees && !voice_stops && parent_refs);
 }
