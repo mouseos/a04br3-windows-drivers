@@ -19,10 +19,23 @@ public:
     ~A04DmmGuard() { KeReleaseMutex(m_Mutex,FALSE); }
 };
 
+// NOTSPECIFIED leaves the choice to the miniport. The unified POST path
+// supports identity only; UNPINNED and unsupported concrete transforms must
+// still be resolved or rejected by their existing paths.
+static D3DKMDT_VIDPN_PRESENT_PATH_ROTATION A04PathRotation(D3DKMDT_VIDPN_PRESENT_PATH_ROTATION rotation)
+{
+    return A04_GE8300_UNIFIED_DISPLAY356 && rotation==D3DKMDT_VPPR_NOTSPECIFIED ? D3DKMDT_VPPR_IDENTITY : rotation;
+}
+static D3DKMDT_VIDPN_PRESENT_PATH_SCALING A04PathScaling(D3DKMDT_VIDPN_PRESENT_PATH_SCALING scaling)
+{
+    return A04_GE8300_UNIFIED_DISPLAY356 && scaling==D3DKMDT_VPPS_NOTSPECIFIED ? D3DKMDT_VPPS_IDENTITY : scaling;
+}
+
 static bool A04PathFits(const CURRENT_BDD_MODE& mode,UINT width,UINT height,
     D3DKMDT_VIDPN_PRESENT_PATH_ROTATION rotation,D3DKMDT_VIDPN_PRESENT_PATH_SCALING scaling)
 {
     unsigned turns;uint32_t pw,ph,offset;
+    rotation=A04PathRotation(rotation);scaling=A04PathScaling(scaling);
     if(A04_GE8300_UNIFIED_DISPLAY356&&(width!=800u||height!=1280u||rotation!=D3DKMDT_VPPR_IDENTITY||scaling!=D3DKMDT_VPPS_IDENTITY))return false;
     return !a04_present_turns((unsigned)rotation,&turns) &&
         !a04_present_layout(width,height,mode.DispInfo.Width,mode.DispInfo.Height,
@@ -739,11 +752,11 @@ NTSTATUS BASIC_DISPLAY_DRIVER::UpdateActiveVidPnPresentPath(_In_ CONST DXGKARG_U
     const D3DKMDT_VIDPN_PRESENT_PATH& path=pUpdateActiveVidPnPresentPath->VidPnPresentPathInfo;
     unsigned turns;
     if(!A04PathFits(mode,mode.SrcModeWidth,mode.SrcModeHeight,path.ContentTransformation.Rotation,path.ContentTransformation.Scaling) ||
-       a04_present_turns((unsigned)path.ContentTransformation.Rotation,&turns))return STATUS_GRAPHICS_VIDPN_MODALITY_NOT_SUPPORTED;
+       a04_present_turns((unsigned)A04PathRotation(path.ContentTransformation.Rotation),&turns))return STATUS_GRAPHICS_VIDPN_MODALITY_NOT_SUPPORTED;
     Status=BlackOutScreen(path.VidPnSourceId);
     if(!NT_SUCCESS(Status))return Status;
     mode.Rotation=(D3DKMDT_VIDPN_PRESENT_PATH_ROTATION)(turns+1u);
-    mode.Scaling=path.ContentTransformation.Scaling;
+    mode.Scaling=A04PathScaling(path.ContentTransformation.Scaling);
     mode.Flags.FullscreenPresent=TRUE;
     return STATUS_SUCCESS;
 }
@@ -762,8 +775,8 @@ NTSTATUS BASIC_DISPLAY_DRIVER::SetSourceModeAndPath(CONST D3DKMDT_VIDPN_SOURCE_M
     NTSTATUS Status = STATUS_SUCCESS;unsigned turns;
     if(!A04PathFits(*pCurrentBddMode,pSourceMode->Format.Graphics.PrimSurfSize.cx,pSourceMode->Format.Graphics.PrimSurfSize.cy,
         pPath->ContentTransformation.Rotation,pPath->ContentTransformation.Scaling) ||
-       a04_present_turns((unsigned)pPath->ContentTransformation.Rotation,&turns))return STATUS_GRAPHICS_VIDPN_MODALITY_NOT_SUPPORTED;
-    pCurrentBddMode->Scaling = pPath->ContentTransformation.Scaling;
+       a04_present_turns((unsigned)A04PathRotation(pPath->ContentTransformation.Rotation),&turns))return STATUS_GRAPHICS_VIDPN_MODALITY_NOT_SUPPORTED;
+    pCurrentBddMode->Scaling = A04PathScaling(pPath->ContentTransformation.Scaling);
     pCurrentBddMode->SrcModeWidth = pSourceMode->Format.Graphics.PrimSurfSize.cx;
     pCurrentBddMode->SrcModeHeight = pSourceMode->Format.Graphics.PrimSurfSize.cy;
     pCurrentBddMode->Rotation = (D3DKMDT_VIDPN_PRESENT_PATH_ROTATION)(turns+1u);
