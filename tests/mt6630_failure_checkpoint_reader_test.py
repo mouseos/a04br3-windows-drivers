@@ -17,6 +17,7 @@ assert hashlib.sha256(helper).hexdigest()=='6963b1f6c0ece21debb4935205da9784385f
 assert "ControlSet001\\Services\\Mt6630Runtime\\Parameters\\NativeCheckpoint" in worker
 assert "@('DriverEntry','Initialize','Scan','RuntimeFailure')" in worker
 assert "ReadRawValue($key,'Generation',8)" in worker and 'ReadRawValue($key,$name,1624)' in worker
+assert 'matches_1027_internal_build' in worker and 'record_headers' in worker
 assert 'read-mt6630-start-checkpoint' not in worker and 'GetValueNames' not in worker
 for writer in ['SetValue(', 'Set-Acl', 'RegSetValue', 'Set-ItemProperty', 'New-ItemProperty']:assert writer not in worker
 for proof in ['unload_rc','privilege_restore_error','originals_unchanged','manifest_unchanged','RuntimeFailure_first_only_per_adapter','connection_attempt_binding_verified']:assert proof in worker

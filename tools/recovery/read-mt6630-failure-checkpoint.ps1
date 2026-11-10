@@ -30,7 +30,7 @@ $r=[ordered]@{schema='MT6630_1027_FAILURE_CHECKPOINT_RECEIPT_V1';status='started
  source_contract_commit='73427b486f3e621dd998774f38f396fbac54a61d';source_manifest_sha256=$ExpectedManifestSha256;
  recovery_boot_id=$m.recovery_boot_id;original_files=$pins;source_recipe_sha256=(Hash $PSCommandPath);helper_sha256=(Hash $helper);
  registry_path='ControlSet001\Services\Mt6630Runtime\Parameters\NativeCheckpoint';
- values=[ordered]@{};load_rc=-1;unload_rc=-1;privilege_restore_error=-1;originals_unchanged=$false;
+ values=[ordered]@{};record_headers=[ordered]@{};validation_error_code=$null;load_rc=-1;unload_rc=-1;privilege_restore_error=-1;originals_unchanged=$false;
  manifest_unchanged=$false;registry_write_requested=$false;ACL_changed=$false;clone_replay_may_modify_clone=$true;
  same_boot_binding_verified=$false;connection_attempt_binding_verified=$false;cause_determined=$false;
  connection_success_claimed=$false;RuntimeFailure_first_only_per_adapter=$true;Scan_max_records_per_adapter=4;
@@ -42,7 +42,7 @@ function Validate-Record([byte[]]$b,[uint32]$channel){
  $u=@();for($i=0;$i -lt 4;$i++){$u+=@([BitConverter]::ToUInt32($b,4*$i))}
  if($u[0] -ne 0x50433441 -or $u[1] -ne 1 -or $u[2] -ne 1624 -or $u[3] -ne $channel){throw 'Checkpoint header/schema mismatch'}
  $gen=[BitConverter]::ToUInt64($b,16);$count=[BitConverter]::ToUInt32($b,48)
- if(!$gen -or $count -gt 64 -or [BitConverter]::ToUInt32($b,64) -gt 10 -or [BitConverter]::ToUInt32($b,76) -ne 0 -or [BitConverter]::ToUInt32($b,84) -ne 1023){throw 'Checkpoint bounds/legacy build mismatch'}
+ if(!$gen -or $count -gt 64 -or [BitConverter]::ToUInt32($b,64) -gt 10 -or [BitConverter]::ToUInt32($b,76) -ne 0){throw 'Checkpoint bounds mismatch'}
  foreach($offset in @(52,56,68,80)){if([BitConverter]::ToUInt32($b,$offset) -gt 1){throw 'Checkpoint boolean mismatch'}}
  $stages=@(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,59,65,66,67,68,69,80,81,82,83,84,85,86,87,88,89,90,91,92)
  for($i=0;$i -lt $count;$i++){
@@ -77,14 +77,17 @@ try {
    if(!$raw.Present){$r.values[$name]=@{present=$false};continue}
    if($raw.Type -ne 3 -or $raw.Bytes -ne 1624){throw 'Checkpoint must be REG_BINARY1624'}
    $b=New-Object byte[] 1624;for($i=0;$i -lt 1624;$i++){$b[$i]=[Convert]::ToByte($raw.RawHex.Substring(2*$i,2),16)}
+   $r.record_headers[$name]=@{magic=[BitConverter]::ToUInt32($b,0);version=[BitConverter]::ToUInt32($b,4);bytes=[BitConverter]::ToUInt32($b,8);channel=[BitConverter]::ToUInt32($b,12);count=[BitConverter]::ToUInt32($b,48);legacy_driver_build=[BitConverter]::ToUInt32($b,84)}
    $gen=Validate-Record $b $channel
    if(!$r.values.Generation.present -or $gen -gt $r.values.Generation.value){throw 'Record generation exceeds/misses saved counter'}
    $p=Join-Path $OutputDirectory ($name+'.bin');[IO.File]::WriteAllBytes($p,$b);$outputs+=@($p)
-   $r.values[$name]=@{present=$true;type=3;bytes=1624;sha256=(Hash $p);generation=$gen;parent_generation=[BitConverter]::ToUInt64($b,24);interrupt_time=[BitConverter]::ToUInt64($b,32);system_time=[BitConverter]::ToUInt64($b,40);legacy_driver_build=1023;attempt_binding='unverified'}
+   $r.values[$name]=@{present=$true;type=3;bytes=1624;sha256=(Hash $p);generation=$gen;parent_generation=[BitConverter]::ToUInt64($b,24);interrupt_time=[BitConverter]::ToUInt64($b,32);system_time=[BitConverter]::ToUInt64($b,40);legacy_driver_build=[BitConverter]::ToUInt32($b,84);matches_1027_internal_build=([BitConverter]::ToUInt32($b,84) -eq 1023);attempt_binding='unverified'}
   }
  }else{foreach($name in @('Generation','DriverEntry','Initialize','Scan','RuntimeFailure')){$r.values[$name]=@{present=$false}}}
  $r.failed_path=$null;$r.status='fixed-checkpoint-read-await-cleanup'
 }catch{
+ $codes=@('Fixed binary length mismatch','Checkpoint header/schema mismatch','Checkpoint bounds mismatch','Checkpoint boolean mismatch','Checkpoint event schema mismatch','Unused event storage must be zero','Generation must be REG_QWORD8','Checkpoint must be REG_BINARY1624','Record generation exceeds/misses saved counter')
+ $index=[Array]::IndexOf($codes,[string]$_.Exception.Message);if($index -ge 0){$r.validation_error_code=$index+1}
  $r.status='failed';$r.failure_stage=$stage;$r.error_type=$_.Exception.GetType().FullName;$r.error_hresult=('{0:X8}' -f ($_.Exception.HResult -band 0xffffffffL));$r.errors+=@('Fixed checkpoint read failed; see numeric error/stage')
 }finally{
  if($key){$key.Dispose()};if($root){$root.Dispose()}

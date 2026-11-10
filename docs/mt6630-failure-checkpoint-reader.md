@@ -7,7 +7,7 @@ BT用read-mt6630-start-checkpoint.ps1は使用しない。
 
 対象はControlSet001\Services\Mt6630Runtime\Parameters\NativeCheckpointの5値だけ。
 GenerationはREG_QWORD8、DriverEntry/Initialize/Scan/RuntimeFailureはREG_BINARY1624。
-record schema1、magic50433441、header88、event24×64、1027内部legacy build1023を検査する。
+record schema1、magic50433441、header88、event24×64、内部legacy buildは数値で記録し1027の1023との一致を別fieldにする（古い保存値を1027と偽らない）。
 有効eventだけが使用され、unused領域zeroも検査してからbinをexportする。
 raw/原本pathや自由文字列、SSID/password/MAC/IPをreceiptへ出さない。固定numeric fieldのみ。
 recipe/入力manifest/trio/各binaryのhashをreceiptに残す。
