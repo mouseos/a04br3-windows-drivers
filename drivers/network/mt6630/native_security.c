@@ -37,6 +37,9 @@ static NDIS_STATUS install(struct a04_ndis_runtime *a,unsigned pairwise,unsigned
  /* WDK OID_DOT11_CIPHER_DEFAULT_KEY: deleting an already absent key
   * succeeds even during disconnected/reset cleanup. OID shape/id/cipher
   * validation occurs before install(). No FW operation is needed. */
+ /* valid=0 is not proof of absence while a key transaction is pending
+  * or its submission/completion is uncertain. Those never become no-ops. */
+ if(slot->uncertain||s->ptk_pending)return NDIS_STATUS_DOT11_MEDIA_IN_USE;
  if(remove&&!slot->valid)return NDIS_STATUS_SUCCESS;
  if(!a->radio.connected||!cipher_active(a)||s->failed||a->tx.pending)return NDIS_STATUS_DOT11_MEDIA_IN_USE;
  RtlZeroMemory(command,sizeof(command));RtlZeroMemory(digest,sizeof(digest));
@@ -61,7 +64,7 @@ static NDIS_STATUS install(struct a04_ndis_runtime *a,unsigned pairwise,unsigned
  /* Drain old events before publishing a new key transaction under this owner. */
  if(a04_ndis_poll(a)){if(a->receive_epoch!=epoch)goto done;goto uncertain;}
  if(a->receive_epoch!=epoch||!a->radio.connected)goto done;
- slot->valid=0;slot->wlan=wlan;if(!remove)for(unsigned i=0;i<16;i++)slot->pn[i]=pn;if(pairwise&&!remove)s->ptk_pending=1;
+ slot->valid=0;slot->uncertain=1;slot->wlan=wlan;if(!remove)for(unsigned i=0;i<16;i++)slot->pn[i]=pn;if(pairwise&&!remove)s->ptk_pending=1;
  a04_ndis_connection_trace(a,A04_CT_KEY_CID7,A04_CP_BEGIN,A04_CP_UNKNOWN,0,pairwise?1:2);
  e=a04_wlan_set(&b->wlan,7,command,64,NULL);
  a04_ndis_connection_trace(a,A04_CT_KEY_CID7,A04_CP_RESULT,A04_CP_BACKEND,e,pairwise?1:2);
@@ -73,10 +76,10 @@ static NDIS_STATUS install(struct a04_ndis_runtime *a,unsigned pairwise,unsigned
   if(s->ptk_pending){a04_ndis_connection_trace(a,A04_CT_KEY_EVENT,A04_CP_RESULT,A04_CP_BACKEND,a->closing||a->cancelled?A04_WLAN_STATE:A04_WLAN_TIMEOUT,1);goto uncertain;}
  }
  if(a->receive_epoch!=epoch||!a->radio.connected)goto done;
- if(remove){slot->valid=0;if(pairwise)s->port_open=0;status=NDIS_STATUS_SUCCESS;goto done;}
+ if(remove){slot->valid=0;slot->uncertain=0;if(pairwise)s->port_open=0;status=NDIS_STATUS_SUCCESS;goto done;}
  /* Group-key completion follows gen3 noNeedResp/full HIF submission; this
   * is deliberately not reported as a fabricated firmware GTK ACK. */
- slot->seen=slot->valid=1;slot->wlan=wlan;for(unsigned i=0;i<32;i++)slot->fingerprint[i]=digest[i];
+ slot->seen=slot->valid=1;slot->uncertain=0;slot->wlan=wlan;for(unsigned i=0;i<32;i++)slot->fingerprint[i]=digest[i];
  status=NDIS_STATUS_SUCCESS;goto done;
 uncertain:fail(a);a->radio.failed=-1;b->failed=1;
 done:a04_ndis_connection_trace(a,A04_CT_KEY_CID7,A04_CP_RETURN_PREPARED,A04_CP_NDIS,status,pairwise?1:2);RtlSecureZeroMemory(command,sizeof(command));RtlSecureZeroMemory(digest,sizeof(digest));return status;

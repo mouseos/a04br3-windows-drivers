@@ -33,7 +33,7 @@ typedef struct {uint8_t PeerMacAddr[6];ULONG AlgorithmId,Direction;BOOLEAN bDele
 typedef struct {NDIS_OBJECT_HEADER Header;ULONG uKeyIndex,AlgorithmId;uint8_t MacAddr[6];BOOLEAN bDelete,bStatic;USHORT usKeyLength;uint8_t ucKey[1];} DOT11_CIPHER_DEFAULT_KEY_VALUE;
 typedef struct {ULONG ulCCMPKeyLength;uint8_t ucIV48Counter[6],ucCCMPKey[16];} DOT11_KEY_ALGO_CCMP;
 typedef struct {NDIS_OBJECT_HEADER Header;uint8_t PeerMac[6];BOOLEAN bOpen;} DOT11_PORT_STATE_NOTIFICATION;
-struct a04_os_key {unsigned valid,seen,wlan;uint8_t fingerprint[32];uint64_t pn[16];};
+struct a04_os_key {unsigned valid,seen,wlan,uncertain;uint8_t fingerprint[32];uint64_t pn[16];};
 struct a04_os_security {ULONG auth,unicast,multicast;unsigned failed,port_open,ptk_pending;struct a04_os_key ptk,gtk[4];};
 struct a04_wmt_bridge {int unused;};
 struct a04_ndis_runtime {struct a04_os_security os_security;struct{unsigned connected;struct a04_wmt_bridge *bridge;struct{struct{uint8_t mac[6];}ap;}station;}radio;struct{void*pending;}tx;unsigned receive_epoch;};
@@ -59,6 +59,9 @@ int main(void){
   memset(&a.os_security,0,sizeof(a.os_security));a.radio.connected=1;a.os_security.auth=7;a.os_security.unicast=a.os_security.multicast=4;a.tx.pending=0;
   if(state==0)a.radio.connected=0;if(state==1)a.os_security.auth=0;if(state==2)a.os_security.failed=1;if(state==3)a.tx.pending=&a;
   assert(request(&a,pair,0,1,0)==NDIS_STATUS_SUCCESS);assert(!firmware_calls);
+  struct a04_os_key *uncertain=pair?&a.os_security.ptk:&a.os_security.gtk[0];
+  uncertain->uncertain=1;assert(request(&a,pair,0,1,0)==NDIS_STATUS_DOT11_MEDIA_IN_USE);assert(!firmware_calls);uncertain->uncertain=0;
+  a.os_security.ptk_pending=1;assert(request(&a,pair,0,1,0)==NDIS_STATUS_DOT11_MEDIA_IN_USE);assert(!firmware_calls);a.os_security.ptk_pending=0;
   struct a04_os_key *slot=pair?&a.os_security.ptk:&a.os_security.gtk[0];slot->valid=1;
   assert(request(&a,pair,0,1,0)==NDIS_STATUS_DOT11_MEDIA_IN_USE);assert(!firmware_calls);slot->valid=0;
   assert(request(&a,pair,0,0,0)!=NDIS_STATUS_SUCCESS);assert(!firmware_calls);

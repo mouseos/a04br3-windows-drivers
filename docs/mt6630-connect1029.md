@@ -8,7 +8,8 @@ failed205 RuntimeFailureは旧1011/gen73のstaleだったため直接原因は�
 ## 1候補に統合した修正
 
 - 公式OID_DOT11_CIPHER_DEFAULT_KEY契約に合わせ、既無効slotの再削除は接続/cipher/failed/TXpending拒否より先にSUCCESS。
-  OID型/長さ/key index/algorithm/peer検証は既存通り、鍵追加・有効鍵削除の条件も不変。FW呼出し不要のidempotent cleanupだけ。
+  OID型/長さ/key index/algorithm/peer検証は既存通り、鍵追加・有効鍵削除の条件も不変。FW呼出し不要のidempotent cleanupだけ。PTK pendingまたはslot.uncertainでは空slotでもMEDIA_IN_USEを維持。
+  slot.uncertainはCID7投入前に立て、実成功時のみ解除する。valid0だけで空slotと推測しない。
   https://learn.microsoft.com/en-us/windows-hardware/drivers/network/oid-dot11-cipher-default-key
 - held1028 source dcbb8043のtranslated RX復元（実group4/3、CCMPはgroup1）、port別32のRXbudget、照合済みTXairfailure1..4のNBL単位failureを統合。
   Linux gen3 nic_rx.h:477/nic_rx.c:687/3139、nic_tx.c:2381、wlan_lib.h:545に基づく契約補完。

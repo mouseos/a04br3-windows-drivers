@@ -8,7 +8,7 @@ struct a04_native_hif_rx;
 /* OS owns PSK/PMK/PTK derivation, EAPOL MIC/replay validation and GTK unwrap.
  * Driver retains only hardware installation metadata and RX packet numbers.
  * Never return key bytes/fingerprints in an OID, log, diagnostic or artifact. */
-struct a04_os_key {unsigned valid,seen,wlan;uint8_t fingerprint[32];uint64_t pn[16];};
+struct a04_os_key {unsigned valid,seen,wlan,uncertain;uint8_t fingerprint[32];uint64_t pn[16];};
 struct a04_os_security {
  ULONG auth,unicast,multicast,default_id;
  unsigned exclude_unencrypted,port_open,ptk_pending,failed;
