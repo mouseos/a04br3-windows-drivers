@@ -9,6 +9,11 @@ boot98deを一組で扱う。UEFIは機種パッケージのみ変更されたa8
 FDはc731f8d6。実0943のL1 clean有効shimを保持したboot出自を検査する。
 GPTは変更しない。
 
+同Recoveryの補足取得は既capture-peripheral-preservation.pyへ
+`--gpu-runtime-assets`を追加すると、既Present363/356と固定Clearログを一度に取得する。
+最大128ログ・補足64MiBに制限し、実snapshotとread-only mountを前後確認する。
+取得物とmutable-baseline.jsonは私用入力であり公開repoへ含めない。
+
 入力は既生成器378b7b6fの実fresh/native/最終policyと、実Windowsで署名した
 SCM・私用媒体。主担当のsealは旧GPU368契約に加えて次を持つ。
 
