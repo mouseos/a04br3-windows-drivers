@@ -1,0 +1,56 @@
+{
+  "closure_scope": "BDD1TU replacement plus newly fixed WDK81 link inputs; historical equality of four libraries is unverified",
+  "linker": {
+    "path": "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/14.29.30133/bin/Hostx64/arm/link.exe",
+    "sha256": "f8b2e9c5341419525f915b61b87d1bc8aa307adca6e1e022071175912e965938",
+    "version": "14.29.30159.0 built by: cloudtest"
+  },
+  "environment": "existing retained Windows runner",
+  "collected_at_utc": "2026-11-10T18:26:55.2255836Z",
+  "baseline369_manifest_sha256": "87c6094416a8036baad6ff99e90f3c8edaff4e1eabb4582b7590177ce1cac9ff",
+  "libraries": [
+    {
+      "sha256": "dc2b7c25e084277bd52b288c4fb913b1c89d344990f4242751a5ff62deb9e00e",
+      "name": "displib.lib",
+      "bytes": 572470,
+      "historical_hash_available": true,
+      "path": "C:/mt8167-public-fullsource323/wdk81/Lib/winv6.3/km/arm/displib.lib",
+      "compared_to_saved369_displib": true
+    },
+    {
+      "sha256": "629c39140f6a222811461eff7f16dd63cca1f5d6e8f9ec31ed73eca2eecd965b",
+      "name": "ntoskrnl.lib",
+      "bytes": 746102,
+      "historical_hash_available": false,
+      "path": "C:/mt8167-public-fullsource323/wdk81/Lib/winv6.3/km/arm/ntoskrnl.lib",
+      "compared_to_saved369_displib": false
+    },
+    {
+      "sha256": "f4a9b51c2011636ba55129ae230b829739e9d436be8def3e9efb882689e8a9b2",
+      "name": "hal.lib",
+      "bytes": 17808,
+      "historical_hash_available": false,
+      "path": "C:/mt8167-public-fullsource323/wdk81/Lib/winv6.3/km/arm/hal.lib",
+      "compared_to_saved369_displib": false
+    },
+    {
+      "sha256": "717e99050a9df5e6ad20458029a9f95c5f5839540cb0e0f044b307dda2f7822c",
+      "name": "libcntpr.lib",
+      "bytes": 5603830,
+      "historical_hash_available": false,
+      "path": "C:/mt8167-public-fullsource323/wdk81/Lib/winv6.3/km/arm/libcntpr.lib",
+      "compared_to_saved369_displib": false
+    },
+    {
+      "sha256": "477922667688067b93c85b98dd788713e731c9ed62f867e1b4aa971711d1fa5e",
+      "name": "bufferoverflowfastfailk.lib",
+      "bytes": 297422,
+      "historical_hash_available": false,
+      "path": "C:/mt8167-public-fullsource323/wdk81/Lib/winv6.3/km/arm/bufferoverflowfastfailk.lib",
+      "compared_to_saved369_displib": false
+    }
+  ],
+  "runner_run_id": 42848059500,
+  "schema": "GE8300_VIDPN371_KERNEL_INPUT_LOCK_V1",
+  "wdk_root": "C:/mt8167-public-fullsource323/wdk81"
+}
