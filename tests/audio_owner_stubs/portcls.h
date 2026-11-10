@@ -19,6 +19,9 @@ struct IPortWaveRTStream {
 };
 typedef IPortWaveRTStream *PPORTWAVERTSTREAM;
 #endif
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+#include "../audio_notification_stubs.h"
+#endif
 #define CmResourceTypeInterrupt 2
 #define CmResourceTypeMemory 3
 #define CmResourceShareDeviceExclusive 1

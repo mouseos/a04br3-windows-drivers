@@ -69,7 +69,17 @@ static PCCONNECTION_DESCRIPTOR CaptureConnections[]={{PCFILTER_NODE,1,0,1},{0,0,
 static PCFILTER_DESCRIPTOR CaptureFilter={0,NULL,sizeof(PCPIN_DESCRIPTOR),2,CapturePins,
     sizeof(PCNODE_DESCRIPTOR),1,CaptureNodes,2,CaptureConnections,0,NULL};
 #endif
-class Stream : public IMiniportWaveRTStream {
+class Stream : public
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+    IMiniportWaveRTStreamNotification
+#else
+    IMiniportWaveRTStream
+#endif
+{
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+    bool CanNotify() const { return speakerNominal && useBackend &&
+        backend.notificationCount && backend.notificationEvent && backend.clearNotifications; }
+#endif
     bool speakerNominal;
     volatile LONG refs;
     PPORTWAVERTSTREAM port;
@@ -93,6 +103,9 @@ public:
         port->AddRef(); if (b) { backend=*b; backend.reference(backend.context); }
     }
     ~Stream() {
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+        if(CanNotify())backend.clearNotifications(backend.context,port);
+#endif
         if (useBackend) {
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
             if(backendMdl) {
@@ -138,7 +151,13 @@ public:
         if (!out) return STATUS_INVALID_PARAMETER; *out=NULL;
         if (IsEqualGUIDAligned(id,IID_IUnknown) || IsEqualGUIDAligned(id,IID_IMiniportWaveRTStream)) {
             *out=static_cast<IMiniportWaveRTStream *>(this); AddRef(); return STATUS_SUCCESS;
-        } return STATUS_NOINTERFACE;
+        }
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+        if(CanNotify() && IsEqualGUIDAligned(id,IID_IMiniportWaveRTStreamNotification)) {
+            *out=static_cast<IMiniportWaveRTStreamNotification *>(this);AddRef();return STATUS_SUCCESS;
+        }
+#endif
+        return STATUS_NOINTERFACE;
     }
     STDMETHODIMP_(ULONG) AddRef() override { return InterlockedIncrement(&refs); }
     STDMETHODIMP_(ULONG) Release() override { LONG n=InterlockedDecrement(&refs); if(!n) { this->~Stream(); ExFreePoolWithTag(this,AUDIO_TAG); } return (ULONG)n; }
@@ -238,6 +257,11 @@ public:
         *mdl=buffer.mdl;*actual=buffer.bytes;*cache=MT8167_WAVE_CACHE;return STATUS_SUCCESS;
     }
     STDMETHODIMP_(VOID) FreeAudioBuffer(PMDL mdl,ULONG size) override {
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+        if(CanNotify() && mdl && mdl==backendMdl && size==backendBytes) {
+            backend.clearNotifications(backend.context,port);
+        }
+#endif
         if (useBackend) {
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
             if(mdl && mdl==backendMdl && size==backendBytes) {
@@ -264,6 +288,34 @@ public:
 #endif
         } else if (mdl && mdl==buffer.mdl && size==buffer.bytes) (void)Mt8167ReleaseUnpublishedBuffer(&buffer);
     }
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+    STDMETHODIMP_(NTSTATUS) AllocateBufferWithNotification(ULONG count,ULONG size,
+        PMDL *mdl,PULONG actual,PULONG offset,MEMORY_CACHING_TYPE *cache) override {
+        if(!mdl || !actual || !offset || !cache)return STATUS_INVALID_PARAMETER;
+        *mdl=NULL;*actual=0;*offset=0;*cache=MT8167_WAVE_CACHE;
+        if(!CanNotify())return STATUS_NOT_SUPPORTED;
+        if(count!=1 && count!=2)return STATUS_INVALID_PARAMETER;
+        if(backendMdl)return STATUS_DEVICE_BUSY;
+        NTSTATUS result=AllocateAudioBuffer(size,mdl,actual,offset,cache);
+        if(!NT_SUCCESS(result))return result;
+        result=backend.notificationCount(backend.context,port,count);
+        if(!NT_SUCCESS(result)) {
+            FreeAudioBuffer(*mdl,*actual);*mdl=NULL;*actual=0;*offset=0;return result;
+        }
+        return STATUS_SUCCESS;
+    }
+    STDMETHODIMP_(VOID) FreeBufferWithNotification(PMDL mdl,ULONG size) override {
+        FreeAudioBuffer(mdl,size);
+    }
+    STDMETHODIMP_(NTSTATUS) RegisterNotificationEvent(PKEVENT event) override {
+        if(!CanNotify())return STATUS_DEVICE_NOT_READY;
+        return backend.notificationEvent(backend.context,port,event,TRUE);
+    }
+    STDMETHODIMP_(NTSTATUS) UnregisterNotificationEvent(PKEVENT event) override {
+        if(!CanNotify())return STATUS_DEVICE_NOT_READY;
+        return backend.notificationEvent(backend.context,port,event,FALSE);
+    }
+#endif
     /* No measured codec/fabric latency is available. The inherited zero
      * values are placeholders, not a calibrated latency contract. */
     STDMETHODIMP_(VOID) GetHWLatency(KSRTAUDIO_HWLATENCY *p) override { if(p){

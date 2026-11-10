@@ -107,12 +107,24 @@ typedef struct {ULONG a,b,c;} KSRTAUDIO_HWREGISTER;
 typedef enum {KSSTATE_STOP,KSSTATE_ACQUIRE,KSSTATE_PAUSE,KSSTATE_RUN} KSSTATE;
 typedef int MEMORY_CACHING_TYPE;
 typedef void *PUNKNOWN,*PRESOURCELIST,*PPORTWAVERT,*PDEVICE_DESCRIPTION;
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+#include "../audio_notification_stubs.h"
+extern const GUID IID_IMiniportWaveRTStreamNotification;
+#endif
 struct IMiniportWaveRTStream {
  virtual NTSTATUS QueryInterface(REFIID,PVOID*)=0; virtual ULONG AddRef()=0; virtual ULONG Release()=0;
  virtual NTSTATUS SetFormat(PKSDATAFORMAT)=0; virtual NTSTATUS SetState(KSSTATE)=0; virtual NTSTATUS GetPosition(PKSAUDIO_POSITION)=0;
  virtual NTSTATUS AllocateAudioBuffer(ULONG,PMDL*,PULONG,PULONG,MEMORY_CACHING_TYPE*)=0; virtual void FreeAudioBuffer(PMDL,ULONG)=0;
  virtual void GetHWLatency(KSRTAUDIO_HWLATENCY*)=0; virtual NTSTATUS GetPositionRegister(KSRTAUDIO_HWREGISTER*)=0; virtual NTSTATUS GetClockRegister(KSRTAUDIO_HWREGISTER*)=0;
 };
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+struct IMiniportWaveRTStreamNotification : IMiniportWaveRTStream {
+ virtual NTSTATUS AllocateBufferWithNotification(ULONG,ULONG,PMDL*,PULONG,PULONG,MEMORY_CACHING_TYPE*)=0;
+ virtual void FreeBufferWithNotification(PMDL,ULONG)=0;
+ virtual NTSTATUS RegisterNotificationEvent(PKEVENT)=0;
+ virtual NTSTATUS UnregisterNotificationEvent(PKEVENT)=0;
+};
+#endif
 typedef IMiniportWaveRTStream *PMINIPORTWAVERTSTREAM;
 struct IMiniportWaveRT {
  virtual NTSTATUS QueryInterface(REFIID,PVOID*)=0;virtual ULONG AddRef()=0;virtual ULONG Release()=0;

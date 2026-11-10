@@ -85,6 +85,12 @@ extern "C" int Mt8167SilentDmaMiniportEnabled(void);
 #include "headphone_endpoint.h"
 #include "../../bus/mt8167-shared/headphone_interface.h"
 #endif
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+#if !defined(A04_AUDIO_ENGINE_PCM) || !A04_AUDIO_ENGINE_PCM
+#error DMA notification requires the direct Engine PCM lifecycle
+#endif
+#include "dma_notification.h"
+#endif
 #define OWNER_TAG 'OwnA'
 struct Mt8167PnpBackend {
     Mt8167StreamBackend iface;
@@ -96,6 +102,11 @@ struct Mt8167PnpBackend {
     A04_CAPTURE_INTERFACE captureParent;
 #endif
     volatile LONG refs;
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+    Mt8167DmaNotifications notifications;
+    ULONG notificationCount;
+    PPORTWAVERTSTREAM notificationClient;
+#endif
     KMUTEX mutex;
     EX_RUNDOWN_REF positions;
     EX_RUNDOWN_REF livePositions;
@@ -315,10 +326,16 @@ static NTSTATUS HpCalibrateLocked(Mt8167PnpBackend*);
 #endif
 static NTSTATUS OwnerCheckoutRoute(void *ctx,PPORTWAVERTSTREAM port,ULONG bytes,PMDL *mdl,PULONG actual,BOOLEAN headphone)
 {
+#if !defined(A04_AUDIO_HP_SHARED) || !A04_AUDIO_HP_SHARED
+    UNREFERENCED_PARAMETER(headphone);
+#endif
     Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);
     if(!o || !port || !mdl || !actual || !bytes || bytes>1048576 ||
        KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
     *mdl=NULL;*actual=0;OwnerLock(o);NTSTATUS result=STATUS_DEVICE_NOT_READY;
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+    if(o->notificationClient && o->notificationClient!=port){OwnerUnlock(o);return STATUS_DEVICE_BUSY;}
+#endif
 #if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
     /* The first exposed route pins the single engine until certified drain.
      * Reject BEFORE IRQ connect, allocation, binding, zeroing or selection. */
@@ -375,6 +392,47 @@ static NTSTATUS OwnerCheckoutRoute(void *ctx,PPORTWAVERTSTREAM port,ULONG bytes,
     }
     OwnerUnlock(o);return result;
 }
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+static NTSTATUS OwnerNotificationCount(void *ctx,PPORTWAVERTSTREAM port,ULONG count)
+{
+    Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);
+    if(!o || !port || (count!=1 && count!=2) || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+    OwnerLock(o);NTSTATUS result=STATUS_DEVICE_NOT_READY;
+    struct mt8167_dl1_plan plan;
+    if(o->online && !o->enginePoison && o->engineClient==port &&
+       o->engineState==KSSTATE_STOP && o->retainedBuffer.mdl &&
+       mt8167_dl1_plan((uint64_t)o->waveDma.logical.QuadPart,o->retainedBuffer.bytes,
+           (count==1?o->retainedBuffer.bytes:o->retainedBuffer.bytes/2),48000,&plan)) {
+        o->notificationCount=count;result=STATUS_SUCCESS;
+    }
+    OwnerUnlock(o);return result;
+}
+static NTSTATUS OwnerNotificationEvent(void *ctx,PPORTWAVERTSTREAM port,PKEVENT event,BOOLEAN add)
+{
+    Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);
+    if(!o || !port || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+    OwnerLock(o);NTSTATUS result=STATUS_DEVICE_NOT_READY;
+    if(o->online && (!o->engineClient || o->engineClient==port) &&
+       (!o->notificationClient || o->notificationClient==port)) {
+        result=add?Mt8167NotificationsRegister(&o->notifications,event):
+            Mt8167NotificationsUnregister(&o->notifications,event);
+        if(NT_SUCCESS(result) && add)o->notificationClient=port;
+    }
+    OwnerUnlock(o);return result;
+}
+static void OwnerClearNotifications(void *ctx,PPORTWAVERTSTREAM port)
+{
+    Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);
+    if(!o || !port || KeGetCurrentIrql()!=PASSIVE_LEVEL)return;
+    OwnerLock(o);
+    if(o->notificationClient==port || o->engineClient==port) {
+        Mt8167NotificationsClear(&o->notifications);o->notificationCount=0;o->notificationClient=NULL;
+    }
+    OwnerUnlock(o);
+}
+static ULONG OwnerPeriodBytes(Mt8167PnpBackend *o)
+{return o->notificationCount==1?o->buffer.size:o->buffer.size/2;}
+#endif
 static NTSTATUS OwnerCheckout(void *ctx,PPORTWAVERTSTREAM port,ULONG bytes,PMDL *mdl,PULONG actual)
 {return OwnerCheckoutRoute(ctx,port,bytes,mdl,actual,FALSE);}
 static NTSTATUS OwnerCheckin(void *ctx,PPORTWAVERTSTREAM port,PMDL mdl)
@@ -384,6 +442,9 @@ static NTSTATUS OwnerCheckin(void *ctx,PPORTWAVERTSTREAM port,PMDL mdl)
     OwnerLock(o);NTSTATUS result=STATUS_DEVICE_NOT_READY;
     if(o->engineClient==port && mdl==o->retainedBuffer.mdl &&
        o->transport.state!=AUDIO_RUNNING) {
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+        Mt8167NotificationsClear(&o->notifications);o->notificationCount=0;o->notificationClient=NULL;
+#endif
         o->engineClient=NULL;o->engineState=KSSTATE_STOP;o->resetOnRun=TRUE;
         result=STATUS_SUCCESS; /* ownership only; pages/SG/port stay pinned */
     }
@@ -444,7 +505,7 @@ static int OwnerRouteUnmute(Mt8167PnpBackend *o){
 #endif
  return o->parentClient.parent.UnmuteMin(o->parentClient.parent.Header.Context);
 }
-static NTSTATUS OwnerStartLocked(void *ctx,BOOLEAN *possiblyExposed) {
+static NTSTATUS OwnerStartHardwareLocked(void *ctx,BOOLEAN *possiblyExposed) {
     if (!ctx || !possiblyExposed) return STATUS_INVALID_PARAMETER;
     *possiblyExposed=FALSE;
     if (KeGetCurrentIrql()!=PASSIVE_LEVEL) return STATUS_DEVICE_NOT_READY;
@@ -508,8 +569,8 @@ static NTSTATUS OwnerStartLocked(void *ctx,BOOLEAN *possiblyExposed) {
             *possiblyExposed=TRUE;return result;
         }
 #endif
-        /* The half-ring IRQ is used for hardware observation. Clients use
-         * polling GetPosition; no event-notification capability is advertised. */
+        /* Period is half-ring for polling, or the requested one/two DMA
+         * notification boundaries for the standard event-driven stream. */
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
         /* The owner mutex serializes PnP revoke. Quarantine on every
          * attempted voice operation, including a failed DMA preparation. */
@@ -524,7 +585,13 @@ static NTSTATUS OwnerStartLocked(void *ctx,BOOLEAN *possiblyExposed) {
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
             o->diagStage=A04_STAGE_DMA;
 #endif
-            if (!Mt8167TransportStartMaskedParent(&o->transport,o->buffer.size/2,&o->shared)) {
+            if (!Mt8167TransportStartMaskedParent(&o->transport,
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+                OwnerPeriodBytes(o),&o->shared
+#else
+                o->buffer.size/2,&o->shared
+#endif
+                )) {
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
                 o->diagStage=A04_STAGE_UNMUTE;
 #endif
@@ -541,7 +608,13 @@ static NTSTATUS OwnerStartLocked(void *ctx,BOOLEAN *possiblyExposed) {
 #if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
         o->diagStage=A04_STAGE_DMA;
 #endif
-        if (!Mt8167TransportStartMaskedParent(&o->transport,o->buffer.size/2,&o->shared)) {
+        if (!Mt8167TransportStartMaskedParent(&o->transport,
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+                OwnerPeriodBytes(o),&o->shared
+#else
+                o->buffer.size/2,&o->shared
+#endif
+                )) {
 #if defined(A04_AUDIO_UNMUTE_DIAGNOSTIC) && A04_AUDIO_UNMUTE_DIAGNOSTIC
 #if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
             o->diagStage=A04_STAGE_UNMUTE;
@@ -581,6 +654,26 @@ static NTSTATUS OwnerStartLocked(void *ctx,BOOLEAN *possiblyExposed) {
     return STATUS_DEVICE_NOT_READY;
 #endif
 }
+/* Called with the owner mutex held by either legacy start or SetState. */
+static NTSTATUS OwnerStartLocked(void *ctx,BOOLEAN *possiblyExposed)
+{
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+    Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);
+    *possiblyExposed=FALSE;
+    if(o->transport.state==AUDIO_STOPPED_RETAINED) {
+        struct mt8167_dl1_plan plan;
+        if(!mt8167_dl1_plan((uint64_t)o->buffer.logical.QuadPart,o->buffer.size,
+            OwnerPeriodBytes(o),48000,&plan))return STATUS_INVALID_PARAMETER;
+        o->transport.plan=plan;
+    }
+    Mt8167NotificationsEnable(&o->notifications,o->notificationCount!=0);
+#endif
+    NTSTATUS result=OwnerStartHardwareLocked(ctx,possiblyExposed);
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+    if(!NT_SUCCESS(result))Mt8167NotificationsEnable(&o->notifications,FALSE);
+#endif
+    return result;
+}
 static NTSTATUS OwnerStart(void *ctx,BOOLEAN *possiblyExposed) {
     if(!ctx || !possiblyExposed)return STATUS_INVALID_PARAMETER;
     *possiblyExposed=FALSE;
@@ -588,6 +681,7 @@ static NTSTATUS OwnerStart(void *ctx,BOOLEAN *possiblyExposed) {
     Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);
     OwnerLock(o);NTSTATUS result=OwnerStartLocked(ctx,possiblyExposed);OwnerUnlock(o);return result;
 }
+
 #if defined(A04_AUDIO_RUN_DIAGNOSTIC) && A04_AUDIO_RUN_DIAGNOSTIC
 /* Caller holds the passive-level backend mutex. Stop DL1 even if mute fails,
  * retaining resources on error. */
@@ -601,6 +695,9 @@ static NTSTATUS OwnerStopRunning(Mt8167PnpBackend *o)
     }
 #if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
     o->diagStage=A04_STAGE_STOP;
+#endif
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+    Mt8167NotificationsEnable(&o->notifications,FALSE);
 #endif
     int mute=OwnerRouteMute(o);
     int stop=Mt8167TransportStop(&o->transport);
@@ -744,9 +841,18 @@ static void OwnerIrqNotify(void *ctx,ULONG periods,BOOLEAN fault) {
     Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);LONG count;
     if(!o)return;
     count=InterlockedIncrement(&o->irqEvents);
-    if(fault)InterlockedIncrement(&o->irqFaults);
+    if(fault) {
+        InterlockedIncrement(&o->irqFaults);
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+        InterlockedExchange(&o->enginePoison,1);
+#endif
+    }
     if(count<=4 || fault) A04_TRACE("A04AUD irq notification=%ld periods=%lu fault=%d\n",count,periods,fault);
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+    Mt8167NotificationsSignal(&o->notifications,periods,fault);
+#else
     UNREFERENCED_PARAMETER(periods);
+#endif
 }
 /* Caller serializes against revoke. The parent's v4 lease excludes competing
  * AFE/clock owners; other AFE sources remain masked through release. */
@@ -868,6 +974,12 @@ static NTSTATUS CreateBackend(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt8167P
     o->iface.bindWaveBuffer=OwnerBindWave;o->iface.unbindWaveBuffer=OwnerUnbindWave;
 #endif
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+    Mt8167NotificationsInit(&o->notifications);
+    o->iface.notificationCount=OwnerNotificationCount;
+    o->iface.notificationEvent=OwnerNotificationEvent;
+    o->iface.clearNotifications=OwnerClearNotifications;
+#endif
     o->iface.checkout=OwnerCheckout;o->iface.checkin=OwnerCheckin;o->iface.setState=OwnerSetState;
 #endif
     o->iface.start=OwnerStart;o->iface.stop=OwnerStop;o->iface.position=OwnerPosition;o->iface.getDeviceDescription=OwnerDescription;
@@ -1011,7 +1123,11 @@ NTSTATUS Mt8167PnpBackendSnapshot(Mt8167PnpBackend *o,struct a04_audio_snapshot 
 #endif
 void Mt8167PnpBackendRevoke(Mt8167PnpBackend *o) {
     if (!o)return;
-    OwnerLock(o);o->online=FALSE;OwnerUnlock(o);
+    OwnerLock(o);o->online=FALSE;
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+    Mt8167NotificationsClear(&o->notifications);o->notificationCount=0;o->notificationClient=NULL;
+#endif
+    OwnerUnlock(o);
     /* PnP stop/removal are serialized. GetPosition can execute at DISPATCH;
      * close admission and wait at PASSIVE before releasing any mapping. */
     ExWaitForRundownProtectionRelease(&o->positions);

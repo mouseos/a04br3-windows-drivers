@@ -15,7 +15,8 @@ int main(void)
     assert(!mt8167_dl1_position(&p, 0x1001, &pos));
     assert(!mt8167_dl1_plan(0xfffffff0ULL, 1024, 256, 48000, &p));
     assert(!mt8167_dl1_plan(0x1000, 1024, 512, 48000, 0));
-    assert(!mt8167_dl1_plan(0x1000, 512, 512, 48000, &p));
+    assert(mt8167_dl1_plan(0x1000, 512, 512, 48000, &p));
+    assert(p.period_frames == 128 && p.end == 0x11ff);
     assert(!mt8167_dl1_plan(0x1001, 1024, 256, 48000, &p));
     assert(!mt8167_dl1_plan(0x1000, 1024, 260, 48000, &p));
     assert(mt8167_dl1_plan(0xfffffc00ULL, 1024, 256, 44100, &p));

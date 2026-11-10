@@ -8,7 +8,7 @@
  * and data must be nonpaged, nonblocking, and synchronized with the ISR and
  * teardown. Failed or ambiguous hardware stop must retain all resources.
  * Failure from allocate
- * must clean up its own partial allocation. No provider exists yet. */
+ * must clean up its own partial allocation. The Engine PCM PnP backend supplies these operations. */
 struct Mt8167StreamBackend {
     void *context;
     void (*reference)(void *);
@@ -44,6 +44,11 @@ struct Mt8167StreamBackend {
     NTSTATUS (*prepareRenderStream)(void *,KSRTAUDIO_HWLATENCY *);
     BOOLEAN renderLatencyValid;
     KSRTAUDIO_HWLATENCY renderLatency;
+#endif
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+    NTSTATUS (*notificationCount)(void *,PPORTWAVERTSTREAM,ULONG);
+    NTSTATUS (*notificationEvent)(void *,PPORTWAVERTSTREAM,PKEVENT,BOOLEAN);
+    void (*clearNotifications)(void *,PPORTWAVERTSTREAM);
 #endif
 };
 #endif

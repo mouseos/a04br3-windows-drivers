@@ -1590,3 +1590,7 @@ build/gpu_parent_spm_resources_test: tests/gpu_parent_spm_resources_test.c drive
 .PHONY: test-gpu-parent-spm-resources
 test-gpu-parent-spm-resources: build/gpu_parent_spm_resources_test
 	./build/gpu_parent_spm_resources_test
+
+.PHONY: test-mt8167-wavert-notification
+test-mt8167-wavert-notification:
+	$(MAKE) test-mt8167-engine-pcm CXX="$(CXX) -DA04_AUDIO_DMA_NOTIFICATION=1"

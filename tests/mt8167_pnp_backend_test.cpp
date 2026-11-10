@@ -189,11 +189,36 @@ static void engineLifecycle(PDMA_ADAPTER adapter,Resources *resources) {
     realWrite=irq->engine->io.write32;irq->engine->io.write32=engineWrite;
     const Mt8167StreamBackend *api=Mt8167PnpBackendInterface(owner);
     EnginePort first,second;PMDL mdl=NULL,again=NULL;ULONG bytes=0;KSAUDIO_POSITION position{};
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+    KEVENT event,other;
+    assert(!api->notificationEvent(api->context,&first,&event,TRUE)); // registration may precede buffer
+#endif
     assert(!api->checkout(api->context,&first,8192,&mdl,&bytes) && bytes==8192);
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+    assert(api->checkout(api->context,&second,8192,&again,&bytes)==STATUS_DEVICE_BUSY);
+#else
     assert(api->checkout(api->context,&second,8192,&again,&bytes)==STATUS_DEVICE_NOT_READY);
+#endif
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+    assert(api->notificationCount(api->context,&first,3)<0);
+    assert(!api->notificationCount(api->context,&first,1));
+    assert(api->notificationEvent(api->context,&first,&event,TRUE)<0);
+    assert(!api->notificationEvent(api->context,&first,&other,TRUE));
+#endif
     assert(!api->setState(api->context,&first,KSSTATE_ACQUIRE));
     assert(!api->setState(api->context,&first,KSSTATE_PAUSE));
     assert(!api->setState(api->context,&first,KSSTATE_RUN));
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+    assert(*reinterpret_cast<uint32_t *>(mmio+0x3ac)==8192/4);
+    assert(api->notificationCount(api->context,&first,2)<0); // cannot reprogram RUN
+    *reinterpret_cast<uint32_t *>(mmio+0x3a4)=1;
+    assert(test_interrupt.fn(&test_interrupt,test_interrupt.ctx));
+    assert(!event.signals && !other.signals); // ISR alone never calls client
+    irq->dpc.fn(&irq->dpc,irq,(PVOID)(ULONG_PTR)irq->generation,NULL);
+    assert(event.signals==1 && other.signals==1);
+    assert(!api->notificationEvent(api->context,&first,&event,FALSE));
+    assert(api->notificationEvent(api->context,&first,&event,FALSE)<0);
+#endif
     LONG oldGeneration=irq->generation;
     *reinterpret_cast<uint32_t *>(mmio+0x44)=0x100080;
     assert(!api->setState(api->context,&first,KSSTATE_PAUSE));
@@ -204,13 +229,25 @@ static void engineLifecycle(PDMA_ADAPTER adapter,Resources *resources) {
     assert(irq->pending==3);irq->pending=0;
     assert(!api->setState(api->context,&first,KSSTATE_ACQUIRE));
     assert(!api->setState(api->context,&first,KSSTATE_STOP));
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+    irq->pending=1;irq->dpc.fn(&irq->dpc,irq,(PVOID)(ULONG_PTR)irq->generation,NULL);
+    assert(other.signals==1);irq->pending=0; // STOP has closed signal admission
+    assert(!api->notificationCount(api->context,&first,2));
+#endif
     assert(!api->position(api->context,&position) && !position.PlayOffset);
     assert(!api->setState(api->context,&first,KSSTATE_RUN));
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+    assert(*reinterpret_cast<uint32_t *>(mmio+0x3ac)==8192/8);
+#endif
     assert(!api->setState(api->context,&first,KSSTATE_STOP));
     assert(!api->checkin(api->context,&first,mdl));
     assert(!api->checkout(api->context,&second,4096,&again,&bytes) && again==mdl && bytes==8192);
     assert(first.allocations==1 && second.allocations==0 && dmaMaps==1 && !dmaReleases);
     assert(!api->setState(api->context,&second,KSSTATE_RUN));
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+    irq->pending=1;irq->dpc.fn(&irq->dpc,irq,(PVOID)(ULONG_PTR)irq->generation,NULL);
+    assert(event.signals==1 && other.signals==1); // checkout/checkin cleared old events
+#endif
     assert(voice_starts==1 && digitalCalls==1 && !voice_stops);
     irq->fault=1; /* A previous ISR fault must stay poisoned even if stop reads back. */
     assert(api->setState(api->context,&second,KSSTATE_STOP)==STATUS_DEVICE_NOT_READY);

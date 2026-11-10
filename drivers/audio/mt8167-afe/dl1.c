@@ -13,7 +13,7 @@ int mt8167_dl1_plan(uint64_t address, uint32_t bytes, uint32_t period,
     /* Avoid runtime division helpers in the ARM32 kernel image. */
     remaining = bytes; periods = 0;
     while (remaining >= period) { remaining -= period; ++periods; }
-    if (remaining || periods < 2) return 0;
+    if (remaining || periods < 1) return 0;
     switch (rate) {
     case 8000: code = 0; break;
     case 11025: code = 1; break;

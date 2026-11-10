@@ -1,5 +1,7 @@
 # MT8167 AFE / MT6392 audio preparation
 
+現1034を基点とする実PCM／DMA通知候補と未完了のproduction条件は[WAVERT1035.md](WAVERT1035.md)を参照。以下は診断経路を段階的に追加した履歴であり、後続profileの状態と区別する。
+
 This directory contains a software-only WaveRT miniport experiment, not a functioning audio driver. The default adapter refuses StartDevice. A separate diagnostic build can validate resources and attempt to register the miniport, but its stream rejects RUN and it performs no hardware access. No INF is supplied; the standalone ACPI resource proposal remains unintegrated and has _STA=0. A WDK-linked SYS does not establish playback or device validation.
 
 `dl1.c` checks a restricted stereo S16_LE buffer, period and sample rate and

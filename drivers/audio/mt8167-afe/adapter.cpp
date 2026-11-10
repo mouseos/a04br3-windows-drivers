@@ -178,7 +178,9 @@ static NTSTATUS Mt8167StartDevice(PDEVICE_OBJECT device,PIRP irp,PRESOURCELIST r
  Mt8167AudioStartRecord record;RtlZeroMemory(&record,sizeof(record));
  LARGE_INTEGER time;KeQuerySystemTime(&time);record.system_time_low=time.LowPart;record.system_time_high=(ULONG)time.HighPart;
  record.schema=1;record.bytes=sizeof(record);record.inf_revision=
-#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+ 1035;
+#elif defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
 #if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
  1034;
 #elif defined(A04_AUDIO_HP_COMPONENT) && A04_AUDIO_HP_COMPONENT

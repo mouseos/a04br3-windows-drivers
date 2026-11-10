@@ -3,9 +3,9 @@
 #include <portcls.h>
 #include "stream_backend.h"
 #if defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
-/* PASSIVE_LEVEL. Software diagnostic only; stream RUN is rejected. */
+/* PASSIVE_LEVEL. Standalone diagnostic factory has no hardware backend. */
 NTSTATUS Mt8167NewMiniport(PMINIPORTWAVERT *out);
-/* Diagnostic integration seam. Current PnP adapter never supplies a backend. */
+/* PnP integration: referenced backend owns actual DMA/IRQ and shared-parent lease. */
 NTSTATUS Mt8167NewMiniportWithBackend(PMINIPORTWAVERT *out, const Mt8167StreamBackend *backend);
 /* Actual adapter speaker only: CT3 nominal timing, not measured qualification.
  * Separate factory prevents HP/capture/HFP from inheriting the speaker model. */

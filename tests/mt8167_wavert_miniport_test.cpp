@@ -71,6 +71,13 @@ static NTSTATUS state(void *c,PPORTWAVERTSTREAM,KSSTATE s) {
 #if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
 static NTSTATUS unknownHp(void*,KSRTAUDIO_HWLATENCY *p){p->FifoSize=p->ChipsetDelay=p->CodecDelay=MAXULONG;return STATUS_SUCCESS;}
 #endif
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+const GUID IID_IMiniportWaveRTStreamNotification={30};
+static ULONG notifyCount;static int notificationAdds,notificationRemoves;
+static NTSTATUS countCallback(void*,PPORTWAVERTSTREAM,ULONG count){notifyCount=count;return STATUS_SUCCESS;}
+static NTSTATUS eventCallback(void*,PPORTWAVERTSTREAM,PKEVENT e,BOOLEAN add){assert(e);if(add)notificationAdds++;else notificationRemoves++;return STATUS_SUCCESS;}
+static void clearCallback(void*,PPORTWAVERTSTREAM){notifyCount=0;}
+#endif
 int main(){
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
  PMINIPORTTOPOLOGY topo=nullptr;PPCFILTER_DESCRIPTOR topology=nullptr;
@@ -99,6 +106,9 @@ int main(){
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
  ,checkout,checkin,state
 #endif
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+ ,nullptr,nullptr,nullptr
+#endif
  };
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
  backend.bindWaveBuffer=bindwave;backend.unbindWaveBuffer=unbindwave;
@@ -116,6 +126,19 @@ int main(){
  assert(!Mt8167NewMiniportWithBackend(&m,&backend));
  assert(m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat)==STATUS_NOT_SUPPORTED&&!st);
  m->Release();backend.prepareRenderStream=nullptr;
+#endif
+#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+ backend.notificationCount=countCallback;backend.notificationEvent=eventCallback;backend.clearNotifications=clearCallback;
+ assert(!Mt8167NewSpeakerMiniportWithBackend(&m,&backend));
+ assert(!m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat));
+ PVOID unknown=nullptr;assert(!st->QueryInterface(IID_IMiniportWaveRTStreamNotification,&unknown));
+ auto *notified=static_cast<IMiniportWaveRTStreamNotification *>(unknown);
+ assert(notified->AllocateBufferWithNotification(3,8192,&mdl,&actual,&off,&cache)<0 && !mdl && !actual);
+ assert(!notified->AllocateBufferWithNotification(2,8192,&mdl,&actual,&off,&cache) && notifyCount==2);
+ KEVENT event;assert(!notified->RegisterNotificationEvent(&event));assert(!notified->UnregisterNotificationEvent(&event));
+ assert(notificationAdds==1 && notificationRemoves==1);
+ notified->FreeBufferWithNotification(mdl,actual);assert(!notifyCount);
+ notified->Release();st->Release();m->Release();
 #endif
  /* Real speaker factory selects vendor nominal model per instance; generic
   * factory and HP/capture must not inherit a device-wide latency exemption. */
