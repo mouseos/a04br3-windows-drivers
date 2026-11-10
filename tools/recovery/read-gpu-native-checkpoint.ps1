@@ -29,7 +29,7 @@ function Read-GpuNativeCheckpoint($Root, [string]$ControlSet) {
    reached_mask=$mask;stage_observations=$qualified;same_boot_correlation_required=$true;
    boot_identity_must_be_bound_by_capture_manifest=$true;
    module_identity_alone_distinguishes_pure_relink=$false;
-   functional_success_inferred=$false;retirement365=(Read-Ge8300Retirement365 $Root $ControlSet);display_lifecycle364=(Read-Ge8300DisplayLifecycle364 $Root $ControlSet)}
+   functional_success_inferred=$false;post_release_stack366=(Read-Ge8300PostStack366 $Root $ControlSet);retirement365=(Read-Ge8300Retirement365 $Root $ControlSet);display_lifecycle364=(Read-Ge8300DisplayLifecycle364 $Root $ControlSet)}
  }finally{$k.Dispose()}
 }
 
@@ -72,4 +72,24 @@ function Read-Ge8300Retirement365($Root,[string]$ControlSet) {
   }
  }finally{if($key){$key.Dispose()}}
  return $result
+}
+
+function Read-Ge8300PostStack366($Root,[string]$ControlSet) {
+ if($ControlSet -cne 'ControlSet001'){throw 'Explicit ControlSet001 required'}
+ $r=[ordered]@{present=$false;same_boot_join_required=$true;hardware_success_inferred=$false;missing_is_unknown=$true}
+ $k=[MT8167OfflineHive.Native]::OpenPath($Root,"$ControlSet\Services\GE8300Render\Parameters\PostReleaseStack366",$false)
+ try {
+  if($k -and 'StackV1' -cin $k.GetValueNames()){
+   $hex=[MT8167OfflineHive.Native]::ReadFixedRawValue($k,'StackV1',3,320);$b=New-Object byte[] 320
+   for($i=0;$i -lt 320;$i++){$b[$i]=[Convert]::ToByte($hex.Substring(2*$i,2),16)}
+   $count=[BitConverter]::ToUInt32($b,12);$mask=[BitConverter]::ToUInt32($b,32)
+   if([BitConverter]::ToUInt32($b,0) -ne 1 -or [BitConverter]::ToUInt32($b,4) -ne 320 -or $count -gt 16 -or ($mask -band 4294836224L)){throw 'Unknown post stack366 schema/size/count/mask'}
+   $frames=@()
+   for($i=0;$i -le $count;$i++){
+    $at=48+16*$i;$frames+=@([ordered]@{index=$i;direct_return=($i -eq 0);normalized=(($mask -band (1 -shl $i)) -ne 0);rva=[BitConverter]::ToUInt32($b,$at);image_bytes=[BitConverter]::ToUInt32($b,$at+4);timestamp=[BitConverter]::ToUInt32($b,$at+8);checksum=[BitConverter]::ToUInt32($b,$at+12)})
+   }
+   $r=[ordered]@{present=$true;schema=1;bytes=320;lookup_mask=[BitConverter]::ToUInt32($b,8);captured=$count;normalized_mask=$mask;FILETIME=[BitConverter]::ToUInt64($b,16);interrupt_time=[BitConverter]::ToUInt64($b,24);frames=$frames;last_record_only=$true;same_boot_join_required=$true;unwind_completeness_proven=$false;image_identity_must_match_captured_PE=$true;absolute_addresses_persisted=$false;hardware_success_inferred=$false}
+  }
+ }finally{if($k){$k.Dispose()}}
+ return $r
 }

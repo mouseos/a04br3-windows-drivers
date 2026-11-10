@@ -108,6 +108,7 @@ static NTSTATUS child_status(HANDLE h,DXGK_CHILD_STATUS *p,BOOLEAN nondestructiv
 static NTSTATUS descriptor(HANDLE h,ULONG id,DXGK_DEVICE_DESCRIPTOR *p){BASIC_DISPLAY_DRIVER *d=from_adapter(h);return d?d->QueryDeviceDescriptor(id,p):STATUS_DEVICE_NOT_READY;}
 static NTSTATUS dispatch(HANDLE h,ULONG source,PVIDEO_REQUEST_PACKET p){BASIC_DISPLAY_DRIVER *d=from_adapter(h);return d?d->DispatchIoRequest(source,p):STATUS_DEVICE_NOT_READY;}
 static NTSTATUS release_post(HANDLE h,D3DDDI_VIDEO_PRESENT_TARGET_ID target,DXGK_DISPLAY_INFORMATION *p){
+ GeoUnifiedRecordPostReleaseStack(h,__builtin_return_address(0));
  geo_display *s=state(GeoUnifiedDisplayContext(h));BASIC_DISPLAY_DRIVER *d=bdd(s);
  if(!d)return STATUS_DEVICE_NOT_READY;
  if(!s->read_rundown_closed){ExWaitForRundownProtectionRelease(&s->read_operations);s->read_rundown_closed=1;}

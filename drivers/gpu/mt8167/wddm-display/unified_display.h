@@ -7,6 +7,7 @@
 extern "C" {
 #endif
 NTSTATUS GeoUnifiedQuiesceForPostRelease(HANDLE);
+void GeoUnifiedRecordPostReleaseStack(HANDLE,PVOID);
 NTSTATUS GeoDisplayCreate(PDEVICE_OBJECT pdo,void **display);
 NTSTATUS GeoDisplaySetBrightnessResources(void *,PCM_RESOURCE_LIST);
 NTSTATUS GeoDisplayStart(void *display,DXGK_START_INFO *,DXGKRNL_INTERFACE *,ULONG *sources,ULONG *children);

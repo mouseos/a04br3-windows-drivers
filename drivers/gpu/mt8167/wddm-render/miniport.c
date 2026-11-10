@@ -7,6 +7,7 @@
 #include "init_checkpoint.h"
 #include "../start_gap359.h"
 #include "../vendor_m1_11/native_factory_checkpoint.h"
+#include "post_release_stack366.h"
 #ifndef GEO_LINKED_NATIVE_CORE
 #error Build this wrapper only with the reviewed in-process native owner core
 #endif
@@ -269,6 +270,7 @@ static void module_identity(PDRIVER_OBJECT driver)
 NTSTATUS DriverEntry(PDRIVER_OBJECT driver,PUNICODE_STRING registry) {
  DRIVER_INITIALIZATION_DATA table=geo_ge8300_render_contract;NTSTATUS status;
  GeoInitCheckpointPath(registry);GeoInitCheckpoint(0,STATUS_SUCCESS);module_identity(driver);
+ if(A04_GE8300_UNIFIED_DISPLAY356)GeoPostStack366Initialize();
  if(!driver||!registry||!render_contract_valid(&table)){GeoInitCheckpoint(1,STATUS_INVALID_PARAMETER);return STATUS_INVALID_PARAMETER;}
  GeoInitCheckpoint(1,STATUS_SUCCESS);
  table.DxgkDdiAddDevice=add_device;table.DxgkDdiStartDevice=start_device;
