@@ -44,3 +44,7 @@ tools/recovery/collect-combined200.sh text eol=lf
 tests/test-gpu368-profile-contract.py text eol=lf
 docs/gpu368-fresh200-profile.md text eol=lf
 tests/test-gpu368-retained-boot.py text eol=lf
+tools/recovery/ReadonlyInventory200HiveNative.cs text eol=lf
+tools/recovery/read-fresh200-native-inventory.ps1 text eol=lf
+tests/test-fresh200-native-reader-source.py text eol=lf
+docs/fresh200-readonly-native-inventory.md text eol=lf

@@ -58,8 +58,8 @@ try{
   if(!$same){$r.full_service_preservation_equal=$false;$r.errors+=@('Old service fingerprint changed: '+$name)}
  }
  $r.keypad_wdf_runtime=Keypad-WdfRuntimeObservation $root
- $vf=@($ast.FindAll({param($n)$n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -ceq 'Peripheral-CapturedValues'},$true));if($vf.Count -ne 1){throw 'One fixed named-value reader required'};Invoke-Expression $vf[0].Extent.Text
- $r.captured_named_values=Peripheral-CapturedValues $root 1 $p.captured_registry_values
+ $vf=@($ast.FindAll({param($n)$n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -ceq 'Peripheral-CapturedValues200'},$true));if($vf.Count -ne 1){throw 'One fixed named-value reader required'};Invoke-Expression $vf[0].Extent.Text
+ $r.captured_named_values=Peripheral-CapturedValues200 $root 1 $p.captured_registry_values
  $r.named_values_are_not_full_service_hashes=$true
  $failed=[MT8167OfflineHive.Native]::OpenPath($root,"$cs\Services\MT8167CombinedFollowup148",$false);if($failed){$failed.Dispose();throw 'Rejected149 service unexpectedly present'};$r.rejected149_service_absent=$true
 
