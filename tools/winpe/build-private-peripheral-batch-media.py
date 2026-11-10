@@ -74,12 +74,32 @@ def bt_payload_prepare(directory,bt):
   commands+=['copy /b '+src+' '+target+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail',sep.join(('X:','a04br3','compare-files.exe'))+' '+src+' '+target+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
  return commands
 
+def gpu368_media_contract(p,header,exe):
+ require(p['profile']=='combined-features-fresh200-gpu368-v1','Exact GPU368 fresh200 profile')
+ clients=p['diagnostic_clients']
+ require(len(clients)==2 and all(c['relative_directory']=='.' and c['phase']==1 for c in clients),'GPU368 exact two System32 clients')
+ launcher,presenter='mt8167-dxgi-console-launch363.exe','mt8167-dxgi-present356.exe'
+ lh='ab17ed4cf69e6407fa5b017375d39318a89cf544a193ba89fb8a104173eff423';ph='eaa30760ebc38a1955ccb3bbd834ee5c3972ce8842b90e6a58bc5084109ef8d5'
+ require(clients[0]['name']=='gpu_present' and clients[0]['exe']==launcher and clients[0]['sha256']==lh and clients[0]['dependencies']==[{'exe':presenter,'sha256':ph}],'GPU368 exact signed console363/present356 pair')
+ for name,h in [(launcher,lh),(presenter,ph)]:
+  require(p['preserved_files'].get('Windows/System32/'+name)==h,'GPU368 actual sameboot retained asset: '+name)
+ require(clients[1]['name']=='gpu_globaldiag' and clients[1]['exe']=='dxg-global-diag198.exe' and clients[1]['sha256']=='9be80b8176696302a0e4408e6871d41792c780a37bcf6caca817c817b97061ac','GPU368 exact signed globaldiag198')
+ runtime=re.findall(r'static const char deferred_token\[\]="([0-9a-f]{64})";',header)
+ require(len(runtime)==1,'One signed SCM runtime token')
+ # The already signed 200 generator adapted the old one-client assertion.
+ # Preserve its real token, and do not relabel it as the canonical policy hash.
+ adapted=dict(p);adapted['gpu_client_count']=1
+ require(runtime[0]==hashlib.sha256(json.dumps(adapted,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'Existing signed runtime token provenance')
+ require(runtime[0].encode()+b'\0' in exe,'Runtime token must also exist in the signed EXE')
+ return runtime[0]
+
 def main():
  ap=argparse.ArgumentParser()
- ap.add_argument('--reboot-after-commit',action='store_true',help='Reboot WinPE after committed update, volume release and UART stream success')
+ ap.add_argument('--stage-only',action='store_true',help='GPU368 only: run every staging assertion and stop before WIM/ESP; not deployable');ap.add_argument('--reboot-after-commit',action='store_true',help='Reboot WinPE after committed update, volume release and UART stream success')
  for n in ('workspace','map','service-package','prepared-system','prepared-result','comparator','base','tools','out'):ap.add_argument('--'+n,type=Path,required=True)
  for n in ('prepared-sha256','comparator-manifest-sha256','source-commit'):ap.add_argument('--'+n,required=True)
  ap.add_argument('--combined200-profile',action='store_true');ap.add_argument('--combined196-profile',action='store_true');ap.add_argument('--combined194-profile',action='store_true');ap.add_argument('--combined192-profile',action='store_true');ap.add_argument('--combined190-profile',action='store_true');ap.add_argument('--combined188-profile',action='store_true');ap.add_argument('--combined186-profile',action='store_true');ap.add_argument('--combined184-profile',action='store_true');ap.add_argument('--combined182-profile',action='store_true');ap.add_argument('--combined180-profile',action='store_true');ap.add_argument('--combined178-profile',action='store_true');ap.add_argument('--combined176-profile',action='store_true');ap.add_argument('--combined174-profile',action='store_true');ap.add_argument('--combined172-profile',action='store_true');ap.add_argument('--combined170-profile',action='store_true');ap.add_argument('--combined168-profile',action='store_true');ap.add_argument('--combined166-profile',action='store_true');ap.add_argument('--combined164-profile',action='store_true');ap.add_argument('--combined162-profile',action='store_true');ap.add_argument('--combined160-profile',action='store_true');ap.add_argument('--combined158-profile',action='store_true');ap.add_argument('--combined156-profile',action='store_true');ap.add_argument('--combined154-profile',action='store_true');ap.add_argument('--combined152-profile',action='store_true');ap.add_argument('--combined150-profile',action='store_true');ap.add_argument('--combined148-profile',action='store_true');ap.add_argument('--combined146-profile',action='store_true');ap.add_argument('--combined144-profile',action='store_true');ap.add_argument('--combined142-profile',action='store_true');ap.add_argument('--combined140-profile',action='store_true');ap.add_argument('--combined138-profile',action='store_true');ap.add_argument('--combined136-profile',action='store_true');ap.add_argument('--next-profile',action='store_true');ap.add_argument('--service-source-commit');ap.add_argument('--enable-peripheral-batch',action='store_true');a=ap.parse_args();root=a.workspace.resolve(strict=True);here=Path(__file__).resolve().parent;repo=here.parents[1]
+ require(not a.stage_only or a.combined200_profile,'Stage-only is limited to GPU368')
  if a.combined200_profile:
   require(sum(bool(v) for k,v in vars(a).items() if k.endswith('_profile'))==1,'Profiles mutually exclusive')
   from combined200_policy import load_map,generate,PROFILE,SERVICE,DIRECTORY,generate_paths,assert_paths
@@ -234,7 +254,9 @@ def main():
  for client in p.get('diagnostic_clients',[]):
   copy(root/client['directory']/client['exe'],'payload/clients/'+client['exe'])
   for dep in client['dependencies']:copy(root/client['directory']/dep['exe'],'payload/clients/'+dep['exe'])
- token=hashlib.sha256(json.dumps(p,sort_keys=True,separators=(',',':')).encode()).hexdigest();(stage/'payload/boot-transition-authorized.bin').write_bytes(token.encode()+b'\0');files['payload/boot-transition-authorized.bin']=sha(stage/'payload/boot-transition-authorized.bin')
+ token=hashlib.sha256(json.dumps(p,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+ runtime_policy_token=gpu368_media_contract(p,(service/'peripheral-batch-policy.h').read_text(),(service/(SERVICE+'.exe')).read_bytes()) if a.combined200_profile else token
+ (stage/'payload/boot-transition-authorized.bin').write_bytes(runtime_policy_token.encode()+b'\0');files['payload/boot-transition-authorized.bin']=sha(stage/'payload/boot-transition-authorized.bin')
  prepare=[]
  for i,e in enumerate(x for x in b['files'] if x['source_path'] in {'Windows/System32/config/'+n+s for n in ('SYSTEM','DRIVERS') for s in ('','.LOG1','.LOG2')}):
   copy(backup.parent/e['backup_path'],'fresh-input/'+str(i)+'.bin')
@@ -272,7 +294,10 @@ def main():
  for i,(n,h) in enumerate(sorted(payload.items())):
   copy(stage/n,'stage-proof/'+str(i)+'.bin');prepare+=['X:\\a04br3\\compare-files.exe "X:\\a04br3\\'+n.replace('/','\\')+'" X:\\a04br3\\stage-proof\\'+str(i)+'.bin >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto baselinefail']
  for directory in sorted({c['relative_directory'] for c in p.get('diagnostic_clients',[]) if not (((a.combined200_profile or a.combined196_profile) or a.combined194_profile or a.combined192_profile or a.combined190_profile or a.combined188_profile or a.combined186_profile or a.combined184_profile or a.combined182_profile or a.combined180_profile or a.combined178_profile or a.combined176_profile) and c['relative_directory']=='.') and not c['relative_directory'].startswith(DIRECTORY+chr(92)) and not ((rotation or reuse_rotation) and c['name']=='rotation')}):prepare+=['if exist '+chr(92).join(('C:','Windows','System32',directory))+' goto baselinefail']
- if (a.combined200_profile or a.combined196_profile) or a.combined194_profile or a.combined192_profile or a.combined190_profile or a.combined188_profile or a.combined186_profile or a.combined184_profile or a.combined182_profile or a.combined180_profile or a.combined178_profile:
+ if a.combined200_profile:
+  # The exact actual 363/356 retained pair was checked before marker staging.
+  require(runtime_policy_token is not None,'GPU368 retained pair/runtime contract checked')
+ elif a.combined196_profile or a.combined194_profile or a.combined192_profile or a.combined190_profile or a.combined188_profile or a.combined186_profile or a.combined184_profile or a.combined182_profile or a.combined180_profile or a.combined178_profile:
   require(all('Windows/System32/'+x in p['preserved_files'] for x in ['mt8167-dxgi-console-launch356.exe','mt8167-dxgi-present356.exe']),'179 retained console pair must be pinned')
  elif a.combined176_profile:
   require(len(p['diagnostic_clients'])==(2 if a.combined184_profile else 1) and all(c['relative_directory']=='.' for c in p['diagnostic_clients']),'Exact System32 assets only')
@@ -311,12 +336,15 @@ def main():
  prepare=baseline_failure_reports(prepare)
  cmd=stage_script((here/'run-mt8167-shared-io-update.cmd.in').read_text(),prepare,token[:16],p['backup_manifest_sha256']);cmd=reboot_committed_stage(cmd) if a.reboot_after_commit else cmd;(stage/'run-update-once.cmd').write_bytes(cmd.replace('\r','').replace('\n','\r\n').encode());files['run-update-once.cmd']=sha(stage/'run-update-once.cmd')
  (stage/'startnet.cmd').write_bytes(b'@echo off\r\nmountvol /N\r\nwpeinit\r\nif errorlevel 1 exit /b 2\r\nmountvol /N\r\nif errorlevel 1 exit /b 2\r\ncall X:\\a04br3\\run-update-once.cmd\r\n');files['startnet.cmd']=sha(stage/'startnet.cmd')
+ if a.stage_only:
+  (out/'stage-only-manifest.json').write_text(json.dumps({'not_deployable':True,'source_commit':a.source_commit,'service_source_commit':signed_source,'files':files,'canonical_policy_sha256':token,'runtime_policy_sha256':runtime_policy_token,'GPU_rebuilt':False,'hardware_verified':False},indent=2)+'\n')
+  print('GPU368_COMPLETE_STAGE_CONTRACT_VERIFIED_NO_WIM_OR_DEVICE_OPERATION');return
  image=out/'update.wim';shutil.copyfile(base/'maintenance-staged.wim',image);env=os.environ.copy();env.update(TMPDIR=str(stage),LD_LIBRARY_PATH=str(tools/'wimtools'),PYTHONPATH=str(tools/'python-fat'),PYTHONDONTWRITEBYTECODE='1')
  commands='add "'+str(stage/'startnet.cmd')+'" /Windows/System32/startnet.cmd\n'
  for f in sorted(stage.rglob('*')):
   if f.is_file() and f.name!='startnet.cmd':commands+='add "'+str(f)+'" /a04br3/'+str(f.relative_to(stage))+'\n'
  subprocess.run([str(tools/'wimtools/wimlib-imagex'),'update',str(image),'1'],input=commands,text=True,env=env,check=True);subprocess.run([str(tools/'wimtools/wimlib-imagex'),'verify',str(image)],env=env,check=True)
  subprocess.run(['python3','-B',str(here/'replace-esp-wim.py'),'--template',str(base/'maintenance-staged-esp.img'),'--wim',str(image),'--output',str(out/'update-esp.img'),'--template-bcd-sha256','65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d','--template-wim-sha256','0df19de6c783068b24c466a1d7afaa900cd99a0aef24841a319bbd566cbbedf4'],env=env,check=True)
- manifest={'reboot_after_commit':a.reboot_after_commit,'profile':PROFILE,'source_commit':a.source_commit,'service_source_commit':signed_source,'tooling_only_changes_since_signed_service':signed_source!=a.source_commit,'service':SERVICE,'policy':p,'native_prepared':native,'files':files,'esp_sha256':sha(out/'update-esp.img'),'wim_sha256':sha(image),'required_main_boot_transition':p['boot_transition'],'planned_windows_reboots':p['planned_reboots'],'no_gpu_or_engine_client':not any(c['phase']==1 for c in p['diagnostic_clients']),'engine_client_execute':False,'old_gpu_client_execute':False,'new_gpu_client_count':sum(c['phase']==1 for c in p['diagnostic_clients']),'software_or_userfs_rollback':False,'device_verified':False}
+ manifest={'canonical_policy_sha256':token,'runtime_policy_sha256':runtime_policy_token,'reboot_after_commit':a.reboot_after_commit,'profile':PROFILE,'source_commit':a.source_commit,'service_source_commit':signed_source,'tooling_only_changes_since_signed_service':signed_source!=a.source_commit,'service':SERVICE,'policy':p,'native_prepared':native,'files':files,'esp_sha256':sha(out/'update-esp.img'),'wim_sha256':sha(image),'required_main_boot_transition':p['boot_transition'],'planned_windows_reboots':p['planned_reboots'],'no_gpu_or_engine_client':not any(c['phase']==1 for c in p['diagnostic_clients']),'engine_client_execute':False,'old_gpu_client_execute':False,'new_gpu_client_count':sum(c['phase']==1 for c in p['diagnostic_clients']),'software_or_userfs_rollback':False,'device_verified':False}
  (out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 if __name__=='__main__':main()
