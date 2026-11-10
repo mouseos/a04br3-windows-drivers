@@ -5,7 +5,7 @@ source "$root/port/gsi/logs/ios-feasibility/windows-rt-target-tools.sh"
 mapfile -t cfg < <(python3 - "$1" "$2" <<'CONFIG'
 from pathlib import Path
 import json,re,sys
-r=Path.cwd();d=r/'port/gsi/logs/ios-feasibility/windows-rt-combined-run179'
+r=Path.cwd();d=r/'port/gsi/logs/ios-feasibility/windows-rt-combined-run181'
 c=json.loads(Path(sys.argv[1]).read_text());s=json.loads(Path(sys.argv[2]).read_text())
 assert c['status']=='validated-main-seal'
 if s['status']=='pipeline-stopped':
@@ -18,7 +18,7 @@ CONFIG
 )
 [ "${#cfg[@]}" = 3 ]
 service_name=${cfg[0]}; data_directory=${cfg[1]}; gpu_log_directory=${cfg[2]}
-out="$root/port/xnu/out/private-windows-rt-combined-run179-diagnostics"
+out="$root/port/xnu/out/private-windows-rt-combined-run181-diagnostics"
 if ! adb devices | grep -q 'recovery$'; then
  if [ -z "$(fastboot devices)" ]; then
   UART=/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0 bash "$root/unixnu/UniXNU-a04br3/scripts/a04br3-reset.sh"
@@ -34,7 +34,7 @@ for ((i=0;i<30;i++)); do [[ $(adb shell id -u 2>/dev/null | tr -d '\r') == 0 ]] 
 [[ $(adb shell id -u | tr -d '\r') == 0 ]]
 adb push "$root/port/xnu/out/windows-rt-recovery-ntfs3g/ntfs-3g-aarch64-static" /tmp/rt-ntfs3g
 adb shell chmod 755 /tmp/rt-ntfs3g
-python3 -B "$root/windows-rt/a04br3-windows-combined181-fresh180/tools/recovery/capture-windows-prebackup.py" capture --serial "$rt_target_serial" --out "$root/port/xnu/out/private-windows-rt-prebackup-run180" --target-sys mt8167-keypad.sys --target-sys mt6392-keys.sys --target-sys lc709203f.sys --target-sys mt8167-display-transport.sys --target-sys mt8167-display.sys --target-sys mt8167-ge8300.sys --target-sys ge8300-render.sys --target-sys mt8167-shared.sys --target-sys mt8167-audio.sys --target-sys mt8167-musb-hcd.sys --target-sys mt8167-usb20.sys --target-sys mt6630-runtime.sys --target-sys mt6630-combo-runtime.sys --target-sys mt6630-combo-bluetooth.sys --target-sys mt8167-toprgu.sys --target-sys mt8167-msdc.sys --target-sys mma8652.sys --target-sys mt6392-rtc.sys --target-sys mt8167-thermal.sys --allow-missing-sys --engine-probe-state --sd-component-state --allow-missing-engine-service-log --mount-driver ntfs-3g --ntfs3g-remote /tmp/rt-ntfs3g
+python3 -B "$root/windows-rt/a04br3-windows-combined181-fresh180/tools/recovery/capture-windows-prebackup.py" capture --serial "$rt_target_serial" --out "$root/port/xnu/out/private-windows-rt-prebackup-run182" --target-sys mt8167-keypad.sys --target-sys mt6392-keys.sys --target-sys lc709203f.sys --target-sys mt8167-display-transport.sys --target-sys mt8167-display.sys --target-sys mt8167-ge8300.sys --target-sys ge8300-render.sys --target-sys mt8167-shared.sys --target-sys mt8167-audio.sys --target-sys mt8167-musb-hcd.sys --target-sys mt8167-usb20.sys --target-sys mt6630-runtime.sys --target-sys mt6630-combo-runtime.sys --target-sys mt6630-combo-bluetooth.sys --target-sys mt8167-toprgu.sys --target-sys mt8167-msdc.sys --target-sys mma8652.sys --target-sys mt6392-rtc.sys --target-sys mt8167-thermal.sys --allow-missing-sys --engine-probe-state --sd-component-state --allow-missing-engine-service-log --mount-driver ntfs-3g --ntfs3g-remote /tmp/rt-ntfs3g
 mkdir -m 700 "$out"
 adb shell 'mkdir /tmp/rt125-diag; /tmp/rt-ntfs3g -o ro,norecover,nosuid,nodev,noexec /dev/block/by-name/Windows /tmp/rt125-diag'
 trap 'adb shell umount /tmp/rt125-diag || true' EXIT
@@ -86,7 +86,7 @@ find "$out" -type f -exec chmod 600 '{}' +
 python3 - <<'MANIFEST'
 from pathlib import Path
 import json,hashlib
-r=Path.cwd();p=r/'port/xnu/out/private-windows-rt-combined-run179-diagnostics'
+r=Path.cwd();p=r/'port/xnu/out/private-windows-rt-combined-run181-diagnostics'
 files=[{'path':str(f.relative_to(p)),'bytes':f.stat().st_size,'sha256':hashlib.sha256(f.read_bytes()).hexdigest()} for f in sorted(p.rglob('*')) if f.is_file()]
 (p/'capture-index.json').write_text(json.dumps({'files':files,'windows_unmounted':True,'hardware_success_asserted':False},indent=2)+'\n')
 MANIFEST
