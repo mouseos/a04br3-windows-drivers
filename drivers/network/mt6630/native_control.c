@@ -187,7 +187,10 @@ static NDIS_STATUS connect(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
 static NDIS_STATUS reset_request(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
 {
  DOT11_RESET_REQUEST input;DOT11_STATUS_INDICATION output;ULONG any=0;int e;
- q->DATA.METHOD_INFORMATION.BytesRead=q->DATA.METHOD_INFORMATION.BytesWritten=0;
+ /* OID_DOT11_RESET_REQUEST returns RESET_CONFIRM in InformationBuffer,
+  * but its completion contract explicitly leaves BytesWritten untouched.
+  * https://learn.microsoft.com/en-us/previous-versions/windows/hardware/wireless/oid-dot11-reset-request */
+ q->DATA.METHOD_INFORMATION.BytesRead=0;
  q->DATA.METHOD_INFORMATION.BytesNeeded=sizeof(output);
  if(q->DATA.METHOD_INFORMATION.InputBufferLength<sizeof(input)||q->DATA.METHOD_INFORMATION.OutputBufferLength<sizeof(output))return NDIS_STATUS_INVALID_LENGTH;
  NdisMoveMemory(&input,q->DATA.METHOD_INFORMATION.InformationBuffer,sizeof(input));
@@ -206,7 +209,7 @@ static NDIS_STATUS reset_request(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
  a->ps_activity=activity;if(!e&&a04_ndis_idle_reconcile(a))e=-1;
  output.uStatusType=DOT11_STATUS_RESET_CONFIRM;output.ndisStatus=e?NDIS_STATUS_FAILURE:NDIS_STATUS_SUCCESS;
  NdisMoveMemory(q->DATA.METHOD_INFORMATION.InformationBuffer,&output,sizeof(output));
- q->DATA.METHOD_INFORMATION.BytesRead=sizeof(input);q->DATA.METHOD_INFORMATION.BytesWritten=sizeof(output);q->DATA.METHOD_INFORMATION.BytesNeeded=0;
+ q->DATA.METHOD_INFORMATION.BytesRead=sizeof(input);q->DATA.METHOD_INFORMATION.BytesNeeded=0;
  link_state(a);return e?NDIS_STATUS_FAILURE:NDIS_STATUS_SUCCESS;
 }
 static NDIS_STATUS control_impl(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
