@@ -1,3 +1,4 @@
+from pathlib import Path
 # SPDX-License-Identifier: MIT
 # PE signing payload verifier retained from public f25a594e, source only.
 import struct

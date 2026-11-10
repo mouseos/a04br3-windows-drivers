@@ -14,7 +14,7 @@ def fixed(root,commit):
 def main():
  p=argparse.ArgumentParser();p.add_argument('--enable-build',action='store_true');p.add_argument('--phase',choices=['evaluator','launcher'],required=True)
  for n in ['source-root','memory-object','output','um-include','km-include','arm-libraries','clang','linker','signtool']:p.add_argument('--'+n,type=Path,required=True)
- p.add_argument('--source-commit',required=True);p.add_argument('--evaluator',type=Path);p.add_argument('--evaluator-receipt',type=Path);p.add_argument('--evaluator-receipt-sha256');a=p.parse_args()
+ p.add_argument('--resume-compile-receipt-sha256');p.add_argument('--resume-object-sha256');p.add_argument('--resume-dependency-sha256');p.add_argument('--source-commit',required=True);p.add_argument('--evaluator',type=Path);p.add_argument('--evaluator-receipt',type=Path);p.add_argument('--evaluator-receipt-sha256');a=p.parse_args()
  require(a.enable_build and os.name=='nt','Explicit Windows one-TU build only')
  root=a.source_root.resolve();fixed(root,a.source_commit);recipe=fixed(RECIPE,subprocess.check_output(['git','-C',str(RECIPE),'rev-parse','HEAD'],text=True).strip())
  for name in ['CL','_CL_','LINK','_LINK_']:require(not os.environ.get(name),'Unpinned inherited compiler/linker options')
@@ -36,7 +36,14 @@ def main():
   values=re.findall(r'0x([0-9a-fA-F]{2})',m[1]);require(len(values)==32 and ''.join(values).lower()==evaluator_sha,'Launcher expected must contain actual signed evaluator SHA in this formal Git source commit')
  libs=['kernel32','user32','d3d11','dxgi','setupapi'] if a.phase=='evaluator' else ['kernel32','advapi32','bcrypt']
  libraries=[a.arm_libraries/(n+'.lib') for n in libs];library_pins={str(x.resolve()):sha(x) for x in libraries}
- out=a.output.resolve();require(not out.exists(),'Fresh output only; do not repeat completed TU');out.mkdir(parents=True);(out/'logs').mkdir()
+ out=a.output.resolve();prior=None
+ if out.exists():
+  require(a.resume_compile_receipt_sha256 and a.resume_object_sha256 and a.resume_dependency_sha256,'Existing output requires explicit actual compiled receipt/object/original dependency SHA pins')
+  require(sha(out/'receipt.json')==a.resume_compile_receipt_sha256 and sha(out/'client.obj')==a.resume_object_sha256 and sha(out/'client-original.d')==a.resume_dependency_sha256,'Actual completed compile input SHA mismatch')
+  prior=read(out/'receipt.json');require(not prior['success'] and prior['phase']==a.phase and prior['runtime_source_commit']==a.source_commit and prior['runtime_source_sha256']==sha(source),'Wrong completed compile provenance')
+  require(len(prior['commands'])==1 and prior['commands'][0]['exit_code']==0 and prior['commands'][0]['log']=='logs/compile.log','Exactly one real completed compile before link required')
+  require(sha(out/'logs/compile.log')==prior['commands'][0]['sha256'] and not (out/'unsigned.exe').exists() and not (out/name).exists(),'Original compile log and prelink-only checkpoint required')
+ else:out.mkdir(parents=True);(out/'logs').mkdir()
  env=dict(os.environ,TEMP=str(out/'logs'),TMP=str(out/'logs'),VSLANG='1033')
  receipt=dict(schema='ge8300-one-TU-client-pair-v1',phase=a.phase,recipe_source_commit=recipe,runtime_source_commit=a.source_commit,runtime_source_sha256=sha(source),compiled_TUs=1,memory_object_sha256=sha(a.memory_object),memory_object_recompiled=0,memory_historical_include_closure_recorded=False,memory_input_kind='SHA-fixed recovered 356r2/363 freestanding prebuilt object',SDK_rebuilt=0,GPU_rebuilt=0,PCO_rebuilt=0,driver_package_modified=False,hardware_verified=False,evaluator_sha256=evaluator_sha,evaluator_source_commit=evaluator_source,library_inputs_current_prelink_hashes=library_pins,commands=[],success=False)
  def run(args,label):
@@ -46,7 +53,15 @@ def main():
   flags=['--target=thumbv7-pc-windows-msvc','-std=c11','-O2','-ffreestanding','-fno-builtin','-fno-stack-protector','-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access','-D_ARM_','-DARM','-D_WIN32_WINNT=0x0603','-DNTDDI_VERSION=0x06030000','-I'+str(a.um_include/'shared'),'-I'+str(a.um_include/'um'),'-Werror=incompatible-pointer-types','-Werror=implicit-function-declaration']
   if a.phase=='evaluator':flags+=['-fms-extensions','-DD3D_UMD_INTERFACE_VERSION=0x4002','-DDXGKDDI_INTERFACE_VERSION=0x4002','-I'+str(a.km_include),'-D__ldrexd=__geo_typed_wdk81_ldrexd_declaration']
   obj=out/'client.obj';dep=out/'client-original.d'
-  run([a.clang,*flags,'-MD','-MF',dep,'-MT','ge8300-unit','-c',source,'-o',obj],'compile')
+  compile_command=list(map(str,[a.clang,*flags,'-MD','-MF',dep,'-MT','ge8300-unit','-c',source,'-o',obj]))
+  if prior:
+   require(prior['commands'][0]['arguments']==compile_command,'Original actual compile arguments changed')
+   require(prior['memory_object_sha256']==sha(a.memory_object),'Retained helper input changed')
+   normalize=lambda rows:{str(Path(k).resolve()).casefold():v for k,v in rows.items()}
+   require(normalize(prior['library_inputs_current_prelink_hashes'])==normalize(library_pins),'Actual planned link inputs changed since compile')
+   shutil.copyfile(out/'receipt.json',out/'compile-complete-original-receipt.json')
+   receipt.update(commands=prior['commands'].copy(),additional_compiles=0,compile_recipe_source_commit=prior['recipe_source_commit'],compile_complete_original_receipt_sha256=a.resume_compile_receipt_sha256,retained_actual_object_sha256=a.resume_object_sha256,retained_original_dependency_sha256=a.resume_dependency_sha256)
+  else:run(compile_command,'compile');receipt['additional_compiles']=1
   headers=[Path(x).resolve(strict=True) for x in dependencies(dep)];require(headers,'Compile-time dependency trace required')
   receipt['compile_include_closure']={str(x):sha(x) for x in headers};receipt['repository_include_closure']={x.relative_to(root).as_posix():sha(x) for x in headers if x.is_relative_to(root)};receipt['original_dependency_sha256']=sha(dep);receipt['object_sha256']=sha(obj)
   unsigned=out/'unsigned.exe';run([a.linker,'/nologo','/machine:arm','/subsystem:console,6.03','/entry:mainCRTStartup','/nodefaultlib','/largeaddressaware','/tsaware:no',obj,a.memory_object,*libraries,'/out:'+str(unsigned)],'link')
