@@ -35,6 +35,35 @@ def validate_gpu368_manifest(gm):
  require(gm['schema']=='GPU368_SIGN_ONLY_FIXED198_V1' and gm['package_source_commit']==SOURCE and gm['umd_source_commit']==SOURCE and gm['inf_driverver']=='11/10/2026,0.0.3.68' and gm['hardware_verified'] is False,'新368 schema/固定source')
  require(gm['module_identity']['runtime_build_id']=='GPU359-start-gap-v1' and gm['module_identity']['inherited'] is True,'runtime identityとcompile sourceを分離')
 
+BOOT0943='0943ab8a6008942d9701140542da6ecaa902f750bf34b864bb6a66808c08df42'
+def retained_boot_chain_evidence(boot,transition,pin,pin_file):
+ # 保存済みの出自・controller記録を検査する。端末bootを読まない。
+ require(boot['physical_read_this_capture'] is False and boot['no_intervening_boot_or_gpt_write_reported'] is True,'保持履歴は再read済と表示しない')
+ require(boot['boot_sha256']==transition['boot_sha256']==BOOT0943,'既確定matched boot0943のみ')
+ host=boot['host_artifact'];require(host['path']==transition['boot_path'] and host['sha256']==BOOT0943,'保持host artifact identity')
+ pin_file(host)
+ sealed=pin(boot['matched_host_seal']);last_seal=pin(boot['last_write_seal']);last=pin(boot['last_write_result'])
+ require(sealed['status']=='validated-main-seal' and sealed['matched_boot_sha256']==BOOT0943 and sealed['boot_path']==host['path'],'sealed matchedboot host出自')
+ require(any(x['path']==host['path'] and x['sha256']==host['sha256'] for x in sealed['pinned_files']),'host artifactを実sealがpinしていること')
+ require(last_seal['status']=='validated-main-seal' and last_seal['matched_boot_sha256']==BOOT0943 and last_seal['boot_path']==host['path'] and last_seal['boot_write_required'] is True and last_seal['gpt_written'] is False,'最後の書込み出自')
+ require(last['transaction']==last_seal['transaction'] and last['boot_sha256']==BOOT0943 and last['boot_written'] is True and last['gpt_written'] is False and last['matched_boot_applied_before_normal'] is True,'計画だけでなく実書込みcontroller記録')
+ for step in boot.get('retained_steps',[]):
+  row=pin(step);require(row['boot_sha256']==BOOT0943 and row['boot_written'] is False and row['gpt_written'] is False and row['matched_boot_retained_from_previous_run'] is True,'中間保持記録が異なるboot/書込みを示す')
+ seal199=pin(boot['trial199_seal']);controller199=pin(boot['trial199_controller'])
+ require(seal199['schema']=='MT8167_USB1121_RUN199_MAIN_SEAL_V1' and seal199['status']=='validated-main-seal' and seal199['boot_written'] is False and seal199['gpt_written'] is False,'trial199 sealed no-write scope')
+ require(controller199['boot_written'] is False and controller199['gpt_written'] is False,'trial199実controllerのno-write記録必須')
+ # 新しい物理byteの一致・全履歴の独立監視を主張しない。
+ return dict(kind='retained-chain',physical_read_this_capture=False,boot_sha256=BOOT0943,host_artifact_verified=True,last_write_controller_verified=True,trial199_no_boot_or_gpt_write_verified=True,no_intervening_write_reported_by_main=True,evidence_scope='hash-bound saved write/controller/sealed-host provenance; no physical read or byte comparison this capture',hardware_success_inferred=False)
+
+def validate_boot_witness(boot,transition,fresh_sha,recovery_boot_id,pin,pin_file):
+ require(boot['source_manifest_sha256']==fresh_sha and boot['recovery_boot_id']==recovery_boot_id and boot['read_only'] is True,'実fresh200へのwitness結合')
+ require(transition['boot_write_required'] is False and transition['gpt_written'] is False and transition['boot_sha256']==boot['boot_sha256'],'FW保持、boot/GPT書込みなし')
+ if boot.get('kind')=='retained-chain':
+  require(boot['schema']=='GPU368_RETAINED_BOOT_CHAIN_V1','retained-chain明示schema')
+  return retained_boot_chain_evidence(boot,transition,pin,pin_file)
+ require(boot.get('kind','capture-read')=='capture-read' and boot.get('physical_read_this_capture') is True,'read witnessは実readの明示が必要。新readは要求しない')
+ return dict(kind='capture-read',physical_read_this_capture=True,boot_sha256=boot['boot_sha256'],hardware_success_inferred=False)
+
 def build_policy(root,spec):
  pins={}
  def pin(ref):
@@ -114,8 +143,10 @@ def build_policy(root,spec):
  require(proof['candidate_sha256']==sha(q) and proof['missing']==[] and proof['hardware_verified'] is False and proof['machine']=='ARMNT' and proof['subsystem']==[6,3] and len(proof['imports'])==14 and all(x['validation']['status']=='present' for x in proof['imports']),'実RT81の14imports解決')
  pins[q.relative_to(root).as_posix()]=sha(q)
  diag=dict(name='gpu_globaldiag',exe=exe,directory=directory.as_posix(),relative_directory='.',sha256=sha(q),dependencies=[],arguments=['"C:\\Windows\\System32\\'+SERVICE+'\\logs\\global-diag368"'],timeout_ms=60000,phase=1)
- boot=pin(spec['boot_witness']);require(boot['source_manifest_sha256']==spec['fresh']['sha256'] and boot['recovery_boot_id']==fm['recovery_boot_id'] and boot['read_only'] is True,'実fresh200のFW witness')
- transition=copy.deepcopy(prior['boot_transition']);require(transition['boot_sha256']==boot['boot_sha256'] and transition['boot_write_required'] is False and transition['gpt_written'] is False,'FWbyte保持。変わったbootを推測しない')
+ boot=pin(spec['boot_witness']);transition=copy.deepcopy(prior['boot_transition'])
+ def pin_file(ref):
+  q=rooted(root,ref['path']);require(sha(q)==ref['sha256'],'保持host artifact SHA不一致');pins[q.relative_to(root).as_posix()]=ref['sha256']
+ boot_evidence=validate_boot_witness(boot,transition,spec['fresh']['sha256'],fm['recovery_boot_id'],pin,pin_file)
  mutable=pin(spec['mutable_baseline']);require(mutable['source_manifest_sha256']==spec['fresh']['sha256'] and mutable['recovery_boot_id']==fm['recovery_boot_id'],'同capture log baseline')
  ml=[]
  for name,ref in mutable['files'].items():
@@ -128,6 +159,7 @@ def build_policy(root,spec):
  p['standard_present_contract'].update(diagnostic_clients=2,execution_index=0,driver_package_source_commit=SOURCE,driver_signed_manifest_sha256=MANIFEST)
  p['display_transition']['DIF_order']=['render'];p['display_transition']['old_DOD_retirement']='historical177; transport357 retained; GPU368 render only'
  p['globaldiag_contract']=dict(Present_existing_readiness_gate_retained=True,Present_skipped_if_GPU_not_ready=True,read_only_diag_runs_even_if_Present_skipped=True,execution_index=1,same_boot_as_present=True,maximum_invocations=1,prefix=diag['arguments'][0],result_files=['-response.bin','-raw.bin','-records.txt'],helper_manifest=spec['globaldiag_manifest'],helper_import_proof=spec['globaldiag_import_proof'],hardware_success_inferred=False)
+ p['boot_witness']=spec['boot_witness'];p['boot_witness_evidence']=boot_evidence;p['physical_read_this_capture']=boot_evidence['physical_read_this_capture']
  p['input_pins']=[dict(path=k,sha256=v) for k,v in sorted(pins.items())];return p
 
 def generate(p):

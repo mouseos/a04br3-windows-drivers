@@ -43,3 +43,4 @@ tools/recovery/read-combined200-post.ps1 text eol=lf
 tools/recovery/collect-combined200.sh text eol=lf
 tests/test-gpu368-profile-contract.py text eol=lf
 docs/gpu368-fresh200-profile.md text eol=lf
+tests/test-gpu368-retained-boot.py text eol=lf

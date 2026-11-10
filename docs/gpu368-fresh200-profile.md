@@ -20,7 +20,7 @@ install_targetsはrenderだけ、ROLES index10、DIF mask 1024、Windows restart
 - capture_contract：下記seal helperで実receiptから名前集合/件数を固定する。18/125を新captureへ流用しない。過去templateのservice/値の名前集合は全て新観測集合に含める。新実captureの値を過去の値へ上書きしない。nativeの観測範囲に追加service/値がある場合も全件を保持する。
 - template_policy：canonical196の実署名policy。旧実行契約のtemplateとして使い、baselineのSHA/version/count権威には使わない。
 - actual_package_rows：実fresh200に選択されている全13roleのpackage行JSON。旧prepare196と同じnames/directory/manifest/source/date/version/extra_members形式。mainの実署名packageだけを指定する。保持trioのCAT所属はSCM署名build時にも確認する。
-- boot_witness：同fresh200 manifest/Recovery bootに結合された実boot読取り証拠JSON。source_manifest_sha256/recovery_boot_id/read_only=true/boot_sha256を含む。templateの既存matched bootと一致する場合だけ保持し、boot/GPT書込みを追加しない。未読取り値を作らない。
+- boot_witness：同fresh200 manifest/Recovery bootに結合するboot保持証拠JSON。既確定boot0943の書込み出自・trial199 no-write controller・sealed hostartifactを結合するretained-chainを受け付ける。physical_read_this_capture=falseを明記し、新たなboot物理readを要求しない。既に実read証拠がある場合だけcapture-read形式も利用できる。保持chainの具体的schemaは後段参照。
 - mutable_baseline：実同captureの旧D3D log inventory。source_manifest_sha256/recovery_boot_id/filesを含む。filesはlog basenameから実path/sha256参照へのmap。旧logを消さずprefix byte/hash比較を維持する。
 - GPU368_handoff：main-signed-handoff.json。status/compiled_source/manifest/SYS/UMD SHAを確認する。
 
@@ -67,3 +67,35 @@ mediaは新schemaを認識するprepare200からpolicyを再生成し、署名SC
 source-level検証は実署名368 manifestの受理、旧schema/混合UMD/成功主張/旧INF拒否、Python構文、canonical196入口byte保持、専用dual-phase1分岐、collector bash構文。Windows SCM compile/link/署名、fresh200 finalize、媒体生成、実GPU/DWMは未確認。RT/SRV限定profileとblend/scissor/部分copy未完了は変えない。
 
 既canonicalのoptional legacy USB20が実captureで不在の場合だけ、旧SYS実byte・旧署名manifest一致を保持して扱える。そのversionはhistorical package由来と明記し、現在選択されているversionとは主張しない。parent/HCDの新HWIDをlegacy slotへ差し替えない。
+
+## boot0943のretained-chain（物理再read不要）
+
+通常書込み後のリードバックを追加しない。`boot_witness`は実fresh200取得後にmainが既保存履歴と同fresh manifest/boot IDを結合したprivate JSONへ固定できる。今回の物理読取りをしていなければ必ず `physical_read_this_capture=false` とする。schemaは次のとおり。参照は全て実path/実SHAが必要で、nullや未確認値は受理しない。
+
+```text
+schema: GPU368_RETAINED_BOOT_CHAIN_V1
+kind: retained-chain
+source_manifest_sha256: 実fresh200 manifest SHA
+recovery_boot_id: 実fresh200 Recovery boot ID
+read_only: true
+physical_read_this_capture: false
+boot_sha256: 0943ab8a6008942d9701140542da6ecaa902f750bf34b864bb6a66808c08df42
+no_intervening_boot_or_gpt_write_reported: true
+host_artifact: {path, sha256}          # 既host boot.img、SHA0943
+matched_host_seal: {path, sha256}      # validated-main-seal、実pinned_filesにhost SHAを含む
+last_write_seal: {path, sha256}        # 既最後のboot書込みのvalidated-main-seal
+last_write_result: {path, sha256}      # 同transactionの実controller結果
+retained_steps: [{path, sha256}, ...]  # 既中間保持controller。省略時も全履歴を実監視したとは主張しない
+trial199_seal: {path, sha256}          # MT8167_USB1121_RUN199_MAIN_SEAL_V1
+trial199_controller: {path, sha256}    # trial199の実controller結果
+```
+
+`last_write_result`はboot_sha0943、boot_written=true、gpt_written=false、matched_boot_applied_before_normal=trueを要求する。書込み計画だけを完了証拠へ格上げしない。保存run177のmain-deployment-contract/resultはこの形式の実例で、host SHAもsealに含まれる。retained_stepsは各boot_sha0943、boot_written=false、gpt_written=false、matched_boot_retained_from_previous_run=trueを要求する。保存run197 result等を結合できる。
+
+trial199はsealと実controllerの両方でboot_written=false/gpt_written=falseを要求する。controllerに存在しないboot物理hashを追加して読み取ったことにしない。変化する実行中resultを途中で候補固定せず、mainがfresh200選択時点に対応する保存結果をSHA固定する。`no_intervening_boot_or_gpt_write_reported`はmainが既記録に基づき確認する保持履歴の申告であり、本validatorが全外部書込みを監視したという意味ではない。未知や追加書込みが判明した場合はtrueにしない。
+
+validatorは保存host artifactの実SHAとseal内pin、最後の書込み出自、各保持step、trial199のno-writeを照合する。policyには `boot_witness`、`boot_witness_evidence` と `physical_read_this_capture=false` を保存する。evidence_scopeは保存履歴のhash結合であり、今回の実boot byte比較ではない。boot_transitionそのもののboot_write_required=false/gpt_written=falseとFW ABIは変更しない。real fresh200/native/UMD/FW/log inventoryの要件も変更しない。
+
+既に実read証拠がある場合のcapture-read経路は `kind=capture-read`、`physical_read_this_capture=true` を明示する。この経路のために新たな物理readを要求・実行しない。新たな物理readなしで利用できるretained-chainが今回の修正点である。
+
+host検証：`python -B tests/test-gpu368-retained-boot.py --workspace <TAB-A04-BR3 root>`。実run177/197/trial199保存記録と既host imageのみでcomponentを確認し、read偽装・異なるboot・trial199のboot/GPT書込み・host pin不一致を拒否する。fresh200 witness/profileは生成しない。
