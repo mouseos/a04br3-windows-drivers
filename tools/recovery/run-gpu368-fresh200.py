@@ -9,6 +9,7 @@ SERVICE='MT8167CombinedFollowup200'
 KNOWN_PROFILES={
  'run201':dict(run=201,fresh=200,capture=202,profile=PROFILE,service=SERVICE),
  'run203':dict(run=203,fresh=202,capture=204,profile='combined-features-fresh202-gpu368-v1',service='MT8167CombinedFollowup202'),
+ 'run222':dict(run=222,fresh=221,capture=223,profile='combined-features-fresh221-gpu375-clients-v1',service='MT8167CombinedFollowup221',client373=True,client_version=375),
  'run219':dict(run=219,fresh=218,capture=220,profile='combined-features-fresh218-gpu374-clients-v1',service='MT8167CombinedFollowup218',client373=True,client_version=374),
  'run216':dict(run=216,fresh=215,capture=217,profile='combined-features-fresh215-gpu373-clients-v1',service='MT8167CombinedFollowup215',client373=True),
  'run213':dict(run=213,fresh=212,capture=214,profile='combined-features-fresh212-gpu371-output-v1',service='MT8167CombinedFollowup212',output371=True),
@@ -85,9 +86,11 @@ def validate_seal(root,path,digest,known_profile="run201",entrypoint=None):
   p=rooted(root,c[key]);require(p.relative_to(root).as_posix() in pins,'sealに必要tool/input pinがない: '+key);return p
  for key in ('capture_tool','crc_decoder','diagnostics_collector','ntfs3g','reset_script','target_tools','fresh_manifest','normal_esp','controller_path'):pinned(key)
  require(pinned('controller_path')==Path(entrypoint or __file__).resolve(),'別controllerのseal')
- if known_profile in ('run203','run209','run213','run216','run219'):
+ if known_profile in ('run203','run209','run213','run216','run219','run222'):
   require(pinned('controller_engine')==Path(__file__).resolve(),'共通controller engine pin不一致')
   require(pinned('collector_present_helper')==Path(__file__).resolve().with_name('collect-present356.py'),'collector helper pin不一致')
+ require(type(c.get('gpu_runtime_assets',False)) is bool,'Explicit optional runtime collection flag')
+ if c.get('gpu_runtime_assets',False):require(pinned('collector_gpu_runtime_helper')==Path(__file__).resolve().with_name('collect-gpu-runtime-assets.py'),'Runtime collector helper pin required')
  source=rooted(root,c['source_tree']);media=rooted(root,c['media_directory']);m=read(media/'manifest.json');p=m['policy']
  require((media/'manifest.json').relative_to(root).as_posix() in pins and sha(media/'manifest.json')==c['media_manifest_sha256'],'media manifest pin不一致')
  require(sha(media/'update.wim')==m['wim_sha256']==c['wim_sha256'],'WIM pin不一致')
@@ -101,7 +104,7 @@ def validate_seal(root,path,digest,known_profile="run201",entrypoint=None):
   from gpu373_client_admission import admit,validate_runtime_policy
   require(pinned('generator_path')==Path(__file__).resolve().with_name('prepare-gpu%d-client-inputs.py'%k.get('client_version',373)),'固定373 generator pin')
   transition=p['gpu373_client_contract'];validate_runtime_policy(p,transition)
-  if k.get('client_version')==374:require(c['planned_windows_reboots']==0 and not c.get('wifi_activation',False) and p['install_targets']==[],'374 client-only/no restart')
+  if k.get('client_version') in (374,375):require(c['planned_windows_reboots']==0 and not c.get('wifi_activation',False) and p['install_targets']==[],'374 client-only/no restart')
   require(c['boot_write_required'] is False and c['matched_boot_sha256']==MATCHED_BOOT,'373 boot/GPT書込み0')
   require(transition['runtime']['planned_reboots']==c['planned_windows_reboots'] and bool(p['install_targets'])==c.get('wifi_activation',False),'wifi-only restart mode一致')
   # Every original admission input remains immutable and sealed; no flat manifest adapter.
@@ -388,7 +391,9 @@ adb shell chmod 755 /tmp/rt-ntfs3g
   args+=['--allow-missing-sys','--engine-probe-state','--sd-component-state','--allow-missing-engine-service-log','--mount-driver','ntfs-3g','--ntfs3g-remote','/tmp/rt-ntfs3g']
   with (out/('capture%d.log'%k['capture'])).open('wb') as f:subprocess.run(args,cwd=root,stdout=f,stderr=subprocess.STDOUT,check=True)
   capture=read(root/c['capture_output']/'manifest.json');require(capture['status']=='captured-unmounted' and capture['read_only'] is True and capture['unmounted'] is True and capture['errors']==[],'実capture完了未確認')
-  with (out/'collect-combined200.log').open('wb') as f:subprocess.run(['bash',str(root/c['diagnostics_collector']),str(seal),str(out/'result.json'),str(root/c['diagnostics_output'])],cwd=root,stdout=f,stderr=subprocess.STDOUT,check=True)
+  collect_args=['bash',str(root/c['diagnostics_collector']),str(seal),str(out/'result.json'),str(root/c['diagnostics_output'])]
+  if c.get('gpu_runtime_assets',False):collect_args+=['--gpu-runtime-assets']
+  with (out/'collect-combined200.log').open('wb') as f:subprocess.run(collect_args,cwd=root,stdout=f,stderr=subprocess.STDOUT,check=True)
   index=root/c['diagnostics_output']/'capture-index.json';require(read(index)['windows_unmounted'] is True,'diagnostics unmount未確認')
   st.update(status='capture%d-and-diagnostics-ready-for-main-review'%k['capture'],capture_manifest_sha256=sha(root/c['capture_output']/'manifest.json'),diagnostics_index_sha256=sha(index),hardware_success=False);save();print('GPU%d_CAPTURE%d_READY_NOT_GPU_FUNCTIONAL_SUCCESS'%(k['run'],k['capture']))
  except Exception as e:

@@ -28,3 +28,52 @@ capture contractは `GPU374_FRESH218_CAPTURE_CONTRACT_V1`。boot witnessは `GPU
 入口は `build-combined200-service.ps1 -Gpu374Client -CaptureNumber 218 -Mode Service`、mediaの `--gpu374-client-profile`、controllerの `run-gpu374-fresh218.py`。これらは373共通実装へdispatchするalias／薄いfacade。main seal schemaは `GPU374_RUN219_MAIN_SEAL_V1`、generator_pathは新374 facadeをpinし、private_mapもpinする。SCM/nativeの登録対象は新218のみ。通常terminal成功・失敗はholdし、予定restartは0。公開SetDisplayConfigによるpath activation自体はclient側で行い、controllerが独自に設定変更することはない。
 
 未取得fresh218・未確定署名hashをこの文書やsourceから生成しない。実入力が揃うまでfinalize／build／native patchを実行しない。readonly inventoryは実capture通知後、既 `read-fresh200-native-inventory.ps1 -TimingCaptureNumber 218 -IncludeWifiCheckpoint -IncludeGraphicsTopologyCache -IncludeDisplayDeviceBindings` の1loadを利用できる。1030 wire format対応readerを含む。
+
+
+## client375 / fresh221 / run222 / post223
+
+基点ea691478。375は共有variantの221→375で、runtime sourceは
+`3247c8923871630e14313aa00c9ccc4085ca03b6`だけを受理する。
+`prepare-gpu375-client-inputs.py`は共有generatorの薄い入口。
+map schemaは`GPU375_CLIENT_UPDATE_ADMISSION_V1`、capture221、
+profile `combined-features-fresh221-gpu375-clients-v1`、新service
+`MT8167CombinedFollowup221`。install_targets=[] / diagnostic_only=true /
+planned_reboots=0 / mask0。render371・transport369・WiFi1030・boot98deを保持。
+
+fresh/native/同Recovery補足/署名pair/imports/正式launcher commitが揃うまでfinalize不可。
+launcherはmapの正式commitとreceipt runtime_source_commit、evaluator source/hashを結合する。
+未知のhashや新captureは作らず、既recipeで実sourceをcompile/signしたreceiptだけを使う。
+boot witnessは`GPU375_RETAINED_BOOT221_V1`、実218 witnessをprevious_witnessとして、
+実run219 seal/result/collection/capture220を結合する。物理boot再read済とは表示しない。
+
+公開read-only inventoryは既`read-fresh200-native-inventory.ps1 -TimingCaptureNumber 221`。
+WorkspaceRoot/Manifest/ExpectedManifestSha256/SourceDirectory/OutputDirectory/PolicyPath/
+ExpectedPolicyFileSha256を実値で指定。新221不在・全旧service/値を実測し、過去の件数を流用しない。
+private cloneの一回loadのみ。`-IncludeWifiCheckpoint -IncludeGraphicsTopologyCache`
+を付ける場合も同loadで読む。mainの実fresh221完成通知前には実行しない。
+
+実入力到着後の入口:
+- `prepare-gpu375-client-inputs.py --workspace ROOT --map MAP --out NEW --finalize`
+- `build-combined200-service.ps1 -Gpu375Client -CaptureNumber 221 -Mode Service`（共通SCM1TU）
+- `prepare-offline-system-service.ps1`へ生成planと実SYSTEM trio、新221serviceだけを渡す。
+- mediaは`--gpu375-client-profile`、controllerは`run-gpu375-fresh221.py`。
+- sealは`GPU375_RUN222_MAIN_SEAL_V1`。terminal後Windows保持、回収はcollect-only、同candidate再実行禁止。
+
+### 任意OS runtime論理回収（端末操作はmainだけ）
+
+既`collect-combined200.sh SEAL RESULT NEW_OUT --gpu-runtime-assets`は既RecoveryのRO mount内で
+`fixed/Windows/System32/{user32.dll,win32k.sys}`だけを追加回収する。既定は従来どおり。
+controller sealで`gpu_runtime_assets=true`を指定する場合、
+`collector_gpu_runtime_helper`を`collect-gpu-runtime-assets.py`へ向けpinned_filesにSHAを含める。
+
+mainが同Recoveryのfresh221補足だけ先に回収する場合は、mainが所有する既
+`/tmp/rt125-diag`のRO mount内で次の公開helperを使用できる（helper自身はmount/umountしない）:
+
+```
+python3 -B tools/recovery/collect-gpu-runtime-assets.py --workspace ROOT --serial SERIAL --capture-manifest ACTUAL_MANIFEST --out NEW_ROOT_LOCAL_OUT
+```
+
+上限は各16MiB、SYSTEM原本hash/Recovery boot ID/partitionを前後照合し、元manifest byte不変を検査。
+別receipt `gpu-runtime-assets.json`へhash/size/missing/errors/completeを記録する。
+欠落を成功にせず、capture本体のfiles/generation/原本は変更しない。論理RO copyであり物理readbackではない。
+署名・実機・API機能成功はこのsource/host検証とは別。

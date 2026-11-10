@@ -37,7 +37,7 @@ class Clients373(m.Output371):
   return admission.wifi_package(self.root,self.spec['wifi_update'],old)
  def validate_transport(self,packages,hashes):
   require(packages['render']['hashes']['sys']==admission.RENDER371 and packages['render']['manifest_sha256']==MANIFEST and packages['display']['hashes']['sys']==admission.DISPLAY369,'371/369保持')
-  if not self.install_targets:require(packages['wifi']['driver_version']==('2026.11.11.1030' if CAPTURE==218 else '2026.11.11.1029'),'client-onlyは1029保持')
+  if not self.install_targets:require(packages['wifi']['driver_version']==('2026.11.11.1030' if CAPTURE!=215 else '2026.11.11.1029'),'client-onlyは1029保持')
  def client(self,prior,originals,origin_sources,preserved,sources,witnesses,**unused):
   c=copy.deepcopy(prior['diagnostic_clients'][0]);pair=self.spec['client_pair']
   directory=Path(pair['launcher']['file']['path']).parent.as_posix()
@@ -55,19 +55,19 @@ class Clients373(m.Output371):
   x=self.transition['runtime']
   for key in ('diagnostic_only','driver_updates','planned_reboots'):p[key]=x[key]
   p['main_execution_approved']=True
-  p['display_transition'].update(DIF_order=x['install_targets'],old_DOD_retirement=('render371/transport369/WiFi1030 retained; client374 pair only; no DIF' if CAPTURE==218 else 'render371/transport369 retained; client373 pair; optional wifi1030 only'))
+  p['display_transition'].update(DIF_order=x['install_targets'],old_DOD_retirement=(f'render371/transport369/WiFi1030 retained; client{VERSION} pair only; no DIF' if CAPTURE!=215 else 'render371/transport369 retained; client373 pair; optional wifi1030 only'))
   p['observer_contract']['planned_reboots']=x['planned_reboots']
   p['diagnostic_clients'][1]['arguments']=['"C:\\Windows\\System32\\'+SERVICE+'\\logs\\global-diag'+str(VERSION)+'"'];p['globaldiag_contract']['prefix']=p['diagnostic_clients'][1]['arguments'][0]
   p['gpu373_client_contract']=self.transition
   admission.validate_runtime_policy(p,self.transition)
 
 def retained_client_boot(boot,transition,fresh,bootid,pin,pin_file,capture):
- v=admission.variant(capture);run=213 if capture==215 else 216;post=run+1
+ v=admission.variant(capture);run={215:213,218:216,221:219}[capture];post=run+1
  require(boot['schema']==f"GPU{v['version']}_RETAINED_BOOT{capture}_V1" and boot['source_manifest_sha256']==fresh and boot['recovery_boot_id']==bootid and boot['physical_read_this_capture'] is False and boot['boot_sha256']==admission.BOOT,'実215保持chainのみ。physical bootreadを主張しない')
  previous=pin(boot['previous_witness'])
- evidence=(m.validate_boot_retention(previous,previous['source_manifest_sha256'],previous['recovery_boot_id'],pin,pin_file) if capture==215 else retained_client_boot(previous,{},previous['source_manifest_sha256'],previous['recovery_boot_id'],pin,pin_file,215))
+ evidence=(m.validate_boot_retention(previous,previous['source_manifest_sha256'],previous['recovery_boot_id'],pin,pin_file) if capture==215 else retained_client_boot(previous,{},previous['source_manifest_sha256'],previous['recovery_boot_id'],pin,pin_file,{218:215,221:218}[capture]))
  seal=pin(boot[f'run{run}_seal']);result=pin(boot[f'run{run}_result']);collected=pin(boot[f'run{run}_collection']);cap214=pin(boot[f'capture{post}'])
- require(seal['schema']==('GPU371_RUN213_MAIN_SEAL_V1' if capture==215 else 'GPU373_RUN216_MAIN_SEAL_V1') and seal['status']=='validated-main-seal' and seal['matched_boot_sha256']==admission.BOOT and seal['boot_write_required'] is False,'実213 retained98de seal')
+ require(seal['schema']=={215:'GPU371_RUN213_MAIN_SEAL_V1',218:'GPU373_RUN216_MAIN_SEAL_V1',221:'GPU374_RUN219_MAIN_SEAL_V1'}[capture] and seal['status']=='validated-main-seal' and seal['matched_boot_sha256']==admission.BOOT and seal['boot_write_required'] is False,'実213 retained98de seal')
  for row in (result,collected):require(row['transaction']==f'combined-run{run}' and row['seal_sha256']==boot[f'run{run}_seal']['sha256'] and row['boot_written'] is False and row['gpt_written'] is False,'実213 no boot/GPT write result')
  require(collected['collection_only'] is True and collected['capture_manifest_sha256']==boot[f'capture{post}']['sha256'] and cap214['status']=='captured-unmounted' and cap214['read_only'] and cap214['unmounted'] and cap214['errors']==[],'実214 collection結合')
  require(boot['no_later_boot_or_gpt_write_reported_by_main'] is True and boot['continuous_independent_monitoring_performed'] is False,'main保持申告を独立監視へ昇格しない')
