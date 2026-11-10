@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "display_adapter356.h"
 #include "lifecycle.h"
+#include "../vendor_m1_11/native_factory_checkpoint.h"
 #include "../wddm-display/unified_display.h"
 #include "../display-transport/interface356.h"
 #include "../display-transport/barrier356.h"
@@ -176,8 +177,11 @@ NTSTATUS GeoDisplay356Stop(struct geo_kmd_adapter *a){
  if(d->provider_file)ObDereferenceObject(d->provider_file);ExFreePoolWithTag(d,TAG);a->display=NULL;return STATUS_SUCCESS;
 }
 NTSTATUS GeoUnifiedQuiesceForPostRelease(HANDLE adapter){
- struct geo_kmd_adapter *a=adapter;NTSTATUS status=GeoDisplay356Restore(a);if(status!=STATUS_SUCCESS)return status;
- status=GeoStopOwnerSession(a->session);if(status!=STATUS_SUCCESS)return status;return GeoDisplay356ReleaseMaps(a);
+ struct geo_kmd_adapter *a=adapter;NTSTATUS status;
+ GeoFactoryCheckpoint(86,STATUS_PENDING,0,a&&a->session?(ULONG)a->session->state:0xffffffffu,0,0);
+ status=GeoDisplay356Restore(a);GeoFactoryCheckpoint(87,status,1,0,0,0);if(status!=STATUS_SUCCESS)return status;
+ status=GeoStopOwnerSession(a->session);GeoFactoryCheckpoint(88,status,2,0,0,0);if(status!=STATUS_SUCCESS)return status;
+ status=GeoDisplay356ReleaseMaps(a);GeoFactoryCheckpoint(89,status,3,0,0,0);return status;
 }
 
 void GeoDisplay356EmergencyRestore(struct geo_kmd_adapter *a){

@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "kmd_objects.h"
 #include "display_adapter356.h"
-NTSTATUS APIENTRY GeoCreateDevice(HANDLE handle,DXGKARG_CREATEDEVICE *p) {
+#include "../vendor_m1_11/native_factory_checkpoint.h"
+static NTSTATUS APIENTRY create_device365(HANDLE handle,DXGKARG_CREATEDEVICE *p) {
  struct geo_kmd_adapter *a=handle;struct geo_kmd_device *d;NTSTATUS status=STATUS_SUCCESS;
  if(!p||(p->Flags.Value&~1u))return STATUS_NOT_SUPPORTED;
  if(!GeoSessionEnter(a,1))return STATUS_DEVICE_NOT_READY;
@@ -9,6 +10,13 @@ NTSTATUS APIENTRY GeoCreateDevice(HANDLE handle,DXGKARG_CREATEDEVICE *p) {
  d=ExAllocatePoolWithTag(NonPagedPool,sizeof(*d),'dOeG');if(!d){status=STATUS_INSUFFICIENT_RESOURCES;goto done;}
  RtlZeroMemory(d,sizeof(*d));d->adapter=a;d->runtime=p->hDevice;d->next=a->devices;a->devices=d;a->device_count++;p->hDevice=d;
  done:GeoSessionLeave(a,1);return status;
+}
+NTSTATUS APIENTRY GeoCreateDevice(HANDLE handle,DXGKARG_CREATEDEVICE *p) {
+ struct geo_kmd_adapter *a=handle;NTSTATUS status;ULONG flags=p?p->Flags.Value:0xffffffffu;
+ GeoFactoryCheckpoint(82,STATUS_PENDING,flags,a&&a->session?(ULONG)a->session->state:0xffffffffu,0,0);
+ status=create_device365(handle,p);
+ GeoFactoryCheckpoint(83,status,flags,a&&a->session?(ULONG)a->session->state:0xffffffffu,0,0);
+ return status;
 }
 NTSTATUS APIENTRY GeoDestroyDevice(HANDLE handle) {
  struct geo_kmd_device *d=handle,**link;struct geo_kmd_adapter *a;NTSTATUS status=STATUS_SUCCESS;
@@ -19,7 +27,7 @@ NTSTATUS APIENTRY GeoDestroyDevice(HANDLE handle) {
  *link=d->next;a->device_count--;ExFreePoolWithTag(d,'dOeG');
  done:GeoSessionLeave(a,2);return status;
 }
-NTSTATUS APIENTRY GeoCreateContext(HANDLE handle,DXGKARG_CREATECONTEXT *p) {
+static NTSTATUS APIENTRY create_context365(HANDLE handle,DXGKARG_CREATECONTEXT *p) {
  struct geo_kmd_device *d=handle;struct geo_kmd_adapter *a;struct geo_kmd_context *c;NTSTATUS status=STATUS_SUCCESS;
  if(!d||!p||p->NodeOrdinal||p->EngineAffinity!=1||(p->Flags.Value&~1u)||p->PrivateDriverDataSize)return STATUS_NOT_SUPPORTED;
  a=d->adapter;if(!GeoSessionEnter(a,1))return STATUS_DEVICE_NOT_READY;
@@ -31,6 +39,13 @@ NTSTATUS APIENTRY GeoCreateContext(HANDLE handle,DXGKARG_CREATECONTEXT *p) {
   * Request the stable minimum; Render/Patch still use only named entries. */
  p->ContextInfo.AllocationListSize=3;p->ContextInfo.PatchLocationListSize=3;p->hContext=c;
  done:GeoSessionLeave(a,1);return status;
+}
+NTSTATUS APIENTRY GeoCreateContext(HANDLE handle,DXGKARG_CREATECONTEXT *p) {
+ NTSTATUS status;ULONG flags=p?p->Flags.Value:0xffffffffu,node=p?p->NodeOrdinal:0xffffffffu;
+ ULONG affinity=p?p->EngineAffinity:0xffffffffu,bytes=p?p->PrivateDriverDataSize:0xffffffffu;
+ GeoFactoryCheckpoint(84,STATUS_PENDING,flags,node,affinity,bytes);
+ status=create_context365(handle,p);
+ GeoFactoryCheckpoint(85,status,flags,node,affinity,bytes);return status;
 }
 struct context_check {struct geo_kmd_context *context;NTSTATUS status;};
 static BOOLEAN context_idle(void *arg) {

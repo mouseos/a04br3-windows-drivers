@@ -7,6 +7,20 @@
 #include "A04BR3RogueRuntimeLayout.h"
 #include "A04BR3RogueDeviceWords.h"
 
+/* R80/R81 bind R36 to the exact retirement caller. These observations
+ * use the same PASSIVE/APC guard as R36; absence remains unknown. The pair
+ * preserves the real return status and does not modify ownership or MMIO.
+ * Origins: 1=quiesce(detail=GEO_QUIESCE_*), 2=cold bind, 3=linear unbind,
+ * 4=target unbind, 5=clear rebuild, 6=discard, 7=vertex selection,
+ * 8=draw rebuild, 9=display allocation drain. */
+static NTSTATUS retire_from365(struct e_native_owner *c,ULONG origin,ULONG detail)
+{
+    NTSTATUS status;
+    GeoFactoryCheckpoint(80,STATUS_PENDING,origin,detail,(ULONG)c->state,(ULONG)c->job_state);
+    status=e_native_retire_graph_locked(c);
+    GeoFactoryCheckpoint(81,status,origin,detail,(ULONG)c->state,(ULONG)c->job_state);
+    return status;
+}
 static void reference(void *p){struct e_native_owner *c=p;InterlockedIncrement(&c->references);}
 static void dereference(void *p){struct e_native_owner *c=p;InterlockedDecrement(&c->references);}
 static NTSTATUS enter(struct e_native_owner *c,BOOLEAN cleanup)
@@ -42,7 +56,7 @@ static NTSTATUS quiesce(void *p,uint64_t epoch,uint32_t reason,struct geo_owner_
     if(!out || (reason!=GEO_QUIESCE_STOP && reason!=GEO_QUIESCE_POWER && reason!=GEO_QUIESCE_TDR))return STATUS_INVALID_PARAMETER;
     RtlZeroMemory(out,sizeof(*out));s=transition_begin(c,epoch);if(!NT_SUCCESS(s))return s;
     s=e_native_stop_locked(c);
-    if(NT_SUCCESS(s)){s=e_native_retire_graph_locked(c);if(NT_SUCCESS(s)){c->state=E_OWNER_QUIESCED;proof(c,out);
+    if(NT_SUCCESS(s)){s=retire_from365(c,1,reason);if(NT_SUCCESS(s)){c->state=E_OWNER_QUIESCED;proof(c,out);
         /* Keep cleanup operations available on retained surfaces after the
          * closed/rundown retirement. GPU admission still requires ACTIVE. */
         ExReInitializeRundownProtection(&c->operations);c->rundown_closed=FALSE;
@@ -158,7 +172,7 @@ static NTSTATUS cold_for_bind(struct e_native_owner *c)
     /* Clear's retained target remains bound while the first real converted
      * vertex allocation arrives. Completion is not NoDMA: perform the same
      * normal stop/platform-off/IRQ close before editing any cold mapping. */
-    s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);
+    s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=retire_from365(c,2,0);
     if(NT_SUCCESS(s))c->job=0;else c->state=E_OWNER_FAILED;
     return s;
 }
@@ -201,7 +215,7 @@ static int32_t unbind(void *p,uint64_t surface)
         if(c->job_state==E_JOB_PREPARED || c->job_state==E_JOB_SUBMITTED){
             s=wait_boundary_locked(c);if(!NT_SUCCESS(s))return leave(c,s);
         }
-        s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);
+        s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=retire_from365(c,3,0);
         if(NT_SUCCESS(s) && c->allocation->vertex==linear->linear){
             c->allocation->vertex=NULL;c->vertex=0;c->vertex_aperture_offset=0;
             RtlZeroMemory(&c->vertex_description,sizeof(c->vertex_description));
@@ -213,7 +227,7 @@ static int32_t unbind(void *p,uint64_t surface)
     BOOLEAN vertex=surface && surface==c->vertex;
     if(!surface || (!vertex && surface!=c->surface))return leave(c,STATUS_INVALID_PARAMETER);
     if(c->job_state==E_JOB_PREPARED || c->job_state==E_JOB_SUBMITTED)return leave(c,STATUS_DEVICE_BUSY);
-    s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);
+    s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=retire_from365(c,4,0);
     if(NT_SUCCESS(s)){
         struct a04_native_mdl_binding **b=vertex?&c->allocation->vertex:&c->allocation->binding;
         if(*b)s=a04_native_mdl_release_cold(b);
@@ -259,7 +273,7 @@ static int32_t prepare(void *p,uint64_t surface,uint32_t colour,uint64_t *job)
     }
     /* No live rewrite of USC/PDS. Rebuild under the same adapter/retained MDL
      * after real normal retirement; subsequent boot has a new hardware epoch. */
-    s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);
+    s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=retire_from365(c,5,0);
     c->colour=colour;
     if(NT_SUCCESS(s))s=e_native_build_graph_locked(c);
     if(NT_SUCCESS(s))s=a04_vendor_native_recolour_bound_cold(c->allocation->native,colour);
@@ -316,7 +330,7 @@ static int32_t discard(void *p,uint64_t job)
     struct discard_call call={c,job,STATUS_DEVICE_BUSY};
     if(!job || !e_native_synchronize(c,discard_close,&call))return leave(c,STATUS_IO_DEVICE_ERROR);
     if(!NT_SUCCESS(call.status))return leave(c,call.status);
-    s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);
+    s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=retire_from365(c,6,0);
     if(NT_SUCCESS(s)){c->job=0;c->job_state=E_JOB_NONE;}else c->state=E_OWNER_FAILED;
     return leave(c,s);
 }
@@ -489,7 +503,7 @@ static int32_t prepare_draw_impl(void *p,const struct geo_draw_request *request,
         /* Select only after the old graph's real stop/IRQ/OFF proof. All
          * resource-owned VBs remain mapped at their own VidMm offsets in
          * the next union PT; selection does not evict or replace an MDL. */
-        s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);
+        s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=retire_from365(c,7,0);
         if(!NT_SUCCESS(s)){c->state=E_OWNER_FAILED;return leave(c,s);}
         c->vertex=request->vertex;c->vertex_description=vertex->desc;
         c->vertex_aperture_offset=vertex->linear_offset;c->allocation->vertex=vertex->linear;
@@ -525,7 +539,7 @@ static int32_t prepare_draw_impl(void *p,const struct geo_draw_request *request,
         if(s!=STATUS_NOT_SUPPORTED){c->state=E_OWNER_FAILED;return leave(c,s);}
     }
     s=STATUS_SUCCESS;
-    if(!selection_retired){s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);}
+    if(!selection_retired){s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=retire_from365(c,8,0);}
     if(NT_SUCCESS(s)){
         GeoFactoryCheckpoint(52,STATUS_PENDING,1,request->version,0,trace_cookie);
         s=e_native_build_graph_locked(c);
@@ -613,7 +627,7 @@ NTSTATUS GeoNativeOwnerDrainForDisplay(struct geo_native_binding *binding){
   * IRQ close and graph retirement, preserving logical physical MDL binds. */
  status=wait_boundary_locked(c);
  if(status==STATUS_SUCCESS)status=e_native_stop_locked(c);
- if(status==STATUS_SUCCESS)status=e_native_retire_graph_locked(c);
+ if(status==STATUS_SUCCESS)status=retire_from365(c,9,0);
  if(status!=STATUS_SUCCESS)c->state=E_OWNER_FAILED;
  return leave(c,status);
 }

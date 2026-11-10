@@ -10,7 +10,7 @@ static void GeoFactoryCheckpoint(ULONG stage,NTSTATUS status,ULONG a,ULONG b,ULO
  LARGE_INTEGER now;struct geo_factory_record r={2,sizeof(r),stage,(ULONG)status,a,b,c,d,0,0};
  /* This optional blocking trace is restricted to PASSIVE with special
   * kernel APCs enabled. Do not add a registry wait in a guarded callback. */
- if(stage>69||KeGetCurrentIrql()!=PASSIVE_LEVEL||KeAreAllApcsDisabled())return;
+ if(stage>89||KeGetCurrentIrql()!=PASSIVE_LEVEL||KeAreAllApcsDisabled())return;
  KeQuerySystemTime(&now);r.time_low=now.LowPart;r.time_high=(ULONG)now.HighPart;
  label[1]=(WCHAR)(L'0'+stage/10);label[2]=(WCHAR)(L'0'+stage%10);RtlInitUnicodeString(&name,label);
  InitializeObjectAttributes(&oa,&path,OBJ_KERNEL_HANDLE|OBJ_CASE_INSENSITIVE,NULL,NULL);
