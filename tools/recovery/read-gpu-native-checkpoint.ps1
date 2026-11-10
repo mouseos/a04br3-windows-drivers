@@ -29,6 +29,26 @@ function Read-GpuNativeCheckpoint($Root, [string]$ControlSet) {
    reached_mask=$mask;stage_observations=$qualified;same_boot_correlation_required=$true;
    boot_identity_must_be_bound_by_capture_manifest=$true;
    module_identity_alone_distinguishes_pure_relink=$false;
-   functional_success_inferred=$false}
+   functional_success_inferred=$false;display_lifecycle364=(Read-Ge8300DisplayLifecycle364 $Root $ControlSet)}
  }finally{$k.Dispose()}
+}
+
+function Read-Ge8300DisplayLifecycle364($Root,[string]$ControlSet) {
+ if($ControlSet -cne 'ControlSet001'){throw 'Explicit ControlSet001 required'}
+ $result=[ordered]@{schema=1;record_bytes=80;same_boot_join_required=$true;hardware_success_inferred=$false;records=[ordered]@{}}
+ $key=[MT8167OfflineHive.Native]::OpenPath($Root,"$ControlSet\Services\GE8300Render\Parameters\DisplayLifecycle364",$false)
+ $names=@('StopDeviceV1','PowerStateV1','DrainForDisplayV1')
+ try {
+  for($kind=1;$kind -le 3;$kind++){
+   $name=$names[$kind-1];$r=[ordered]@{present=$false;absence_is_success=$false}
+   if($key -and $name -cin $key.GetValueNames()){
+    $hex=[MT8167OfflineHive.Native]::ReadFixedRawValue($key,$name,3,80);$b=New-Object byte[] 80
+    for($i=0;$i -lt 80;$i++){$b[$i]=[Convert]::ToByte($hex.Substring($i*2,2),16)}
+    if([BitConverter]::ToUInt32($b,0) -ne 1 -or [BitConverter]::ToUInt32($b,4) -ne 80 -or [BitConverter]::ToUInt32($b,8) -ne $kind -or [BitConverter]::ToUInt32($b,16) -gt 1){throw 'Unknown lifecycle364 schema/size/kind/completed'}
+    $r=[ordered]@{present=$true;sequence=[BitConverter]::ToUInt32($b,12);completed=[BitConverter]::ToUInt32($b,16);status_hex=('{0:X8}' -f [BitConverter]::ToUInt32($b,20));argument0=[BitConverter]::ToUInt32($b,24);argument1=[BitConverter]::ToUInt32($b,28);before_state=[BitConverter]::ToUInt32($b,32);after_state=[BitConverter]::ToUInt32($b,36);before_started=[BitConverter]::ToUInt32($b,40);after_started=[BitConverter]::ToUInt32($b,44);begin_FILETIME=[BitConverter]::ToUInt64($b,48);begin_interrupttime=[BitConverter]::ToUInt64($b,56);end_FILETIME=[BitConverter]::ToUInt64($b,64);end_interrupttime=[BitConverter]::ToUInt64($b,72);last_record_only=$true;zero_is_return_only_not_hardware_success=$true}
+   }
+   $result.records[$name]=$r
+  }
+ }finally{if($key){$key.Dispose()}}
+ return $result
 }

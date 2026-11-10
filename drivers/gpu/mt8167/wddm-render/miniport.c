@@ -68,7 +68,7 @@ static NTSTATUS start_device(void *context,DXGK_START_INFO *start,DXGKRNL_INTERF
  if(A04_GE8300_UNIFIED_DISPLAY356){Geo359Enter(&gap,7);status=GeoDisplay356Start(&d->adapter,d->pdo,start,dxgk,sources,children);Geo359Result(&gap,7,status);gap.value[12]=*sources;gap.value[13]=*children;if(status!=STATUS_SUCCESS)return Geo359End(&gap,status);}
  d->started=1;GeoInitCheckpoint(10,STATUS_SUCCESS);return Geo359End(&gap,STATUS_SUCCESS);
 }
-static NTSTATUS stop_device(void *context) {
+static NTSTATUS stop_device_impl(void *context) {
  struct geo_render_device *d=context;NTSTATUS status;
  if(!d||!d->started||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
  if(A04_GE8300_UNIFIED_DISPLAY356){status=GeoDisplay356Restore(&d->adapter);if(status!=STATUS_SUCCESS)return status;}
@@ -83,6 +83,14 @@ static NTSTATUS stop_device(void *context) {
  status=GeoNativeOwnerDelete(&d->native);if(status!=STATUS_SUCCESS)return status;
  d->native_created=0;d->started=0;RtlZeroMemory(&d->session,sizeof(d->session));
  RtlZeroMemory(&d->adapter,sizeof(d->adapter));GeoInitializeFrontendMemory(&d->adapter);return STATUS_SUCCESS;
+}
+/* The OS can retire a fully started adapter before the first user client.
+ * Keep the actual callback result separate from successful StartDevice. */
+#include "display_lifecycle364.h"
+static NTSTATUS stop_device(void *context) {
+ struct geo_render_device *d=context;struct geo_display_lifecycle364 record;NTSTATUS status;
+ GeoDisplayLifecycle364Begin(&record,1,d,0,0);status=stop_device_impl(context);
+ return GeoDisplayLifecycle364End(&record,d,status);
 }
 static NTSTATUS remove_device(void *context) {
  struct geo_render_device *d=context;
@@ -121,7 +129,7 @@ void GeoQueueSubmittedPrepare(struct geo_kmd_adapter *a) {
 static void dpc_routine(void *context) {
  struct geo_render_device *d=(struct geo_render_device *)context;if(d){GeoClearDpc(&d->adapter);queue_owner_work(d);}
 }
-static NTSTATUS power_state(void *context,ULONG uid,DEVICE_POWER_STATE power,POWER_ACTION action) {
+static NTSTATUS power_state_impl(void *context,ULONG uid,DEVICE_POWER_STATE power,POWER_ACTION action) {
  struct geo_render_device *d=(struct geo_render_device *)context;UNREFERENCED_PARAMETER(action);
  /* Microsoft DxgkDdiSetPowerState DeviceUid: DISPLAY_ADAPTER_HW_ID=-1.
   * This render-only device has no monitor/child power operations. */
@@ -135,6 +143,14 @@ static NTSTATUS power_state(void *context,ULONG uid,DEVICE_POWER_STATE power,POW
   return GeoDisplayPower(GeoUnifiedDisplayContext(&d->adapter),uid,power,action);
  }
  return status;
+}
+static NTSTATUS power_state(void *context,ULONG uid,DEVICE_POWER_STATE power,POWER_ACTION action) {
+ struct geo_render_device *d=context;struct geo_display_lifecycle364 record;NTSTATUS status;
+ /* Adapter UID is UINT_MAX; child UID zero must not be confused with it.
+  * Pack only the documented power/action enums into the second argument. */
+ GeoDisplayLifecycle364Begin(&record,2,d,uid,((ULONG)action<<16)|(ULONG)power);
+ status=power_state_impl(context,uid,power,action);
+ return GeoDisplayLifecycle364End(&record,d,status);
 }
 /* The RT8.1 ARM initialization gate requires these base callbacks even for
  * an adapter with no video sources or children. MOU0007 owns all scanout.
@@ -288,8 +304,10 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driver,PUNICODE_STRING registry) {
 }
 
 NTSTATUS GeoUnifiedDrainNativeForDisplay(struct geo_kmd_adapter *a){
- struct geo_render_device *d=(struct geo_render_device *)a;
- return d&&d->native_created?GeoNativeOwnerDrainForDisplay(&d->native):STATUS_DEVICE_NOT_READY;
+ struct geo_render_device *d=(struct geo_render_device *)a;struct geo_display_lifecycle364 record;NTSTATUS status;
+ GeoDisplayLifecycle364Begin(&record,3,d,0,0);
+ status=d&&d->native_created?GeoNativeOwnerDrainForDisplay(&d->native):STATUS_DEVICE_NOT_READY;
+ return GeoDisplayLifecycle364End(&record,d,status);
 }
 #if A04_GE8300_UNIFIED_DISPLAY356
 void GeoUnifiedEmergencyRestore(HANDLE adapter){GeoDisplay356EmergencyRestore(adapter);}
