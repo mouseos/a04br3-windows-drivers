@@ -12,6 +12,16 @@ LAUNCHER='mt8167-dxgi-console-launch363.exe'
 EVALUATOR='mt8167-dxgi-present356.exe' # CLIENT_VERSION373 retains its public file name.
 RENDER371='202f0f3fd7d4325df20dd8570d88299f008fae421bff16cccf99589282a19ded'
 DISPLAY369='f7ec03b7a6ad87b3e042f96818080b1617ed7b68ff5e58d704bdd22158b79b5d'
+VARIANTS={215:373,218:374}
+CLIENT374_SOURCE='5eb3ab11d9e63a5e07a752f84766dc4b1eb292ad'
+WIFI1030='7b6a25636c8dca93fa6480d941926e6a47bd306d7c59d71ba7d9502e5965fa55'
+def variant(capture):
+ require(type(capture) is int and capture in VARIANTS,'Only approved fresh215/218 client variants')
+ version=VARIANTS[capture]
+ return dict(capture=capture,version=version,profile=f'combined-features-fresh{capture}-gpu{version}-clients-v1',service=f'MT8167CombinedFollowup{capture}')
+def policy_variant(policy):
+ v=variant(policy['capture_selection']['capture_number'])
+ require(policy['profile']==v['profile'],'Client profile/capture mismatch');return v
 def require(v,message):
  if not v:raise ValueError(message)
 def mode(wifi=False):
@@ -56,16 +66,19 @@ def admit(root,spec):
  Optional WiFi row is validated by the existing package validator at integration.
  """
  root=Path(root).resolve(strict=True)
- require(spec.get('schema')=='GPU373_CLIENT_UPDATE_ADMISSION_V1' and spec.get('capture_number')==215,'Explicit fresh215 client admission')
+ v=variant(spec.get('capture_number'));CAPTURE=v['capture'];VERSION=v['version'];PROFILE=v['profile'];SERVICE=v['service']
+ require(spec.get('schema')==f'GPU{VERSION}_CLIENT_UPDATE_ADMISSION_V1','Explicit client variant admission')
  require(spec.get('main_execution_approved') is True and spec.get('DWM372_selected') is False,'Main selects client373; no implicit DWM372 adoption')
  selected=spec.get('wifi_update') is not None;runtime=mode(selected)
+ require(CAPTURE!=218 or not selected,'374 retains1030; all DIF/restart disabled')
  require(spec.get('install_targets')==runtime['install_targets'],'Only optional WiFi DIF is admitted')
  fresh_path=pinned(root,spec['fresh']);fresh=read(fresh_path);native=read(pinned(root,spec['native']))
- require(spec['fresh']['path'].endswith('/private-windows-rt-prebackup-run215/manifest.json') and fresh['status']=='captured-unmounted' and fresh['read_only'] and fresh['unmounted'] and fresh['errors']==[],'Actual completed fresh215, never relabel another capture')
- require(spec['fresh']['sha256']=='0c1b965c784d1c60aa9d07b2fc1baed81b2f49d8cc1d8e6182d263eafb5f8107' and fresh['recovery_boot_id']=='4548c4fb-a6ca-4785-a681-8b47b5fc0c03','Actual215 fixed capture/Recovery')
- require(native['source_manifest_sha256']==spec['fresh']['sha256'] and native['recovery_boot_id']==fresh['recovery_boot_id'] and native['capture_number']==215 and native['new_service_name']==SERVICE and native['new_service']['present'] is False,'Same fresh/native and new215 absent')
+ require(spec['fresh']['path'].endswith(f'/private-windows-rt-prebackup-run{CAPTURE}/manifest.json') and fresh['status']=='captured-unmounted' and fresh['read_only'] and fresh['unmounted'] and fresh['errors']==[],'Actual completed fresh215, never relabel another capture')
+ if CAPTURE==215:require(spec['fresh']['sha256']=='0c1b965c784d1c60aa9d07b2fc1baed81b2f49d8cc1d8e6182d263eafb5f8107' and fresh['recovery_boot_id']=='4548c4fb-a6ca-4785-a681-8b47b5fc0c03','Actual215 fixed capture/Recovery')
+ require(native['source_manifest_sha256']==spec['fresh']['sha256'] and native['recovery_boot_id']==fresh['recovery_boot_id'] and native['capture_number']==CAPTURE and native['new_service_name']==SERVICE and native['new_service']['present'] is False,'Same fresh/native and new215 absent')
  require(native['originals_unchanged'] and native['registry_write_requested'] is False and native['full_service_capture_complete'] and native['errors']==[] and all(native[k]==0 for k in ('load_rc','unload_rc','privilege_restore_error')),'Actual clean read-only inventory receipt')
  baseline=read(pinned(root,spec['baseline_policy']));frozen_kernel(baseline)
+ if CAPTURE==218:require(baseline['packages']['wifi']['driver_version']=='2026.11.11.1030' and baseline['packages']['wifi']['hashes']['sys']==WIFI1030,'Retain actual WiFi1030 package')
  supplement_path=pinned(root,spec['supplement']);supplement=read(supplement_path)
  require(supplement['source_manifest_sha256']==spec['fresh']['sha256'] and supplement['recovery_boot_id']==fresh['recovery_boot_id'] and supplement['status']=='captured-unmounted' and supplement['read_only'] and supplement['unmounted'] and supplement['errors']==[],'Same Recovery actual supplement')
  originals={}
@@ -80,20 +93,24 @@ def admit(root,spec):
  pair=spec['client_pair'];require(set(pair)=={'launcher','evaluator'},'Exact client pair only')
  launcher=_signed_leaf(root,pair['launcher']);evaluator=_signed_leaf(root,pair['evaluator'])
  require(Path(pair['launcher']['file']['path']).name==LAUNCHER and Path(pair['evaluator']['file']['path']).name==EVALUATOR,'Retain stable launcher/evaluator file names')
+ CLIENT_SOURCE=globals()['CLIENT_SOURCE'] if CAPTURE==215 else CLIENT374_SOURCE
+ launcher_source='f863841859fc7b1873f7d5bed7d1d1dd6f7187c9' if CAPTURE==215 else spec.get('launcher_source_commit')
+ require(re.fullmatch('[0-9a-f]{40}',launcher_source or '') and launcher_source!='0'*40,'Formal launcher source commit input required')
  require(evaluator['phase']=='evaluator' and evaluator.get('runtime_source_commit')==CLIENT_SOURCE,'Approved373 evaluator source; no arbitrary replacement')
- require(launcher['phase']=='launcher' and launcher['evaluator_sha256']==pair['evaluator']['file']['sha256'] and launcher['evaluator_source_commit']==CLIENT_SOURCE and launcher['runtime_source_commit']=='f863841859fc7b1873f7d5bed7d1d1dd6f7187c9','Launcher rebound to exact evaluator; session/token/GPU roles retained')
+ require(launcher['phase']=='launcher' and launcher['evaluator_sha256']==pair['evaluator']['file']['sha256'] and launcher['evaluator_source_commit']==CLIENT_SOURCE and launcher['runtime_source_commit']==launcher_source,'Launcher rebound to exact evaluator; session/token/GPU roles retained')
  replacements={}
  for role,name in (('launcher',LAUNCHER),('evaluator',EVALUATOR)):
   installed='Windows/System32/'+name;old=originals[installed];replacements[installed]={'baseline':old['host_ref'],'candidate':pair[role]['file'],'manifest':pair[role]['manifest'],'import_proof':pair[role]['import_proof']}
  if selected:wifi_package(root,spec['wifi_update'],baseline['packages']['wifi'])
- return dict(schema='GPU373_CLIENT_TRANSITION_V1',profile=PROFILE,service=SERVICE,capture=spec['fresh'],native=spec['native'],supplement=spec['supplement'],runtime=runtime,client_replacements=replacements,
+ return dict(schema=f'GPU{VERSION}_CLIENT_TRANSITION_V1',profile=PROFILE,service=SERVICE,capture=spec['fresh'],native=spec['native'],supplement=spec['supplement'],runtime=runtime,client_replacements=replacements,
   retained_package_fingerprints={role:hashlib.sha256(json.dumps(row,sort_keys=True,separators=(',',':')).encode()).hexdigest() for role,row in baseline['packages'].items() if role!='wifi' or not selected},retained_kernel_manifest=baseline['GPU371_manifest'],retained_boot_sha256=BOOT,dxgi_logical_copy=dxgi['host_ref'],wifi_update=spec.get('wifi_update'),service_names=sorted(native['old_services']),named_value_ids=sorted(native['captured_named_values']),
   build_performed=False,device_applied=False)
 
 def validate_runtime_policy(policy,admission):
  """Fail-closed hook for the integration, not a broad existing-policy bypass."""
- frozen_kernel(policy);x=admission['runtime']
- require(x==mode(bool(policy['install_targets'])) and admission['schema']=='GPU373_CLIENT_TRANSITION_V1' and admission['profile']==PROFILE and admission['service']==SERVICE,'Exact373 transition/mode only')
+ frozen_kernel(policy);x=admission['runtime'];v=policy_variant(policy);PROFILE=v['profile'];SERVICE=v['service']
+ if v['capture']==218:require(x==mode(False) and policy['packages']['wifi']['driver_version']=='2026.11.11.1030' and policy['packages']['wifi']['hashes']['sys']==WIFI1030,'374 retains WiFi1030/noDIF/noRestart')
+ require(x==mode(bool(policy['install_targets'])) and admission['schema']==f"GPU{v['version']}_CLIENT_TRANSITION_V1" and admission['profile']==PROFILE and admission['service']==SERVICE,'Exact373 transition/mode only')
  for role,h in admission['retained_package_fingerprints'].items():require(hashlib.sha256(json.dumps(policy['packages'][role],sort_keys=True,separators=(',',':')).encode()).hexdigest()==h,'Retained INF/SYS/CAT/package metadata changed: '+role)
  require(policy['profile']==PROFILE and policy['service']==policy['data_directory']==SERVICE,'Fresh215 service identity')
  for k in ('install_targets','diagnostic_only','driver_updates','planned_reboots'):require(policy[k]==x[k],'Runtime mode mismatch: '+k)

@@ -16,3 +16,15 @@ media入口は `build-private-peripheral-batch-media.py --gpu373-client-profile`
 controllerは `run-gpu373-fresh215.py`。main sealは `GPU373_RUN216_MAIN_SEAL_V1`、private_map/generator_path/controller_engine/collector_present_helperをpinし、planned_windows_rebootsとwifi_activationをpolicyと一致させる。terminal成功・失敗とも通常Windows保持。panic/想定外restartは既復旧経路、回収は明示 `--collect-only`。同candidate再実行は禁止。実機操作はmainのみ。
 
 host testは `tests/gpu373_pipeline_test.py` と既controller hold/371/369テスト。成果物生成、署名成功、実機成功は別で、sourceだけではruntime成功を主張しない。
+
+## client374の薄いvariant（fresh218 → run219 → post220）
+
+`prepare-gpu374-client-inputs.py`は同じgenerator／admission／C emitterを利用する。profileは `combined-features-fresh218-gpu374-clients-v1`、serviceは `MT8167CombinedFollowup218`。別の全profile・driver recipeは持たない。
+
+map schemaは `GPU374_CLIENT_UPDATE_ADMISSION_V1`、capture_number218。前述の実入力refと `launcher_source_commit`（実署名receiptと一致する正式40桁commit）が必要。evaluator runtimeはmain承認 `5eb3ab11d9e63a5e07a752f84766dc4b1eb292ad` に限定する。`wifi_update`は指定不可、install_targetsは空、mask0／diagnostic-only／restart0。kernel371／transport369／WiFi1030の全packageをbaseline fingerprintと同一に保つ。372は採用しない。
+
+capture contractは `GPU374_FRESH218_CAPTURE_CONTRACT_V1`。boot witnessは `GPU374_RETAINED_BOOT218_V1`、previous_witnessに実215の `GPU373_RETAINED_BOOT215_V1` を指定し、実run216のseal/result/collectionと実capture217を結合する（keys: run216_seal/run216_result/run216_collection/capture217）。従来の209→213保持chainを再利用し、今回もphysical bootreadや独立連続監視を主張しない。
+
+入口は `build-combined200-service.ps1 -Gpu374Client -CaptureNumber 218 -Mode Service`、mediaの `--gpu374-client-profile`、controllerの `run-gpu374-fresh218.py`。これらは373共通実装へdispatchするalias／薄いfacade。main seal schemaは `GPU374_RUN219_MAIN_SEAL_V1`、generator_pathは新374 facadeをpinし、private_mapもpinする。SCM/nativeの登録対象は新218のみ。通常terminal成功・失敗はholdし、予定restartは0。公開SetDisplayConfigによるpath activation自体はclient側で行い、controllerが独自に設定変更することはない。
+
+未取得fresh218・未確定署名hashをこの文書やsourceから生成しない。実入力が揃うまでfinalize／build／native patchを実行しない。readonly inventoryは実capture通知後、既 `read-fresh200-native-inventory.ps1 -TimingCaptureNumber 218 -IncludeWifiCheckpoint -IncludeGraphicsTopologyCache -IncludeDisplayDeviceBindings` の1loadを利用できる。1030 wire format対応readerを含む。

@@ -10,6 +10,7 @@ c=json.loads(Path(sys.argv[1]).read_text());s=json.loads(Path(sys.argv[2]).read_
 known={
  'GPU368_RUN201_MAIN_SEAL_V1':('combined-run201','MT8167CombinedFollowup200'),
  'GPU368_RUN203_MAIN_SEAL_V1':('combined-run203','MT8167CombinedFollowup202'),
+ 'GPU374_RUN219_MAIN_SEAL_V1':('combined-run219','MT8167CombinedFollowup218'),
  'GPU373_RUN216_MAIN_SEAL_V1':('combined-run216','MT8167CombinedFollowup215'),
  'GPU371_RUN213_MAIN_SEAL_V1':('combined-run213','MT8167CombinedFollowup212'),
  'GPU369_RUN209_MAIN_SEAL_V1':('combined-run209','MT8167CombinedFollowup208'),
