@@ -3,6 +3,7 @@
 #include "windows_native_cold_private.h"
 #include "native_owner_mdl.h"
 #include "native_copy_usc.h"
+#include "native_copy_region_usc_generated.h"
 #include "A04BR3RogueDeviceWords.h"
 #include "../../gpu_mmu.h"
 #include "../../windows_hw.h"
@@ -18,6 +19,7 @@ struct a04_native_copy_storage {
  struct a04_native_mdl_binding *source,*destination;
  struct a04_vendor_uncached code[2];
  struct a04_native_copy_job_image image,clear_image;
+ struct a04_native_copy_job_input input;
  ULONG mapped;BOOLEAN prepared,quarantined;
 };
 static int intersects(uint64_t a,uint64_t n,uint64_t b,uint64_t m)
@@ -106,7 +108,8 @@ NTSTATUS a04_native_copy_storage_create(struct a04_native_copy_storage **out,
  in.width=A04_NATIVE_FRAME_WIDTH;in.height=A04_NATIVE_FRAME_HEIGHT;in.pitch_pixels=800;
  in.fragment_pds_offset=192;in.secondary_data_offset=256;in.secondary_code_offset=272;
  in.eot_pds_offset=64;in.fragment_usc_offset=128;
- if(a04_native_copy_job_build(&c->image,&in)||a04_vendor_clear_image_build(&eot,A04_VENDOR_RENDER_SCRATCH_VA,0)){
+ struct geo_copy_region full={0,0,0,0,in.width,in.height};c->input=in;
+ if(a04_native_copy_region_job_build(&c->image,&in,&full)||a04_vendor_clear_image_build(&eot,A04_VENDOR_RENDER_SCRATCH_VA,0)){
   status=STATUS_INVALID_PARAMETER;goto fail;
  }
  clear_in.aperture_base=in.aperture_base;clear_in.aperture_bytes=in.aperture_bytes;
@@ -145,7 +148,7 @@ NTSTATUS a04_native_copy_storage_create(struct a04_native_copy_storage **out,
   _Alignas(8) ULONG zero[16]={0};
   for(j=0;j<4096;j+=sizeof(zero))if(verified((UCHAR*)c->code[i].cpu+j,zero,sizeof(zero))){status=STATUS_IO_DEVICE_ERROR;goto fail;}
  }
- if(verified(c->code[0].cpu,eot.usc,sizeof(eot.usc))||verified((UCHAR*)c->code[0].cpu+128,usc,usc_bytes)||
+ if(verified(c->code[0].cpu,eot.usc,sizeof(eot.usc))||verified((UCHAR*)c->code[0].cpu+128,a04_native_copy_region_usc,sizeof(a04_native_copy_region_usc))||
     verified(c->code[1].cpu,c->clear_image.eot_pds,sizeof(c->clear_image.eot_pds))||
     verified((UCHAR*)c->code[1].cpu+64,c->image.eot_pds,sizeof(c->image.eot_pds))||
     verified((UCHAR*)c->code[1].cpu+192,c->image.fragment_pds,sizeof(c->image.fragment_pds))||
@@ -203,4 +206,17 @@ NTSTATUS a04_native_copy_storage_gpu_prepare(struct a04_native_copy_storage *c)
   status=a04_native_mdl_sync_for_gpu(c->destination);if(!NT_SUCCESS(status))return status;
  }
  return a04_native_copy_storage_gpu_owned(c)?STATUS_SUCCESS:STATUS_INVALID_DEVICE_STATE;
+}
+
+NTSTATUS a04_native_copy_storage_region(struct a04_native_copy_storage *c,const struct geo_copy_region *r) {
+ struct a04_native_copy_job_image image;
+ if(!c||!r||KeGetCurrentIrql()!=PASSIVE_LEVEL||!c->prepared||c->quarantined||c->native->quarantined||
+    a04_native_copy_region_job_build(&image,&c->input,r))return STATUS_INVALID_PARAMETER;
+ /* Called only by transfer rearm after empty CCB/UFO+completed previous
+  * owner boundary. Immutable USC/PTEs never change. Data page is uncached.
+  * Any partial data write quarantines the graph and keeps its mapping holds. */
+ if(verified((UCHAR*)c->code[1].cpu+512,image.shared,sizeof(image.shared))){
+  c->quarantined=TRUE;c->native->quarantined=TRUE;return STATUS_IO_DEVICE_ERROR;
+ }
+ c->image=image;return STATUS_SUCCESS;
 }

@@ -27,6 +27,25 @@ int main(int argc,char**argv){
  assert((uint32_t)status==0xc00000bbu&&!memcmp(j,before,sizeof(*j)));puts("353 negative: exact R56..69 reconstructed input rejects C00000BB before cold writes");
 #else
  assert(status==0);assert(!memcmp(j->usc+0x800,blob+r.sampled.base.ps.usc.offset,88));
+ /* Production scissor state survives wire validation into the immutable ISP
+  * table. Target-relative clamping must not change shader or resource identity. */
+ {static const int32_t rects[][4]={{13,17,79,113},{-10,-20,27,31},{900,10,1000,40},{0,0,0,0}};
+  static const uint32_t clipped[][4]={{13,17,79,113},{0,0,27,31},{800,10,800,40},{0,0,0,0}};
+  r.sampled.base.state.scissor_enable=1;
+  for(unsigned c=0;c<4;c++){
+   memcpy(r.sampled.base.state.scissor,rects[c],sizeof(rects[c]));
+   assert(geo_draw_validate_capture_v5(&r,blob,sizeof(blob))==0);
+   assert(a04_m111_build_draw_job_v5(j,&in,0x7000200000ULL,0x7000210000ULL,&r,blob,sizeof(blob),scratch,A04_M111_DRAW_SCRATCH)==0);
+   for(unsigned k=0;k<2;k++)for(unsigned axis=0;axis<2;axis++){
+    uint32_t word=0;for(unsigned b=0;b<4;b++)word|=(uint32_t)j->data[0x380+8*k+4*axis+b]<<(8*b);
+    assert(word==((clipped[c][axis]<<16)|clipped[c][axis+2]));
+   }
+   assert(!memcmp(j->usc+0x800,blob+r.sampled.base.ps.usc.offset,88));
+  }
+  r.sampled.base.state.scissor[0]=2;r.sampled.base.state.scissor[2]=1;
+  memcpy(before,j,sizeof(*j));assert(a04_m111_build_draw_job_v5(j,&in,0x7000200000ULL,0x7000210000ULL,&r,blob,sizeof(blob),scratch,A04_M111_DRAW_SCRATCH)!=0&&!memcmp(j,before,sizeof(*j)));
+  r.sampled.base.state.scissor_enable=0;
+ }
  /* Same producer-selected bytes are copied; admission cannot silently change
   * code, register count, aliasing, texture format or framing. */
  for(unsigned k=0;k<88;k++){unsigned at=r.sampled.base.ps.usc.offset+k;blob[at]^=1;assert(a04_m111_texture2d_program(&r.sampled.base.ps,blob,sizeof(blob))!=0);blob[at]^=1;}

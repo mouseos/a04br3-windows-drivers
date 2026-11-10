@@ -46,6 +46,7 @@ HRESULT geo_typed_state_snapshot(const struct geo_typed_state *, struct geo_type
  * must come from validated shader metadata, never merely bound resources.
  * has_depth_view concerns the actual bound DSV (not DepthEnable alone).
  * Caller must honor every rejection before publishing any draw command. */
+BOOL geo_typed_scissor_enabled(const struct geo_typed_state *);
 HRESULT geo_typed_state_validate_flat(const struct geo_typed_state_snapshot *,
  const UINT used_sampler_masks[GEO_TYPED_STATE_STAGES], BOOL has_depth_view, UINT *unsupported);
 #ifdef __cplusplus

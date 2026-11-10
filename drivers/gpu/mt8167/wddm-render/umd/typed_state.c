@@ -202,13 +202,16 @@ void geo_typed_state_install(D3D11_1DDI_DEVICEFUNCS *f) {
  f->pfnPsSetSamplers=set_ps;f->pfnVsSetSamplers=set_vs;f->pfnGsSetSamplers=set_gs;
  f->pfnHsSetSamplers=set_hs;f->pfnDsSetSamplers=set_ds;f->pfnCsSetSamplers=set_cs;
 }
+BOOL geo_typed_scissor_enabled(const struct geo_typed_state *s) {
+ return s?s->value.raster.ScissorEnable:FALSE;
+}
 HRESULT geo_typed_state_validate_flat(const struct geo_typed_state_snapshot *s,const UINT used[6],BOOL dsv,UINT *unsupported) {
  UINT i,bits=0; const D3D11_1_DDI_RASTERIZER_DESC *r; const D3D11_1_DDI_RENDER_TARGET_BLEND_DESC *b;
  if(unsupported)*unsupported=0;
  if(!s||s->size!=sizeof(*s)||s->abi!=GEO_TYPED_STATE_ABI||!used||!unsupported)return E_INVALIDARG;
  r=&s->raster;b=&s->blend.RenderTarget[0];
  if(r->FillMode!=D3D10_DDI_FILL_SOLID||r->CullMode!=D3D10_DDI_CULL_NONE||r->FrontCounterClockwise||
-    r->DepthBias||r->DepthBiasClamp!=0||r->SlopeScaledDepthBias!=0||!r->DepthClipEnable||r->ScissorEnable||
+    r->DepthBias||r->DepthBiasClamp!=0||r->SlopeScaledDepthBias!=0||!r->DepthClipEnable||
     r->MultisampleEnable||r->AntialiasedLineEnable||r->ForcedSampleCount)bits|=GEO_TYPED_FLAT_RASTER;
  /* No DSV means depth/stencil operations have no storage/effect; an enabled
   * default depth state alone must not spuriously reject a no-depth draw. */

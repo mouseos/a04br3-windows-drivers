@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "native_copy_job.h"
+#include "native_copy_region_usc_generated.h"
 #include "display_geometry356.h"
 #include "native_copy_state.h"
 #include "clear_image.h"
@@ -112,4 +113,35 @@ int a04_native_copy_job_build(struct a04_native_copy_job_image *out,
  image.eot_pds[2]=(uint32_t)(q.destination_va>>2);
  image.eot_pds[3]=(uint32_t)(q.destination_va>>34)|(1u<<19);
  *out=image;return 0;
+}
+
+/* CPU-only producer. Both full mapped spans remain the same; a region never
+ * biases a source VA outside its allocation. PBE writes only destination
+ * clip; source coordinate translation is in the source-compiled USC. */
+static uint32_t signed_integer_float(int32_t v) {
+ uint32_t sign=v<0?0x80000000u:0u,m=v<0?(uint32_t)(-(int64_t)v):(uint32_t)v,e=0;
+ if(!m)return 0;
+ for(uint32_t x=m;x>>1;x>>=1)e++;
+ return sign|((e+127u)<<23)|((m<<(23u-e))&0x7fffffu);
+}
+int a04_native_copy_region_job_build(struct a04_native_copy_job_image *out,
+ const struct a04_native_copy_job_input *in,const struct geo_copy_region *r) {
+ struct a04_native_copy_job_image made;
+ uint64_t clip;
+ if(!out||!in||!r||in->shared_va>=(UINT64_C(1)<<40)-48u||overlap(in->shared_va,48u,in->aperture_base,in->aperture_bytes)||!geo_copy_region_valid(r,in->width,in->height,in->width,in->height)||
+    a04_native_copy_job_build(&made,in))return 1;
+ /* Mesa rogue/pbestate.xml REG_WORD0/1; min inclusive,max inclusive.
+  * Keep format/stride bits from the reviewed native22 producer. */
+ made.task[32]=(made.task[32]&~(0x3fffu<<6))|(r->destination_x<<6);
+ clip=((uint64_t)r->destination_y<<46)|((uint64_t)(r->destination_x+r->width-1u)<<32)|
+      (r->destination_y+r->height-1u);
+ made.task[34]=(uint32_t)clip;made.task[35]=(uint32_t)(clip>>32);
+ /* Same DOUTU task encoding as native_clear_pds.c: ceil(temps/4)<<35.
+  * Source compiler metadata: five temps, twelve shared registers. */
+ made.fragment_pds[1]=((A04_COPY_REGION_USC_TEMPS+3u)/4u)<<3;
+ made.secondary_data[2]=0xf000000cu;
+ made.shared[8]=made.shared[10]=0x3f800000u;
+ made.shared[9]=signed_integer_float((int32_t)r->source_x-(int32_t)r->destination_x);
+ made.shared[11]=signed_integer_float((int32_t)r->source_y-(int32_t)r->destination_y);
+ *out=made;return 0;
 }

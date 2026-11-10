@@ -66,7 +66,7 @@ NTSTATUS a04_native_tq_transfer_prepare(struct a04_native_tq_transfer **out,
  * competing submit. IRQ state is inspected only by submit under Dxgk lock.
  * This builds a new transaction, never replays a consumed one-shot image. */
 static NTSTATUS rearm_task(struct a04_native_tq_transfer *c,
- struct a04_vendor_start *s,uint64_t epoch,uint64_t job,BOOLEAN clear,ULONG colour)
+ struct a04_vendor_start *s,uint64_t epoch,uint64_t job,BOOLEAN clear,ULONG colour,const struct geo_copy_region *region)
 {
  struct a04_native_copy_job_image clear_image;
  const struct a04_native_copy_job_image *image;
@@ -88,6 +88,7 @@ static NTSTATUS rearm_task(struct a04_native_tq_transfer *c,
   return STATUS_DEVICE_BUSY;
  c->input=(struct a04_native_copy_queue_input){0xc0080000u+r->layout.tq,
   0xc0080000u+r->layout.sync,value,ctl.ui32ReadOffset,ctl.ui32WriteOffset,ctl.ui32DepOffset,0,(ULONG)job};
+ if(region){status=a04_native_copy_storage_region(c->storage,region);if(!NT_SUCCESS(status))return status;}
  image=clear?a04_native_copy_storage_clear_image(c->storage):a04_native_copy_storage_image(c->storage);
  if(!image)return STATUS_INVALID_DEVICE_STATE;
  if(clear){clear_image=*image;clear_image.task[2]=colour;image=&clear_image;}
@@ -101,10 +102,10 @@ static NTSTATUS rearm_task(struct a04_native_tq_transfer *c,
 }
 NTSTATUS a04_native_tq_transfer_rearm(struct a04_native_tq_transfer *c,
  struct a04_vendor_start *s,uint64_t epoch,uint64_t job)
-{return rearm_task(c,s,epoch,job,FALSE,0);}
+{return rearm_task(c,s,epoch,job,FALSE,0,NULL);}
 NTSTATUS a04_native_tq_transfer_rearm_clear(struct a04_native_tq_transfer *c,
  struct a04_vendor_start *s,uint64_t epoch,uint64_t job,ULONG colour)
-{return rearm_task(c,s,epoch,job,TRUE,colour);}
+{return rearm_task(c,s,epoch,job,TRUE,colour,NULL);}
 BOOLEAN a04_native_tq_transfer_identity(struct a04_native_tq_transfer *c,uint64_t epoch,uint64_t job,uint32_t generation)
 {return c&&epoch&&job&&generation&&c->epoch==epoch&&c->job==job&&c->generation==generation;}
 NTSTATUS a04_native_tq_transfer_submit(struct a04_native_tq_transfer *c,
@@ -293,3 +294,7 @@ NTSTATUS a04_native_tq_transfer_drain_for_stop(struct a04_native_tq_transfer *c,
   * release the command gate after real DMA/GP/cache work, not its resources. */
  InterlockedExchange(&s->command_busy,0);return STATUS_SUCCESS;
 }
+
+NTSTATUS a04_native_tq_transfer_rearm_region(struct a04_native_tq_transfer *c,
+ struct a04_vendor_start *s,uint64_t epoch,uint64_t job,const struct geo_copy_region *region)
+{return region?rearm_task(c,s,epoch,job,FALSE,0,region):STATUS_INVALID_PARAMETER;}

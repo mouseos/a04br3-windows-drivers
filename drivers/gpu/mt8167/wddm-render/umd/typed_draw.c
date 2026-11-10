@@ -118,6 +118,11 @@ HRESULT geo_typed_submit_draw(D3D10DDI_HDEVICE h,const FLOAT vertices[3][4]) {
  p=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,header+total);if(!p)return E_OUTOFMEMORY;blob=(BYTE *)p+header;
  p->magic=GEO_DRAW_MAGIC;p->size=header+total;p->version=1;p->vertex_index=1;p->request.size=sizeof(p->request);p->request.version=1;p->request.blob_bytes=total;p->request.target_desc=target;
  p->request.state.topology=GEO_DRAW_TRIANGLE_LIST;p->request.state.vertex_count=3;p->request.state.vertex_stride=16;memcpy(p->request.state.viewport,&d->viewport,sizeof(d->viewport));p->request.state.color_write_mask=15;
+ p->request.state.scissor_enable=geo_typed_scissor_enabled(d->state)?1u:0u;
+ if(p->request.state.scissor_enable&&d->scissor_set){
+  p->request.state.scissor[0]=d->scissor.left;p->request.state.scissor[1]=d->scissor.top;
+  p->request.state.scissor[2]=d->scissor.right;p->request.state.scissor[3]=d->scissor.bottom;
+ } /* Enabled with zero bound rects is the empty raster region. */
  for(stage=0;stage<2;stage++)shader_packet(blob,&at,stage?&p->request.ps:&p->request.vs,d->bound_shader[stage]->code,constants[stage]);
  p->request.target=1;p->request.vertex=2;
  if(combined){struct geo_draw_packet_v5 *v5=(void *)p;struct geo_umd_tokenized_shader *vs=d->bound_shader[0]->code;

@@ -2,6 +2,7 @@
 #ifndef A04_NATIVE_COPY_JOB_H
 #define A04_NATIVE_COPY_JOB_H
 #include <stdint.h>
+#include "../../wddm-render/copy_region.h"
 /* Internal CPU producer, NOT a user wire ABI or DMA/ownership proof. The
  * consumer must own both real mapped allocation spans through the complete
  * TQ/UFO/SLC/GP/CPU-ownership transition. No CPU source Lock is required. */
@@ -13,7 +14,7 @@ struct a04_native_copy_job_input {
  uint32_t eot_pds_offset,fragment_usc_offset;
 };
 struct a04_native_copy_job_image {
- uint32_t task[52],shared[9],fragment_pds[16];
+ uint32_t task[52],shared[12],fragment_pds[16];
  uint32_t secondary_data[4],secondary_code[4],eot_pds[16];
 };
 /* Complete direct native22 TQ record for disjoint equally-pitched BGRA8
@@ -23,6 +24,8 @@ struct a04_native_copy_job_image {
  * No GPU command is submitted, resource mapped, or completion manufactured. */
 int a04_native_copy_job_build(struct a04_native_copy_job_image *,
  const struct a04_native_copy_job_input *);
+int a04_native_copy_region_job_build(struct a04_native_copy_job_image *,
+ const struct a04_native_copy_job_input *,const struct geo_copy_region *);
 struct a04_native_clear_job_input {
  uint64_t aperture_base,aperture_bytes,target_va,target_bytes;
  uint32_t width,height,pitch_pixels,pds_offset,colour;

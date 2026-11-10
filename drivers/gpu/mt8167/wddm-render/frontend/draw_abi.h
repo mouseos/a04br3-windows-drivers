@@ -26,6 +26,17 @@ struct geo_draw_state {
  uint32_t cull,front_ccw,scissor_enable,blend_enable,color_write_mask;
  uint32_t depth_enable,depth_write,stencil_enable;
 };
+/* D3D rect maxima are exclusive. Clamp signed coordinates before hardware
+ * packing; empty intersections remain empty and never wrap into a full RT. */
+static inline int32_t geo_draw_scissor_bounds(const struct geo_draw_state *s,
+ uint32_t width,uint32_t height,uint32_t bounds[4]) {
+ uint32_t i,extent;
+ if(!s||!bounds||!width||!height||width>0x7fffffffu||height>0x7fffffffu||s->scissor_enable>1u)return GEO_INVALID;
+ if(!s->scissor_enable){bounds[0]=bounds[1]=0;bounds[2]=width;bounds[3]=height;return GEO_OK;}
+ if(s->scissor[0]>s->scissor[2]||s->scissor[1]>s->scissor[3])return GEO_INVALID;
+ for(i=0;i<4;i++){extent=(i&1u)?height:width;bounds[i]=s->scissor[i]<0?0u:(uint32_t)s->scissor[i]>extent?extent:(uint32_t)s->scissor[i];}
+ return GEO_OK;
+}
 struct geo_draw_request {
  uint32_t size,version,blob_bytes,reserved;
  /* Private referenced owner allocation IDs resolved by H from VidMm handles.

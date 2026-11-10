@@ -102,6 +102,15 @@ static int32_t build(struct a04_m111_draw_job *out,
  for(unsigned i=0;i<sizeof(*m);i++)((uint8_t *)m)[i]=0;
  copy(m->ta,base->record[0].ta,sizeof(m->ta));copy(m->three,base->record[0].three,sizeof(m->three));
  copy(m->data,base->data,sizeof(base->data));copy(m->usc,base->usc,sizeof(base->usc));copy(m->pds,base->pds,sizeof(base->pds));
+ {uint32_t clipped[4];
+  if(geo_draw_scissor_bounds(&r->state,r->target_desc.width,r->target_desc.height,clipped)!=GEO_OK)return GEO_INVALID;
+  /* Mesa rogue/ipf.xml: min in bits31:16, exclusive max in bits15:0.
+   * The ISP scissor enable and PPP index already refer to this captured table. */
+  for(unsigned i=0;i<2;i++){
+   put(m->data,0x380+i*8,((uint64_t)clipped[0]<<16)|clipped[2],4);
+   put(m->data,0x384+i*8,((uint64_t)clipped[1]<<16)|clipped[3],4);
+  }
+ }
  copy(m->usc+vs_at,vc,vn);copy(m->usc+ps_at,pc,pn);
  copy(m->usc+0x200,a04_native_load_usc,sizeof(a04_native_load_usc));
  if((general||combined)?a04_m111_build_program_vertex_pds(&vp,in->usc_page_gpu+vs_at,vertex,r->vs.temps):linked?a04_m111_build_linked_vertex_pds(&vp,in->usc_page_gpu+0x80,vertex,r->vs.temps):
@@ -146,8 +155,8 @@ static int32_t build(struct a04_m111_draw_job *out,
   for(unsigned i=0;i<6;i++)put(m->data,0x274+4*i,vp_words[i],4);
  }
  put(m->data,0x500,(UINT64_C(1)<<49)|(UINT64_C(2)<<44)|(UINT64_C(2)<<41)|(UINT64_C(1)<<23)|0xfffu,8);
- put(m->data,0x510,(UINT64_C(599)<<48)|(UINT64_C(799)<<34)|(UINT64_C(12)<<27)|(UINT64_C(1)<<11)|(UINT64_C(2)<<8)|(UINT64_C(3)<<5)|4u,8);
- put(m->data,0x518,(UINT64_C(1)<<60)|(UINT64_C(1)<<59)|((in->output_gpu>>2)<<16)|799u,8);
+ put(m->data,0x510,((uint64_t)(r->target_desc.height-1u)<<48)|((uint64_t)(r->target_desc.width-1u)<<34)|(UINT64_C(12)<<27)|(UINT64_C(1)<<11)|(UINT64_C(2)<<8)|(UINT64_C(3)<<5)|4u,8);
+ put(m->data,0x518,(UINT64_C(1)<<60)|(UINT64_C(1)<<59)|((in->output_gpu>>2)<<16)|(r->target_desc.pitch/4u-1u),8);
  put(m->pds,0x340,in->data_page_gpu+0x500,8);put(m->pds,0x348,0x90000008u,4);
  put(m->pds,0x350,(0xfu<<28)|(1u<<26)|(2u<<16),4);
  po=(uint32_t)(in->pds_page_gpu-UINT64_C(0xa800000000));

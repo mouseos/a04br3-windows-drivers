@@ -295,14 +295,15 @@ static int32_t prepare(void *p,uint64_t surface,uint32_t colour,uint64_t *job)
     if(!NT_SUCCESS(s))c->state=E_OWNER_FAILED;
     return leave(c,s);
 }
-static int32_t prepare_copy(void *p,uint64_t source,uint64_t destination,uint64_t *job) {
+static int32_t prepare_copy_region(void *p,uint64_t source,uint64_t destination,const struct geo_copy_region *region,uint64_t *job) {
  struct e_native_owner *c=p;struct e_native_resource *src,*dst;NTSTATUS s;
  if(!job)return STATUS_INVALID_PARAMETER;*job=0;
  GeoFactoryCheckpoint(15,STATUS_SUCCESS,2,(ULONG)source,(ULONG)destination,0);
  s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
  src=resource(c,source);dst=resource(c,destination);
  if(!src||!dst||src==dst||!geo_usage_renderable(src->desc.usage)||
-    dst->desc.usage!=GEO_USAGE_STAGING||!dst->linear||c->next_id==UINT64_MAX)return leave(c,STATUS_INVALID_PARAMETER);
+    dst->desc.usage!=GEO_USAGE_STAGING||!dst->linear||c->next_id==UINT64_MAX||
+    !geo_copy_region_valid(region,src->desc.width,src->desc.height,dst->desc.width,dst->desc.height))return leave(c,STATUS_INVALID_PARAMETER);
  s=select_target_locked(c,source);if(!NT_SUCCESS(s))return leave(c,s);
  s=wait_boundary_locked(c);if(!NT_SUCCESS(s))return leave(c,s);
  /* Copy is an idle-to-submit transition on the current FW root. No stop,
@@ -319,11 +320,15 @@ static int32_t prepare_copy(void *p,uint64_t source,uint64_t destination,uint64_
  if(!c->allocation->start.online){
   s=e_native_boot_locked(c);if(!NT_SUCCESS(s)){GeoFactoryCheckpoint(19,s,3,0,0,0);c->state=E_OWNER_FAILED;return leave(c,s);}
  }
- s=a04_native_tq_transfer_rearm(c->copy_transfer,&c->allocation->start,c->hardware_epoch,c->next_id+1u);
+ s=a04_native_tq_transfer_rearm_region(c->copy_transfer,&c->allocation->start,c->hardware_epoch,c->next_id+1u,region);
  if(NT_SUCCESS(s)){RGXFWIF_CCB_CTL k;
   if(a04_rgx_device_read_words(&k,c->allocation->firmware.runtime->kctl,sizeof(k))||k.ui32WrapMask!=127||k.ui32ReadOffset!=k.ui32WriteOffset)s=STATUS_DEVICE_BUSY;
   else{c->kick_write=k.ui32WriteOffset;c->job=++c->next_id;c->job_is_copy=TRUE;c->job_state=E_JOB_PREPARED;*job=c->job;}}
  if(!NT_SUCCESS(s)){GeoFactoryCheckpoint(19,s,4,0,0,0);c->state=E_OWNER_FAILED;}return leave(c,s);
+}
+static int32_t prepare_copy(void *p,uint64_t source,uint64_t destination,uint64_t *job) {
+ const struct geo_copy_region full={0,0,0,0,800,A04_NATIVE_FRAME_HEIGHT};
+ return prepare_copy_region(p,source,destination,&full,job);
 }
 struct discard_call {struct e_native_owner *c;uint64_t job;NTSTATUS status;};
 static BOOLEAN discard_close(void *p)
@@ -433,7 +438,7 @@ static NTSTATUS acquire(void *p,struct geo_owner_lease *out)
     if(c->leased || c->state==E_OWNER_FAILED){KeReleaseMutex(&c->mutex,FALSE);return STATUS_DEVICE_BUSY;}
     c->leased=TRUE;reference(c);out->size=sizeof(*out);out->version=2;out->cookie=c;out->epoch=c->epoch;
     out->irq_route=GEO_IRQ_DXGK_REGISTERED;out->irq_level=c->irq_level;
-    out->ops=(struct geo_owner_ops){sizeof(out->ops),GEO_OWNER_OPS_VERSION,GEO_OWNER_REQUIRED,0,c,create,bind,unbind,destroy,prepare,discard,submit,prepare_copy};
+    out->ops=(struct geo_owner_ops){sizeof(out->ops),GEO_OWNER_OPS_VERSION,GEO_OWNER_REQUIRED,0,c,create,bind,unbind,destroy,prepare,discard,submit,prepare_copy,prepare_copy_region};
     KeReleaseMutex(&c->mutex,FALSE);return STATUS_SUCCESS;
 }
 static NTSTATUS release(void *p,uint64_t epoch)

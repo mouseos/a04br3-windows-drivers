@@ -2,11 +2,12 @@
 #ifndef GEO_OWNER_ABI_H
 #define GEO_OWNER_ABI_H
 #include "clear_protocol.h"
+#include "copy_region.h"
 /* Kernel-only ops v2 proposal (control v2 is separate). The provider implements these operations; the
  * sidecar does not implement registers, firmware, shader or triangle runtime.
  * Reference/dereference, D0 and revoke/rundown are supplied by the binding.
  * All tokens are private kernel handles, never supplied by a user process. */
-#define GEO_OWNER_OPS_VERSION 3u
+#define GEO_OWNER_OPS_VERSION 4u
 /* Internal captured-submit continuation only: a real IRQ was claimed before
  * publication and needs PASSIVE service. No command was published and the
  * same prepared token/fence must be retained; this is not DMA completion. */
@@ -43,6 +44,7 @@ struct geo_owner_ops {
   * the consumer while this call is in progress. */
  int32_t (*submit)(void *,uint64_t job,uint32_t scheduler_fence,uint32_t consumer_generation);
  int32_t (*prepare_copy)(void *,uint64_t source,uint64_t destination,uint64_t *job);
+ int32_t (*prepare_copy_region)(void *,uint64_t source,uint64_t destination,const struct geo_copy_region *,uint64_t *job);
 };
 /* Completion delivery must be coordinated with DxgkDdiInterruptRoutine at
  * the real DIRQL; DxgkCbNotifyInterrupt must not be called from a polling DPC.

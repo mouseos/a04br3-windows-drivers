@@ -51,8 +51,9 @@ int32_t geo_draw_validate_capture(const struct geo_draw_request *r,const void *b
   * success claim; E may support a narrower profile and must reject it honestly. */
  if(r->state.topology!=GEO_DRAW_TRIANGLE_LIST || !r->state.vertex_count || r->state.vertex_count%3u ||
     r->state.vertex_stride!=16u || (r->state.vertex_offset&3u) ||
-    r->state.cull || r->state.front_ccw || r->state.scissor_enable || r->state.blend_enable ||
+    r->state.cull || r->state.front_ccw || r->state.blend_enable ||
     r->state.color_write_mask!=15u || r->state.depth_enable || r->state.depth_write || r->state.stencil_enable)return GEO_UNSUPPORTED;
+ {uint32_t clipped[4];if(geo_draw_scissor_bounds(&r->state,r->target_desc.width,r->target_desc.height,clipped)!=GEO_OK)return GEO_INVALID;}
  if(r->state.first_vertex>0xffffffffu-r->state.vertex_count ||
     r->state.first_vertex+r->state.vertex_count>(0xffffffffu-r->state.vertex_offset)/16u)return GEO_INVALID;
  for(i=0;i<6u;i++)if((r->state.viewport[i]&0x7f800000u)==0x7f800000u)return GEO_INVALID;
