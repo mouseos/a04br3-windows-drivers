@@ -74,6 +74,16 @@ for row in changed_orig['files']:
  if row['path']==shared_path:row['previous_origins'][0]['role']='history silently relabelled'
 origfile.write_text(json.dumps(changed_orig));run('alter preserved shared-source old origin history',False)
 origfile.write_text(json.dumps(origins))
+# The main POST366 origin is a separate parent and must survive the merge.
+changed_orig=json.loads(json.dumps(origins))
+for row in changed_orig['files']:
+ if row['path'].endswith('/miniport.c'):row['previous_origins'][1]['role']='main diagnostic history silently relabelled'
+origfile.write_text(json.dumps(changed_orig));run('alter preserved main POST366 merge-parent history',False)
+origfile.write_text(json.dumps(origins))
+changed=json.loads(json.dumps(native))
+changed['shared_main194_primary_integration']['warm196_driver_objects_compatible']=True
+mapfile.write_text(json.dumps(changed));run('claim warm196 driver objects compatible with integrated source',False)
+mapfile.write_text(json.dumps(native))
 fullrecipefile=fixture/'tools/ci/build-ge8300-from-source.ps1'
 original_full=fullrecipefile.read_text();fullrecipefile.unlink()
 fullrecipefile.write_text(original_full.replace('-WithMdlTarget -WithOwnerAllocation','-ReuseVerifiedDirectory old-layout-cache -WithMdlTarget -WithOwnerAllocation'))

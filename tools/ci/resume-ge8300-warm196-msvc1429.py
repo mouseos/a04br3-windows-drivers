@@ -9,6 +9,9 @@ def read(p):return json.loads(Path(p).read_text(encoding='utf-8-sig'))
 def pin(p,h):
  if sha(p)!=h.lower():raise ValueError('Pinned input/source changed: '+str(p))
 def validate(root,warm,spec):
+ integration=read(root/'tools/ci/ge8300-fullsource-origins.json').get('shared_main194_primary_integration')
+ if integration and integration.get('warm196_driver_objects_compatible') is False:
+  raise ValueError('Integrated driver source requires full native/KMD/UMD recompile; warm196 resume forbidden; retain only pinned PCO tool input')
  for name,h in spec['files'].items():pin(warm/name,h)
  m=read(warm/'warm-build-manifest.json')
  if m['source_commit']!=spec['baseline_source_commit'] or m['source_dirty']:raise ValueError('Wrong warm baseline')

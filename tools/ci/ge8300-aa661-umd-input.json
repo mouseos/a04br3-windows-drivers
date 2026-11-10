@@ -1,0 +1,233 @@
+{
+  "schema": "ge8300-aa661-fixed-umd-input-v1",
+  "UMDSourceCommit": "aa6613149e09b7b7be718c90103a34323c362917",
+  "CompilerSourceCommit": "f4b92404c4bbe139524a997c5427a8245560e522",
+  "signed": false,
+  "runtime_verified": false,
+  "manifest_sha256": "7e53d10c9504510aff53d1c62cdb59fbaf16f78a27c2e67339f3182408046397",
+  "dll_sha256": "ebba6b7af5683ae149cfa864578c252d7a7c6de0a591ee5fe470c284bc936bda",
+  "compiled_units": [
+    {
+      "source_sha256": "A5EFC81A5BDFD88FB0604A6481CEB6A7B609F5163A27D58F948556241ED00A9E",
+      "object_sha256": "EB87A7628B1412FEA7A76864A86EBEBEEDAFC54F1D2275ACFF3FAAD6059460C7",
+      "unit": "clear_protocol"
+    },
+    {
+      "source_sha256": "1907C34FAB878A95906DBB6F7299B91B21DDF68797D517E382072894A9282AD5",
+      "object_sha256": "042D310DA6929153437DBE6DDBAB31FA098B358D8A83154D5189245FD4E98D50",
+      "unit": "frontend/draw_protocol"
+    },
+    {
+      "source_sha256": "C82BF073BA5A59BB4B8821F3D736974476D47FEE8CDC324B24EC430CEDF1E676",
+      "object_sha256": "F23F11EDCF61EE6A2DC92333C5150AF37884E1DA672720D820BEC6C99853E43A",
+      "unit": "frontend/draw_link_protocol"
+    },
+    {
+      "source_sha256": "F0D5793A4982ADADE90B9BE87ADB71F552457A71431EF22B0535B8C74D5C0EA8",
+      "object_sha256": "62E8F50ACF2B1D0371FF2D86CB36F7BD98D338B132F24A79B7034C9AE02A5FE1",
+      "unit": "frontend/texture_draw_protocol"
+    },
+    {
+      "source_sha256": "99DAAE6871EA92D97AE8926FA20604B9D689DE7427D083E35A318610068A7635",
+      "object_sha256": "43D155DC7DEE463851A5902CD1DFD754B7E8631A08316CE06F70D4BEB9A82EC3",
+      "unit": "frontend/shader_draw_protocol"
+    },
+    {
+      "source_sha256": "B384D7151514AF07C6A1A42154C4639736EC707CF03F19C5982CD68B425C7B86",
+      "object_sha256": "16AA3DFDDFFDC3DE177096D9F6D3ADD5CD9B8E5CCF9EAE32F83C265B1C5B546F",
+      "unit": "umd/clear_ddi"
+    },
+    {
+      "source_sha256": "F41240ADDD300D0CDBB9F330E99AD519A9F8995699D37575D2C7AD35C0A43619",
+      "object_sha256": "D579D525D3573EC42018323F8B4049A650F67101B7967056AAE8497A24ED5DA5",
+      "unit": "umd/bootstrap"
+    },
+    {
+      "source_sha256": "F0E88F0C67268BD66130A4DAE96C6C63E0E4771219AFD9703E904C801A0902AD",
+      "object_sha256": "5DA0119365DBB892BFFBBFFCAB986FF5FCB59EE9F6CFBAACB1BF34D0CA429450",
+      "unit": "umd/frontend"
+    },
+    {
+      "source_sha256": "E0E3299208EA8E32847FBC84DC2208D688DB0E1A9736E312AA47E477E46E9753",
+      "object_sha256": "688717635CC2457DC11341A46534943D1DCB8ABFF787E2D45BE54E339F07FE55",
+      "unit": "umd/shader_state"
+    },
+    {
+      "source_sha256": "749CF3AFAA7EC82D4670968909D91720009FBA1733F3C7DEC78FF803E0D9EB1B",
+      "object_sha256": "AE229CE422E57FC488C3D446B2B08B2D848624714491B3112AB435DE89ABA353",
+      "unit": "umd/tokenized_shader"
+    },
+    {
+      "source_sha256": "251E3D5C99E404250810B69A8F72492473A95930B4EA57A498437299C934C872",
+      "object_sha256": "2E0717C0E22F3B65510B40AC6A45BD0A5793676D548233BD58F65C4F51F4277B",
+      "unit": "compiler/sm2"
+    },
+    {
+      "source_sha256": "B116097A69A447911F815346059A2208A086B60F1876455616E1431BD41310DE",
+      "object_sha256": "B1EDE2004B9A3EB8B23E562CD9ED2F0014D772323F98B26D5B8B56D9B6BD58C2",
+      "unit": "umd/typed_state"
+    },
+    {
+      "source_sha256": "9AFD25A665BE367AB86D72EBB793E422560E31C7A1DDCAB91D78044D6AA953F8",
+      "object_sha256": "7AB441096809630EAC1B86FD8541E475FF9CF0803A0EEF2CA0C953FC15E791E3",
+      "unit": "umd/typed_texture"
+    },
+    {
+      "source_sha256": "6C98BAFD08544FA373794033BBD1A55679D5E210910233C575430739DBEA4E82",
+      "object_sha256": "624D8F418EE3DBC8D72ABE5CA926AD58EFFB6DD48CCDA41D7673883147438FD8",
+      "unit": "umd/typed_resource"
+    },
+    {
+      "source_sha256": "AB37B05E26FE343D037E8B26F533D8D2CBC17A58C08D4E459326F1DAAF6EB25A",
+      "object_sha256": "CAC27ED313BF41C6969323EF5F5065945CD903BE04C0CFBDBD8418B79B3BFADF",
+      "unit": "umd/typed_view"
+    },
+    {
+      "source_sha256": "D0BA9354D3B317747AED84E4CE94E98CCF119C2488A3964AD5CA90F39A241C65",
+      "object_sha256": "550AB26FC5F6B874DFBB0538FDA839A9D8228D415C3400E3E85F1CF47F481BCF",
+      "unit": "umd/typed_shader"
+    },
+    {
+      "source_sha256": "2BA31047E8A11BFAC52058B0F66F65312A6DB096FD765A31FCAF6779CDFC8CC1",
+      "object_sha256": "0BE8A16CCB770A662D977DAB184F7C2D8537685B7ADAF4742A7BCBE30DBBCAC7",
+      "unit": "umd/typed_draw"
+    },
+    {
+      "source_sha256": "DF7B93FEAB9CDCC950CB444421B939A114D150C61729731DB05285B746965E65",
+      "object_sha256": "84A147D26A10409C5A642601C493DE22DE4B408174A255E6B977B46D181C35D7",
+      "unit": "umd/typed_pair"
+    },
+    {
+      "source_sha256": "D38A9B750EA0FD3D79EB1D281B21595F3AC04F9DF6F5CC628B21C4E930FA83A5",
+      "object_sha256": "94530138716F6E693F0FE9D3B07359CB66447E32E37C7BC128A91BA0CC35B540",
+      "unit": "umd/typed_runtime"
+    },
+    {
+      "source_sha256": "FFEC6949538973A3A287B10C8479128F74873DF57B357EDD546A570F8EE9D0FA",
+      "object_sha256": "E88D0BBBCE9BDF66E199CB4FE27FF541BE9AF82464FBFD4B2D4E3D1EB580B8A3",
+      "unit": "umd/typed_dxgi"
+    },
+    {
+      "source_sha256": "12BFC9559BF00DD6C27DCAA35D15445CC8EB8A768B2BFDDAC219A81CBF99AF79",
+      "object_sha256": "EDA79B804AE8168AF9BBB90F32E73CF695F736C87F8DD56738CBEE0A101903B3",
+      "unit": "umd/typed_entry"
+    },
+    {
+      "source_sha256": "130109B5FB08B76EB7AF24949C1AFCCAACA73C342334F07F724ACDB726E30764",
+      "object_sha256": "B9C2937B0514264E30F1387629218878F95FDB7ECB9956E9A7C1BBF6BFAD93B6",
+      "unit": "umd/entry"
+    },
+    {
+      "source_sha256": "3EB20E9C612FE2E5515F2C8E55D57B47DBB0113D8F9D579684B41EB629B6FE94",
+      "object_sha256": "6EBF359A2E2A307E56B31820C2FFD5CE0F9BA624521B92448482414358492942",
+      "unit": "testclient/memory"
+    },
+    {
+      "source_sha256": "B5B0697D4F350D8BDFB5F7DE144D587C2F419615DDA42D93C557B60922D0385B",
+      "object_sha256": "FF178048426688F6A6FC3274C5FB92FA3E188B9B6BA6311A4F23238BC76DE049",
+      "unit": "testclient/d3d-clear"
+    },
+    {
+      "source_sha256": "B90046F1F7CF70A664CE5AB3B3FD0678E00159682ED166FCBC15B7E0F93A9763",
+      "object_sha256": "9B79AFB84510FC9E430EEBC3D7A1B9BF97DCEA49DCD58653EB87F3B7CF683BC5",
+      "unit": "testclient/d3d-texture"
+    },
+    {
+      "source_sha256": "E777E6EE58637049D889B64017F9A8A993AD2921B8D20CC58B1C00C357B66A88",
+      "object_sha256": "44706FBFB5F20C8760A267F4B2102D985A57A5922008198B9AADBE5C068BEC83",
+      "unit": "testclient/d3d-texture-boundary"
+    },
+    {
+      "source_sha256": "B303E7A13B5B0376DB6ED4B424D71BDBDE5DBD4FA92E4AC0AC91AC86E97F85F5",
+      "object_sha256": "1D894FEEF593B99A43A96EC1C49C37D5A210F88A926EB92754C1893975F677D2",
+      "unit": "testclient/d3d-ui-texture"
+    }
+  ],
+  "repository_source_include_closure": {
+    "drivers/gpu/mt8167/wddm-render/testclient/d3d-ui-texture.c": "b303e7a13b5b0376db6ed4b424d71bdbde5dbd4fa92e4ac0ac91ac86e97f85f5",
+    "drivers/gpu/mt8167/wddm-render/testclient/d3d-clear.c": "b5b0697d4f350d8bdfb5f7de144d587c2f419615dda42d93c557b60922d0385b",
+    "drivers/gpu/mt8167/wddm-render/testclient/ui_texture_probe.inc": "8f4ff2a5a383109fca80b133e19a2f7dfc09a216b56a4024ba38b11945187bce",
+    "drivers/gpu/mt8167/wddm-render/testclient/ui_texture_oracle.h": "70af46e990b5399f4873a077bdf64d329066bf9b9bbfe494a435d1a5dcb4fb81",
+    "drivers/gpu/mt8167/wddm-render/testclient/durable_progress.h": "d12b750cc0c0f1e20746c300c513ab25a160a6a01e8df05b34e04589c6d04afe",
+    "drivers/gpu/mt8167/wddm-render/testclient/texture_probe.inc": "d91f1653e783c89a6bc62e4da9ec57f6a4ade3d6cc9b8887041fb4e1795a8473",
+    "drivers/gpu/mt8167/wddm-render/testclient/color_shaders.h": "c6b19a3754cd8af4b6aabd5c7c2a7bb387977bd255dc86cb897d6a95c2096b3c",
+    "drivers/gpu/mt8167/wddm-render/testclient/texture_shaders.h": "22c6b139e92d8a138818e81d4a9c741aa327a91abe5935b6bac12c0576b798c6",
+    "drivers/gpu/mt8167/wddm-render/testclient/fixed_shaders.h": "fa6530c61383f6c76bbb30860b578d9887dd6650196593e78e1c9af4b8daea76",
+    "drivers/gpu/mt8167/wddm-render/testclient/d3d-texture-boundary.c": "e777e6ee58637049d889b64017f9a8a993ad2921b8d20cc58b1c00c357b66a88",
+    "drivers/gpu/mt8167/wddm-render/testclient/d3d-texture.c": "b90046f1f7cf70a664ce5ab3b3fd0678e00159682ed166fcbc15b7e0f93a9763",
+    "drivers/gpu/mt8167/wddm-render/testclient/memory.c": "3eb20e9c612fe2e5515f2c8e55d57b47dbb0113d8f9d579684b41eb629b6fe94",
+    "drivers/gpu/mt8167/wddm-render/umd/entry.c": "130109b5fb08b76eb7af24949c1afccaaca73c342334f07f724acdb726e30764",
+    "drivers/gpu/mt8167/wddm-render/umd/bootstrap.h": "0a4f7e0eb94e75ca72bb6efdf70bbe77feca28f4e66f04c619353bf6e084eb92",
+    "drivers/gpu/mt8167/wddm-render/umd/clear_ddi.h": "1ee34d775f875364e427607329f66fe1bef30abb8486654352a1de11fda6fa26",
+    "drivers/gpu/mt8167/wddm-render/shared_surface.h": "dc6a5d23e11a63e48ae6afce47a549655584f7541b708aa592fc9ed1a0c44db6",
+    "drivers/gpu/mt8167/wddm-render/texture_layout.h": "b5d18207d8014fcb68ba37381e42d9fa76793d4e22f59fb5ca2aa21346c8073c",
+    "drivers/gpu/mt8167/wddm-render/clear_protocol.h": "f47cad1faa76cc4263a5165c2f361a3de77f6142f2089e365b7ec495afbfe3cd",
+    "drivers/gpu/mt8167/wddm-render/frame_geometry356.h": "21dee0b2d8d3baf4ebe4af3fc8d0bf5ecbd47017b185c867eeb7eac6d86b1a75",
+    "drivers/gpu/mt8167/wddm-render/umd/typed_entry.c": "12bfc9559bf00dd6c27dcaa35d15445cc8eb8a768b2bfddac219a81cbf99af79",
+    "drivers/gpu/mt8167/wddm-render/memory.h": "ab711d86133dc2bceca74e37912d6a44f6e1cdf5ef045d105f65dd1452b4db29",
+    "drivers/gpu/mt8167/wddm-render/umd/typed_state.h": "381850fc11755904d8e9b65202b22a00c0de36ef5a1419edd8f24841691823a7",
+    "drivers/gpu/mt8167/wddm-render/umd/typed_device.h": "32fd06d805909252175bd10c3eae72251ce09b30c2913b3d938799536fb315fd",
+    "drivers/gpu/mt8167/wddm-render/frontend/draw_abi.h": "923beffc558f5d00b6bca23a7125e000560268021c2996423656ffe531d890c7",
+    "drivers/gpu/mt8167/wddm-render/adapter_info.h": "f3a0fdf8433fc86641304b09a6c2aed034ab640db5c0b18084faee05388d86d2",
+    "drivers/gpu/mt8167/wddm-render/aperture.h": "704d81362f40893931985e551f73d9bcd6af2db951941a3d27c919717bb7aaa2",
+    "drivers/gpu/mt8167/wddm-render/umd/tokenized_shader.h": "d1f138d899c7034387ff16e49a7f980803618981b158f5a376257d68e58f2d1c",
+    "drivers/gpu/mt8167/wddm-render/compiler/shader_compiler.h": "d727cbe4224f1ec672d975a6f29ea4f46d6a915fe342928b8c97cc80dcfa9647",
+    "drivers/gpu/mt8167/wddm-render/compiler/sm4.h": "5895afa0f8b5b82ff524ed676756bf57770c66dcd919100ce6bfa1d29eee5fc0",
+    "drivers/gpu/mt8167/wddm-render/compiler/sm2.h": "eb9f36c978ff565644770c0083beca591bca20a1e55eda2ab2301990949b2eef",
+    "drivers/gpu/mt8167/wddm-render/umd/typed_dxgi.c": "ffec6949538973a3a287b10c8479128f74873df57b357edd546a570f8ee9d0fa",
+    "drivers/gpu/mt8167/wddm-render/umd/typed_runtime.c": "d38a9b750ea0fd3d79eb1d281b21595f3ac04f9df6f5cc628b21c4e930fa83a5",
+    "drivers/gpu/mt8167/wddm-render/umd/typed_pair.c": "df7b93feab9cdcc950cb444421b939a114d150c61729731db05285b746965e65",
+    "drivers/gpu/mt8167/wddm-render/compiler/pair_compiler.h": "bbffa8aef11e6e532a04f2ef60d43b096bb086104b12384703e073d9151ca585",
+    "drivers/gpu/mt8167/wddm-render/frontend/draw_link_abi.h": "c59dec3c4374ed9fac60a20938eb4e9fc81632fcba1d2518941f88c8f598b805",
+    "drivers/gpu/mt8167/wddm-render/umd/typed_draw.c": "2ba31047e8a11bfac52058b0f66f65312a6db096fd765a31fcaf6779cdfc8cc1",
+    "drivers/gpu/mt8167/wddm-render/frontend/texture_draw_abi.h": "f7db9241b8e50952ea2ca564e3d3e922adf54c9440875333b093aeefeae5887f",
+    "drivers/gpu/mt8167/wddm-render/frontend/shader_draw_abi.h": "e9710a8eeb24e0dd59c42a50a340e09d9cc8e3b740b3fd7328a0ba295943daaa",
+    "drivers/gpu/mt8167/wddm-render/frontend/shader_witness.h": "afeb1e95a605ec7b73d7f4cb5926349e070772289ece5bbd61460a72e44e36ed",
+    "drivers/gpu/mt8167/wddm-render/umd/typed_shader.c": "d0ba9354d3b317747aed84e4ce94e98ccf119c2488a3964ad5ca90f39a241c65",
+    "drivers/gpu/mt8167/wddm-render/umd/typed_view.c": "ab37b05e26fe343d037e8b26f533d8d2cbc17a58c08d4e459326f1daaf6eb25a",
+    "drivers/gpu/mt8167/wddm-render/umd/typed_resource.c": "6c98bafd08544fa373794033bbd1a55679d5e210910233c575430739dbea4e82",
+    "drivers/gpu/mt8167/wddm-render/umd/update_subresource.h": "3c55648988e295233243f4350f9674dd12b80a0ba2e5fb4f78317aa8ef624809",
+    "drivers/gpu/mt8167/wddm-render/umd/typed_texture.c": "9afd25a665be367ab86d72ebb793e422560e31c7a1ddcab91d78044d6aa953f8",
+    "drivers/gpu/mt8167/wddm-render/umd/typed_state.c": "b116097a69a447911f815346059a2208a086b60f1876455616e1431bd41310de",
+    "drivers/gpu/mt8167/wddm-render/compiler/sm2.c": "251e3d5c99e404250810b69a8f72492473a95930b4ea57a498437299c934c872",
+    "drivers/gpu/mt8167/wddm-render/umd/tokenized_shader.c": "749cf3afaa7ec82d4670968909d91720009fba1733f3c7dec78ff803e0d9eb1b",
+    "drivers/gpu/mt8167/wddm-render/compiler/texture2d_sm4.h": "dd649143ddc20742942993de54841413d8d71487a178b5afd1184cb48f0397c6",
+    "drivers/gpu/mt8167/wddm-render/umd/shader_state.c": "e0e3299208ea8e32847fbc84dc2208d688db0e1a9736e312aa47e477e46e9753",
+    "drivers/gpu/mt8167/wddm-render/umd/shader_state.h": "0c8a69de161423a7475b32077ddc07fb5978b137f9a04f090ee8bd26bb264bb3",
+    "drivers/gpu/mt8167/wddm-render/umd/frontend.c": "f0e88f0c67268bd66130a4dae96c6c63e0e4771219afd9703e904c801a0902ad",
+    "drivers/gpu/mt8167/wddm-render/umd/bootstrap.c": "f41240addd300d0cdbb9f330e99ad519a9f8995699d37575d2c7ad35c0a43619",
+    "drivers/gpu/mt8167/wddm-render/umd/clear_ddi.c": "b384d7151514af07c6a1a42154c4639736ec707cf03f19c5982cd68b425c7b86",
+    "drivers/gpu/mt8167/wddm-render/umd/readback_wait.h": "33ff123687a52dc6230969422aef0136e058b23e424ed7a2a81c5f9f77d53827",
+    "drivers/gpu/mt8167/wddm-render/frontend/shader_draw_protocol.c": "99daae6871ea92d97ae8926fa20604b9d689de7427d083e35a318610068a7635",
+    "drivers/gpu/mt8167/wddm-render/frontend/texture_draw_protocol.c": "f0d5793a4982adade90b9be87adb71f552457a71431ef22b0535b8c74d5c0ea8",
+    "drivers/gpu/mt8167/wddm-render/frontend/draw_link_protocol.c": "c82bf073ba5a59bb4b8821f3d736974476d47fee8cdc324b24ec430cedf1e676",
+    "drivers/gpu/mt8167/wddm-render/frontend/draw_validation_private.h": "b0b165f72b5c9b09628f5ff90424dfeca04e91587c16c47b9929e8f3777b15b9",
+    "drivers/gpu/mt8167/wddm-render/frontend/draw_protocol.c": "1907c34fab878a95906dbb6f7299b91b21ddf68797d517e382072894a9282ad5",
+    "drivers/gpu/mt8167/wddm-render/clear_protocol.c": "a5efc81a5bdfd88fb0604a6481ceb6a7b609f5163a27d58f948556241ed00a9e"
+  },
+  "recipe": "drivers/gpu/mt8167/wddm-render/build-native-development-wdk81.ps1",
+  "recipe_sha256": "40fd060f7a5d601c9e83eacada6daa647d49a0435c59b4619f016837ad8f209c",
+  "external_include_names": [
+    "d3d10umddi.h",
+    "d3d11.h",
+    "d3d9.h",
+    "d3d9caps.h",
+    "d3d9types.h",
+    "d3dkmthk.h",
+    "d3dumddi.h",
+    "dxgi.h",
+    "dxgi1_2.h",
+    "float.h",
+    "initguid.h",
+    "ntddvdeo.h",
+    "setupapi.h",
+    "stddef.h",
+    "stdint.h",
+    "string.h",
+    "windows.h",
+    "winternl.h"
+  ],
+  "compile_time_external_include_closure_recorded": false,
+  "repository_closure_comparison": "all literal includes recursively, including inactive branches; identical bytes to aa661; no macro includes",
+  "new_PCO_compile_or_link_required_for_binary_reuse": false
+}

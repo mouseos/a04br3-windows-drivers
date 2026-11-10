@@ -3153,9 +3153,9 @@
       },
       {
         "path": "drivers/gpu/mt8167/wddm-render/kmd_objects.c",
-        "source_commit": "8f5d372d523018f67d03f7671021312b9a2cae0c",
-        "sha256": "88689a720cbf96ba520e98dafa6221a14a5a2358bac76136973efcceb697c2b4",
-        "previous_origin_row_sha256": "ac1ec391132d5d24c846fbe2f453dbe8bd81bdaaf16fa2cb962a0bd903b96713"
+        "source_commit": "ddb4b5cd443fc9c802f86b286a03f0d1c151f647",
+        "sha256": "2b37e5fc3daa9ff32c4136e46804f183ea89473ccb7d96fdb5d7cb9ffcf9cfb8",
+        "previous_origin_row_sha256": "6314c7c889119122ccde69ef2ffc21c61fed4f9283e992c940cac2af99f874b0"
       },
       {
         "path": "drivers/gpu/mt8167/wddm-render/lifecycle.c",
@@ -3165,9 +3165,9 @@
       },
       {
         "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
-        "source_commit": "8f5d372d523018f67d03f7671021312b9a2cae0c",
-        "sha256": "9f864340cb09041feb3a03c9f9627ef07faba74e723fd69dc923d150d02c15eb",
-        "previous_origin_row_sha256": "12d5fe6c83519d0001b6cf402e67f4639cc685d75396739081562767e5046995"
+        "source_commit": "ddb4b5cd443fc9c802f86b286a03f0d1c151f647",
+        "sha256": "92b660eb9e00353d215c180eca6bd49a4582283034ec2a3291d602649d3e42f1",
+        "previous_origin_row_sha256": "9a6ac9d202407f6ea247c213a4465e0f8df75aa05200d97281bbd0fd84dfc06b"
       },
       {
         "path": "drivers/gpu/mt8167/wddm-render/umd/clear_ddi.c",
@@ -3196,6 +3196,39 @@
     "native_compilation_map_changed": false,
     "native_sources_changed": false,
     "all_internal_header_consumers_recompile_required": true,
+    "hardware_verified": false,
+    "DWM_verified": false
+  },
+  "shared_main194_primary_integration": {
+    "source_parents": {
+      "main": "45d2b3f1332b87a5906d41ee9a21d4c16d773cf9",
+      "shared": "79b053f9321a328a6cdc45e64a9d4ea811703466",
+      "sharedprimary": "bbc26bbd6de9dcb23678c70cd623ce201e2ab783"
+    },
+    "implementation_source_commit": "ddb4b5cd443fc9c802f86b286a03f0d1c151f647",
+    "files": [
+      {
+        "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
+        "source_commit": "ddb4b5cd443fc9c802f86b286a03f0d1c151f647",
+        "sha256": "92b660eb9e00353d215c180eca6bd49a4582283034ec2a3291d602649d3e42f1",
+        "previous_origin_row_sha256s": [
+          "9a6ac9d202407f6ea247c213a4465e0f8df75aa05200d97281bbd0fd84dfc06b",
+          "57aaafbc239a30f0abcddec6ecc11c37c7e841279536caef134ae3285282e5de"
+        ]
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-render/kmd_objects.c",
+        "source_commit": "ddb4b5cd443fc9c802f86b286a03f0d1c151f647",
+        "sha256": "2b37e5fc3daa9ff32c4136e46804f183ea89473ccb7d96fdb5d7cb9ffcf9cfb8",
+        "previous_origin_row_sha256s": [
+          "6314c7c889119122ccde69ef2ffc21c61fed4f9283e992c940cac2af99f874b0",
+          "ac1ec391132d5d24c846fbe2f453dbe8bd81bdaaf16fa2cb962a0bd903b96713"
+        ]
+      }
+    ],
+    "warm196_driver_objects_compatible": false,
+    "all_driver_translation_units_recompile_required": true,
+    "PCO_tool_source_commit": "f4b92404c4bbe139524a997c5427a8245560e522",
     "hardware_verified": false,
     "DWM_verified": false
   }
