@@ -5,6 +5,6 @@
 #include "musb_board_proof.h"
 struct mt_musb_parent {
  PHYSICAL_ADDRESS mac_pa,phy_pa;PVOID mac,phy;ULONGLONG generation;
- ULONG bound,accessible,held,poisoned,stop_ok,powered,stage;
+ ULONG bound,accessible,held,poisoned,stop_ok,powered,stage,departed;
 };
 #endif

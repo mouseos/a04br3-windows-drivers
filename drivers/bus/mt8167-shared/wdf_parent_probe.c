@@ -1687,7 +1687,12 @@ static VOID MusbChildCleanup(WDFOBJECT object)
  WDFDEVICE child=(WDFDEVICE)object;A04_CHILD_CONTEXT *x=ChildContext(child);
  A04_PARENT_CONTEXT *c;if(!x->parent)return;c=ParentContext(x->parent);
  ExAcquireFastMutex(&c->pwrapLock);
- if(c->musbChild==child){c->musbChild=NULL;c->musbChildCreated=0;}
+ if(c->musbChild==child){
+  c->musbChild=NULL;c->musbChildCreated=0;
+  /* Only an independently proved/released normal departure can re-admit.
+   * Poison flags survive child cleanup; no hardware fault is reset here. */
+  MusbChildGoneLocked(c);
+ }
  ExReleaseFastMutex(&c->pwrapLock);
 }
 static NTSTATUS MusbChildPrepare(WDFDEVICE child,WDFCMRESLIST raw,WDFCMRESLIST translated)
@@ -1723,7 +1728,13 @@ static NTSTATUS MusbChildRelease(WDFDEVICE child,WDFCMRESLIST translated)
  ExReleaseFastMutex(&c->pwrapLock);return s;
 }
 static VOID MusbChildSurprise(WDFDEVICE child)
-{A04_PARENT_CONTEXT *c=ParentContext(WdfPdoGetParent(child));ExAcquireFastMutex(&c->pwrapLock);if(!c->removed&&c->gpio&&c->musb.held){(void)A04Gpio22Vbus(&c->usb.gpio,0);c->musb.powered=0;}c->musb.accessible=0;c->musb.poisoned=1;ExReleaseFastMutex(&c->pwrapLock);}
+{
+ A04_PARENT_CONTEXT *c=ParentContext(WdfPdoGetParent(child));
+ ExAcquireFastMutex(&c->pwrapLock);
+ /* MarkMissing of a clean, already released role departure is expected.
+  * Surprise removal with retained ownership remains a hardware fault. */
+ MusbSurpriseLocked(c);ExReleaseFastMutex(&c->pwrapLock);
+}
 #endif
 static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance, ULONG base)
 {
@@ -1850,10 +1861,9 @@ static VOID MusbRoleWork(WDFWORKITEM work)
  WDFDEVICE dev=(WDFDEVICE)WdfWorkItemGetParentObject(work);A04_PARENT_CONTEXT *c=ParentContext(dev);
  struct mt_musb_board_sample sample;struct mt_musb_board_io io;NTSTATUS status;int ready=0;WDFDEVICE retire=NULL;
  if(ParentLock(c))return;io=MusbIo(c);
- if(!c->musbChildCreated&&c->usb.online&&!c->usb.leased&&!c->usb.poisoned&&c->gpio&&
+ if(!c->musbChildCreated&&c->usb.online&&!c->usb.leased&&!c->usb.poisoned&&!c->musb.poisoned&&!c->musb.departed&&c->gpio&&
     !mt_musb_pin_candidate(&io,&sample)&&!sample.id&&sample.detect&&!sample.source&&(!sample.oc_valid||sample.oc)){c->musbChildCreated=1;ready=1;}
- if(c->musbChildCreated==1&&c->musbChild&&!c->musb.held&&!c->usb.leased&&
-    !mt_musb_pin_candidate(&io,&sample)&&(sample.id||!sample.detect)){
+ if(c->musbChildCreated==1&&c->musbChild&&MusbRetireLocked(c)){
   c->musbChildCreated=2;retire=c->musbChild;WdfObjectReference(retire);
  }
  ParentUnlock(c);

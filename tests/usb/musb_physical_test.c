@@ -10,6 +10,9 @@ static NTSTATUS Proof(PVOID p,MT_MUSB_OBSERVATION *o)
  (void)p;RtlZeroMemory(o,sizeof(*o));o->bytes=sizeof(*o);o->generation=test_generation_change?2:1;o->observed_100ns=test_stale?test_now-1000001:test_now;
  o->evidence=MT_MUSB_QUERY_READY|MT_MUSB_OC_PIN21|MT_MUSB_VBUS_COMPARATOR|MT_MUSB_NO_FORCED_VBUS|MT_MUSB_SOURCE_OFF;
  o->source_off=!test_vbus;o->gpio22=test_vbus;o->devctl=test_vbus?0x18:0;
+ if(!test_phy_invalid)o->evidence|=MT_MUSB_PHY_SENSING_READY;
+ if(test_vbus&&!test_no_mac_host&&!test_bdevice){o->devctl|=5;o->evidence|=MT_MUSB_MAC_HOST;}
+ if(test_bdevice)o->devctl|=0x80;
  o->capabilities=MT_MUSB_REQUIRED;o->valid=MT_MUSB_REQUIRED|MT_MUSB_STOP_PROOF;
  o->host_role=o->oc_clear=1;o->vbus_on=test_vbus;
  o->raw_mac.QuadPart=0x11100000;o->raw_phy.QuadPart=0x11110000;
@@ -39,6 +42,7 @@ static VOID Fixture(void)
  /* 1024*48*28 / 4096 gives calibrated value <8. */
  test_phy[0x800+0x70c]=0;test_phy[0x800+0x70d]=0x10;
  test_stuck=test_stop_fail=test_health_fail=test_vbus=0;test_work=NULL;test_cancel_context=NULL;test_irql=PASSIVE_LEVEL;test_stale=test_generation_change=test_proof_incomplete=0;
+ test_no_mac_host=test_phy_invalid=test_bdevice=0;
 }
 int main(void)
 {
@@ -152,5 +156,21 @@ int main(void)
  CHECK(!NT_SUCCESS(MtMusbOpen((PDEVICE_OBJECT)1,&r))&&test_writes==writes);}
  Fixture();CHECK(NT_SUCCESS(MtMusbOpen((PDEVICE_OBJECT)1,&r)));Work();test_irql=DISPATCH_LEVEL;
  CHECK(!MtMusbClose(r)&&r->closing&&test_cleanup);test_irql=PASSIVE_LEVEL;
- test_cleanup(NULL,test_cleanup_context);return 0;
+ test_cleanup(NULL,test_cleanup_context);
+ /* Good ID + VBUS cannot complete POWER_ON without a real MAC host role. */
+ Fixture();CHECK(NT_SUCCESS(MtMusbOpen((PDEVICE_OBJECT)1,&r)));Work();test_no_mac_host=1;
+ CHECK(!MtMusbRootQueue(r,A04_HUB_POWER_ON));Work();CHECK(r->fault&&!r->lease&&!r->host_ready&&!test_vbus);
+ CHECK(MtMusbClose(r));
+ Fixture();CHECK(NT_SUCCESS(MtMusbOpen((PDEVICE_OBJECT)1,&r)));Work();test_bdevice=1;
+ CHECK(!MtMusbRootQueue(r,A04_HUB_POWER_ON));Work();CHECK(r->fault&&!r->lease&&!r->host_ready);
+ CHECK(MtMusbClose(r));
+ Fixture();test_phy_invalid=1;{ULONG refs=test_refs,releases=test_releases;
+ CHECK(!NT_SUCCESS(MtMusbOpen((PDEVICE_OBJECT)1,&r))&&test_refs==refs+1&&test_releases==releases);
+ /* Fixture repair only: incomplete stop proof retained the internal pool. */
+ test_phy_invalid=0;CHECK(MtMusbClose((struct mt_musb_runtime *)test_pool)&&test_refs==refs);}
+ /* Losing HM after startup must stop, not allow subsequent EP0 traffic. */
+ Fixture();CHECK(NT_SUCCESS(MtMusbOpen((PDEVICE_OBJECT)1,&r)));Work();
+ CHECK(!MtMusbRootQueue(r,A04_HUB_POWER_ON));Work();CHECK(r->host_ready);
+ test_no_mac_host=1;TimerDpc(NULL,r,NULL,NULL);Work();CHECK(r->fault&&!r->lease&&!test_vbus);
+ CHECK(MtMusbClose(r));return 0;
 }

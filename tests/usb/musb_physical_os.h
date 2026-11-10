@@ -3,6 +3,7 @@
 static ULONGLONG test_now=10000000;static ULONG test_maps,test_unmaps,test_acquires,test_releases,test_stops,test_refs,test_free;
 static KIRQL test_irql;static ULONG test_writes;static PVOID test_cancel_context;static ULONG test_cancel_cookie;
 static BOOLEAN test_stale,test_generation_change,test_proof_incomplete,test_qualified,test_stop_fail,test_health_fail,test_stuck,test_vbus;
+static BOOLEAN test_no_mac_host,test_phy_invalid,test_bdevice;
 static UCHAR test_mac[0x10000],test_phy[0x10000],test_pool[0x40000];
 static PIO_WORKITEM_ROUTINE test_work,test_cleanup;
 static PVOID test_work_context,test_cleanup_context;static ULONG test_work_id;

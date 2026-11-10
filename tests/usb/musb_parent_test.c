@@ -10,7 +10,7 @@ void *memcpy(void *p,const void*s,SIZE_T n){volatile UCHAR*d=p;const volatile UC
 typedef struct {struct mt_musb_parent musb;struct a04_usb_owner usb;PVOID gpio;ULONG removed;FAST_MUTEX pwrapLock;} A04_PARENT_CONTEXT;
 #define ParentContext(p) ((A04_PARENT_CONTEXT *)(p))
 static UCHAR macmem[0x10000],phymem[0x10000];static ULONG gp[1024],csr[16][2],top[64],pmic,pmicstage,depth,writes;
-static ULONGLONG now=10000000;static ULONG stuck,voltage=1,external_voltage,oc_trip,off_stuck,verify_fail;
+static ULONGLONG now=10000000;static ULONG stuck,voltage=1,external_voltage,oc_trip,off_stuck,verify_fail,phy_stuck;
 static int ParentLock(void *p){(void)p;if(depth)return -1;depth=1;return 0;}
 static void ParentUnlock(void *p){(void)p;depth=0;}
 #define KeGetCurrentIrql() PASSIVE_LEVEL
@@ -22,7 +22,7 @@ static VOID Delay(KPROCESSOR_MODE m,BOOLEAN a,PLARGE_INTEGER t){(void)m;(void)a;
 static UCHAR Read8(volatile UCHAR *p){return *p;}
 static USHORT Read16(volatile USHORT *p){ULONG_PTR o=(ULONG_PTR)p-(ULONG_PTR)macmem;if(o==0x12||o==0x16)return (USHORT)csr[macmem[0xe]][o==0x16];return *p;}
 static ULONG Read32(volatile ULONG *p){return *p;}
-static VOID Write8(volatile UCHAR *p,UCHAR v){writes++;if(p==macmem+0xa){*p&=~v;return;}*p=v;}
+static VOID Write8(volatile UCHAR *p,UCHAR v){writes++;if(p==macmem+0xa){*p&=~v;return;}if(phy_stuck&&p==phymem+0x81a)return;*p=v;}
 static VOID Write16(volatile USHORT *p,USHORT v){ULONG_PTR o=(ULONG_PTR)p-(ULONG_PTR)macmem;writes++;if(o==0x12||o==0x16){csr[macmem[0xe]][o==0x16]=stuck?1:0;return;}if(o==2||o==4){*p&=~v;return;}*p=v;}
 static VOID Write32(volatile ULONG *p,ULONG v){writes++;*p=v;}
 #define READ_REGISTER_UCHAR Read8
@@ -51,7 +51,7 @@ static void Setup(A04_PARENT_CONTEXT*c,struct a04_pmic_read *bus){RtlZeroMemory(
  c->gpio=gp;c->musb.bound=c->musb.accessible=1;c->musb.generation=7;c->musb.mac_pa.QuadPart=0x21100000;c->musb.phy_pa.QuadPart=0x21110000;
  c->usb.online=1;c->usb.context=c;c->usb.lock=ParentLock;c->usb.unlock=ParentUnlock;c->usb.verify_upstream=Verify;c->usb.verify_overcurrent=Oc;c->usb.otg_acquire=Source;c->usb.otg_release=Source;c->usb.top_read=TopRead;c->usb.top_write=TopWrite;c->usb.gpio.context=c;c->usb.gpio.read32=ParentUsbGpioRead;c->usb.gpio.write32=ParentUsbGpioWrite;
  bus->context=c;bus->read32=PmicRead;bus->write32=PmicWrite;bus->delay=PmicDelay;bus->attempts=4;bus->poisoned=0;c->usb.pmic=bus;
- gp[0x210/4]=1u<<5;gp[0x220/4]=1u<<2;macmem[0x6c]=0x34;macmem[0x6d]=0x12;pmic=0x11;pmicstage=0;}
+ gp[0x210/4]=1u<<5;gp[0x220/4]=1u<<2;macmem[0x6c]=0x34;macmem[0x6d]=0x12;pmic=0x11;pmicstage=0;phy_stuck=0;}
 int main(void){A04_PARENT_CONTEXT c;struct a04_pmic_read bus;MT_MUSB_OBSERVATION o;ULONG old,n;
  Setup(&c,&bus);gp[0x220/4]=1u<<9;old=writes;
  CHECK(!NT_SUCCESS(ParentMusbQuery((PVOID)&c,&o))&&o.reason==MT_MUSB_WAIT_ROLE&&writes==old);
@@ -60,13 +60,20 @@ int main(void){A04_PARENT_CONTEXT c;struct a04_pmic_read bus;MT_MUSB_OBSERVATION
  CHECK(!NT_SUCCESS(ParentMusbAcquire((PVOID)&c,6))&&!c.usb.leased);
  if(!NT_SUCCESS(ParentMusbAcquire((PVOID)&c,7)))return 100+c.musb.stage;CHECK(c.musb.held&&c.usb.leased);
  CHECK(NT_SUCCESS(ParentMusbObserve((PVOID)&c,&o))&&o.oc_clear&&(o.valid&MT_MUSB_STOP_PROOF)==MT_MUSB_STOP_PROOF);
+ CHECK(o.evidence&MT_MUSB_PHY_SENSING_READY);phymem[0x81a]=0;
+ CHECK(NT_SUCCESS(ParentMusbObserve((PVOID)&c,&o))&&!(o.valid&MT_MUSB_VBUS));
+ CHECK(!NT_SUCCESS(ParentMusbVbus((PVOID)&c,TRUE)));phymem[0x81a]=0x10;
  phymem[0x800+0x6d]=0x3e;old=writes;
  CHECK(!NT_SUCCESS(ParentMusbVbus((PVOID)&c,TRUE))&&writes==old&&!c.musb.powered);
  CHECK(NT_SUCCESS(ParentMusbObserve((PVOID)&c,&o))&&!(o.valid&MT_MUSB_VBUS));phymem[0x800+0x6d]=0;
  CHECK(NT_SUCCESS(ParentMusbVbus((PVOID)&c,TRUE))&&c.musb.powered);
  CHECK(NT_SUCCESS(ParentMusbObserve((PVOID)&c,&o))&&o.vbus_on&&(o.evidence&MT_MUSB_NO_FORCED_VBUS));
+ CHECK(!(o.evidence&MT_MUSB_MAC_HOST));macmem[0x60]|=5;
+ CHECK(NT_SUCCESS(ParentMusbObserve((PVOID)&c,&o))&&(o.evidence&MT_MUSB_MAC_HOST));
+ macmem[0x60]|=0x80;CHECK(NT_SUCCESS(ParentMusbObserve((PVOID)&c,&o))&&!(o.evidence&MT_MUSB_MAC_HOST));macmem[0x60]&=~0x80u;
  CHECK(NT_SUCCESS(ParentMusbVbus((PVOID)&c,TRUE))); /* idempotent source */
  gp[0x210/4]=0;CHECK(NT_SUCCESS(ParentMusbObserve((PVOID)&c,&o))&&!o.oc_clear&&!(gp[0x110/4]&(1u<<6))&&c.musb.poisoned);gp[0x210/4]=1u<<5;
+ CHECK(NT_SUCCESS(ParentMusbObserve((PVOID)&c,&o))&&o.reason==MT_MUSB_HARDWARE_FAULT); /* recovered pin is not a recovered owner */
  for(n=0;n<16;n++)csr[n][0]=1;
  CHECK(NT_SUCCESS(ParentMusbStopAndProve((PVOID)&c,&o))&&o.source_off&&!o.vbus_on&&(o.valid&MT_MUSB_STOP_PROOF)==MT_MUSB_STOP_PROOF);
  CHECK(NT_SUCCESS(ParentMusbRelease((PVOID)&c))&&!c.musb.held&&!c.usb.leased);
@@ -88,4 +95,28 @@ int main(void){A04_PARENT_CONTEXT c;struct a04_pmic_read bus;MT_MUSB_OBSERVATION
  Setup(&c,&bus);CHECK(NT_SUCCESS(ParentMusbAcquire((PVOID)&c,7)));CHECK(NT_SUCCESS(ParentMusbVbus((PVOID)&c,TRUE)));
  off_stuck=1;CHECK(!NT_SUCCESS(ParentMusbStopAndProve((PVOID)&c,&o))&&c.musb.held&&c.usb.leased);
  CHECK(!NT_SUCCESS(ParentMusbRelease((PVOID)&c)));off_stuck=0;
+ CHECK(NT_SUCCESS(ParentMusbStopAndProve((PVOID)&c,&o)));CHECK(NT_SUCCESS(ParentMusbRelease((PVOID)&c)));
+ /* A disabled comparator which cannot recover cannot yield a stop proof. */
+ Setup(&c,&bus);phy_stuck=1;CHECK(!NT_SUCCESS(ParentMusbAcquire((PVOID)&c,7))&&c.musb.held&&c.usb.leased&&c.musb.poisoned);
+ phy_stuck=0;CHECK(NT_SUCCESS(ParentMusbStopAndProve((PVOID)&c,&o)));CHECK(NT_SUCCESS(ParentMusbRelease((PVOID)&c)));
+ /* Normal ID departure: source cut, no poison, retain old generation until
+  * a definitive stop + release. PC voltage must remain honestly reported. */
+ Setup(&c,&bus);CHECK(NT_SUCCESS(ParentMusbAcquire((PVOID)&c,7)));CHECK(NT_SUCCESS(ParentMusbVbus((PVOID)&c,TRUE)));
+ external_voltage=1;gp[0x220/4]=1u<<9;macmem[0x60]=0x98;
+ CHECK(NT_SUCCESS(ParentMusbObserve((PVOID)&c,&o))&&c.musb.departed&&!c.musb.poisoned&&!c.usb.poisoned&&o.reason==MT_MUSB_ROLE_DEPARTED&&o.source_off&&o.vbus_on);
+ CHECK(c.musb.generation==7);stuck=1;CHECK(!NT_SUCCESS(ParentMusbStopAndProve((PVOID)&c,&o))&&c.musb.held&&c.musb.generation==7);
+ /* A failed stop poisons even a normal departure; no recovery of that fault. */
+ CHECK(c.musb.poisoned);stuck=0;CHECK(NT_SUCCESS(ParentMusbStopAndProve((PVOID)&c,&o)));CHECK(NT_SUCCESS(ParentMusbRelease((PVOID)&c))&&c.musb.generation==7);
+ Setup(&c,&bus);CHECK(NT_SUCCESS(ParentMusbAcquire((PVOID)&c,7)));CHECK(NT_SUCCESS(ParentMusbVbus((PVOID)&c,TRUE)));
+ gp[0x220/4]=1u<<9;CHECK(NT_SUCCESS(ParentMusbObserve((PVOID)&c,&o))&&c.musb.departed&&!c.musb.poisoned);
+ CHECK(!MusbRetireLocked(&c));MusbChildGoneLocked(&c);CHECK(c.musb.departed); /* retained lease blocks PnP recovery */
+ CHECK(NT_SUCCESS(ParentMusbStopAndProve((PVOID)&c,&o))&&o.generation==7);
+ CHECK(NT_SUCCESS(ParentMusbRelease((PVOID)&c))&&c.musb.generation==8&&!c.musb.held&&!c.usb.leased);
+ gp[0x220/4]=1u<<2;CHECK(!NT_SUCCESS(ParentMusbQuery((PVOID)&c,&o))); /* old PDO cannot re-acquire */
+ CHECK(!NT_SUCCESS(ParentMusbAcquire((PVOID)&c,7)));CHECK(MusbRetireLocked(&c)); /* ID already returned: retire old generation anyway */
+ MusbSurpriseLocked(&c);CHECK(!c.musb.poisoned);MusbChildGoneLocked(&c);CHECK(!c.musb.departed);c.musb.accessible=1; /* new PDO Prepare */
+ CHECK(NT_SUCCESS(ParentMusbQuery((PVOID)&c,&o))&&o.generation==8);
+ CHECK(NT_SUCCESS(ParentMusbAcquire((PVOID)&c,8)));CHECK(NT_SUCCESS(ParentMusbStopAndProve((PVOID)&c,&o)));CHECK(NT_SUCCESS(ParentMusbRelease((PVOID)&c)));
+ Setup(&c,&bus);CHECK(NT_SUCCESS(ParentMusbAcquire((PVOID)&c,7)));CHECK(NT_SUCCESS(ParentMusbVbus((PVOID)&c,TRUE)));
+ gp[0x220/4]=1u<<9;gp[0x210/4]=0;CHECK(NT_SUCCESS(ParentMusbObserve((PVOID)&c,&o))&&c.musb.poisoned&&!c.musb.departed);
  CHECK(NT_SUCCESS(ParentMusbStopAndProve((PVOID)&c,&o)));CHECK(NT_SUCCESS(ParentMusbRelease((PVOID)&c)));return 0;}

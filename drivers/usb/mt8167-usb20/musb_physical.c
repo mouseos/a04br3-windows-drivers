@@ -21,7 +21,7 @@ struct mt_musb_lane {
 struct mt_musb_runtime {
  KSPIN_LOCK lock;KTIMER timer;KDPC dpc;KEVENT idle;
  PIO_WORKITEM work,cleanup;PDEVICE_OBJECT fdo;
- BOOLEAN queued,closing,lease,fault,started,root_running,io_unsafe;
+ BOOLEAN queued,closing,lease,fault,started,root_running,io_unsafe,host_ready;
  volatile UCHAR *mac,*phy;
  MT_MUSB_OWNER_INTERFACE owner;MT_MUSB_OBSERVATION proof;
  MT8167_USB20_CONTROLLER controller;A04_USB_BOARD board;
@@ -81,13 +81,16 @@ static int Fresh(const MT_MUSB_OBSERVATION *o,ULONGLONG generation,int powered)
   (o->capabilities&MT_MUSB_REQUIRED)==MT_MUSB_REQUIRED&&
   (o->valid&MT_MUSB_REQUIRED)==MT_MUSB_REQUIRED&&o->host_role==1&&o->oc_clear==1&&
   (powered<0||(powered?o->vbus_on==1:(o->devctl&0x18)==0))&&
-  (o->evidence&(MT_MUSB_OC_PIN21|MT_MUSB_VBUS_COMPARATOR|MT_MUSB_NO_FORCED_VBUS))==
-   (MT_MUSB_OC_PIN21|MT_MUSB_VBUS_COMPARATOR|MT_MUSB_NO_FORCED_VBUS)&&o->observed_100ns<=now&&now-o->observed_100ns<=MT_FRESH;
+  (o->evidence&(MT_MUSB_OC_PIN21|MT_MUSB_VBUS_COMPARATOR|MT_MUSB_NO_FORCED_VBUS|MT_MUSB_PHY_SENSING_READY))==
+   (MT_MUSB_OC_PIN21|MT_MUSB_VBUS_COMPARATOR|MT_MUSB_NO_FORCED_VBUS|MT_MUSB_PHY_SENSING_READY)&&
+   o->reason!=MT_MUSB_ROLE_DEPARTED&&o->reason!=MT_MUSB_HARDWARE_FAULT&&
+   o->observed_100ns<=now&&now-o->observed_100ns<=MT_FRESH;
 }
 static int Observe(struct mt_musb_runtime *r,int powered)
 {
  MT_MUSB_OBSERVATION o;KIRQL irql;RtlZeroMemory(&o,sizeof(o));o.bytes=sizeof(o);
  if(!NT_SUCCESS(r->owner.Observe(r->owner.Header.Context,&o))||!Fresh(&o,r->proof.generation,powered))return -1;
+ if(r->host_ready&&powered!=0&&!(o.evidence&MT_MUSB_MAC_HOST))return -1;
  /* A lease cannot silently move mappings underneath the MMIO owner. */
  if(o.mac.QuadPart!=r->proof.mac.QuadPart||o.phy.QuadPart!=r->proof.phy.QuadPart||
     o.raw_mac.QuadPart!=r->proof.raw_mac.QuadPart||o.raw_phy.QuadPart!=r->proof.raw_phy.QuadPart||
@@ -152,10 +155,13 @@ static int StopPhysical(struct mt_musb_runtime *r)
  if(proof.bytes!=sizeof(proof)||proof.generation!=r->proof.generation||
     proof.observed_100ns>KeQueryInterruptTime()||KeQueryInterruptTime()-proof.observed_100ns>MT_FRESH||
     (proof.valid&MT_MUSB_STOP_PROOF)!=MT_MUSB_STOP_PROOF||
+    !(proof.valid&MT_MUSB_VBUS)||
+    (proof.evidence&(MT_MUSB_PHY_SENSING_READY|MT_MUSB_NO_FORCED_VBUS))!=
+      (MT_MUSB_PHY_SENSING_READY|MT_MUSB_NO_FORCED_VBUS)||
     !proof.source_off||!(proof.evidence&MT_MUSB_SOURCE_OFF))return -1;
  UNREFERENCED_PARAMETER(local);
  if(!NT_SUCCESS(r->owner.Release(r->owner.Header.Context)))return -1;
- r->lease=FALSE;r->started=FALSE;
+ r->lease=FALSE;r->started=FALSE;r->host_ready=FALSE;
  {KIRQL irql;KeAcquireSpinLock(&r->lock,&irql);r->proof=proof;
   RtlZeroMemory(&r->observation,sizeof(r->observation));
   r->observation.vbus_off_verified=(proof.valid&MT_MUSB_VBUS)&&!(proof.devctl&0x18);r->observation.endpoints_quiesced=1;r->observation.source_off_verified=1;
@@ -205,12 +211,26 @@ static int DataEvent(struct mt_musb_runtime *r,unsigned n)
  source=l->properties.direction?2:4;if(!(Rd16(r,source)&(1u<<n)))return 0;
  Wr16(r,source,(USHORT)(1u<<n));return a04_pio_event(&r->controller.io,&l->pio);
 }
+static int WaitHost(struct mt_musb_runtime *r)
+{
+ unsigned n;
+ /* GPIO ID is admission only. BSP DEVCTL HM/BDEVICE and SESSION establish
+  * the real MAC role after the host request and bus-valid force release.
+  * Every wait samples the parent's OC/ID/VBUS guards; never extend an URB. */
+ for(n=0;n<50;n++){
+  if(Observe(r,1))return -1;
+  if(r->proof.evidence&MT_MUSB_MAC_HOST){r->host_ready=TRUE;return 0;}
+  Delay(r,2);
+ }
+ return -1;
+}
 static int RootAction(struct mt_musb_runtime *r,ULONG kind,struct a04_hub_observation *o)
 {
  ULONGLONG start;ULONG power;
  RtlZeroMemory(o,sizeof(*o));
  if(!AllIdle(r)||Flush(r))return -1;
  if(kind==A04_HUB_POWER_OFF){
+  r->host_ready=FALSE;
   Wr8(r,0x60,(UCHAR)(Rd8(r,0x60)&~1u));
   {MT_MUSB_OBSERVATION proof;KIRQL irql;
    if(Vbus(r,0))return -1;
@@ -227,7 +247,10 @@ static int RootAction(struct mt_musb_runtime *r,ULONG kind,struct a04_hub_observ
   /* MUSB has no independent ENABLE latch. Linux musb_virthub clears the
    * logical bit. First prove FIFO/REQ idle and health; keep SESSION/VBUS. */
   if(Observe(r,1))return -1;
- }else if(kind==A04_HUB_POWER_ON){if(A04UsbHostRun(&r->board)||ReleaseForces(r)||Observe(r,1))return -1;}
+ }else if(kind==A04_HUB_POWER_ON){
+  r->host_ready=FALSE;
+  if(A04UsbHostRun(&r->board)||ReleaseForces(r)||WaitHost(r))return -1;
+ }
  else if(kind==A04_HUB_RESET){
   if(Observe(r,1))return -1;
   power=Rd8(r,1);Wr8(r,1,(UCHAR)((power&~4u)|8u));if(!(Rd8(r,1)&8))return -1;

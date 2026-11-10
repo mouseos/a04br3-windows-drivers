@@ -29,14 +29,18 @@ static void MusbSnapshot(A04_PARENT_CONTEXT *c,MT_MUSB_OBSERVATION *o)
  if(!c->usb.leased||c->musb.held)o->valid|=MT_MUSB_EXCLUSIVE;
  if(c->musb.mac&&c->musb.phy&&c->usb.leased&&c->musb.accessible){
   o->devctl=MusbMac(c,0x60,1);o->intrusb=MusbMac(c,0xa,1);
-  if(!mt_musb_unforced(&i)){
+  if(!mt_musb_sensing_ready(&i))o->evidence|=MT_MUSB_PHY_SENSING_READY;
+  if(!mt_musb_unforced(&i)&&!mt_musb_sensing_ready(&i)){
    o->valid|=MT_MUSB_VBUS;o->vbus_on=(o->devctl&0x18)==0x18;
    o->evidence|=MT_MUSB_NO_FORCED_VBUS|MT_MUSB_VBUS_COMPARATOR;
   }
+  if((o->devctl&0x85)==5)o->evidence|=MT_MUSB_MAC_HOST;
   if(!mt_musb_engines_idle(&i))o->valid|=MT_MUSB_DMA_OFF;
   if(!mt_musb_irq_off(&i))o->valid|=MT_MUSB_IRQ_OFF;
   if(c->musb.stop_ok)o->valid|=MT_MUSB_STOPPED;
  }
+ if(c->musb.departed)o->reason=MT_MUSB_ROLE_DEPARTED;
+ if(c->musb.poisoned||c->usb.poisoned)o->reason=MT_MUSB_HARDWARE_FAULT;
 }
 static int MusbStopLocked(A04_PARENT_CONTEXT *c)
 {
@@ -48,7 +52,11 @@ static int MusbStopLocked(A04_PARENT_CONTEXT *c)
   * writes or unproved reset/fabric-drain claims are made. */
  if(a04_usb_owner_vbus_locked(&c->usb,0))return -1;c->musb.powered=0;
  if(mt_musb_stop_pio(&i)||mt_musb_release_forces(&i))return -1;
+ /* Do not call a disabled comparator's zero band sensed session-end.
+  * Establish the BSP recovery conditions before every stop voltage proof. */
+ if(mt_musb_prepare_sensing(&i))return -1;
  for(n=0;n<50;n++){
+  if(mt_musb_sensing_ready(&i)||mt_musb_unforced(&i))return -1;
   if(mt_musb_pin_candidate(&i,&s)||s.source)return -1;
   /* Zero comparator band is real sensed session-end. An externally powered
    * PC cable is separately identified; source latch OFF is not called 0 V. */
@@ -64,7 +72,7 @@ static NTSTATUS ParentMusbQuery(PVOID p,MT_MUSB_OBSERVATION *o)
  A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);NTSTATUS status=STATUS_DEVICE_NOT_READY;
  if(!o||KeGetCurrentIrql()!=PASSIVE_LEVEL||ParentLock(c))return STATUS_DEVICE_NOT_READY;
  MusbSnapshot(c,o);
- if(c->musb.bound&&c->musb.accessible&&c->usb.online&&!c->usb.leased&&!c->musb.poisoned&&
+ if(c->musb.bound&&c->musb.accessible&&c->usb.online&&!c->usb.leased&&!c->usb.poisoned&&!c->musb.poisoned&&!c->musb.departed&&
     (o->evidence&MT_MUSB_QUERY_READY)&&o->generation)status=STATUS_SUCCESS;
  ParentUnlock(c);return status;
 }
@@ -73,7 +81,7 @@ static NTSTATUS ParentMusbAcquire(PVOID p,ULONGLONG generation)
  A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);MT_MUSB_OBSERVATION o;struct mt_musb_board_io i;NTSTATUS result=STATUS_DEVICE_NOT_READY;
  if(KeGetCurrentIrql()!=PASSIVE_LEVEL||ParentLock(c))return result;
  MusbSnapshot(c,&o);
- if(!c->musb.bound||!c->musb.accessible||c->musb.poisoned||c->usb.leased||generation!=c->musb.generation||
+ if(!c->musb.bound||!c->musb.accessible||c->musb.poisoned||c->musb.departed||c->usb.leased||generation!=c->musb.generation||
     !(o.evidence&MT_MUSB_QUERY_READY)||!c->usb.online)goto done;
  c->musb.stage=1;
  if(a04_usb_owner_acquire_locked(&c->usb)){
@@ -103,10 +111,18 @@ static NTSTATUS ParentMusbObserve(PVOID p,MT_MUSB_OBSERVATION *o)
  if(!o||KeGetCurrentIrql()!=PASSIVE_LEVEL||ParentLock(c))return status;
  if(c->musb.held&&c->musb.accessible){
   MusbSnapshot(c,o);
-  if(c->musb.powered&&(!o->host_role||!o->oc_clear||!(o->valid&MT_MUSB_OC)||
-     (o->intrusb&0x80)||((o->evidence&MT_MUSB_NO_FORCED_VBUS)&&(o->devctl&0x18)!=0x18))){
+  /* OC/unknown pins/VBUSERROR take precedence over a simultaneous ID edge.
+   * Normal A-cable removal must still cut the source, but is recoverable only
+   * after StopAndProve + Release. Never clear an existing hardware fault. */
+  if(!o->oc_clear||!(o->valid&MT_MUSB_OC)||!(o->valid&MT_MUSB_ROLE)||
+     (o->intrusb&0x80)||(c->musb.powered&&o->host_role&&
+     (o->evidence&MT_MUSB_NO_FORCED_VBUS)&&(o->devctl&0x18)!=0x18)){
    (void)a04_usb_owner_vbus_locked(&c->usb,0);c->musb.powered=0;c->musb.poisoned=1;
    MusbSnapshot(c,o); /* real off/role/OC snapshot, never an invented voltage */
+  }else if(!o->host_role){
+   if(a04_usb_owner_vbus_locked(&c->usb,0))c->musb.poisoned=1;
+   else c->musb.departed=1;
+   c->musb.powered=0;MusbSnapshot(c,o);
   }
   status=STATUS_SUCCESS;
  }
@@ -119,21 +135,30 @@ static NTSTATUS ParentMusbVbus(PVOID p,BOOLEAN on)
  if(!c->musb.held||!c->musb.accessible||!c->musb.mac||!c->musb.phy)goto done;
  i=MusbIo(c);MusbSnapshot(c,&o);
  if(on&&c->musb.powered){
+  if(!o.host_role&&(o.valid&(MT_MUSB_ROLE|MT_MUSB_OC))==(MT_MUSB_ROLE|MT_MUSB_OC)&&o.oc_clear&&!(o.intrusb&0x80))goto departed;
   if(o.host_role&&o.oc_clear&&(o.evidence&MT_MUSB_NO_FORCED_VBUS)&&o.vbus_on)status=STATUS_SUCCESS;
   else goto fault;goto done;
  }
  if(!on){status=a04_usb_owner_vbus_locked(&c->usb,0)?STATUS_DEVICE_HARDWARE_ERROR:STATUS_SUCCESS;c->musb.powered=0;goto done;}
- if(c->musb.poisoned||!o.host_role||!o.oc_clear||!(o.valid&MT_MUSB_OC)||
+ if(c->musb.poisoned||c->musb.departed||!o.host_role||!o.oc_clear||!(o.valid&MT_MUSB_OC)||
     (o.evidence&(MT_MUSB_NO_FORCED_VBUS|MT_MUSB_QUERY_READY))!=(MT_MUSB_NO_FORCED_VBUS|MT_MUSB_QUERY_READY)||
     (o.devctl&0x18)||mt_musb_engines_idle(&i))goto done;
  c->musb.stop_ok=0;
  if(a04_usb_owner_vbus_locked(&c->usb,1))goto fault;
  for(n=0;n<50;n++){
   MusbSnapshot(c,&o);
-  if(!o.host_role||!o.oc_clear||!(o.valid&MT_MUSB_OC)||(o.intrusb&0x80)||!(o.evidence&MT_MUSB_NO_FORCED_VBUS))goto fault;
+  if(!o.oc_clear||!(o.valid&MT_MUSB_OC)||!(o.valid&MT_MUSB_ROLE)||
+     (o.intrusb&0x80)||!(o.evidence&MT_MUSB_NO_FORCED_VBUS))goto fault;
+  if(!o.host_role){
+   goto departed;
+  }
   stable=o.vbus_on?stable+1:0;if(stable==5){c->musb.powered=1;status=STATUS_SUCCESS;goto done;}
   MusbDelay(c,2);
  }
+ goto fault;
+departed:
+ if(a04_usb_owner_vbus_locked(&c->usb,0))goto fault;
+ c->musb.powered=0;c->musb.departed=1;goto done;
 fault:
  (void)a04_usb_owner_vbus_locked(&c->usb,0);c->musb.powered=0;c->musb.poisoned=1;status=STATUS_DEVICE_POWER_FAILURE;
 done:ParentUnlock(c);return status;
@@ -156,7 +181,31 @@ static NTSTATUS ParentMusbRelease(PVOID p)
  ExAcquireFastMutex(&c->pwrapLock);
  if(c->musb.held&&c->musb.stop_ok&&!c->removed&&!MusbStopLocked(c)&&!a04_usb_owner_release_locked(&c->usb)){
   c->musb.held=0;if(c->musb.mac)MmUnmapIoSpace(c->musb.mac,0x10000);if(c->musb.phy)MmUnmapIoSpace(c->musb.phy,0x10000);
+  /* Old consumer has already checked the old-generation stop proof. A new
+   * lease is forbidden until the retired PDO is removed and recreated. */
+  if(c->musb.departed&&!c->musb.poisoned&&!c->usb.poisoned)
+   if(!++c->musb.generation)++c->musb.generation;
   c->musb.mac=c->musb.phy=NULL;status=STATUS_SUCCESS;
  }
  ExReleaseFastMutex(&c->pwrapLock);return status;
+}
+/* PnP glue calls these under the same parent mutex. Keeping the decision here
+ * lets the existing provider test execute the real retirement/cleanup logic. */
+static int MusbRetireLocked(A04_PARENT_CONTEXT *c)
+{
+ struct mt_musb_board_sample s;struct mt_musb_board_io i=MusbIo(c);
+ if(c->musb.held||c->usb.leased)return 0;
+ if(!c->musb.departed&&(mt_musb_pin_candidate(&i,&s)||(!s.id&&s.detect)))return 0;
+ if(!c->musb.poisoned&&!c->usb.poisoned)c->musb.departed=1;
+ return 1;
+}
+static void MusbChildGoneLocked(A04_PARENT_CONTEXT *c)
+{
+ if(!c->musb.held&&!c->usb.leased&&!c->musb.mac&&!c->musb.phy)c->musb.departed=0;
+}
+static void MusbSurpriseLocked(A04_PARENT_CONTEXT *c)
+{
+ if(!c->removed&&c->gpio&&c->musb.held){(void)A04Gpio22Vbus(&c->usb.gpio,0);c->musb.powered=0;}
+ if(!c->musb.departed||c->musb.held||c->usb.leased||c->musb.mac||c->musb.phy)c->musb.poisoned=1;
+ c->musb.accessible=0;
 }

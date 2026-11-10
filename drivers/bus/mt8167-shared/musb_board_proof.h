@@ -59,6 +59,31 @@ static int mt_musb_release_forces(const struct mt_musb_board_io *i)
  unsigned v=i->phy(i->context,0x6d);i->phy_write(i->context,0x6d,v&~0x3eu);
  return mt_musb_unforced(i);
 }
+/* MT8167 usb20_phy.c::usb_phy_recover: comparator enable alone is not a
+ * sensing proof while UART/forced suspend/data/pulldown overrides remain.
+ * All offsets are SIF+0x800. No source, SESSION or host-role request here. */
+static int mt_musb_sensing_ready(const struct mt_musb_board_io *i)
+{
+ return (i->phy(i->context,0x1a)&0x90)!=0x10 ||
+  (i->phy(i->context,0x6b)&4)||(i->phy(i->context,0x6e)&1)||
+  (i->phy(i->context,0x68)&0xf4)||(i->phy(i->context,0x69)&0x3c)||
+  (i->phy(i->context,0x6a)&0xbe)?-1:0;
+}
+static void mt_musb_phy_update(const struct mt_musb_board_io *i,unsigned reg,unsigned clear,unsigned set)
+{unsigned v=i->phy(i->context,reg);i->phy_write(i->context,reg,(v&~clear)|set);}
+static int mt_musb_prepare_sensing(const struct mt_musb_board_io *i)
+{
+ /* Caller has removed its source, proved engines idle and stopped PIO.
+  * Same recovery fields as board_host.c; keep bus-valid overrides released. */
+ mt_musb_phy_update(i,0x1d,0x10,0);mt_musb_phy_update(i,0x6b,4,0);
+ mt_musb_phy_update(i,0x6e,1,0);mt_musb_phy_update(i,0x6a,4,0);
+ mt_musb_phy_update(i,0x21,3,0);mt_musb_phy_update(i,0x68,0xf4,0);
+ mt_musb_phy_update(i,0x69,0x3c,0);mt_musb_phy_update(i,0x6a,0xba,0);
+ mt_musb_phy_update(i,0x1a,0x80,0x10);mt_musb_phy_update(i,0x18,8,6);
+ /* BSP waits 800us after recovery; this PASSIVE board seam uses >=1ms. */
+ i->delay(i->context,1);
+ return mt_musb_sensing_ready(i)||mt_musb_unforced(i)?-1:0;
+}
 static int mt_musb_irq_off(const struct mt_musb_board_io *i)
 {return i->mac(i->context,0xa4,4)||i->mac(i->context,6,2)||i->mac(i->context,8,2)||i->mac(i->context,0xb,1)?-1:0;}
 static int mt_musb_stop_pio(const struct mt_musb_board_io *i)

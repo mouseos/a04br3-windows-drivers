@@ -19,6 +19,11 @@ int main(void){struct model m;struct mt_musb_board_sample s;struct mt_musb_board
  m.gpio[0x340/4]=1<<3;assert(mt_musb_pin_candidate(&i,&s));m.gpio[0x340/4]=0;
  m.phy[0x6d]=0x3e;assert(mt_musb_unforced(&i));assert(!mt_musb_release_forces(&i));
  m.mac[0x74/4]=4;assert(mt_musb_unforced(&i));m.mac[0x74/4]=0;
+ /* Disabled/forced-suspend PHY cannot validate an all-zero DEVCTL band. */
+ assert(mt_musb_sensing_ready(&i));m.phy[0x68]=0xf4;m.phy[0x69]=0x3c;m.phy[0x6a]=0xbe;
+ m.phy[0x1a]=0x80;m.phy[0x6b]=4;m.phy[0x6e]=1;
+ assert(!mt_musb_prepare_sensing(&i)&&!mt_musb_sensing_ready(&i));
+ m.phy[0x1a]&=~0x10u;assert(mt_musb_sensing_ready(&i));m.phy[0x1a]|=0x10;
  m.mac[0x204/4]=1;writes=m.writes;assert(mt_musb_stop_pio(&i)&&m.writes==writes);m.mac[0x204/4]=0;
  m.mac[0xb00/4]=1;assert(mt_musb_stop_pio(&i)&&m.writes==writes);m.mac[0xb00/4]=0;
  for(n=0;n<16;n++)m.csr[n][0]=1;for(n=1;n<16;n++)m.csr[n][1]=1;

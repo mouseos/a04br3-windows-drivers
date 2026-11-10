@@ -9,7 +9,7 @@
  * A producer must have real observations before setting their valid bits. */
 static const GUID MT8167MusbOwnerInterfaceGuid =
  {0xf38ff3a6,0x5cd1,0x43a0,{0x97,0x45,0x72,0xcf,0xda,0x16,0x67,0x13}};
-#define MT_MUSB_OWNER_VERSION 2
+#define MT_MUSB_OWNER_VERSION 3
 #define MT_MUSB_ROLE 1u
 #define MT_MUSB_OC 2u
 #define MT_MUSB_VBUS 4u
@@ -22,8 +22,12 @@ static const GUID MT8167MusbOwnerInterfaceGuid =
 #define MT_MUSB_VBUS_COMPARATOR 4u
 #define MT_MUSB_SOURCE_OFF 8u
 #define MT_MUSB_NO_FORCED_VBUS 16u
+#define MT_MUSB_PHY_SENSING_READY 32u
+#define MT_MUSB_MAC_HOST 64u /* SESSION + HM, BDEVICE clear; not GPIO ID */
 #define MT_MUSB_WAIT_PC 1u
 #define MT_MUSB_WAIT_ROLE 2u
+#define MT_MUSB_ROLE_DEPARTED 3u
+#define MT_MUSB_HARDWARE_FAULT 4u
 #define MT_MUSB_STOPPED 64u
 #define MT_MUSB_IRQ_OFF 128u
 #define MT_MUSB_DMA_OFF 256u

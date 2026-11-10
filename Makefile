@@ -1592,6 +1592,20 @@ test-gpu-parent-spm-resources: build/gpu_parent_spm_resources_test
 	./build/gpu_parent_spm_resources_test
 
 .PHONY: test-mt8167-musb-owner
+# Existing deterministic WDK-seam tests, using host-only types on Linux.
+# This executes no kernel code and does not validate Windows/ARM ABI or power.
+USB_HOST_MODEL_FLAGS = -O1 -g -fno-builtin -ffunction-sections -fdata-sections -Wl,--gc-sections -DA04_MUSB_HOST_CORE_EXPERIMENT=1 -Itests/usb/host_include -Idrivers/usb/mt8167-usb20
+USB_HOST_MODEL_SOURCES = $(addprefix drivers/usb/mt8167-usb20/,$(addsuffix .c,root_hub host_core pio_transfer ep0 ep0_pio musb_async controller board_host))
+.PHONY: test-mt8167-musb-host-models
+test-mt8167-musb-host-models: export TMPDIR = $(CURDIR)/build/tmp
+test-mt8167-musb-host-models:
+	@mkdir -p build/tmp
+	$(CLANG) $(USB_HOST_MODEL_FLAGS) tests/usb/musb_parent_test.c drivers/bus/mt8167-shared/usb_owner.c drivers/input/a04br3-buttons/pmic_read.c drivers/usb/mt8167-usb20/gpio22.c -o build/musb_parent_host
+	./build/musb_parent_host
+	@set -e; for name in usbport_hcd_test hcd_fair_test musb_physical_test musb_fair_test stack_fair_test ep0_class_stack_test; do \
+	  $(CLANG) $(USB_HOST_MODEL_FLAGS) tests/usb/$$name.c $(USB_HOST_MODEL_SOURCES) -o build/$$name-host; \
+	  ./build/$$name-host; echo "$$name PASS (host model only)"; \
+	done
 test-mt8167-musb-owner:
 	mkdir -p build
 	$(CC) $(CFLAGS) tests/usb/musb_board_proof_test.c -o build/mt8167_musb_board_proof_test
