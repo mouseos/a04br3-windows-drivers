@@ -56,3 +56,10 @@ tools/ci/ge8300_panel_signing_common.py text eol=lf
 drivers/gpu/mt8167/display-transport/panel_timing.h text eol=lf
 tests/ge8300_panel_timing_test.c text eol=lf
 docs/ge8300-panel-timing-handoff.md text eol=lf
+
+# Exact bytes for the DWM372 incremental source-only handoff.
+tools/ci/build-ge8300-dwm372-incremental.py text eol=lf
+tools/ci/ge8300_dwm372_dependencies.py text eol=lf
+tools/ci/ge8300-dwm372-incremental-pins.json text eol=lf
+tools/ci/sign-ge8300-dwm372.py text eol=lf
+docs/ge8300-dwm372-integration.md text eol=lf
