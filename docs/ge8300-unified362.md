@@ -25,3 +25,10 @@
 開発runnerは既存のSDK/WDK/compiler/signing inputsを復元するcache-only modeを使う。SSH中継のaliasだけが失われてVMのプロセスが残る場合に備え、60秒間隔でalias経由のSSH bannerを確認し、失われていれば同じVM上でトンネルだけ再接続する。通常のビルド完了や実機試験待ちを環境破棄の条件にしない。旧署名済みtupleと実機証拠は変更しない。
 
 MMA8652も実配置1.10の源泉9ad5ef0aと11source pathを照合し、古いsensor_hid.c/INF/方向説明だけを実配置へ合わせた。既存の180度補正を二重に適用していない。実機binaryは更新せず、物理的な上下逆申告を解決済みとは扱わない。
+
+
+## 次の一括実機更新
+
+fresh186に対して新service MT8167CombinedFollowup186を作るrun187 profileを追加する。GPU362だけを選択し、親1120・温度1.11・MMA1.10・DIS0 transport・FW0943・POST DWORD0は保持する。古い1→0のPOST policy patchは再適用しない。18旧service全体と100個の取得済みnamed値、原SYSTEM三本、既存ファイルを保持し、通常DXGI Present clientをphase1/index0で1回だけ実行する。clock clientは再実行しない。新12Draw texture-update clientは必要な後続検証用に保持する。
+
+新profileは署名GPU362 manifestと全output hash、fresh186/native receipt、実配置baseline版/driver hashが揃うまでfinalizeできない。ソースやpolicyが生成できたことを、書込み・実機描画成功とは扱わない。既run185/旧helperは別generationとして保持する。
