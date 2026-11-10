@@ -58,7 +58,7 @@ extern "C" NTSTATUS GeoDisplayPostInfo(void *handle,DXGK_DISPLAY_INFORMATION *in
 }
 extern "C" NTSTATUS GeoDisplaySharedPrimaryLayout(void *h,const D3DKMDT_SHAREDPRIMARYSURFACEDATA *request,struct geo_post_primary_layout_v1 *out) {
  DXGK_DISPLAY_INFORMATION info;NTSTATUS status;
- if(!request||!out||request->VidPnSourceId!=0||request->Format!=D3DDDIFMT_A8R8G8B8)return STATUS_NOT_SUPPORTED;
+ if(!request||!out||request->VidPnSourceId!=0||(request->Format!=D3DDDIFMT_A8R8G8B8&&request->Format!=D3DDDIFMT_X8R8G8B8))return STATUS_NOT_SUPPORTED;
  RtlZeroMemory(out,sizeof(*out));status=GeoDisplayPostInfo(h,&info);if(!NT_SUCCESS(status))return status;
  /* Native primary rendering at rotated dimensions is a separate contract.
   * Preserve DOD1.7 rotation, but never widen native caps from a mode list. */

@@ -108,3 +108,42 @@ command = ['cc', '-std=c11', '-g', '-fsanitize=address,undefined', '-fno-omit-fr
 subprocess.run(command, check=True)
 subprocess.run([str(out / 'gdi-present')], check=True)
 print('GDI_PRESENT_ACTUAL_BODY_AND_ENGINE_PASS; WDK/native/GPU untested')
+
+# The actual C-linkage shared-primary callback needs no C++ constructs.
+u = (d.parent / 'wddm-display/unified_display.cxx').read_text()
+u = u[u.index('extern "C" NTSTATUS GeoDisplaySharedPrimaryLayout('):u.index('extern "C" NTSTATUS GeoDisplayValidatePostAddress(')].replace('extern "C" ', '')
+primary_prefix = r"""
+#include <assert.h>
+#include <stdint.h>
+#include <string.h>
+typedef uint32_t UINT;typedef uint64_t ULONGLONG;typedef int32_t NTSTATUS;
+#define STATUS_SUCCESS 0
+#define STATUS_NOT_SUPPORTED ((int32_t)0xc00000bb)
+#define NT_SUCCESS(x) ((x)>=0)
+#define MAXULONG UINT32_MAX
+#define MAXULONGLONG UINT64_MAX
+#define D3DDDIFMT_A8R8G8B8 21
+#define D3DDDIFMT_X8R8G8B8 22
+#define RtlZeroMemory(p,n) memset(p,0,n)
+typedef struct {UINT VidPnSourceId,Format,Width,Height;} D3DKMDT_SHAREDPRIMARYSURFACEDATA;
+typedef struct {UINT Width,Height,Pitch,ColorFormat;struct {int64_t QuadPart;}PhysicAddress;} DXGK_DISPLAY_INFORMATION;
+struct geo_post_primary_layout_v1 {UINT size,version,source_id,width,height,pitch,format;};
+static NTSTATUS GeoDisplayPostInfo(void*h,DXGK_DISPLAY_INFORMATION*out){*out=*(DXGK_DISPLAY_INFORMATION*)h;return 0;}
+"""
+primary_suffix = r"""
+int main(void){
+ DXGK_DISPLAY_INFORMATION info={800,1280,3200,22,{0x90000000}};
+ D3DKMDT_SHAREDPRIMARYSURFACEDATA p={0,21,800,1280};struct geo_post_primary_layout_v1 out;
+ assert(!GeoDisplaySharedPrimaryLayout(&info,&p,&out)&&out.format==21&&out.pitch==3200);
+ p.Format=22;assert(!GeoDisplaySharedPrimaryLayout(&info,&p,&out)&&out.format==22);
+ p.Format=24;assert(GeoDisplaySharedPrimaryLayout(&info,&p,&out)==STATUS_NOT_SUPPORTED);
+ p.Format=22;p.Width=799;assert(GeoDisplaySharedPrimaryLayout(&info,&p,&out)==STATUS_NOT_SUPPORTED);
+ p.Width=800;info.Pitch=3196;assert(GeoDisplaySharedPrimaryLayout(&info,&p,&out)==STATUS_NOT_SUPPORTED);
+ return 0;
+}
+"""
+source = out / 'primary.c'
+source.write_text(primary_prefix + u + primary_suffix)
+subprocess.run(['cc', '-std=c11', '-g', '-fsanitize=address,undefined', str(source), '-o', str(out / 'primary')], check=True)
+subprocess.run([str(out / 'primary')], check=True)
+print('GDI_SHARED_PRIMARY_ACTUAL_CALLBACK_A8_X8_PASS; WDK/native/GPU untested')
