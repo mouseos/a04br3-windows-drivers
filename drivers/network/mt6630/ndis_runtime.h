@@ -27,6 +27,7 @@ struct a04_ndis_runtime {
 #if A04_WIFI_BT_BROKER
  struct a04_combo_broker combo;
 #endif
+ struct a04_connection_checkpoint connection_cp;ULONG prior_rejected_oid,prior_rejected_status;unsigned eapol_tx_observed;
  struct a04_checkpoint *checkpoint;uint64_t initialize_generation;unsigned runtime_failure_recorded,scan_records;ULONG runtime_last_oid,runtime_last_oid_status;
  NDIS_HANDLE adapter,rx_pool,configuration;struct a04_rx_slot rx[A04_NATIVE_QUEUE];unsigned rx_count;ULONG receive_epoch;UCHAR rx_bytes[A04_NATIVE_MPDU_MAX];
  A04_SHARED_WIFI_INTERFACE parent;int referenced,uncertain,paused;
@@ -44,6 +45,7 @@ struct a04_ndis_runtime {
  DOT11_SSID desired;ULONG filter,lookahead;BOOLEAN power;
  struct a04_native_retry rx_retry;
 };
+void a04_ndis_connection_trace(void *,unsigned,unsigned,unsigned,uint32_t,uint32_t);
 void a04_ndis_tx_complete(void *,PNET_BUFFER_LIST,NDIS_STATUS);
 int a04_ndis_unreachable_check(struct a04_ndis_runtime *);
 void a04_ndis_runtime_snapshot(struct a04_ndis_runtime *,ULONG,ULONG,ULONG);

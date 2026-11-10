@@ -87,7 +87,7 @@ NTSTATUS a04_cp_begin(struct a04_checkpoint *c,ULONG channel,uint64_t parent)
  if(NT_SUCCESS(status)){
   struct a04_cp_record *r=c->record;r->magic=A04_CP_MAGIC;r->version=A04_CP_VERSION;r->bytes=sizeof(*r);r->channel=channel;
 #if defined(A04_WIFI_BT_BROKER) && A04_WIFI_BT_BROKER
-  r->driver_build=1023;
+  r->driver_build=1029;
 #else
   r->driver_build=1022;
 #endif
@@ -109,6 +109,12 @@ NTSTATUS a04_cp_emit(struct a04_checkpoint *c,ULONG stage,ULONG phase,ULONG kind
  if(!c||!c->key||!c->record)return STATUS_INVALID_DEVICE_STATE;
  status=lock();if(!NT_SUCCESS(status))return status;
  if(current_generation[c->channel]!=c->record->generation){unlock();return STATUS_RETRY;}
+ if(c->rolling&&c->record->count==A04_CP_CAPACITY){
+  /* Preserve chronological order in the existing fixed wire array. Header
+   * generation/parent survive rollover; overflow explicitly marks lost history. */
+  RtlMoveMemory(c->record->events,c->record->events+1,(A04_CP_CAPACITY-1)*sizeof(struct a04_cp_event));
+  c->record->count--;c->record->overflow=1;
+ }
  if(c->record->count<A04_CP_CAPACITY){
   struct a04_cp_event *e=&c->record->events[c->record->count++];
   e->stage=stage;e->phase=phase;e->kind=kind;e->observed=phase==A04_CP_BEGIN?0:1;e->raw=raw;e->detail=detail;
@@ -145,3 +151,30 @@ NTSTATUS a04_cp_finish(struct a04_checkpoint *c,ULONG stage,ULONG kind,ULONG res
 }
 void a04_cp_trace(void *context,unsigned stage,unsigned phase,unsigned kind,ULONG raw,ULONG detail)
 {(void)a04_cp_emit(context,stage,phase,kind,raw,detail);}
+
+void a04_cp_connection_end(struct a04_connection_checkpoint *c,ULONG kind,ULONG result)
+{
+ if(KeGetCurrentIrql()!=PASSIVE_LEVEL||!c||!c->cp.record)return;
+ (void)a04_cp_finish(&c->cp,A04_CT_END,kind,result);
+ RtlZeroMemory(c,sizeof(*c));
+}
+void a04_cp_connection_emit(struct a04_connection_checkpoint *c,ULONG stage,ULONG phase,ULONG kind,ULONG raw,ULONG detail)
+{
+ if(KeGetCurrentIrql()!=PASSIVE_LEVEL||!c||!c->cp.record||stage<100||stage>127)return;
+ /* RX/data traffic cannot turn logging into a per-packet registry writer.
+  * OID failures and control boundaries always retain the latest outcome. */
+ if(stage==A04_CT_RX_DECODE||stage==A04_CT_EAPOL_RX||stage==A04_CT_EAPOL_TX||stage==A04_CT_TX_DONE){
+  if(c->samples[stage-100]>=4)return;
+  c->samples[stage-100]++;
+ }
+ (void)a04_cp_emit(&c->cp,stage,phase,kind,raw,detail);
+}
+void a04_cp_connection_begin(struct a04_connection_checkpoint *c,uint64_t parent,ULONG context)
+{
+ if(KeGetCurrentIrql()!=PASSIVE_LEVEL||!c)return;
+ a04_cp_connection_end(c,A04_CP_NT,0xc0000120u); /* replaced context, not connection success */
+ RtlZeroMemory(c,sizeof(*c));
+ (void)a04_cp_begin(&c->cp,A04_CP_RUNTIME_FAILURE,parent);
+ c->cp.rolling=1;
+ a04_cp_connection_emit(c,A04_CT_CONTEXT,A04_CP_RESULT,A04_CP_OBSERVATION,context,0);
+}

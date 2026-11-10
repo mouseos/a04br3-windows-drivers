@@ -1590,7 +1590,7 @@ test-mt6630: test-mt6630-native-policy
 
 build/mt6630_checkpoint_test: tests/mt6630_checkpoint_test.c drivers/network/mt6630/checkpoint.c drivers/network/mt6630/checkpoint.h drivers/network/mt6630/checkpoint_wire.h tests/checkpoint_stubs/ntddk.h
 	@mkdir -p build
-	$(CC) $(CFLAGS) -Wno-multichar -Itests/checkpoint_stubs -Idrivers/network/mt6630 tests/mt6630_checkpoint_test.c drivers/network/mt6630/checkpoint.c -o $@
+	$(CC) $(CFLAGS) -DA04_WIFI_BT_BROKER=1 -Wno-multichar -Itests/checkpoint_stubs -Idrivers/network/mt6630 tests/mt6630_checkpoint_test.c drivers/network/mt6630/checkpoint.c -o $@
 .PHONY: test-mt6630-checkpoint
 test-mt6630-checkpoint: build/mt6630_checkpoint_test
 	./build/mt6630_checkpoint_test
@@ -1630,3 +1630,13 @@ test-mt6630-assoc-capability: build/mt6630_assoc_capability_test
 build/mt6630_assoc_capability_test: tests/mt6630_assoc_capability_test.c drivers/network/mt6630/assoc_capability.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) tests/mt6630_assoc_capability_test.c -o $@
+
+.PHONY: test-mt6630-connect1029
+test-mt6630-connect1029: test-mt6630-checkpoint test-mt6630-scan-connect build/mt6630_native_nbl_test build/mt6630_native_hif_rx_test
+	./build/mt6630_native_nbl_test
+	./build/mt6630_native_hif_rx_test
+	python3 -B tests/mt6630_rx_budget_test.py
+	python3 -B tests/mt6630_translated_security_test.py
+	python3 -B tests/mt6630_connect_oid_trace_test.py
+
+	python3 -B tests/mt6630_absent_key_delete_test.py

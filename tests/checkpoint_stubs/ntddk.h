@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <wchar.h>
 #include <string.h>
+#define RtlMoveMemory(a,b,c) memmove((a),(b),(c))
 typedef void *HANDLE,*PVOID;typedef const wchar_t *PCWSTR;typedef uint8_t UCHAR;typedef uint32_t ULONG;typedef int32_t NTSTATUS;
 typedef struct {int held;} KMUTEX;
 typedef struct {int64_t QuadPart;} LARGE_INTEGER;

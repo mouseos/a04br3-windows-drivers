@@ -59,11 +59,16 @@ static int exclude_bssid(void *context,const uint8_t *mac)
 
 /* Snapshot software observations only; never read HIF/RTC or change state.
  * First runtime fault is immutable for this adapter; scan history max4. */
+void a04_ndis_connection_trace(void *context,unsigned stage,unsigned phase,unsigned kind,uint32_t raw,uint32_t detail)
+{struct a04_ndis_runtime *a=context;a04_cp_connection_emit(&a->connection_cp,stage,phase,kind,raw,detail);}
 void a04_ndis_runtime_snapshot(struct a04_ndis_runtime *a,ULONG channel,ULONG result,ULONG phase)
 {
  struct a04_checkpoint c;struct a04_wmt_bridge *b=a->radio.bridge;
  if(KeGetCurrentIrql()!=PASSIVE_LEVEL||!b)return;
- if(channel==A04_CP_RUNTIME_FAILURE){if(a->runtime_failure_recorded)return;a->runtime_failure_recorded=1;}
+ if(channel==A04_CP_RUNTIME_FAILURE){
+  if(a->connection_cp.cp.record){a04_ndis_connection_trace(a,A04_CT_WAIT,A04_CP_RESULT,A04_CP_BACKEND,result,phase);return;}
+  if(a->runtime_failure_recorded)return;a->runtime_failure_recorded=1;
+ }
  else if(channel==A04_CP_SCAN){if(a->scan_records>=4)return;a->scan_records++;}
  else return;
  (void)a04_cp_begin(&c,channel,a->initialize_generation);
@@ -166,7 +171,12 @@ static int firmware_event(void *p,const uint8_t *packet,unsigned bytes,uint64_t 
   return 0;
  }
  if(a04_os_security_event(a,packet,bytes))return -1;
- if(a->tx.pending){NDIS_STATUS s=a04_native_nbl_tx_event(&a->tx,&a->session.diagnostic.bridge,&a->radio.station,&a->security,packet,bytes,time);if(s!=NDIS_STATUS_SUCCESS&&s!=NDIS_STATUS_PENDING&&s!=NDIS_STATUS_NOT_SUPPORTED)return -1;}
+ if(a->tx.pending){unsigned eapol=a->eapol_tx_observed;
+ unsigned hw_known=bytes==24&&packet[4]==0x0f&&packet[8]==a->tx.state.pid&&packet[12]==a->radio.station.local.wlan;
+ unsigned hw_status=hw_known?packet[9]:0;
+ NDIS_STATUS s=a04_native_nbl_tx_event(&a->tx,&a->session.diagnostic.bridge,&a->radio.station,&a->security,packet,bytes,time);
+ if(eapol&&s!=NDIS_STATUS_NOT_SUPPORTED){if(hw_known)a04_ndis_connection_trace(a,A04_CT_TX_DONE,A04_CP_RESULT,A04_CP_BACKEND,hw_status,1);a04_ndis_connection_trace(a,A04_CT_TX_DONE,A04_CP_RESULT,A04_CP_NDIS,s,0);if(!a->tx.pending)a->eapol_tx_observed=0;}
+ if(s!=NDIS_STATUS_SUCCESS&&s!=NDIS_STATUS_PENDING&&s!=NDIS_STATUS_NOT_SUPPORTED)return -1;}
  return 0;
 }
 int a04_ndis_rate_lookup(void *p,unsigned mode,unsigned code,ULONG *phy,UCHAR *rate)
@@ -200,12 +210,14 @@ static int receive_data(void *p,const uint8_t *packet,unsigned bytes)
  }
  if(a->radio.station.secured){
   if(!a->association_reported){
-   status=a04_native_hif_rx_decode_security(packet,bytes,a->radio.bridge->regulatory.permitted,a->radio.station.local.mac,a->radio.station.ap.mac,a,a04_ndis_rate_lookup,&rx);
+   status=a04_native_hif_rx_decode_owned(packet,bytes,a->radio.bridge->regulatory.permitted,a->radio.station.local.mac,a->radio.station.ap.mac,a,a04_ndis_rate_lookup,1,a->rx_bytes,sizeof(a->rx_bytes),&rx);
+   a04_ndis_connection_trace(a,A04_CT_RX_DECODE,A04_CP_RESULT,A04_CP_NDIS,status,bytes>=7&&(packet[6]&0x80)?2:1);
+   if(status==NDIS_STATUS_SUCCESS&&rx.length>=rx.header+8&&a04_wlan_be16(rx.mpdu+rx.header+6)==0x888e)a04_ndis_connection_trace(a,A04_CT_EARLY_RX,A04_CP_RESULT,A04_CP_OBSERVATION,1,0);
    if(status==NDIS_STATUS_SUCCESS&&!a->early_length&&bytes<=sizeof(a->early_rx)){NdisMoveMemory(a->early_rx,packet,bytes);a->early_length=bytes;}
    return status==NDIS_STATUS_SUCCESS?0:A04_WLAN_UNSUPPORTED;
   }
   status=a04_os_security_receive(a,packet,bytes,&rx);
- }else status=a04_native_hif_rx_decode(packet,bytes,a->radio.bridge->regulatory.permitted,a->radio.station.local.mac,a->radio.station.ap.mac,a,a04_ndis_rate_lookup,&rx);
+ }else status=a04_native_hif_rx_decode_owned(packet,bytes,a->radio.bridge->regulatory.permitted,a->radio.station.local.mac,a->radio.station.ap.mac,a,a04_ndis_rate_lookup,0,a->rx_bytes,sizeof(a->rx_bytes),&rx);
  if(status!=NDIS_STATUS_SUCCESS){NdisAcquireSpinLock(&a->lock);if(status==NDIS_STATUS_INVALID_DATA||status==NDIS_STATUS_INVALID_LENGTH)a->stats.rx_errors++;else a->stats.rx_discards++;NdisReleaseSpinLock(&a->lock);return 0;} /* never authorize a rejected frame */
  if(a04_native_retry_check(&a->rx_retry,a->receive_epoch,rx.mpdu,rx.length,&retry)){
   NdisAcquireSpinLock(&a->lock);a->stats.rx_discards++;NdisReleaseSpinLock(&a->lock);return 0;
@@ -255,7 +267,7 @@ static int hardware_start(struct a04_ndis_runtime *a)
  result=a04_windows_session_start_traced(&a->session,&a->parent,&platform,mem,mapped,0x00300000,a04_wifi_wdf_wmt_sha256,&options,a04_cp_trace,a->checkpoint);
  CP(a,A04_CP_SESSION,A04_CP_RESULT,A04_CP_BACKEND,result,(a->session.state&255)|((a->session.diagnostic.state&255)<<8));
  if(result)return -1;}
- a->radio.context=a;a->radio.now=now;a->radio.system_time=system_time;a->radio.wait=wait_us;a->radio.cancelled=cancelled;a->radio.event=firmware_event;a->radio.data=receive_data;a->radio.exclude_bssid=exclude_bssid;
+ a->radio.context=a;a->radio.now=now;a->radio.system_time=system_time;a->radio.wait=wait_us;a->radio.cancelled=cancelled;a->radio.event=firmware_event;a->radio.data=receive_data;a->radio.exclude_bssid=exclude_bssid;a->radio.trace=a04_ndis_connection_trace;
  int result;CP(a,A04_CP_TC1,A04_CP_BEGIN,A04_CP_UNKNOWN,0,0);
  result=a04_wlan_native_be_enable(&a->session.diagnostic.bridge.wlan);CP(a,A04_CP_TC1,A04_CP_RESULT,A04_CP_BACKEND,result,0);if(result)return -1;
  CP(a,A04_CP_STATION,A04_CP_BEGIN,A04_CP_UNKNOWN,0,0);
@@ -291,7 +303,7 @@ int a04_ndis_idle_reconcile(struct a04_ndis_runtime *a)
   * RX/events until an empty WHISR observation; never manufacture credits. */
  for(unsigned i=0;i<100;i++){
   if(a04_station_runtime_poll(&a->radio))goto failed;
-  if(!h->cpu_used&&!h->tc0_used&&!h->tc1_used&&!h->ffa&&!h->status&&!b->pending_wlan_status){
+  if(!h->cpu_used&&!h->tc0_used&&!h->tc1_used&&!h->ffa&&!h->status&&!b->pending_wlan_status&&!a->radio.rx_pending){
    if(a04_wlan_firmware_own(h))goto failed;
    return 0;
   }
@@ -483,6 +495,7 @@ static void close_worker(struct a04_ndis_runtime *a)
 }
 static void cleanup(struct a04_ndis_runtime *a)
 {
+ a04_cp_connection_end(&a->connection_cp,A04_CP_NT,0xc0000120u);
 #if A04_WIFI_BT_BROKER
  a04_combo_unpublish(a);
  if(a04_combo_stop(a,a->uncertain))a->uncertain=1;
@@ -517,7 +530,8 @@ NDIS_STATUS RuntimeInitialize(NDIS_HANDLE adapter,NDIS_HANDLE context,PNDIS_MINI
  a=NdisAllocateMemoryWithTagPriority(adapter,sizeof(*a),TAG,NormalPoolPriority);if(!a){
   (void)a04_cp_emit(&checkpoint,A04_CP_CONTEXT,A04_CP_RESULT,A04_CP_OBSERVATION,0,0);
   (void)a04_cp_finish(&checkpoint,A04_CP_INIT_RETURN,A04_CP_NDIS,NDIS_STATUS_RESOURCES);return NDIS_STATUS_RESOURCES;
- }NdisZeroMemory(a,sizeof(*a));a->checkpoint=&checkpoint;a->adapter=adapter;a->paused=1;a->power=TRUE;a->lookahead=A04_RUNTIME_MTU;a->peer_loss.threshold_ms=A04_UNREACHABLE_DEFAULT_MS;
+ }NdisZeroMemory(a,sizeof(*a));a->checkpoint=&checkpoint;a->adapter=adapter;a->initialize_generation=checkpoint.record?checkpoint.record->generation:0;
+ a04_cp_connection_begin(&a->connection_cp,a->initialize_generation,1);a->paused=1;a->power=TRUE;a->lookahead=A04_RUNTIME_MTU;a->peer_loss.threshold_ms=A04_UNREACHABLE_DEFAULT_MS;
  CP(a,A04_CP_CONTEXT,A04_CP_RESULT,A04_CP_OBSERVATION,1,0);
  NdisAllocateSpinLock(&a->lock);NdisInitializeEvent(&a->idle);NdisSetEvent(&a->idle);KeInitializeTimer(&a->timer);KeInitializeDpc(&a->dpc,poll_dpc,a);
  NdisZeroMemory(&attr,sizeof(attr));attr.Header.Type=NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES;attr.Header.Revision=NDIS_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES_REVISION_2;attr.Header.Size=NDIS_SIZEOF_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES_REVISION_2;attr.MiniportAdapterContext=a;attr.InterfaceType=NdisInterfaceInternal;

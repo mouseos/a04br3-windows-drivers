@@ -76,6 +76,23 @@ int main(void)
  assert(!a04_cp_begin(&a,A04_CP_SCAN,2));assert(!a04_cp_emit(&a,A04_CP_RUNTIME_STATE,A04_CP_RESULT,A04_CP_OBSERVATION,1,83));
  assert(!a04_cp_begin(&b,A04_CP_RUNTIME_FAILURE,2));assert(!a04_cp_emit(&b,A04_CP_HOST_STATE,A04_CP_RESULT,A04_CP_BACKEND,83,4));
  assert(!a04_cp_finish(&a,A04_CP_RUNTIME_RESULT,A04_CP_NDIS,0xc0010011u));assert(!a04_cp_finish(&b,A04_CP_RUNTIME_RESULT,A04_CP_BACKEND,83));
- assert(persisted[2].channel==2&&persisted[3].channel==3&&persisted[2].driver_build==1020&&persisted[3].parent_generation==2);
+ assert(persisted[2].channel==2&&persisted[3].channel==3&&persisted[2].driver_build==1029&&persisted[3].parent_generation==2);
+ /* Actual connection recorder clears old failure data on new init/attempt,
+  * rotates without changing schema, binds parent, and rejects high IRQL. */
+ struct a04_connection_checkpoint connection={0};
+ a04_cp_connection_begin(&connection,100,1);uint64_t initial=connection.cp.record->generation;
+ assert(persisted[3].parent_generation==100&&persisted[3].events[0].stage==A04_CT_CONTEXT);
+ a04_cp_connection_emit(&connection,A04_CT_OID,A04_CP_RESULT,A04_CP_NDIS,0xc00000bb,0x1234);
+ a04_cp_connection_begin(&connection,100,2);assert(connection.cp.record->generation>initial);
+ assert(persisted[3].count==1&&persisted[3].events[0].raw==2&&persisted[3].parent_generation==100);
+ for(unsigned i=0;i<100;i++)a04_cp_connection_emit(&connection,A04_CT_OID,A04_CP_RESULT,A04_CP_NDIS,0xc00000bb,i);
+ assert(persisted[3].count==64&&persisted[3].overflow&&persisted[3].events[63].detail==99);
+ unsigned stored=registry_calls;irql=2;
+ a04_cp_connection_emit(&connection,A04_CT_OID,A04_CP_RESULT,A04_CP_NDIS,0,0);
+ a04_cp_connection_begin(&connection,101,2);a04_cp_connection_end(&connection,A04_CP_NDIS,0);
+ assert(registry_calls==stored);irql=0;
+ for(unsigned i=0;i<100;i++)a04_cp_connection_emit(&connection,A04_CT_EAPOL_RX,A04_CP_RESULT,A04_CP_NDIS,0,0);
+ assert(connection.samples[A04_CT_EAPOL_RX-100]==4);
+ a04_cp_connection_end(&connection,A04_CP_NT,0xc0000120);assert(!connection.cp.record);
  puts("Fixed registry checkpoint: real writer status/phase, generation, IRQL, flush failure and bounds: OK");return 0;
 }

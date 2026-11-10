@@ -12,6 +12,7 @@ struct a04_station_runtime {
  unsigned desired_secured;
  int (*exclude_bssid)(void *,const uint8_t *);
  const uint8_t *association_ies;unsigned association_ies_length;
+ unsigned rx_pending; /* deferred read-clear RX port bits */
  unsigned initialized,connecting,connected,phase;int failed;
  /* Descriptor-only observations; no MAC/SSID/key material. First rejected AP retained. */
  unsigned rx_phase,rx_bytes,rx_descriptor,rx_error;
@@ -20,6 +21,7 @@ struct a04_station_runtime {
  int (*cancelled)(void *);
  int (*event)(void *,const uint8_t *,unsigned,uint64_t);
  int (*data)(void *,const uint8_t *,unsigned);
+ void (*trace)(void *,unsigned,unsigned,unsigned,uint32_t,uint32_t);
 };
 int a04_station_runtime_init(struct a04_station_runtime *,struct a04_wmt_bridge *);
 int a04_station_runtime_poll(struct a04_station_runtime *);

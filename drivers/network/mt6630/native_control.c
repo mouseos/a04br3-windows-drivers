@@ -140,22 +140,28 @@ static NDIS_STATUS connect(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
  DOT11_CONNECTION_START_PARAMETERS start;DOT11_CONNECTION_COMPLETION_PARAMETERS done;DOT11_ASSOCIATION_START_PARAMETERS ast;
  union {DOT11_ASSOCIATION_COMPLETION_PARAMETERS align;uint8_t bytes[sizeof(DOT11_ASSOCIATION_COMPLETION_PARAMETERS)+384+1024+1024+sizeof(ULONG)];} buffer;uint8_t *storage=buffer.bytes;DOT11_ASSOCIATION_COMPLETION_PARAMETERS *ac=&buffer.align;ULONG offset=sizeof(*ac),phy=0;int e;unsigned index;
  unsigned secured=a->os_security.auth==DOT11_AUTH_ALGO_RSNA_PSK,matched=0;
- if(a->safe_mode&&!secured)return NDIS_STATUS_NOT_SUPPORTED;
- if(secured){if(a->os_security.unicast!=DOT11_CIPHER_ALGO_CCMP||a->os_security.multicast!=DOT11_CIPHER_ALGO_CCMP)return NDIS_STATUS_NOT_SUPPORTED;}
- else if(a->os_security.unicast||a->os_security.multicast)return NDIS_STATUS_NOT_SUPPORTED;
+ if(a->safe_mode&&!secured){a04_ndis_connection_trace(a,A04_CT_POLICY,A04_CP_RESULT,A04_CP_NDIS,NDIS_STATUS_NOT_SUPPORTED,1);return NDIS_STATUS_NOT_SUPPORTED;}
+ if(secured){if(a->os_security.unicast!=DOT11_CIPHER_ALGO_CCMP||a->os_security.multicast!=DOT11_CIPHER_ALGO_CCMP){a04_ndis_connection_trace(a,A04_CT_POLICY,A04_CP_RESULT,A04_CP_NDIS,NDIS_STATUS_NOT_SUPPORTED,2);return NDIS_STATUS_NOT_SUPPORTED;}}
+ else if(a->os_security.unicast||a->os_security.multicast){a04_ndis_connection_trace(a,A04_CT_POLICY,A04_CP_RESULT,A04_CP_NDIS,NDIS_STATUS_NOT_SUPPORTED,3);return NDIS_STATUS_NOT_SUPPORTED;}
+ a04_ndis_connection_trace(a,A04_CT_POLICY,A04_CP_RESULT,A04_CP_NDIS,NDIS_STATUS_SUCCESS,0);
  for(index=0;index<a->radio.bss_count;index++){
   const struct a04_wlan_ap *ap=&a->radio.bss[index].ap;
   if(a04_ndis_excluded(a,ap->mac)||(a->desired_bssid_set&&!a04_wlan_equal(a->desired_bssid,ap->mac,6))||
     (a04_wlan_mac_valid(a->assoc_bssid)&&!a04_wlan_equal(a->assoc_bssid,ap->mac,6))||
     a->desired.uSSIDLength!=ap->ssid_length||!a04_wlan_equal(a->desired.ucSSID,ap->ssid,ap->ssid_length))continue;
   matched=1;
-  if(!a04_os_candidate_policy(ap,a->radio.station.local.active_channels,secured))break;
+  {int policy=a04_os_candidate_policy(ap,a->radio.station.local.active_channels,secured);
+   a04_ndis_connection_trace(a,A04_CT_CANDIDATE,A04_CP_RESULT,A04_CP_BACKEND,policy,1);
+   if(!policy)break;}
  }
- if(index==a->radio.bss_count)return matched?NDIS_STATUS_NOT_SUPPORTED:NDIS_STATUS_FAILURE;
+ if(index==a->radio.bss_count){NDIS_STATUS rejected=matched?NDIS_STATUS_NOT_SUPPORTED:NDIS_STATUS_FAILURE;
+  a04_ndis_connection_trace(a,A04_CT_CANDIDATE,A04_CP_RESULT,A04_CP_NDIS,rejected,2);return rejected;}
  a->ps_activity=1;
- if(a04_ndis_rf_wake(a)){a->ps_activity=0;return NDIS_STATUS_FAILURE;}
+ {int wake=a04_ndis_rf_wake(a);a04_ndis_connection_trace(a,A04_CT_WAKE,A04_CP_RESULT,A04_CP_BACKEND,wake,0);
+ if(wake){a->ps_activity=0;return NDIS_STATUS_FAILURE;}}
  a->radio.desired_secured=secured;a->association_reported=0;
  NdisAcquireSpinLock(&a->lock);a->request=NULL;NdisReleaseSpinLock(&a->lock);NdisMOidRequestComplete(a->adapter,q,NDIS_STATUS_SUCCESS);
+ a04_ndis_connection_trace(a,A04_CT_OID_COMPLETE,A04_CP_RESULT,A04_CP_NDIS,NDIS_STATUS_SUCCESS,0);
  NdisZeroMemory(&start,sizeof(start));HDR(start,DOT11_CONNECTION_START_PARAMETERS,1);start.BSSType=dot11_BSS_type_infrastructure;a04_ndis_status(a,NDIS_STATUS_DOT11_CONNECTION_START,&start,sizeof(start));
  NdisZeroMemory(&ast,sizeof(ast));HDR(ast,DOT11_ASSOCIATION_START_PARAMETERS,1);NdisMoveMemory(ast.MacAddr,a->radio.bss[index].ap.mac,6);ast.SSID=a->desired;a04_ndis_status(a,NDIS_STATUS_DOT11_ASSOCIATION_START,&ast,sizeof(ast));
  NdisMoveMemory(a->radio.selected_bssid,a->radio.bss[index].ap.mac,6);a->radio.selected_bssid_set=1;
@@ -170,7 +176,9 @@ static NDIS_STATUS connect(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
   ac->uBeaconOffset=offset;ac->uBeaconSize=a->radio.bss[index].frame_length-24;NdisMoveMemory(storage+offset,a->radio.bss[index].frame+24,ac->uBeaconSize);offset+=ac->uBeaconSize;
   ac->uActivePhyListOffset=offset;ac->uActivePhyListSize=sizeof(phy);NdisMoveMemory(storage+offset,&phy,sizeof(phy));offset+=sizeof(phy);
  }
- a04_ndis_status(a,NDIS_STATUS_DOT11_ASSOCIATION_COMPLETION,ac,offset);NdisZeroMemory(&done,sizeof(done));HDR(done,DOT11_CONNECTION_COMPLETION_PARAMETERS,1);done.uStatus=e?DOT11_CONNECTION_STATUS_FAILURE:DOT11_CONNECTION_STATUS_SUCCESS;link_state(a);a04_ndis_status(a,NDIS_STATUS_DOT11_CONNECTION_COMPLETION,&done,sizeof(done));
+ a04_ndis_status(a,NDIS_STATUS_DOT11_ASSOCIATION_COMPLETION,ac,offset);
+ a04_ndis_connection_trace(a,A04_CT_ASSOC_COMPLETE,A04_CP_RESULT,A04_CP_OBSERVATION,ac->uStatus,0);NdisZeroMemory(&done,sizeof(done));HDR(done,DOT11_CONNECTION_COMPLETION_PARAMETERS,1);done.uStatus=e?DOT11_CONNECTION_STATUS_FAILURE:DOT11_CONNECTION_STATUS_SUCCESS;link_state(a);a04_ndis_status(a,NDIS_STATUS_DOT11_CONNECTION_COMPLETION,&done,sizeof(done));
+ a04_ndis_connection_trace(a,A04_CT_CONNECT_COMPLETE,A04_CP_RESULT,A04_CP_OBSERVATION,done.uStatus,0);
  if(!e){a->association_started=KeQueryInterruptTime()/10u;a04_peer_observed(&a->peer_loss,a->association_started);NdisAcquireSpinLock(&a->lock);a->association_base=a->stats;NdisReleaseSpinLock(&a->lock);a04_ndis_association_reported(a);}
  a->ps_activity=0;
  if(e&&a->power_request&&!a->closing)(void)a04_ndis_radio_reset(a);
@@ -292,11 +300,26 @@ static NDIS_STATUS control_impl(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
  * scan before HIF submission. Completion semantics remain unchanged. */
 NDIS_STATUS a04_ndis_control(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
 {
- int scan_oid=q->RequestType==NdisRequestSetInformation&&q->DATA.SET_INFORMATION.Oid==OID_DOT11_SCAN_REQUEST;
+ int request_type=q->RequestType;ULONG oid=q->DATA.QUERY_INFORMATION.Oid;
+ int connect_oid=request_type==NdisRequestSetInformation&&oid==OID_DOT11_CONNECT_REQUEST;
+ int scan_oid=request_type==NdisRequestSetInformation&&q->DATA.SET_INFORMATION.Oid==OID_DOT11_SCAN_REQUEST;
  NDIS_STATUS status;
+ if(connect_oid){
+  a04_cp_connection_begin(&a->connection_cp,a->initialize_generation,2);
+  if(a->prior_rejected_oid)a04_ndis_connection_trace(a,A04_CT_PRIOR_REJECTION,A04_CP_RESULT,A04_CP_NDIS,a->prior_rejected_status,a->prior_rejected_oid);
+  a04_ndis_connection_trace(a,A04_CT_GATE,A04_CP_BEGIN,A04_CP_UNKNOWN,0,0);
+ }
  if(scan_oid)a04_ndis_runtime_snapshot(a,A04_CP_SCAN,0,1);
  a->runtime_last_oid=q->DATA.QUERY_INFORMATION.Oid;
  status=control_impl(a,q);a->runtime_last_oid_status=status;
+ if(request_type==NdisRequestSetInformation||request_type==NdisRequestMethod||
+    (status!=NDIS_STATUS_SUCCESS&&status!=NDIS_STATUS_PENDING))
+  a04_ndis_connection_trace(a,A04_CT_OID,A04_CP_RESULT,A04_CP_NDIS,status,oid);
+ if(status!=NDIS_STATUS_SUCCESS&&status!=NDIS_STATUS_PENDING){a->prior_rejected_oid=oid;a->prior_rejected_status=status;}
+ if(connect_oid)a04_ndis_connection_trace(a,A04_CT_GATE,A04_CP_RESULT,A04_CP_NDIS,status,0);
+ if(oid==OID_DOT11_CIPHER_KEY_MAPPING_KEY||oid==OID_DOT11_CIPHER_DEFAULT_KEY)
+  a04_ndis_connection_trace(a,A04_CT_KEY_OID,A04_CP_RESULT,A04_CP_NDIS,status,0);
+ if(oid==OID_DOT11_PORT_STATE_NOTIFICATION)a04_ndis_connection_trace(a,A04_CT_PORT,A04_CP_RESULT,A04_CP_NDIS,status,0);
  if(a->radio.failed)a04_ndis_runtime_snapshot(a,A04_CP_RUNTIME_FAILURE,status,4);
  if(scan_oid)a04_ndis_runtime_snapshot(a,A04_CP_SCAN,status,2);
  return status;
