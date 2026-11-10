@@ -194,3 +194,28 @@ host stubで実production formatter・停止observer・reboot上限関数をcomp
 正常／installer失敗／3010／SCM未停止／flush失敗／reboot API失敗／4回上限の7経路を確認。
 これはWindows service自体のbuild、実UART、C: flush、予定再起動、実機PnPの証明ではない。
 それらはmain実行待ち。ready7ec packageとnative proofは保持する。
+
+### observerのjob離脱
+
+console363の実績source
+`drivers/gpu/mt8167/wddm-render/testclient/dxgi-console-launch363.c:61`は
+console tokenでの子生成にCREATE_BREAKAWAY_FROM_JOBを使う。
+この既存sourceがIsProcessInJobで条件分岐していた、という意味ではない。
+USB observerは次の条件付き生成と確認を追加する。
+
+1. IsProcessInJob(GetCurrentProcess(), NULL)が成功することを要求。
+2. 親がjob所属の場合だけCREATE_BREAKAWAY_FROM_JOBを加える。CREATE_NO_WINDOWとCREATE_SUSPENDEDは常に指定。
+3. suspended childのIsProcessInJob(child,NULL)が成功し、job未所属であることを要求。
+4. その後だけResumeThread。query/CreateProcess/Resume失敗、子job残留時は失敗を返す。
+
+breakaway拒否後にjob付きのまま生成し直すfallbackはない。
+検証失敗したsuspended childはTerminateProcessしてhandleを閉じる。
+起動失敗時は元serviceがSCM_STOP(error)を通知しnewserviceをdisableするが、
+TERMINAL成功や予定rebootを出さない。hostはunknown/failureとして証拠を保持し、timeout resetしない。
+wire prefix/fields/event1..7・上限4・native proof・payload PS1・SDK/driver/helperは変更なし。
+
+hostでは実productionのjob flag関数とstart_observerもstub compileし、
+親jobなし／あり、親query失敗、breakaway生成拒否、子job残留、子query失敗、
+Resume失敗、query失敗でGetLastErrorが0の8経路を検証。
+最後のケースもERROR_GEN_FAILUREとして扱い、失敗APIをcode0へ変換しない。
+実Windows SCM jobでの生存・UART到達はmain試験待ち。

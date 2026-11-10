@@ -79,12 +79,28 @@ static DWORD terminal_observer(DWORD result){
  (void)uart_only(U198_TERMINAL,e);return e;
 }
 static WCHAR *wide_hex(WCHAR *p,DWORD n){static const WCHAR h[]=L"0123456789ABCDEF";DWORD i;for(i=0;i<8;i++)*p++=h[(n>>(28-4*i))&15];return p;}
+static DWORD observer_launch_flags(DWORD *flags){
+ BOOL in_job=FALSE;DWORD e;
+ if(!IsProcessInJob(GetCurrentProcess(),NULL,&in_job)){e=GetLastError();return e?e:ERROR_GEN_FAILURE;}
+ *flags=CREATE_NO_WINDOW|CREATE_SUSPENDED;
+ if(in_job)*flags|=CREATE_BREAKAWAY_FROM_JOB;
+ return 0;
+}
 static DWORD start_observer(DWORD result){
  static const WCHAR exe[]=L"C:\\Windows\\System32\\MT8167Usb1121Install198.exe";
- WCHAR cmd[256],*p=cmd;STARTUPINFOW si={0};PROCESS_INFORMATION pi={0};DWORD e=trust(exe);
- if(e)return e;lstrcpyW(cmd,L"\"C:\\Windows\\System32\\MT8167Usb1121Install198.exe\" --uart-terminal ");p+=lstrlenW(cmd);
+ WCHAR cmd[256],*p=cmd;STARTUPINFOW si={0};PROCESS_INFORMATION pi={0};BOOL child_in_job=TRUE;DWORD flags,e=trust(exe);
+ if(e)return e;
+ lstrcpyW(cmd,L"\"C:\\Windows\\System32\\MT8167Usb1121Install198.exe\" --uart-terminal ");p+=lstrlenW(cmd);
  p=wide_hex(p,uart_run);*p++=' ';p=wide_hex(p,uart_pid);*p++=' ';p=wide_hex(p,result);*p=0;si.cb=sizeof(si);
- if(!CreateProcessW(exe,cmd,NULL,NULL,FALSE,CREATE_NO_WINDOW,NULL,base,&si,&pi))return GetLastError();CloseHandle(pi.hThread);CloseHandle(pi.hProcess);return 0;
+ e=observer_launch_flags(&flags);if(e)return e;
+ if(!CreateProcessW(exe,cmd,NULL,NULL,FALSE,flags,NULL,base,&si,&pi)){e=GetLastError();return e?e:ERROR_GEN_FAILURE;}
+ /* Check the suspended child before allowing any observer work. No fallback
+  * creates a job-bound child when breakaway is denied or membership is unknown. */
+ if(!IsProcessInJob(pi.hProcess,NULL,&child_in_job)){e=GetLastError();if(!e)e=ERROR_GEN_FAILURE;goto reject;}
+ if(child_in_job){e=ERROR_ACCESS_DENIED;goto reject;}
+ if(ResumeThread(pi.hThread)==(DWORD)-1){e=GetLastError();if(!e)e=ERROR_GEN_FAILURE;goto reject;}
+ CloseHandle(pi.hThread);CloseHandle(pi.hProcess);return 0;
+ reject:(void)TerminateProcess(pi.hProcess,e);(void)WaitForSingleObject(pi.hProcess,5000);CloseHandle(pi.hThread);CloseHandle(pi.hProcess);return e;
 }
 static void WINAPI main_service(DWORD argc,WCHAR **argv){
  DWORD e,d;FILETIME now;(void)argc;(void)argv;

@@ -29,5 +29,6 @@
   "SDK_setup": false,
   "maximum_planned_reboots": 4,
   "reboot_budget": "logs/planned-reboots.bin, durable per deployment; fifth request returns ERROR_RETRY(1237), no reboot",
-  "SCM_stop_observer": "same signed EXE --uart-terminal RUN PID RESULT; QueryServiceStatusEx confirms STOPPED; original SCM callback performs no work after SetServiceStatus(STOPPED)"
+  "SCM_stop_observer": "same signed EXE --uart-terminal RUN PID RESULT; QueryServiceStatusEx confirms STOPPED; original SCM callback performs no work after SetServiceStatus(STOPPED)",
+  "observer_job_policy": "IsProcessInJob(parent); request CREATE_BREAKAWAY_FROM_JOB only if parent is in a job; create suspended; require IsProcessInJob(child)==FALSE before ResumeThread; query/create/resume errors or child still in job fail closed with no bound-child fallback"
 }
