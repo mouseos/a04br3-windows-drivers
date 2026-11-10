@@ -90,7 +90,9 @@ def main():
             if name == 'display_bdd_dmm.obj': data=(evidence/name).read_bytes()
             (out/'members'/name).write_bytes(data); expected[name]=hashlib.sha256(data).hexdigest()
         lib=out/'ge8300-kmd-clear.lib'
-        run([a.llvm_lib,'/machine:arm','/out:'+str(lib),*[out/'members'/n for n in expected]], 'archive.log')
+        # The pinned llvm-lib prepends inputs: reverse the command-line order
+        # to retain the observed369 member order. Verify the actual result.
+        run([a.llvm_lib,'/machine:arm','/out:'+str(lib),*[out/'members'/n for n in reversed(list(expected))]], 'archive.log')
         rebuilt=archive.members(lib)
         require([n for n,_ in rebuilt] == [n for n,_ in members], 'Archive member order changed')
         require({n:hashlib.sha256(v).hexdigest() for n,v in rebuilt} == expected, 'Archive member preservation failed')
