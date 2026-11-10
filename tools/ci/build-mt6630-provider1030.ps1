@@ -61,7 +61,7 @@ try{
  $before=@($before|Where-Object {$_ -cmatch '^\s*(Name|Symbol):'});$after=@($after|Where-Object {$_ -cmatch '^\s*(Name|Symbol):'})
  if(!$before.Count -or ($before -join "`n") -cne ($after -join "`n")){throw 'Actual1029 imports must remain identical'};$receipt.imports_equal_actual1029=$true
  Copy-Item "$root\drivers\network\mt6630\mt6630-combo-runtime.inf" $dir
- if(!(Select-String -LiteralPath "$dir\mt6630-combo-runtime.inf" -SimpleMatch 'DriverVer=11/11/2026,2026.11.11.1030')){throw 'Formal1030 INF required'}
+ if(!(Select-String -LiteralPath "$dir\mt6630-combo-runtime.inf" -SimpleMatch 'DriverVer=11/10/2026,2026.11.11.1030')){throw 'Formal1030 INF required'}
  $unsigned=Sha $sys;$sign='C:\mt8167-minimal-service-host\cache\kit81\bin\x86\signtool.exe';$inf2cat="$cache\small\signing\bin\Inf2Cat.exe";$thumb='BCBF6C456C6F0DD0818434763B189488FBF13570'
  $pins1030=Get-Content "$root\tools\ci\mt6630-provider1030-signing-pins.json" -Raw|ConvertFrom-Json
  if((Sha $sign) -cne $pins1030.signtool -or (Sha $inf2cat) -cne $pins1030.inf2cat){throw 'Signing tool pin mismatch'}
