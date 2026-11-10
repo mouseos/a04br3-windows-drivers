@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # UMD/client only. Never build or install a kernel driver.
-param([switch]$EnableCandidate,[switch]$EnableLimitedDevelopmentProfile,[switch]$SourceCompiler,
+param([switch]$EnableCandidate,[switch]$EnableLimitedDevelopmentProfile,[switch]$SourceCompiler,[switch]$UnifiedDisplay,[string]$CompilerSourceCommit,
  [Parameter(Mandatory=$true)][string]$CompilerDirectory,
  [Parameter(Mandatory=$true)][string]$CompilerManifestSha256,
  [Parameter(Mandatory=$true)][string]$PairDirectory,
@@ -14,7 +14,14 @@ function Verify($path,$sha){if($sha -notmatch '^[a-fA-F0-9]{64}$' -or (Get-FileH
 $cp=Join-Path $CompilerDirectory 'link-manifest.json';Verify $cp $CompilerManifestSha256
 $cm=Get-Content -Raw $cp|ConvertFrom-Json
 if($SourceCompiler){
- if($cm.schema -cne 'compiler-source-closure-v1' -or $cm.source_dirty -or !$cm.source_built -or !$cm.all_compile_exit_codes_zero -or $cm.source_commit -cne (& git -C $root rev-parse HEAD) -or $cm.compiled_units -ne 375 -or $cm.source_plan_sha256 -cne (Get-FileHash "$root\third_party\mesa-pco\source-plan.json" -Algorithm SHA256).Hash.ToLowerInvariant()){throw 'Source-built compiler closure mismatch'}
+ $currentSource=(& git -C $root rev-parse HEAD)
+ if(!$CompilerSourceCommit){$CompilerSourceCommit=$currentSource}
+ if($CompilerSourceCommit -cnotmatch '^[0-9a-f]{40}$'){throw 'Exact compiler source commit required'}
+ if($CompilerSourceCommit -cne $currentSource){
+  $compilerRecipeChanges=@(& git -C $root diff --name-only $CompilerSourceCommit $currentSource)
+  if($LASTEXITCODE -or !$compilerRecipeChanges.Count -or @($compilerRecipeChanges|Where-Object{$_ -cnotin @('tools/ci/build-ge8300-from-source.ps1','drivers/gpu/mt8167/wddm-render/build-native-development-wdk81.ps1')}).Count){throw 'Compiler reuse permits only explicit wrapper/UMD-recipe differences; no compiler input changes'}
+ }
+ if($cm.schema -cne 'compiler-source-closure-v1' -or $cm.source_dirty -or !$cm.source_built -or !$cm.all_compile_exit_codes_zero -or $cm.source_commit -cne $CompilerSourceCommit -or $cm.compiled_units -ne 375 -or $cm.source_plan_sha256 -cne (Get-FileHash "$root\third_party\mesa-pco\source-plan.json" -Algorithm SHA256).Hash.ToLowerInvariant()){throw 'Source-built compiler closure mismatch'}
 }else{if($cm.source_dirty -or $cm.exit_code -ne 0 -or $cm.crt_entry -ne '_DllMainCRTStartup'){throw 'Incomplete compiler/CRT provenance'}}
 $libs=@()
 foreach($l in $cm.inputs){
@@ -38,6 +45,7 @@ try {
  $env:TEMP="$out\tmp";$env:TMP=$env:TEMP
  $inc="${env:ProgramFiles(x86)}\Windows Kits\8.1\Include";$lib="${env:ProgramFiles(x86)}\Windows Kits\8.1\Lib\winv6.3\um\arm"
  $common=@('--target=thumbv7-pc-windows-msvc','-std=c11','-fms-extensions','-ffreestanding','-fno-builtin','-fno-stack-protector','-O2','-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access','-D_ARM_','-DARM','-D_WIN32_WINNT=0x0603','-DNTDDI_VERSION=0x06030000','-DD3D_UMD_INTERFACE_VERSION=0x4002','-DDXGKDDI_INTERFACE_VERSION=0x4002',"-I$inc\shared","-I$inc\um","-I$inc\km",'-D__ldrexd=__geo_typed_wdk81_ldrexd_declaration')
+ if($UnifiedDisplay){$common+='-DA04_GE8300_UNIFIED_DISPLAY356=1'}
  $units=@('clear_protocol','frontend/draw_protocol','frontend/draw_link_protocol','frontend/texture_draw_protocol','frontend/shader_draw_protocol','umd/clear_ddi','umd/bootstrap','umd/frontend','umd/shader_state','umd/tokenized_shader','compiler/sm2','umd/typed_state','umd/typed_texture','umd/typed_resource','umd/typed_view','umd/typed_shader','umd/typed_draw','umd/typed_pair','umd/typed_runtime','umd/typed_dxgi','umd/typed_entry','umd/entry','testclient/memory','testclient/d3d-clear','testclient/d3d-texture','testclient/d3d-texture-boundary','testclient/d3d-ui-texture')
  $objects=@();$compiled=@()
  foreach($u in $units){
@@ -69,5 +77,5 @@ try {
   if($name -eq 'ge8300-umd.dll' -and !($pe -match 'Name: OpenAdapter10_2')){throw 'Missing runtime export'}
   $pe|Set-Content "$out\$name.pe.txt"
  }
- @{source_commit=(& git -C $root rev-parse HEAD);source_dirty=$false;compiled=$compiled;compiler_manifest_sha256=$CompilerManifestSha256;pair_manifest_sha256=$PairManifestSha256;default_off=$true;limited_development_profile=$true;development_negotiation_pipeline='10_0';standard_profile_qualified=$false;runtime_verified=$false;kernel_changed=$false;private_payload=$false;signed=$false;outputs=@('ge8300-umd.dll','ge8300-d3d-clear.exe','ge8300-d3d-texture.exe','ge8300-d3d-texture-boundary.exe','ge8300-d3d-ui-texture.exe','ge8300-native-umd.lib')|ForEach-Object {@{name=$_;sha256=(Get-FileHash "$out\$_" -Algorithm SHA256).Hash}}}|ConvertTo-Json -Depth 8|Set-Content "$out\build-manifest.json"
+ @{source_commit=(& git -C $root rev-parse HEAD);compiler_source_commit=$cm.source_commit;unified_display=$UnifiedDisplay.IsPresent;source_dirty=$false;compiled=$compiled;compiler_manifest_sha256=$CompilerManifestSha256;pair_manifest_sha256=$PairManifestSha256;default_off=$true;limited_development_profile=$true;development_negotiation_pipeline='10_0';standard_profile_qualified=$false;runtime_verified=$false;kernel_changed=$false;private_payload=$false;signed=$false;outputs=@('ge8300-umd.dll','ge8300-d3d-clear.exe','ge8300-d3d-texture.exe','ge8300-d3d-texture-boundary.exe','ge8300-d3d-ui-texture.exe','ge8300-native-umd.lib')|ForEach-Object {@{name=$_;sha256=(Get-FileHash "$out\$_" -Algorithm SHA256).Hash}}}|ConvertTo-Json -Depth 8|Set-Content "$out\build-manifest.json"
 }finally{$env:TEMP=$oldTemp;$env:TMP=$oldTmp}
