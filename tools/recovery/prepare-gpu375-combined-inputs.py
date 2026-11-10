@@ -5,7 +5,7 @@ import copy
 import importlib.util
 import hashlib
 import json
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 sp = importlib.util.spec_from_file_location('client375', Path(__file__).with_name('prepare-gpu375-client-inputs.py'))
 client = importlib.util.module_from_spec(sp)
@@ -28,6 +28,12 @@ BATTERY_READS = {
 }
 
 
+def installed_path(value):
+    relative = PureWindowsPath(value)
+    require(not relative.is_absolute() and not relative.drive and '..' not in relative.parts and relative.parts, '固定System32相対pathだけ')
+    return 'Windows/System32/' + relative.as_posix()
+
+
 def accepted():
     lock = a.read(ACCEPTED)
     require(lock['schema'] == 'GPU375_COMBINED_ACCEPTED_MANIFESTS_V1', '明示combined lock必須')
@@ -47,6 +53,15 @@ def checked_package(root, row, role, pin):
     require(row['driver_version'] == pin['versions'][role] and row['driver_date'] == pin['dates'][role], '実INF tuple: ' + role)
     if role in EXPECTED:
         require(row['driver_version'] == EXPECTED[role], '既知376/1.8/1031だけ')
+    if role == 'wifi':
+        review = a.read(a.pinned(root, pin['main_review']))
+        sys_sha = next(v['sha256'] for v in manifest['files'] if v['path'] == 'mt6630-combo-runtime.sys')
+        require(manifest['signature_status'] == 'Valid' and manifest['signer_thumbprint'] == a.SIGNER and
+                manifest['version'] == '2026.11.11.1031' and review['source_commit'] == pin['source_commit'] and
+                review['manifest_sha256'] == ref['sha256'] and review['SYS_sha256'] == sys_sha and
+                review['files_hash_size_verified'] is True and review['BCBF_Valid_and_CAT_membership_recorded'] is True and
+                review['compiled_TUs'] == 19 and review['reused_objects'] == 24 and review['SDK_rebuild'] is False and
+                review['hardware_success'] is False, '実1031署名/個別main reviewだけ。raw証拠を新boolで置換しない')
     if role == 'render':
         review = a.read(a.pinned(root, pin['main_review']))
         sys_sha = next(v['sha256'] for v in manifest['outputs'] if v['name'] == 'ge8300-render.sys')
@@ -75,6 +90,9 @@ def prepare(root, spec, policy=None):
             '既mask0と分離した明示combined modeのみ')
     require(spec.get('hardware_owner') == 'main' and spec.get('capture_number') == 221 and
             spec.get('run') == 222 and spec.get('post_capture') == 223, 'fresh221/run222/post223のみ')
+    bundle = a.read(a.pinned(root, lock['main_review_bundle']))
+    require(bundle['status'] == 'actual-signed-packages-main-reviewed' and bundle['hardware_verified'] is False and
+            bundle['reviews'] == {k: lock[k]['main_review'] for k in ('gpu376', 'battery18', 'wifi1031')}, '固定main三package review結合')
     reviews = {k: lock[k]['main_review'] for k in ('gpu376', 'battery18', 'wifi1031')}
     for ref in reviews.values():
         a.pinned(root, ref)
@@ -98,10 +116,10 @@ def prepare(root, spec, policy=None):
     extra_updates = {}
     for member in policy['packages']['render'].get('extra_members', []):
         new = next((x for x in rows['render'].get('extra_members', []) if x['name'] == member['name']), None)
-        require(new is not None and new['installed'] == member['installed'] and new['sha256'] == hashes372[member['name']], 'UMD/FWは実372由来: ' + member['name'])
+        require(new is not None and installed_path(new['installed']) == installed_path(member['installed']) and new['sha256'] == hashes372[member['name']], 'UMD/FWは実372由来: ' + member['name'])
         a.pinned(root, {'path': str(Path(lock['retained372']['manifest']['path']).parent / new['name']), 'sha256': new['sha256']})
         require(a.pinned(root, {'path': str(Path(rows['render']['directory']) / new['name']), 'sha256': new['sha256']}).is_file(), '実UMD/FW leaf')
-        installed = 'Windows/System32/' + new['installed'].replace('\\', '/')
+        installed = installed_path(new['installed'])
         extra_updates[installed] = dict(candidate=dict(path=str(Path(rows['render']['directory']) / new['name']), sha256=new['sha256']),
                                         baseline=dict(path=policy['preserved_sources'][installed], sha256=policy['preserved_files'][installed]))
     for kind, name in rows['display']['names'].items():
@@ -148,7 +166,7 @@ def load_map(path, root):
         p['preserved_files'].pop(installed, None)
         p['preserved_sources'].pop(installed, None)
     for row in p['packages']['render']['extra_members']:
-        installed = 'Windows/System32/' + row['installed'].replace('\\', '/')
+        installed = installed_path(row['installed'])
         transition = delta['updated_extra_members'][installed]
         row['baseline_sha256'] = transition['baseline']['sha256']
         p['baseline_witnesses'][installed] = transition['baseline']
@@ -168,7 +186,7 @@ def load_map(path, root):
             pins[str(Path(row['directory']) / name)] = row['hashes'][kind]
         for leaf in row.get('extra_members', []):
             pins[str(Path(row['directory']) / leaf['name'])] = leaf['sha256']
-    for ref in (spec['client_map'], lock['retained372']['manifest'], *delta['main_package_reviews'].values()):
+    for ref in (spec['client_map'], lock['retained372']['manifest'], lock['main_review_bundle'], *delta['main_package_reviews'].values()):
         a.pinned(root, ref)
         pins[ref['path']] = ref['sha256']
     input_ref = dict(path=path.relative_to(root).as_posix(), sha256=hashlib.sha256(path.read_bytes()).hexdigest())

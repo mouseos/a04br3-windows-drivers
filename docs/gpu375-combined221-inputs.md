@@ -37,7 +37,9 @@ source管理のtools/recovery/gpu375-combined-accepted.jsonに正式原本ref/sc
 - battery1.8 manifest SHA7adc56c789b7b49c3391b090cd60b258f1b5e970987bba0a7cb2ed355f53f3a7、
   source049e8937d05b5fe747c64bd85f6b0585286fdd90、INF11/10/2026,0.0.1.8。
   compile source32dfとINF/source049eを混同しない。
-- WiFi1031は未確定のためnull。仮SHA/schema/receiptを作らず、生成は拒否する。
+- WiFi1031 manifest SHAef518c00905e08cf50165ee53e1f9f1ea586a7aa75c6806c96edf58492227338、source6aa391051759078dbac9dba5d7b8d1106886e512。schema mt6630-provider1031-incremental-v1を実三leafとmain reviewへ結合する。
+
+実3packageのmain固定review bundle SHA65abb3174b929ba9779bbfc9c6017981b47f22992ae5bc0558753c61bf203cabも受理済み。accepted lockは正式受理状態。未取得actual221補足assetsやmap/SCM/native成果を合成しない。
 
 GPUと電池の個別main reviewをそのままpinする。新しい総合main reviewは不要。
 flat manifestへ丸写しして新compiled sourceと偽るadapterは使わない。
@@ -70,7 +72,7 @@ mediaは既build-private-peripheral-batch-media.pyの--gpu375-combined-profile�
 collectorはGPU375_COMBINED_RUN222_MAIN_SEAL_V1をcombined-run222/new221へ結合する。
 controller入口はtools/recovery/run-gpu375-combined-fresh221.pyで、既Observationとengineを再用する。
 
-SCM/native/media/controller全入口で未確定WiFi tupleを通さない。
+SCM/native/media/controller全入口でexact正式WiFi tuple以外を通さない。
 Windows PS5 parserの実行はこのsource作業では行っていない。変更host PS1はUTF8 BOMで保存。
 
 ## post223での電池exact2値

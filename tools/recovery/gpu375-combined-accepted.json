@@ -1,6 +1,6 @@
 {
   "schema": "GPU375_COMBINED_ACCEPTED_MANIFESTS_V1",
-  "status": "awaiting-actual-signed-manifests-and-main-review",
+  "status": "actual-signed-manifests-reviewed",
   "gpu376": {
     "manifest": {
       "path": "port/xnu/out/windows-rt-gdi376-signed/package376/signed-manifest.json",
@@ -40,7 +40,25 @@
       "sha256": "359559cd86cbbbc724d11f9e3ad48898fc180d7f49840324ddd00fadc110a768"
     }
   },
-  "wifi1031": null,
+  "wifi1031": {
+    "manifest": {
+      "path": "port/xnu/out/mt6630-provider1031/signed/provider/signed-manifest.json",
+      "sha256": "ef518c00905e08cf50165ee53e1f9f1ea586a7aa75c6806c96edf58492227338"
+    },
+    "schema": "mt6630-provider1031-incremental-v1",
+    "source_field": "source_commit",
+    "source_commit": "6aa391051759078dbac9dba5d7b8d1106886e512",
+    "versions": {
+      "wifi": "2026.11.11.1031"
+    },
+    "dates": {
+      "wifi": "11/10/2026"
+    },
+    "main_review": {
+      "path": "port/xnu/out/mt6630-provider1031/main-independent-review.json",
+      "sha256": "e769c53cddb373bc441911221dcbd8ad67a33a4ed3ec3f2505356c31bec66bd9"
+    }
+  },
   "display_update": true,
   "retained372": {
     "manifest": {
@@ -56,5 +74,9 @@
     "dates": {
       "display": "11/10/2026"
     }
+  },
+  "main_review_bundle": {
+    "path": "port/gsi/logs/ios-feasibility/windows-rt-explicit-source375/main-combined-package-reviews.json",
+    "sha256": "65abb3174b929ba9779bbfc9c6017981b47f22992ae5bc0558753c61bf203cab"
   }
 }
