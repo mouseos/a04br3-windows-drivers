@@ -10,7 +10,7 @@ if($native.status -cne 'verified-clean-system-services-only'){throw 'Native prep
 $candidate="$base\native-arm\candidate\SYSTEM";$candidateHash=(Get-FileHash $candidate -Algorithm SHA256).Hash.ToLowerInvariant()
 if($candidateHash -cne $native.candidate.sha256){throw 'Candidate pin mismatch'}
 Copy-Item $candidate "$out\candidate\SYSTEM"
-Add-Type -Path "$src\tools\recovery\OfflineSystemHiveNative.cs"
+Add-Type -Path @("$src\tools\recovery\OfflineSystemHiveNative.cs","$src\tools\recovery\PostOwnershipPolicy360.cs")
 $t=$null;$e=$null;$ast=[Management.Automation.Language.Parser]::ParseFile("$src\tools\recovery\prepare-offline-system-service.ps1",[ref]$t,[ref]$e)
 if($e.Count){throw 'Parser errors'}
 $f=@($ast.FindAll({param($n)$n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -ceq 'Peripheral-ServiceSnapshot'},$true));if($f.Count -ne 1){throw 'One bounded snapshot reader required'};Invoke-Expression $f[0].Extent.Text
@@ -55,7 +55,12 @@ foreach($mode in @('baseline','candidate')){
    }finally{$k.Dispose()}
   }
 
-  foreach($path in @('Select','ControlSet001\Control\GraphicsDrivers','ControlSet001\Services\MT8167RenderSingleGpu','ControlSet001\Services\MT8167CombinedFollowup124','ControlSet001\Services\MT8167CombinedFollowup126','ControlSet001\Services\Mt6392Keys','ControlSet001\Services\MT8167CombinedFollowup128','ControlSet001\Services\MT8167CombinedFollowup130','ControlSet001\Services\MT8167CombinedFollowup132','ControlSet001\Services\MT8167CombinedFollowup134','ControlSet001\Services\MT8167CombinedFollowup136','ControlSet001\Services\MT8167CombinedFollowup140','ControlSet001\Services\MT8167CombinedFollowup142','ControlSet001\Services\MT8167CombinedFollowup144')){$r.paths[$path]=Peripheral-ServiceSnapshot $root $path}
+  $policyRaw=[MT8167PostPolicy360.Policy]::Read($root)
+  $expectedRaw=if($mode -ceq 'baseline'){'01000000'}else{'00000000'}
+  if($policyRaw -cne $expectedRaw){throw 'Exact policy360 baseline1/candidate0 required'}
+  $r.post_policy360_raw=$policyRaw
+  $r.paths['ControlSet001\Control\GraphicsDrivers-except-exact-policy-value']=[MT8167PostPolicy360.Policy]::Snapshot($root)
+  foreach($path in @('Select','ControlSet001\Services\MT8167RenderSingleGpu','ControlSet001\Services\MT8167CombinedFollowup124','ControlSet001\Services\MT8167CombinedFollowup126','ControlSet001\Services\Mt6392Keys','ControlSet001\Services\MT8167CombinedFollowup128','ControlSet001\Services\MT8167CombinedFollowup130','ControlSet001\Services\MT8167CombinedFollowup132','ControlSet001\Services\MT8167CombinedFollowup134','ControlSet001\Services\MT8167CombinedFollowup136','ControlSet001\Services\MT8167CombinedFollowup140','ControlSet001\Services\MT8167CombinedFollowup142','ControlSet001\Services\MT8167CombinedFollowup144')){$r.paths[$path]=Peripheral-ServiceSnapshot $root $path}
  }catch{$report.errors+=@($_.Exception.Message)}finally{if($root){$root.Dispose()};if($loaded){$r.unload_rc=[MT8167OfflineHive.Native]::Unload($mount)};if($priv){$priv.Dispose();$r.privilege_restore_error=$priv.RestoreError}}
  $report.snapshots[$mode]=$r
 }

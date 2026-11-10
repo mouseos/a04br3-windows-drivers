@@ -146,7 +146,8 @@ def main():
   subprocess.run(['git','-C',str(repo),'merge-base','--is-ancestor',signed_source,a.source_commit],check=True)
   changed=set(subprocess.check_output(['git','-C',str(repo),'diff','--name-only',signed_source,a.source_commit],text=True).splitlines())
   if a.combined184_profile:
-   require(not changed,'185 signed source must exactly match media source')
+   require(changed and changed<={'tools/recovery/verify-combined184-preservation.ps1','tools/winpe/build-private-peripheral-batch-media.py'},'185 exact post-sign helper-only differences required')
+   require(sha(repo/'tools/winpe/mt8167-peripheral-update.c')==sm['source_sha256'],'Signed185 SCM TU unchanged')
   elif a.combined182_profile:
    allowed={'tools/recovery/collect-combined184.sh','tools/recovery/verify-combined182-preservation.ps1','tools/winpe/private_hardware_probe_input.py','tools/winpe/build-private-peripheral-batch-media.py'}
    require(changed and changed<=allowed,'183 exact helper-only source differences')
