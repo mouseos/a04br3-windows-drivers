@@ -2686,7 +2686,7 @@
     {
       "source": "drivers/gpu/mt8167/vendor_m1_11/native_texture2d_state.c",
       "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_texture2d_state.c",
-      "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
+      "source_commit": "ae6c1508e7fea7a95efca0db960827bcd6f2827f",
       "source_sha256": "23628eb4b7542f6ba65f672ff039ddee0552774bee1f0abfbf42ef91ff08d246",
       "sha256": "dc2c25522f021a0ad9557e533f53e41ae2f3c224f07aec4f9351b151b73292eb",
       "include_rewrites": [],
@@ -2704,13 +2704,14 @@
           "baseline_destination_sha256": null,
           "role": "New source texture implementation326/327",
           "new_source": true
-        }
+        },
+        "new_source": true
       }
     },
     {
       "source": "drivers/gpu/mt8167/vendor_m1_11/native_texture2d_state.h",
       "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_texture2d_state.h",
-      "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
+      "source_commit": "ae6c1508e7fea7a95efca0db960827bcd6f2827f",
       "source_sha256": "6537d24a5a9f8af464cf8f6571cd781d5b38569f5f46f3fadb6afd96e80d4b9f",
       "sha256": "da030c335c6f84d5522885bae4fabb27f13c5c22a8a70552a3bff38f2d471c0c",
       "include_rewrites": [],
@@ -2728,7 +2729,8 @@
           "baseline_destination_sha256": null,
           "role": "New source texture implementation326/327",
           "new_source": true
-        }
+        },
+        "new_source": true
       }
     },
     {

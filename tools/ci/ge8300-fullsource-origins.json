@@ -2598,7 +2598,8 @@
         "baseline_destination_sha256": null,
         "role": "New source texture implementation326/327",
         "new_source": true
-      }
+      },
+      "new_source": true
     },
     {
       "source_commit": "ae6c1508e7fea7a95efca0db960827bcd6f2827f",
@@ -2613,7 +2614,8 @@
         "baseline_destination_sha256": null,
         "role": "New source texture implementation326/327",
         "new_source": true
-      }
+      },
+      "new_source": true
     },
     {
       "source_commit": "3ee34eea349744d003479467ee538de33f212a06",
