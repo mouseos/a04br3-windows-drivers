@@ -1,0 +1,26 @@
+{
+  "schema": "pco198-partial-four-pins-v1",
+  "source_commit": "4b7e6b3065852e9a13b69e543c4dae0f814308a8",
+  "partial_zip_sha256": "9bbfb2bb94953d6dced3c0cc296c26692cd6b847f905b919e09448e51c6d5ce1",
+  "files": {
+    "compiler/0-pco_info.obj": "2abbba27eecbd039787f9c61cf81bf969d358a2540092edc9fdd1f4ae4cc1f7a",
+    "compiler/0.d": "5924496087712a7ff941a31a751270d6bde5c02d31204d2d99ab73e2d3b2be6c",
+    "compiler/0.log": "33885a524de39e771695ae4c6dadce041b2a99dd72a93dee4c5397f6c818eae1",
+    "compiler/1-pco_nir_algebraic.obj": "1bb827eb6a26ef0ad2564e70357b0a9aa5b5db82c80d615a120bae11cc127318",
+    "compiler/1.d": "3d4835e4d9a837502953eb32b64eba6507ec523e9788462f9440a667bf09f468",
+    "compiler/1.log": "244a30d133d686bf13677bdcc2d90723bbc138e431afd4a1c33efe398f7e7fd2",
+    "compiler/2-pco_usclib_explicit.obj": "9c2d8c81615462c0086d9622cc2a070ddf9dcff2e1759a800289f6662a67eafa",
+    "compiler/2.d": "cd9299c8f3c4899697550684247037e00052bb65b1c9eb86b2f2ad7669becdd5",
+    "compiler/2.log": "c85a42de05ffd32a3f83c0e361f649438bb27a6520821d758ec3e608c266fa44",
+    "compiler/3-pco.obj": "c6f1a3bee91ba0e386da3fa854778bdd1d091e2d1598c4605b24c61831530cfa",
+    "compiler/3.d": "7ed4925538178489940daac59a7feda3a0b767b81f60c45ecbf5225aa3c5437f",
+    "compiler/3.log": "46f257946c5a541e040ec5a4e76ef85f6f8b8821c800739e63bc6f2591176a09",
+    "compiler/arm-neon-vfs.json": "0d4a47a8c6050a944ffe18993a2f28746c387b46490ccda44f7a5d4ded9e7886",
+    "compiler-partial198-inventory.json": "5ee0e048c7c7d781060e4aafb83c2b262a23ca91f54422b028d0e88707965467"
+  },
+  "original_recipe_sha256": "bd20f8de889879001df3918c948ba73de74d92fa600e791037a5d5b4ecf89c37",
+  "source_plan_sha256": "d0de81280cdac3bafc856111f29a22f3bd4b1969fd6779a02fe5e34a107b19c1",
+  "historical_exit_codes_complete": false,
+  "historical_compiler_hash_recorded": false,
+  "historical_include_hashes_recorded": false
+}
