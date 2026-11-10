@@ -42,3 +42,10 @@ drivers/gpu/mt8167/start_gap359.h text eol=lf
 tools/ci/build-ge8300-compiler-source.py text eol=lf
 tools/ci/ge8300_compiler_cache.py text eol=lf
 tools/ci/build-ge8300-from-source.ps1 text eol=lf
+# DWM source/codegen/cache recipes are pinned as exact LF bytes.
+tools/ci/build-ge8300-dwm-source.ps1 text eol=lf
+tools/ci/derive-ge8300-adapter-cache.py text eol=lf
+tools/ci/test-ge8300-dwm-codegen.py text eol=lf
+tools/ci/test-ge8300-dwm-contracts.py text eol=lf
+tools/gpu/shaders/native-premultiplied-usc.c text eol=lf
+tools/gpu/shaders/native-copy-region-usc.c text eol=lf
