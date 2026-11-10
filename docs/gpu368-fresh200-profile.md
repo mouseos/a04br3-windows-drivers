@@ -101,3 +101,5 @@ validatorは保存host artifactの実SHAとseal内pin、最後の書込み出自
 host検証：`python -B tests/test-gpu368-retained-boot.py --workspace <TAB-A04-BR3 root>`。実run177/197/trial199保存記録と既host imageのみでcomponentを確認し、read偽装・異なるboot・trial199のboot/GPT書込み・host pin不一致を拒否する。fresh200 witness/profileは生成しない。
 
 SCM200の最初のWindows compileはglobaldiag引数の余分な引用符により生成Cが`L""C:...""`となって失敗した。obj/link/署名は未生成。空白を含まない固定絶対prefixは1個の引数として渡せるため、この引数データの外側引用符だけを除去した。汎用cstrや旧profileは変更しない。実184値policyから生成したliteralはhost clang構文検査を通過した。失敗header/logは保持し、新規出力へSCM1TUを再実行する。
+
+生成器の修正をさらに限定し、最終実装ではruntime引数の引用符を保持したまま、200専用C文字列encoderでbackslash/quote/CR/LFをescapeする。共通cstr関数のファイル・旧profileは変更しない。引用符付きの実184値policyから生成したliteralをhost clangで構文確認した。前段の引用符除去案ではなく、このencoderを使う固定HEADからmain候補を生成する。
