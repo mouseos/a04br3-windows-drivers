@@ -72,3 +72,22 @@ python3 -B "$repo/tools/recovery/run-gpu371-fresh212.py" \
 ## mainの原本保持copyも受理
 
 mainのprivate-map371.jsonが指定する`capture-contract.gpu371.json`（GPU371_FRESH212_CAPTURE_CONTRACT_V1）と`retained-boot-witness.gpu371.json`（GPU371_RETAINED_BOOT209_V1）も受理する。`schema_adaptation_of`の実path/hashをpinし、schema/明示alias/原本参照以外の全事実・集合が原本と一致することを要求する。boot aliasはhost_artifact/firmware_composition_manifestと完全一致させる。main-retention-report212はreported_by=main、physical_read_performed=false、fresh212 hash結合を保持し、そのcapture/supplement/return-normal参照もpinする。原本/copyのいずれでも事実や実測成功へ変換しない。
+
+## 既SCM/native/media CLIの371明示入口
+
+旧`-Gpu369Timing`/`--gpu369-timing-profile`は従来どおり。371は次の専用switchだけを使用する（両variant同時指定不可）。
+
+```powershell
+& "$src\tools\ci\build-combined200-service.ps1" -Gpu371Output -CaptureNumber 212 -Mode Service `
+  -Workspace $Workspace -PackageMap $Actual212Map -OutputDirectory "$src\out\service212" `
+  -KitHeaderRoot $SavedKitHeaders -LibraryRoot $SavedArmLibs -SigntoolPath $SavedSignTool
+```
+
+生成済みpolicyを渡す既`prepare-offline-system-service.ps1`はservice212/profile371/render-only/bootfalse/fresh4e34/47services277values160filesを要求する。新しいnative実装は追加せず、既clone-only/privrestore/全旧Services保存・named値確認を共用する。
+
+```sh
+python3 -B "$repo/tools/winpe/build-private-peripheral-batch-media.py"   --gpu371-output-profile --enable-peripheral-batch   --workspace "$root" --map "$Actual212Map"   --service-package "$SignedService212" --prepared-system "$PreparedSYSTEM212"   --prepared-result "$PreparedResult212" --prepared-sha256 "$PreparedSYSTEM212SHA"   --comparator "$SavedComparator" --comparator-manifest-sha256 "$SavedComparatorManifestSHA"   --base "$SavedBaseMedia" --tools "$SavedWinPETools" --source-commit "$FixedSourceCommit" --out "$New371Media"
+```
+
+service212のnative-result admission、runtime-token検証、署名EXE/CAT所属検証、collectorのGPU371_RUN213_MAIN_SEAL_V1対応まで既経路へ結合する。role/package validatorは実6496/native371/9d941/b638/91f14だけを受理し、INF71はsigned369 INFから署名recipeがDriverVer変更した出自として扱う（Git上の旧INF54をINF71と偽らない）。
+これらのコマンド実行・最終profile/header/native/media出力はmain担当。本source作業では実行しない。

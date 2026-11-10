@@ -38,27 +38,40 @@ def package(root,entry,role,repo,render_color=False):
  require(set(entry)=={'directory','manifest_sha256','source_commit'},'component field不一致: '+role)
  d=rooted(root,entry['directory']);p=d/'signed-manifest.json';require(sha(p)==hexpin(entry['manifest_sha256']),'署名manifest pin不一致')
  m=jsonfile(p);source=hexpin(entry['source_commit'],40)
- require(m.get('source_commit',m.get('package_source_commit'))==source,'source pin不一致')
+ native371=(role=='render' and entry['manifest_sha256']=='649612e1b5facd4b0992fea6b2c7c2a37cd2ea47d0570bcbf97b28c871b8655b')
+ if native371:
+  require(m['schema']=='GE8300_VIDPN371_RELINK_SIGN_V1' and m['recipe_source_commit']==source=='9d941f9873c1e7d8c166aa04e743a31eb99218dd' and m['runtime_source_commit']=='b63827d7c45e099d5844e2c694804a1df047ed10' and m['compiled_source_commit']=='91f14b4c6c04e43e947822cc2b8fef9dc4be8082' and m['signed'] is True and m['success'] is True and m['signer_thumbprint']==SIGNER,'固定371 render実出自/署名のみ')
+ else:require(m.get('source_commit',m.get('package_source_commit'))==source,'source pin不一致')
  require(m.get('signed') is not False and m.get('source_dirty') is not True,'未署名/dirty package拒否')
  entries=m.get('files',m.get('outputs'));require(isinstance(entries,list),'固定file manifestが必要')
  files={}
  for e in entries:
-  n=e.get('path',e.get('name'));require(isinstance(n,str) and re.fullmatch(r'[A-Za-z0-9_.-]+',n) and n not in files,'flat固定fileのみ')
-  f=rooted(root,d/n);require(f.parent==d and f.is_file() and 0<f.stat().st_size<=16777216,'package file範囲不正')
+  n=e.get('path',e.get('name'));require(isinstance(n,str) and re.fullmatch(r'(?:display-transport/)?[A-Za-z0-9_.-]+' if native371 else r'[A-Za-z0-9_.-]+',n) and n not in files,'flat固定fileのみ')
+  f=rooted(root,d/n);require((f.parent==d or (native371 and f.parent==d/'display-transport')) and f.is_file() and 0<f.stat().st_size<=16777216,'package file範囲不正')
   require(sha(f)==hexpin(e['sha256']),'package hash不一致: '+n);files[n]=sha(f)
  names=TARGETS[role][3];require(set(names).issubset(files) and 'mt8167-development.cer' in files,'固定package不足')
  require(hashlib.sha1((d/'mt8167-development.cer').read_bytes()).hexdigest().upper()==SIGNER,'固定private入力cert不一致')
  for n in names:
   if n.endswith(('.sys','.dll')):require_armnt(d/n)
  inf=textinf(d/names[0]);raw=subprocess.check_output(['git','-C',str(repo),'show',source+':'+TARGETS[role][4]])
- committed=raw.decode('utf-16' if raw[:2]==b'\xff\xfe' else 'utf-8-sig').replace('\r\n','\n');require(inf==committed,'実INFとsource不一致')
+ committed=raw.decode('utf-16' if raw[:2]==b'\xff\xfe' else 'utf-8-sig').replace('\r\n','\n')
+ if native371:
+  # The signing recipe stamps DriverVer from the signed369 INF; Git INF54 is not relabelled as INF371.
+  original=rooted(root,'port/xnu/out/windows-rt-panel-timing369-complete/build/panel-timing369-signed-attempt3/package369/ge8300-render.inf')
+  require(sha(original)=='9bcd05843ef84e7be5ed94bc475965d6047534749f946ffb9b767eae74d502f2','実signed369 INF由来のみ')
+  committed=textinf(original).replace('DriverVer=11/10/2026,0.0.3.69','DriverVer=11/10/2026,0.0.3.71')
+  code=subprocess.check_output(['git','-C',str(repo),'show',source+':tools/ci/relink-sign-ge8300-vidpn371.py'])
+  require(b'GE8300_VIDPN371_RELINK_SIGN_V1' in code and b'0.0.3.71' in code,'固定9d941 recipe codeの由来')
+ require(inf==committed,'実INFとsource/明示署名recipe変換不一致')
  v=re.search(r'(?im)^DriverVer\s*=\s*([^\n;]+)',inf);require(v,'DriverVer欠落');v=v[1].strip();num,date=version(v)
  for field,wanted in [('ClassGuid',TARGETS[role][2]),('ServiceBinary','%12%\\'+names[1])]:
   found=re.search(r'(?im)^'+field+r'\s*=\s*([^\n;]+)',inf);require(found and found[1].strip().lower()==wanted.lower(),'固定INF '+field+'不一致')
  require(TARGETS[role][0].lower() in inf.lower() and re.search(r'(?im)^AddService\s*=\s*'+TARGETS[role][1]+r'\s*,',inf),'固定ID/service不一致')
  require(re.search(r'(?im)^\[Install\.NT(?:ARM)?\]',inf),'ARM DDInstall装飾不足')
  require(not re.search(r'(?i)\b(CoInstallers32|RegisterDlls|UnregisterDlls|RunPreSetupCommands|RunPostSetupCommands)\b',inf),'実行性INF拡張拒否')
- if role=='parent':
+ if native371:
+  require(v=='11/10/2026,0.0.3.71' and files[names[1]]=='202f0f3fd7d4325df20dd8570d88299f008fae421bff16cccf99589282a19ded' and files['ge8300-mips.fw']==FW,'実371 INF/SYS/FWだけ');flags={}
+ elif role=='parent':
   require(source==PARENT and v=='11/07/2026,2026.11.7.1014','固定SD1/SPM親1014以外拒否')
   cap=jsonfile(d/'parent-manifest.json');require('parent-manifest.json' in files,'親capability非hash')
   flags=cap['flags'];require(flags.get('A04_SHARED_SD_POWER')=='1' and flags.get('A04_SHARED_GPU_DOMAIN_SPM')=='1' and flags.get('A04_SHARED_GPU_PLATFORM')=='1','SPM/SD1必須')
