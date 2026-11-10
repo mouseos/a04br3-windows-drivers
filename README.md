@@ -1,5 +1,23 @@
 # TAB-A04-BR3 Windows ドライバ
 
+## 統合描画候補362と現在の入口
+
+現在の公開作業branchは`work/ge8300-unified362`。
+[統合内容・検証範囲](docs/ge8300-unified362.md)と[単一checkoutのbuild手順](tools/ci/README-ge8300-source-build.md)を参照。
+
+```powershell
+git clone --depth 1 --single-branch --branch work/ge8300-unified362 https://github.com/mouseos/a04br3-windows-drivers.git
+Set-Location a04br3-windows-drivers
+./tools/ci/build-ge8300-from-source.ps1 -EnableCandidate -UnifiedDisplay
+```
+
+この入口はnative owner/KMD/SEH/display bridge/BDD/MT8167 display transportを同じ統合modeで作り、DEFAULT texture更新と標準評価clientも同じsourceからbuildする。SDK/WDKは正規の既存環境を使用し、古いdriver cacheやprivate hiveを通常buildの入力にしない。生成物は未署名。署名・INF/CAT包装・実機更新は別工程となる。
+
+過去の実機ではWindows RT起動・タッチ・4 CPU・電池/温度取得、標準D3D11の三角形と2×2 texture描画を確認している。現在の362候補は、統合描画のCode 43につながるSetPalette登録漏れを修正し、DEFAULT texture UpdateSubresourceUPを追加したもの。362の実機でのCode 43解消・通常DXGI Present/Windows画面描画と、上記cold-buildのWindowsでの完走は未検証。source出自照合とPowerShell構文確認の成功を実機成功とは扱わない。
+
+以下は以前の世代の実装・検証履歴として保持する。
+
+
 ## 後続332：ABI5機能＋readback安全化（実GPU未検証）
 
 [332の契約と限界](docs/ge8300-readback-safety332.md)。331機能へlegacy SG DMA Get/PutのDISPATCH契約修正9d43d5a0を統合し、実LockCbの非待機・期限管理・失敗保持と段階記録を追加する。旧署名clientは保持し、新clientは`ge8300-d3d-texture-boundary.exe`。
