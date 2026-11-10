@@ -289,7 +289,9 @@
     "baseline372/ge8300-kmd-clear.lib": "7fed36a0892a8216c0cb40a05051f231525b5c48bce3ec40e11a4115cdc474ea",
     "baseline372/ge8300-display-transport.lib": "19e7ee769680e0beb00ec6ace651a4f1db0e30dbcf51b171aab74be5ea6e1cc1",
     "baseline372/incremental-build-manifest.json": "6e72be0bc94a898b5dd718418fa4e4ab9ded0e0ceaad2dddfd255f3af16aa9bf",
-    "native/ge8300-native-owner-core.lib": "49cafb8991f003dcd31b73d51e29218439a3f76d7db0e7f61147cd9295b3d277"
+    "native/ge8300-native-owner-core.lib": "49cafb8991f003dcd31b73d51e29218439a3f76d7db0e7f61147cd9295b3d277",
+    "package372/display-transport/mt8167-display-transport.sys": "e14466efe8e7ae0367f0e791775418d3c06e4e3c4a865552da11f7262bdea7df",
+    "package372/signed-manifest.json": "e987826bdc5a9a8085c31ebeccf6c0680e96cd8bb7ef5ad56748869bc41bccfc"
   },
   "generated_header_sha256": "bcbd08231b77fe052a318f86e732cf87393d11d20fc9d440dc19cdead894d37d",
   "tool_pins": {

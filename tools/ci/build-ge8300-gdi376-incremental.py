@@ -7,7 +7,6 @@ import json
 import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
 import importlib.util
 
@@ -158,7 +157,7 @@ def main():
              '/out:' + str(out / 'ge8300-render.sys'), '/map:' + str(out / 'ge8300-render.map')], 'render-link.log')
         run([tools['llvm-readobj'], '--file-headers', '--coff-imports', out / 'ge8300-render.sys'], 'render-pe.log')
         receipt['actual_link_inputs'] = {str(path): sha(path) for path in [link, *libraries.values(), *[km / name for name in spec['link_inputs']]]}
-        receipt['retained_transport_sha256'] = sha(inputs / 'package372/mt8167-display-transport.sys')
+        receipt['retained_transport_sha256'] = sha(inputs / 'package372/display-transport/mt8167-display-transport.sys')
         receipt['retained_package_manifest_sha256'] = sha(inputs / 'package372/signed-manifest.json')
         consumed = dict(reuse.HASH_CACHE); reuse.HASH_CACHE.clear()
         for path, digest in consumed.items():
