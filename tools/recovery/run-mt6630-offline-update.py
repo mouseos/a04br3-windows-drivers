@@ -142,8 +142,25 @@ def main():
     run(['fastboot', '-s', SERIAL, 'oem', 'reboot-recovery'], 'normal-recovery.log', timeout=30)
     run(adb('wait-for-recovery'), 'normal-recovery-wait.log', timeout=150)
     # Recovery root can restart adbd; wait-for-recovery does not prove root.
-    run(adb('root'), 'normal-root.log', timeout=30)
-    run(adb('wait-for-recovery'), 'normal-root-wait.log', timeout=60)
+    with (out / 'normal-root.log').open('ab') as log:
+        try:
+            # Some adbd versions return failure while the root restart succeeds.
+            # Only the subsequent actual UID check authorizes a write.
+            subprocess.run(adb('root'), stdout=log, stderr=subprocess.STDOUT, timeout=30)
+        except subprocess.TimeoutExpired:
+            pass
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        try:
+            uid = subprocess.run(adb('shell', 'id', '-u'), capture_output=True, timeout=5)
+            if uid.returncode == 0 and uid.stdout.strip() == b'0':
+                break
+        except subprocess.TimeoutExpired:
+            pass
+        time.sleep(1)
+    else:
+        save('released-recovery-root-unconfirmed-restore-only')
+        raise SystemExit('Recovery root未確認。更新は繰り返さず通常ESP復帰だけを待ちます')
     state['normal_uart_offset'] = deploy(root / NORMAL, NORMAL_SHA, 'normal')
     state['normal_boot_requested'] = True
     state['post_request_device_operations'] = 0
