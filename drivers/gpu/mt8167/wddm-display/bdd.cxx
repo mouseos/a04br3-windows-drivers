@@ -954,6 +954,9 @@ NTSTATUS BASIC_DISPLAY_DRIVER::QueryVidPnHWCapability(_Inout_ DXGKARG_QUERYVIDPN
     BDD_ASSERT(pVidPnHWCaps->SourceId < MAX_VIEWS);
     BDD_ASSERT(pVidPnHWCaps->TargetId < MAX_CHILDREN);
 
+    // WDK: VidPnHWCaps is output; Reserved must be zero even when the
+    // caller supplies nonzero output storage. Preserve the input IDs/handle.
+    RtlZeroMemory(&pVidPnHWCaps->VidPnHWCaps, sizeof(pVidPnHWCaps->VidPnHWCaps));
     pVidPnHWCaps->VidPnHWCaps.DriverRotation             = A04_GE8300_UNIFIED_DISPLAY356 ? 0 : 1; // unified route has no software rotation
     pVidPnHWCaps->VidPnHWCaps.DriverScaling              = 0; // BDD does not support scaling
     pVidPnHWCaps->VidPnHWCaps.DriverCloning              = 0; // BDD does not support clone
