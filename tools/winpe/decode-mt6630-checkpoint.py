@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Decode only the fixed binary checkpoint; never mounts/modifies a hive."""
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import struct
@@ -86,14 +87,59 @@ def decode(data, after_generation=None):
                                                 if not any(e['stage'] == v and e['observed'] for e in events)])
 
 
+def summarize_receipt(directory):
+    """One saved native extraction, four fixed blobs; never opens a hive."""
+    receipt = json.loads((directory / 'receipt.json').read_text(encoding='utf-8-sig'))
+    if (receipt.get('status') != 'checkpoint-extracted-not-a-connection-diagnosis'
+            or receipt.get('errors') != [] or any(receipt.get(k) != 0 for k in
+                ('load_rc', 'unload_rc', 'privilege_restore_error'))
+            or not receipt.get('originals_unchanged') or not receipt.get('manifest_unchanged')):
+        raise ValueError('Native replay receipt is not clean')
+    records = {}
+    for name in ('DriverEntry', 'Initialize', 'Scan', 'RuntimeFailure'):
+        row = receipt['values'].get(name, {})
+        if not row.get('present'):
+            continue
+        data = (directory / (name + '.bin')).read_bytes()
+        if hashlib.sha256(data).hexdigest() != row['sha256']:
+            raise ValueError('Raw checkpoint hash mismatch: ' + name)
+        records[name] = decode(data)
+        if records[name]['channel'] != name:
+            raise ValueError('Checkpoint channel/name mismatch: ' + name)
+    entry, init, runtime = (records.get(n, {}) for n in ('DriverEntry', 'Initialize', 'RuntimeFailure'))
+    init_bound = bool(entry and init and init['parent_generation'] == entry['generation']
+                      and init['driver_build'] == entry['driver_build'] and init['generation'] > entry['generation'])
+    runtime_bound = bool(init_bound and runtime and runtime['parent_generation'] == init['generation']
+                         and runtime['driver_build'] == init['driver_build'] == 1029 and runtime['generation'] > init['generation'])
+    events = [e for e in runtime.get('events', []) if e['stage'].startswith('CONNECT_') and e['observed']] if runtime_bound else []
+    selection = receipt.get('selection', {})
+    return dict(source_manifest_sha256=receipt['source_manifest_sha256'],
+                selection=selection, selection_1029=(selection.get('fields', {}).get('DriverVersion', {}).get('value', '').endswith('.1029')
+                    if selection.get('selected_present') else None),
+                records=records, initialize_parent_bound=init_bound,
+                connection_parent_bound=runtime_bound,
+                connect_request_context_observed=any(e['stage']=='CONNECT_CONTEXT' and
+                    e['raw_status']=='0x00000002' for e in events),
+                last_observed_connection_event=events[-1] if events else None,
+                history_truncated=bool(runtime_bound and runtime.get('history_truncated')),
+                current_connection_stage_known=bool(events),
+                cause_determined=False, connection_success_claimed=False,
+                loaded_image_verified=False)
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('record', type=Path, help='Raw REG_BINARY exported by the main operator')
+    parser.add_argument('record', nargs='?', type=Path, help='Raw REG_BINARY exported by the main operator')
+    parser.add_argument('--receipt-directory', type=Path, help='Existing clean native extraction directory; summarize selection and bound 1029 trace')
     parser.add_argument('--after-generation', type=int, help='Pre-test native-replayed baseline counter')
     args = parser.parse_args()
     if args.after_generation is not None and not 0 <= args.after_generation < 2**64:
         parser.error('Invalid baseline generation')
-    print(json.dumps(decode(args.record.read_bytes(), args.after_generation), indent=2))
+    if bool(args.record) == bool(args.receipt_directory):
+        parser.error('Specify one raw record or --receipt-directory')
+    if args.receipt_directory and args.after_generation is not None:
+        parser.error('after-generation applies to one raw record only')
+    result = summarize_receipt(args.receipt_directory) if args.receipt_directory else decode(args.record.read_bytes(), args.after_generation)
+    print(json.dumps(result, indent=2))
 
 
 if __name__ == '__main__':

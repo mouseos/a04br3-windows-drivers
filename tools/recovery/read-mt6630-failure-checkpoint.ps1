@@ -4,7 +4,7 @@ param([Parameter(Mandatory=$true)][string]$WorkspaceRoot,
  [Parameter(Mandatory=$true)][string]$ExpectedManifestSha256,
  [Parameter(Mandatory=$true)][string]$SourceDirectory,
  [Parameter(Mandatory=$true)][string]$OutputDirectory,
- [Parameter(Mandatory=$true)][ValidateSet('baseline-only','failed-session-snapshot')][string]$EvidenceRole)
+ [Parameter(Mandatory=$true)][ValidateSet('baseline-only','failed-session-snapshot','post-update-session-snapshot')][string]$EvidenceRole)
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 function Hash($p){(Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant()}
 $w=[IO.Path]::GetFullPath($WorkspaceRoot).TrimEnd('\')
@@ -35,6 +35,44 @@ $r=[ordered]@{schema='MT6630_1027_FAILURE_CHECKPOINT_RECEIPT_V1';status='started
  same_boot_binding_verified=$false;connection_attempt_binding_verified=$false;cause_determined=$false;
  connection_success_claimed=$false;RuntimeFailure_first_only_per_adapter=$true;Scan_max_records_per_adapter=4;
  checkpoint_tail_flush_proven=$false;failed_path=$null;failure_stage=$null;error_type=$null;error_hresult=$null;errors=@()}
+# Read only the fixed Wi-Fi bus leaf and its selected Net class key. No
+# user/network profile/credential enumeration and no second hive load.
+function Read-WifiSelection($Root) {
+ $out=[ordered]@{node_present=$false;selected_present=$false;instance=$null;service=$null;class_path=$null;fields=[ordered]@{};loaded_image_verified=$false}
+ $bus=[MT8167OfflineHive.Native]::OpenPath($Root,'ControlSet001\Enum\A04BR3\MT6630SDIO',$false)
+ if(!$bus){return $out}
+ try {$children=@($bus.GetSubKeyNames());if($children.Count -gt 8){throw 'WiFi instance bound exceeded'}}finally{$bus.Dispose()}
+ foreach($id in $children){
+  if($id -cnotmatch '^[A-Za-z0-9&._-]{1,128}$'){throw 'Unexpected WiFi instance name'}
+  $leaf=[MT8167OfflineHive.Native]::OpenPath($Root,('ControlSet001\Enum\A04BR3\MT6630SDIO\'+$id),$false)
+  if(!$leaf){continue}
+  try {
+   if('Service' -cnotin $leaf.GetValueNames()){continue}
+   if($leaf.GetValueKind('Service') -ne [Microsoft.Win32.RegistryValueKind]::String){throw 'Unexpected WiFi service type'}
+   if([string]$leaf.GetValue('Service') -cne 'Mt6630Runtime'){continue}
+   if($out.node_present){throw 'Ambiguous WiFi service instances'}
+   $out.node_present=$true;$out.instance='A04BR3\MT6630SDIO\'+$id;$out.service='Mt6630Runtime'
+   if('Driver' -cnotin $leaf.GetValueNames()){continue}
+   if($leaf.GetValueKind('Driver') -ne [Microsoft.Win32.RegistryValueKind]::String){throw 'Unexpected WiFi class type'}
+   $driver=[string]$leaf.GetValue('Driver')
+   if($driver -notmatch '^\{4D36E972-E325-11CE-BFC1-08002BE10318\}\\[0-9]{4}$'){throw 'Fixed Net class selection required'}
+   $out.class_path=$driver
+  }finally{$leaf.Dispose()}
+ }
+ if(!$out.class_path){return $out}
+ $selected=[MT8167OfflineHive.Native]::OpenPath($Root,('ControlSet001\Control\Class\'+$out.class_path),$false)
+ if(!$selected){return $out}
+ try {
+  $out.selected_present=$true
+  foreach($name in @('InfPath','InfSection','DriverVersion','DriverDate','MatchingDeviceId','ProviderName')){
+   if($name -cnotin $selected.GetValueNames()){$out.fields[$name]=@{present=$false};continue}
+   if($selected.GetValueKind($name) -ne [Microsoft.Win32.RegistryValueKind]::String){throw 'Unexpected WiFi selected field type'}
+   $value=[string]$selected.GetValue($name);if($value.Length -gt 1024){throw 'Selected WiFi string bound exceeded'}
+   $out.fields[$name]=@{present=$true;value=$value}
+  }
+ }finally{$selected.Dispose()}
+ return $out
+}
 function SaveReceipt {$r|ConvertTo-Json -Depth 20|Set-Content -LiteralPath "$OutputDirectory\receipt.json" -Encoding UTF8}
 # Validate the 1624B provider1027 schema before exporting any fixed binary.
 function Validate-Record([byte[]]$b,[uint32]$channel){
@@ -61,6 +99,10 @@ try {
  $stage='privileges';$priv=New-Object MT8167OfflineHive.Privileges
  $stage='load-clone';$r.load_rc=[MT8167OfflineHive.Native]::Load($mount,"$OutputDirectory\clone\SYSTEM");if($r.load_rc){throw 'Private clone RegLoadKey failed'};$loaded=$true
  $stage='open-private-root';$root=[MT8167OfflineHive.Native]::OpenRoot($mount)
+ $stage='verify-active-controlset';$select=[MT8167OfflineHive.Native]::OpenPath($root,'Select',$false)
+ if(!$select){throw 'Select key absent'}
+ try {if($select.GetValueKind('Current') -ne [Microsoft.Win32.RegistryValueKind]::DWord -or [int]$select.GetValue('Current') -ne 1){throw 'Only actual active ControlSet001 supported'};$r.active_controlset=1}finally{$select.Dispose()}
+ $stage='read-wifi-selection';$r.selection=Read-WifiSelection $root
  $stage='open-fixed-checkpoint';$r.failed_path=$r.registry_path
  $key=[MT8167OfflineHive.Native]::OpenPath($root,$r.registry_path,$false)
  $r.checkpoint_present=!!$key
@@ -79,6 +121,7 @@ try {
    $b=New-Object byte[] 1624;for($i=0;$i -lt 1624;$i++){$b[$i]=[Convert]::ToByte($raw.RawHex.Substring(2*$i,2),16)}
    $r.record_headers[$name]=@{magic=[BitConverter]::ToUInt32($b,0);version=[BitConverter]::ToUInt32($b,4);bytes=[BitConverter]::ToUInt32($b,8);channel=[BitConverter]::ToUInt32($b,12);count=[BitConverter]::ToUInt32($b,48);legacy_driver_build=[BitConverter]::ToUInt32($b,84)}
    $gen=Validate-Record $b $channel
+   if($name -ceq 'RuntimeFailure' -and [BitConverter]::ToUInt32($b,84) -eq 1029){$r.RuntimeFailure_first_only_per_adapter=$false}
    if(!$r.values.Generation.present -or $gen -gt $r.values.Generation.value){throw 'Record generation exceeds/misses saved counter'}
    $p=Join-Path $OutputDirectory ($name+'.bin');[IO.File]::WriteAllBytes($p,$b);$outputs+=@($p)
    $r.values[$name]=@{present=$true;type=3;bytes=1624;sha256=(Hash $p);generation=$gen;parent_generation=[BitConverter]::ToUInt64($b,24);interrupt_time=[BitConverter]::ToUInt64($b,32);system_time=[BitConverter]::ToUInt64($b,40);legacy_driver_build=[BitConverter]::ToUInt32($b,84);matches_1027_internal_build=([BitConverter]::ToUInt32($b,84) -eq 1023);connection_trace_build1029=([BitConverter]::ToUInt32($b,84) -eq 1029);attempt_binding='unverified'}
