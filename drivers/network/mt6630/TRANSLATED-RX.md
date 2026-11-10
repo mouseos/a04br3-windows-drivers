@@ -86,3 +86,13 @@ fault/creditを確認する。未処理FIFOがある間はidleのfirmware owners
 `make test-mt6630-data-continuity` は140packetの継続/fairness、read-clear後の継続、
 新faultの拒否、TX air failure後の再送信、credit不変、異常eventのfault維持をhostで検査する。
 この追加分で以前の7TU見積りは失効し、最終manifest closureから再計算する。
+
+## 1028 package recipe
+
+`tools/ci/build-mt6630-provider1028.ps1` は既1027 manifest、全入力planとSHA、元final47 cacheを
+要求し、差分TUだけcompileして同じNDIS630/ARMNT class/entryでlinkする。
+INFは `11/10/2026,2026.11.10.1028`。checkpointの内部build1023は既存legacyのまま保持し、
+新版識別はINF/source/SYS SHA/manifestを使う（checkpoint番号を新版と偽らない）。
+最終差分は9TU、残34TUは元obj byteと既記録source closureを照合して再利用する。
+旧cacheのsystem include履歴がない点はstrict_cache_qualified=falseとして明示する。
+recipeはUTF8 BOM。compile/link/sign失敗もbuild-receipt.jsonとstdoutを保持する。
