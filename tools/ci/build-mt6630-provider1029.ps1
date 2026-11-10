@@ -50,7 +50,7 @@ try {
   }
   foreach($f in $old[0].source_closure.PSObject.Properties){if($x.source_closure.($f.Name) -cne $f.Value){$changed=$true}}
   if($changed -ne $x.compile){throw ('Compile decision mismatch '+$x.source_file)}
-  $deps=$null;$compiledNow=$false;$origin=$baseline.source_commit
+  $deps=$null;$compiledNow=$false;$origin=$null
   if($x.compile -and $ResumeDirectory){
    $prior=@($resume.objects|Where-Object {$_.source_file -ceq $x.source_file});if($prior.Count -ne 1 -or !$prior[0].compile -or $x.source_file -cnotin $resumeReceipt.compiled){throw 'Previous TU not compiled'}
    foreach($f in $x.source_closure.PSObject.Properties){if($prior[0].source_closure.($f.Name) -cne $f.Value){throw 'Previous compiled closure mismatch'}}
@@ -71,7 +71,7 @@ try {
    if((Sha $obj) -cne $x.cached_sha256){throw ('Reused object mismatch '+$x.source_file)}
    $receipt.reused+=@($x.source_file)
   }
-  $objects+=@($obj);$records+=@{source=$x.source_file;object=$x.object;compiled=$compiledNow;compiled_source_commit=$origin;source_closure_matches_current=$true;sha256=(Sha $obj);source_closure=$x.source_closure;dependency_file=$deps}
+  $objects+=@($obj);$records+=@{source=$x.source_file;object=$x.object;compiled=$compiledNow;compiled_source_commit=$origin;baseline_manifest_source_commit=$baseline.source_commit;source_closure_matches_current=$true;sha256=(Sha $obj);source_closure=$x.source_closure;dependency_file=$deps}
   SaveReceipt
  }
  $expectedNow=if($ResumeDirectory){0}else{$plan.expected_compile_count}

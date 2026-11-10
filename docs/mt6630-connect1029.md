@@ -68,3 +68,6 @@ registry/NDIS/実機の最終挙動はWindows buildやhost fixtureの成功だ�
 runner11/10に対するpostdated INFを日付のみ11/10へ修正。ResumeDirectory/ResumePlan/SHA入口は
 旧18TUのsource closure/tool SHA/実obj byteを検査して再compile0でlink/signする。
 actual compiled_source_commitと現在source_commitを区別しnew_compiled_unitsは空のまま記録する。
+
+元1027再利用objの実compile commitがmanifestで分からない場合はcompiled_source_commit=nullとし、
+baseline_manifest_source_commitだけを保持する。旧出自を新しいcompile証明へ昇格しない。
