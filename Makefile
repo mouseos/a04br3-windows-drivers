@@ -1630,3 +1630,8 @@ test-mt6630-assoc-capability: build/mt6630_assoc_capability_test
 build/mt6630_assoc_capability_test: tests/mt6630_assoc_capability_test.c drivers/network/mt6630/assoc_capability.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) tests/mt6630_assoc_capability_test.c -o $@
+
+.PHONY: test-mt6630-translated-rx
+test-mt6630-translated-rx: build/mt6630_native_hif_rx_test
+	./build/mt6630_native_hif_rx_test
+	python3 tests/mt6630_translated_security_test.py

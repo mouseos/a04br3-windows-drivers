@@ -6,8 +6,8 @@
  * index is guessed. `allowed_channels` is a verified 2.4 GHz channel mask. */
 typedef int (*a04_native_rate_lookup)(void *,unsigned hw_mode,unsigned hw_rate,ULONG *phy,UCHAR *rate);
 struct a04_native_hif_rx {const uint8_t *mpdu;ULONG length;struct a04_native_rx_info info;unsigned cipher,key,wlan,tid,header;uint64_t pn;};
-/* Strict open, directed/broadcast/multicast, unfragmented, non-QoS FromDS MPDU subset. No Ethernet header
- * translation, protected data, aggregated frames or unobserved metadata. */
+/* Raw open, directed/broadcast/multicast, unfragmented FromDS MPDU subset.
+ * Translation requires decode_owned; no protected data or aggregation here. */
 NDIS_STATUS a04_native_hif_rx_management(const uint8_t *,ULONG,unsigned,void *,a04_native_rate_lookup,struct a04_native_hif_rx *);
 NDIS_STATUS a04_native_hif_rx_decode(const uint8_t *,ULONG,unsigned allowed_channels,
  const uint8_t local[6],const uint8_t ap[6],void *,a04_native_rate_lookup,struct a04_native_hif_rx *);
@@ -16,6 +16,12 @@ NDIS_STATUS a04_native_hif_rx_decode(const uint8_t *,ULONG,unsigned allowed_chan
  * normalize the MAC header. Decode alone never indicates a packet. */
 NDIS_STATUS a04_native_hif_rx_decode_security(const uint8_t *,ULONG,unsigned,
  const uint8_t [6],const uint8_t [6],void *,a04_native_rate_lookup,struct a04_native_hif_rx *);
+/* Raw HIF borrows its MPDU; translated HIF needs nonoverlapping owned scratch.
+ * Both paths return actual metadata only. Translated RX requires groups4/3,
+ * and CCMP also group1; the security owner still checks key/PN/port. */
+NDIS_STATUS a04_native_hif_rx_decode_owned(const uint8_t *,ULONG,unsigned,
+ const uint8_t [6],const uint8_t [6],void *,a04_native_rate_lookup,
+ unsigned secured,uint8_t *owned,ULONG capacity,struct a04_native_hif_rx *);
 NDIS_STATUS a04_native_hif_rx_indicate(NDIS_HANDLE,PNET_BUFFER_LIST,const uint8_t *,ULONG,unsigned,
  const uint8_t local[6],const uint8_t ap[6],void *,a04_native_rate_lookup);
 #endif

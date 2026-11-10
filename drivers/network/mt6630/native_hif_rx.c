@@ -51,6 +51,66 @@ NDIS_STATUS a04_native_hif_rx_decode_security(const uint8_t *p,ULONG n,unsigned 
  temp.info.observed=A04_RX_OBS_REQUIRED;temp.info.frequency=(2407+5*channel)*1000;temp.info.fragments=1;temp.info.rssi=(LONG)(p[g3+9]>>1)-110;*out=temp;return NDIS_STATUS_SUCCESS;
 }
 
+/* gen3 nic_rx.h HW_MAC_RX_STS_GROUP_4_T, nic_rx.c nicRxIsDuplicateFrame:
+ * translated Ethernet retains actual FC/TA/sequence/QoS/HTC in group4.
+ * Recover an owned Native MPDU; duration (not retained by hardware) is zero.
+ * This is not a captured over-air header and never authorizes a key/port.
+ * Reject 802.3 length and bridge-tunnel exceptions: their LLC is not known. */
+NDIS_STATUS a04_native_hif_rx_decode_owned(const uint8_t *p,ULONG n,unsigned allowed,
+ const uint8_t local[6],const uint8_t ap[6],void *context,a04_native_rate_lookup lookup,
+ unsigned secured,uint8_t *owned,ULONG capacity,struct a04_native_hif_rx *out)
+{
+ struct a04_native_hif_rx temp;struct a04_native_frame frame;
+ unsigned groups,g1,g3,offset,cipher,channel,header,bytes,type;uintptr_t src,dst;
+ if(secured>1||!p||n<16||n>4096||le16(p)!=n||!out||!local||!ap||!lookup)return NDIS_STATUS_INVALID_DATA;
+ if(!(p[6]&0x80))return secured?
+  a04_native_hif_rx_decode_security(p,n,allowed,local,ap,context,lookup,out):
+  a04_native_hif_rx_decode(p,n,allowed,local,ap,context,lookup,out);
+ groups=(le16(p+2)>>9)&15;cipher=p[9]>>4;channel=p[5];
+ /* Group4 proves MAC identity/retry; group3 proves radio metadata. No
+  * aggregation/reorder, fragmentation, errors or unverified ciphers. */
+ if((le16(p+2)>>13)!=2||(groups&12)!=12||(p[6]&63)!=14||(p[7]&3)||
+    (le16(p+10)&(secured?0xdffa:0xdffe))||!channel||channel>13||!(allowed&(1u<<channel))||
+    (cipher!=0&&(!secured||cipher!=4))||(cipher==4&&(!(groups&1)||(le16(p+10)&4))))return NDIS_STATUS_NOT_SUPPORTED;
+ g1=32;g3=g1+((groups&1)?16:0)+((groups&2)?8:0);
+ if(g3>n||n-g3<24)return NDIS_STATUS_INVALID_LENGTH;
+ offset=g3+24+((p[6]&0x40)?2:0);
+ if(offset>n||n-offset<14||n-offset>A04_NATIVE_ETH_MAX)return NDIS_STATUS_INVALID_LENGTH;
+ {unsigned la=0,aa=0;
+  for(unsigned i=0;i<6;i++){
+   la|=local[i];aa|=ap[i];
+   if(p[18+i]!=ap[i]||(!(p[offset]&1)&&p[offset+i]!=local[i]))return NDIS_STATUS_NOT_SUPPORTED;
+  }
+  if(!la||!aa||(local[0]&1)||(ap[0]&1))return NDIS_STATUS_INVALID_DATA;
+ }
+ type=((unsigned)p[offset+12]<<8)|p[offset+13];
+ if(type<1536||type==0x80f3||type==0x8137)return NDIS_STATUS_NOT_SUPPORTED;
+ header=p[16]==0x88?26:24;if(p[17]&0x80)header+=4;
+ bytes=n-offset-14+header+8;
+ if(!owned||bytes>capacity||bytes>A04_NATIVE_MPDU_MAX)return NDIS_STATUS_INVALID_LENGTH;
+ src=(uintptr_t)p;dst=(uintptr_t)owned;
+ if(dst>=src?dst-src<n:src-dst<bytes)return NDIS_STATUS_INVALID_DATA;
+ /* Reconstruct only fields retained in this same descriptor, never a
+  * cached AP sequence or invented security/retry state. */
+ NdisZeroMemory(owned,header+8);owned[0]=p[16];owned[1]=p[17];
+ NdisMoveMemory(owned+4,p+offset,6);NdisMoveMemory(owned+10,p+18,6);
+ NdisMoveMemory(owned+16,p+offset+6,6);NdisMoveMemory(owned+22,p+24,2);
+ if(p[16]==0x88){NdisMoveMemory(owned+24,p+26,2);if(header==30)NdisMoveMemory(owned+26,p+28,4);}
+ owned[header]=owned[header+1]=0xaa;owned[header+2]=3;
+ NdisMoveMemory(owned+header+6,p+offset+12,n-offset-12);
+ if(a04_native_frame_parse(owned,bytes,2,&frame)||(frame.qos&&(p[9]&15)!=frame.tid)||
+    (!cipher&&(owned[1]&0x40)))return NDIS_STATUS_NOT_SUPPORTED;
+ if(p[g3+9]>220)return NDIS_STATUS_NOT_SUPPORTED;
+ NdisZeroMemory(&temp,sizeof(temp));
+ {uint32_t vector=le32(p+g3);if(lookup(context,(vector>>12)&7,vector&127,&temp.info.phy,&temp.info.rate))return NDIS_STATUS_NOT_SUPPORTED;}
+ temp.mpdu=owned;temp.length=bytes;temp.header=frame.header;temp.tid=frame.tid;
+ temp.cipher=cipher;temp.key=p[4]>>6;temp.wlan=p[8];
+ if(cipher)for(unsigned i=0;i<6;i++)temp.pn|=(uint64_t)p[g1+i]<<(8*i);
+ temp.info.priority=frame.qos?frame.tid:0;temp.info.observed=A04_RX_OBS_REQUIRED;
+ temp.info.frequency=(2407+5*channel)*1000;temp.info.fragments=1;temp.info.rssi=(LONG)(p[g3+9]>>1)-110;
+ *out=temp;return NDIS_STATUS_SUCCESS;
+}
+
 NDIS_STATUS a04_native_hif_rx_indicate(NDIS_HANDLE adapter,PNET_BUFFER_LIST nbl,const uint8_t *p,ULONG n,unsigned allowed,
  const uint8_t local[6],const uint8_t ap[6],void *context,a04_native_rate_lookup lookup)
 {

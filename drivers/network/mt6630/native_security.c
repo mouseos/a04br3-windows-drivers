@@ -155,7 +155,7 @@ done:RtlSecureZeroMemory(a->mpdu,sizeof(a->mpdu));RtlSecureZeroMemory(a->etherne
 NDIS_STATUS a04_os_security_receive(struct a04_ndis_runtime *a,const uint8_t *p,ULONG n,struct a04_native_hif_rx *rx)
 {
  struct a04_os_security *s=&a->os_security;struct a04_os_key *key;NDIS_STATUS status;unsigned ethertype,group,exempt;
- status=a04_native_hif_rx_decode_security(p,n,a->radio.bridge->regulatory.permitted,a->radio.station.local.mac,a->radio.station.ap.mac,a,a04_ndis_rate_lookup,rx);
+ status=a04_native_hif_rx_decode_owned(p,n,a->radio.bridge->regulatory.permitted,a->radio.station.local.mac,a->radio.station.ap.mac,a,a04_ndis_rate_lookup,1,a->rx_bytes,sizeof(a->rx_bytes),rx);
  if(status!=NDIS_STATUS_SUCCESS)return status;
  if(!cipher_active(a))return NDIS_STATUS_NOT_SUPPORTED;
  group=rx->mpdu[4]&1;ethertype=a04_wlan_be16(rx->mpdu+rx->header+6);exempt=exemption(s,ethertype,group);
@@ -170,9 +170,9 @@ NDIS_STATUS a04_os_security_receive(struct a04_ndis_runtime *a,const uint8_t *p,
  }
  if(ethertype!=0x888e&&!s->port_open)return NDIS_STATUS_NOT_SUPPORTED;
  if(rx->length>sizeof(a->rx_bytes))return NDIS_STATUS_INVALID_LENGTH;
- /* Accept only HW-verified, already stripped raw LLC/SNAP MPDUs. Do not
-  * guess IV/MIC lengths or perform software crypto without actual metadata. */
- /* Borrow HIF until the final owned RX slot copies/normalizes it once. */
+ /* Raw LLC/SNAP borrows HIF; translated Ethernet uses adapter-owned
+  * scratch reconstructed from group4. Both require actual group1 CCMP
+  * metadata; no guessed IV/MIC lengths or software crypto. */
  if(key)key->pn[rx->tid]=rx->pn;
  return NDIS_STATUS_SUCCESS;
 }

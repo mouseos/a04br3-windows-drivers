@@ -215,3 +215,5 @@ bind成功やDISM exit0だけで新SYS実適用としない。
 NDIS6.30初期化・標準WLAN列挙・scanの属性修正と、未実装必須OID/容量の一覧は
 [INITIALIZATION-CONTRACT.md](INITIALIZATION-CONTRACT.md) を参照。INF1002候補とは別のsource差分で、
 この修正だけで全面準拠や実WLAN列挙成功とは扱わない。
+
+translated HIF受信のsource候補と検証範囲は [TRANSLATED-RX.md](TRANSLATED-RX.md) を参照。

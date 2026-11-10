@@ -14,8 +14,9 @@
 struct a04_native_rx_info { ULONG observed,phy,frequency;USHORT fragments;LONG rssi;UCHAR rate,priority; };
 /* PASSIVE_LEVEL, one caller-owned NBL with one contiguous writable NET_BUFFER.
  * NBL and metadata stay live through synchronous RESOURCES indication.
- * Caller supplies an actual validated 802.11 MPDU; Ethernet is not accepted
- * as an equivalent and this function never invents radio metadata. */
+ * Caller supplies a validated Native MPDU (raw HIF or group4-reconstructed
+ * by decode_owned). Ethernet bytes alone are not sufficient; this function
+ * never invents radio metadata. */
 NDIS_STATUS a04_native_indicate_mpdu(NDIS_HANDLE,PNET_BUFFER_LIST,
  const uint8_t *,ULONG,const struct a04_native_rx_info *);
 #endif

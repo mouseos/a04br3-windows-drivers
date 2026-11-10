@@ -200,12 +200,12 @@ static int receive_data(void *p,const uint8_t *packet,unsigned bytes)
  }
  if(a->radio.station.secured){
   if(!a->association_reported){
-   status=a04_native_hif_rx_decode_security(packet,bytes,a->radio.bridge->regulatory.permitted,a->radio.station.local.mac,a->radio.station.ap.mac,a,a04_ndis_rate_lookup,&rx);
+   status=a04_native_hif_rx_decode_owned(packet,bytes,a->radio.bridge->regulatory.permitted,a->radio.station.local.mac,a->radio.station.ap.mac,a,a04_ndis_rate_lookup,1,a->rx_bytes,sizeof(a->rx_bytes),&rx);
    if(status==NDIS_STATUS_SUCCESS&&!a->early_length&&bytes<=sizeof(a->early_rx)){NdisMoveMemory(a->early_rx,packet,bytes);a->early_length=bytes;}
    return status==NDIS_STATUS_SUCCESS?0:A04_WLAN_UNSUPPORTED;
   }
   status=a04_os_security_receive(a,packet,bytes,&rx);
- }else status=a04_native_hif_rx_decode(packet,bytes,a->radio.bridge->regulatory.permitted,a->radio.station.local.mac,a->radio.station.ap.mac,a,a04_ndis_rate_lookup,&rx);
+ }else status=a04_native_hif_rx_decode_owned(packet,bytes,a->radio.bridge->regulatory.permitted,a->radio.station.local.mac,a->radio.station.ap.mac,a,a04_ndis_rate_lookup,0,a->rx_bytes,sizeof(a->rx_bytes),&rx);
  if(status!=NDIS_STATUS_SUCCESS){NdisAcquireSpinLock(&a->lock);if(status==NDIS_STATUS_INVALID_DATA||status==NDIS_STATUS_INVALID_LENGTH)a->stats.rx_errors++;else a->stats.rx_discards++;NdisReleaseSpinLock(&a->lock);return 0;} /* never authorize a rejected frame */
  if(a04_native_retry_check(&a->rx_retry,a->receive_epoch,rx.mpdu,rx.length,&retry)){
   NdisAcquireSpinLock(&a->lock);a->stats.rx_discards++;NdisReleaseSpinLock(&a->lock);return 0;
