@@ -42,7 +42,7 @@ DDRは親8rangeにDDRPHY/DRAMCを追加せずUNAVAILABLE。Linux `CLK_TOP_MEMPLL
 python3 tests/mt8167_clock_snapshot_test.py --out ROOT内成果先
 ```
 
-実sampler・parent include・本体から抽出したParentLock/Unlock・consumer・IOCTL handlerをNT/WDF host modelで実行。100ケース：22固定read、全11位置の不一致、各22位置のall-ones/stop/remove、閉じたD0/admission、missing map/長さ、rundown拒否、IRQL、query/ABI不一致、入力/出力長失敗とstatus/refs/lock/rundown収支。decoder18ケース、ASan/UBSan合格。synthetic binaryは`model-only-snapshot.bin`であり実Windows取得ではない。Windows kernel/PnP並行動作・実clock成功は未確認。
+実sampler・parent include・本体から抽出したParentLock/Unlock・consumer・IOCTL handlerをNT/WDF host modelで実行。100ケース：22固定read、全11位置の不一致、各22位置のall-ones/stop/remove、閉じたD0/admission、missing map/長さ、rundown拒否、IRQL、query/ABI不一致、入力/出力長失敗とstatus/refs/lock/rundown収支。decoder321ケース、ASan/UBSan合格。synthetic binaryは`model-only-snapshot.bin`であり実Windows取得ではない。Windows kernel/PnP並行動作・実clock成功は未確認。
 
 純C clock_snapshot.cだけをローカルclang18でthumbv7/COFF ARMNTへcompileしmetadataを確認した。WDK親/leaf/client/UMのARMcompile、link/import照合、SYS/CAT署名、実機取得は未実施。GPUrunner接続0。
 
@@ -62,3 +62,15 @@ python3 tests/mt8167_clock_snapshot_test.py --out ROOT内成果先
 GPU181途中に混載しない。将来の一括tupleで上記新親/leafをmainがsealし、read-only toolを一度だけ既fresh logs directoryで`--snapshot`実行する。CREATE_NEWでmt8167-clock-snapshot-v1.binを保存、既存fileを上書きしない。返却128byte・flags/valid masks・同boot実SYS hashes/NTstatusと時刻bracketを一緒に回収する。旧leaf/旧親のNOT_SUPPORTEDをblind retryしない。
 
 raw出力が得られても、continuous thermalとrail/mux/PLL切替・失敗rollback/高位ownerが揃うまで昇周波を行わない。clock snapshotをGPU成功やCPU性能改善の実測に格上げしない。
+
+## 最終ABI / StopAdmissionDrain根拠
+
+新query GUIDは9f1f506c-3a44-4d96-98e7-24c0c4e29167、INTERFACE.Version=1。ParentResourceContract=1117は既resource配置の契約tagであり、新SYSのpackage版を1117と偽るものではない。caller/providerはsizeofとversionを双方検査する。snapshot v1はlittle-endian、offset0 version/4 bytes/8 flags/12 valid_first/16 valid_second/20 count、24/32がbefore/after100ns、40 first11word、84 second11wordの128byte。flagsは1 UNSTABLE、2 READ_FAILED、4 TIME_REVERSED、8 REFERENCE_UNKNOWN、16 DDR_UNAVAILABLE、32 EFFECTIVE_CPU_UNKNOWN、64 ADMISSION_LOST。8/16/32は常に明示し、未取得Hzの成功合成を防ぐ。構造にHzや電圧の固定値を含めない。
+
+親1117に対するruntime変更はquery登録/既thermal PDOの転送/既lock+rundownを使うread callbackだけ。新driver lifetimeの仕組みを作らず、ParentLock/Unlock、Stop、Unmap、Prepare、Release、Surprise、D0Exit、D0の9関数は1117とsource完全一致。変更は既定0で無効、既context/resource/温度ABIを拡張しない。
+
+StopAdmissionDrainのsoftware順序は(1)InterlockedExchange(admissionClosed,1)、(2)ExWaitForRundownProtectionRelease(thermalRundown)、(3)既mutex下でowner停止、(4)ParentUnmapで他ownerのretain条件を検査、(5)MmUnmapIoSpace。snapshotは同rundownをread全区間で保持し、mutexを解放してからrundownを返す。Stopはrundown待機中にmutexを保持しないため、queryの後片付けを同lockで塞がない。
+
+close前にrundown取得済みならStopは返却までunmapへ進まない。close後だがExWait開始前にrundownを取ったqueryも、ParentLockの前後admission検査でMMIOに入らず返す。read中のclose/removeは次readとpublish前に拒否し、callback失敗/ADMISSION_LOSTを返す。ExWait開始後は新rundown取得が失敗する。D0再開時は既sourceの再初期化＋admission確定を使う。これはsoftware mapping teardownのsource根拠で、突然の物理bus abort、全firmware排他、kernel並行実測の保証ではない。成功返却後もD0やclockを将来にわたり保持するleaseはない。
+
+bounded decoderは固定128byte、11index、postdivider3bit、PCW21/21/7bit、参照1～UINT32_MAXだけを処理する。primary clk-mt8167.cのclk26m_ck=clk26m、mainpll_d2=mainpll/2とmux4選択も明示し、selected mux parentのconfigured値だけを返す。Linux clk-fixed-factor.cの整数除算に一致する。CPU postmux divider不明、reference精度未確認、実効CPU/DDR Hzはnullを維持する。全postdiv/PCW境界・参照境界・4mux・invalid ABIを含むdecoder321件とhost100件を検査した。

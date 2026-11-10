@@ -56,6 +56,13 @@ def decode(data, reference_hz=None, reference_basis=None):
             vco = (reference_hz * pcw + frac - 1) // frac
             rates[name] = ((vco + postdiv - 1) // postdiv) // analogdiv
     parent = ['clk26m_ck', 'armpll', 'univpll', 'mainpll_d2'][(first[0] >> 2) & 3] if a & 1 else None
+    parent_rate = None
+    if equal and 0xffffffff not in first and reference_hz is not None:
+        # clk-mt8167.c fixed factors: clk26m_ck=clk26m, mainpll_d2=mainpll/2.
+        # This ends at the mux parent, not an unobserved downstream CPU divider.
+        parent_rate = {'clk26m_ck': reference_hz, 'armpll': rates['armpll'],
+                       'univpll': rates['univpll'],
+                       'mainpll_d2': None if rates['mainpll'] is None else rates['mainpll'] // 2}.get(parent)
     return {'schema': 'MT8167_CLOCK_SNAPSHOT_DECODE_V1', 'flags': flags,
             'time_bracket_100ns': [before, after], 'valid_masks': [a, b],
             'first': dict(zip(NAMES, first)), 'second': dict(zip(NAMES, second)),
@@ -64,6 +71,8 @@ def decode(data, reference_hz=None, reference_basis=None):
             'CPU_parent_at_first_sample': parent,
             'supplied_reference_hz': reference_hz, 'supplied_reference_basis': reference_basis,
             'configured_PLL_hz_from_supplied_reference': rates,
+            'selected_mux_parent_configured_hz_from_supplied_reference': parent_rate,
+            'reference_accuracy_verified': False, 'CPU_postmux_divider_verified': False,
             'effective_CPU_hz': None, 'DDR_hz': None,
             'physical_voltage_measured': False, 'reasons': reasons,
             'interpretation': 'PLL arithmetic is configuration evidence only; reference accuracy, CPU downstream divider and effective execution rate are not measured.'}
