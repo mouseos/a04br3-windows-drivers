@@ -30,7 +30,7 @@ BATTERY_READS = {
 
 def installed_path(value):
     relative = PureWindowsPath(value)
-    require(not relative.is_absolute() and not relative.drive and '..' not in relative.parts and relative.parts, '固定System32相対pathだけ')
+    require(not relative.is_absolute() and not relative.drive and not relative.root and '..' not in relative.parts and relative.parts, '固定System32相対pathだけ')
     return 'Windows/System32/' + relative.as_posix()
 
 
