@@ -8,6 +8,8 @@ extern "C" {
 #endif
 NTSTATUS GeoUnifiedQuiesceForPostRelease(HANDLE);
 void GeoUnifiedRecordPostReleaseStack(HANDLE,PVOID);
+struct a04_panel_timing;
+NTSTATUS GeoDisplaySetPanelTiming(void *,const struct a04_panel_timing *);
 NTSTATUS GeoDisplayCreate(PDEVICE_OBJECT pdo,void **display);
 NTSTATUS GeoDisplaySetBrightnessResources(void *,PCM_RESOURCE_LIST);
 NTSTATUS GeoDisplayStart(void *display,DXGK_START_INFO *,DXGKRNL_INTERFACE *,ULONG *sources,ULONG *children);

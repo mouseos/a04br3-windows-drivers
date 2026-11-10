@@ -242,6 +242,38 @@ static NTSTATUS platform_proof(struct display356 *d){
  if(d->tracing357){ULONG id=words[0]!=0x36354d44u?213u:words[1]!=1u?214u:(words[2]&1u)?215u:((words[3]&5u)!=5u)?216u:words[4]!=800u?217u:words[5]!=1280u?218u:words[6]!=3200u?219u:words[7]!=1u?220u:0u;if(id)Geo357Fail(&d->start357,id,STATUS_DEVICE_CONFIGURATION_ERROR);}
  return words[0]==0x36354d44u&&words[1]==1u&&!(words[2]&1u)&&((words[3]&5u)==5u)&&words[4]==800&&words[5]==1280&&words[6]==3200&&words[7]==1?STATUS_SUCCESS:STATUS_DEVICE_CONFIGURATION_ERROR;
 }
+/* Read-only boot-owned panel timing. No Raster/IRQ prerequisite and no MMIO
+ * writes. The referenced interface prevents Stop/Remove during evaluation. */
+static NTSTATUS panel_timing(void *context,struct a04_panel_timing *timing){
+ struct display356 *d=context;ACPI_EVAL_INPUT_BUFFER in;
+ /* DWORD storage guarantees ACPI output alignment. */
+ ULONG storage[64];ACPI_EVAL_OUTPUT_BUFFER *out=(void *)storage;
+ KEVENT event;IO_STATUS_BLOCK iosb;PIRP irp;NTSTATUS status;
+ struct a04_panel_timing record;struct a04_panel_frequencies frequencies;
+ ULONG prefix=FIELD_OFFSET(ACPI_EVAL_OUTPUT_BUFFER,Argument)+FIELD_OFFSET(ACPI_METHOD_ARGUMENT,Data);
+ if(!d||!timing||timing->size!=sizeof(*timing)||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ RtlZeroMemory(timing,sizeof(*timing));
+ if(!d->started||d->closing||!d->references)return STATUS_DEVICE_NOT_READY;
+ RtlZeroMemory(&in,sizeof(in));RtlZeroMemory(storage,sizeof(storage));RtlZeroMemory(&iosb,sizeof(iosb));
+ in.Signature=ACPI_EVAL_INPUT_BUFFER_SIGNATURE;RtlCopyMemory(in.MethodName,"DTM0",4);
+ KeInitializeEvent(&event,NotificationEvent,FALSE);
+ irp=IoBuildDeviceIoControlRequest(IOCTL_ACPI_EVAL_METHOD,d->lower,&in,sizeof(in),storage,sizeof(storage),FALSE,&event,&iosb);
+ if(!irp)return STATUS_INSUFFICIENT_RESOURCES;
+ status=IoCallDriver(d->lower,irp);
+ if(status==STATUS_PENDING){KeWaitForSingleObject(&event,Executive,KernelMode,FALSE,NULL);status=iosb.Status;}
+ if(status==STATUS_OBJECT_NAME_NOT_FOUND||status==STATUS_NOT_FOUND)return STATUS_DEVICE_NOT_READY;
+ if(!NT_SUCCESS(status))return status;
+ if(iosb.Information<prefix+sizeof(record)||iosb.Information>sizeof(storage)||
+    out->Signature!=ACPI_EVAL_OUTPUT_BUFFER_SIGNATURE||out->Length!=prefix+sizeof(record)||
+    out->Length>iosb.Information||out->Count!=1||
+    out->Argument[0].Type!=ACPI_METHOD_ARGUMENT_BUFFER||out->Argument[0].DataLength!=sizeof(record))return STATUS_DEVICE_CONFIGURATION_ERROR;
+ RtlCopyMemory(&record,out->Argument[0].Data,sizeof(record));
+ if(record.magic!=A04_PANEL_TIMING_MAGIC||record.version!=1||record.size!=sizeof(record)||
+    record.reserved[0]||record.reserved[1]||record.reserved[2]||record.reserved[3]||record.reserved[4])return STATUS_DEVICE_CONFIGURATION_ERROR;
+ if(record.flags==0)return STATUS_DEVICE_NOT_READY;
+ if(!a04_panel_timing_frequencies(&record,&frequencies))return STATUS_DEVICE_CONFIGURATION_ERROR;
+ *timing=record;return STATUS_SUCCESS;
+}
 static NTSTATUS start(struct display356 *d,PCM_RESOURCE_LIST resources,PCM_RESOURCE_LIST raw){
  PCM_PARTIAL_RESOURCE_DESCRIPTOR ovl=NULL,rdma=NULL,intr=NULL,ovl_intr=NULL,pwm=NULL,post=NULL;ULONG ovls=0,rdmas=0,irqs=0,pwms=0,posts=0;DEVICE_DESCRIPTION description;NTSTATUS s;
  if(d->tracing357){d->start357.words[2]=raw?raw->Count:0xffffffffu;d->start357.words[3]=resources?resources->Count:0xffffffffu;if(raw&&raw->Count==1)d->start357.words[4]=raw->List[0].PartialResourceList.Count;if(resources&&resources->Count==1)d->start357.words[5]=resources->List[0].PartialResourceList.Count;}
@@ -308,11 +340,13 @@ static NTSTATUS pnp(PDEVICE_OBJECT device,PIRP irp){
  if(sp->MinorFunction==IRP_MN_QUERY_INTERFACE&&sp->Parameters.QueryInterface.InterfaceType&&
     RtlCompareMemory(sp->Parameters.QueryInterface.InterfaceType,&A04DisplayTransport356Guid,sizeof(GUID))==sizeof(GUID)){
   struct a04_display_transport_v1 *out=(void *)sp->Parameters.QueryInterface.Interface;
-  if(irp->RequestorMode!=KernelMode||sp->Parameters.QueryInterface.Version!=1||sp->Parameters.QueryInterface.Size!=sizeof(*out)||!out||!d->started||d->closing)return complete(irp,STATUS_NOINTERFACE);
+  USHORT version=sp->Parameters.QueryInterface.Version;
+  USHORT bytes=version==1?sizeof(*out):version==2?sizeof(struct a04_display_transport_v2):0;
+  if(irp->RequestorMode!=KernelMode||!bytes||sp->Parameters.QueryInterface.Size!=bytes||!out||!d->started||d->closing)return complete(irp,STATUS_NOINTERFACE);
   KeWaitForSingleObject(&d->mutex,Executive,KernelMode,FALSE,NULL);
   if(!d->started||d->closing){KeReleaseMutex(&d->mutex,FALSE);return complete(irp,STATUS_NOINTERFACE);}
-  RtlZeroMemory(out,sizeof(*out));out->Header.Size=sizeof(*out);out->Header.Version=1;out->Header.Context=d;out->Header.InterfaceReference=reference;out->Header.InterfaceDereference=dereference;
-  out->BrightnessResources=brightness_resources;out->Snapshot=snapshot;out->Map=map_backing;out->Unmap=unmap_backing;out->Select=select_backing;out->Restore=restore;out->Subscribe=subscribe;out->Unsubscribe=unsubscribe;out->Raster=raster;out->EmergencyRestore=emergency_restore;reference(d);KeReleaseMutex(&d->mutex,FALSE);return complete(irp,STATUS_SUCCESS);
+  RtlZeroMemory(out,bytes);out->Header.Size=bytes;out->Header.Version=version;out->Header.Context=d;out->Header.InterfaceReference=reference;out->Header.InterfaceDereference=dereference;
+  out->BrightnessResources=brightness_resources;out->Snapshot=snapshot;out->Map=map_backing;out->Unmap=unmap_backing;out->Select=select_backing;out->Restore=restore;out->Subscribe=subscribe;out->Unsubscribe=unsubscribe;out->Raster=raster;out->EmergencyRestore=emergency_restore;if(version==2)((struct a04_display_transport_v2 *)out)->Timing=panel_timing;reference(d);KeReleaseMutex(&d->mutex,FALSE);return complete(irp,STATUS_SUCCESS);
  }
  if(sp->MinorFunction==IRP_MN_QUERY_STOP_DEVICE||sp->MinorFunction==IRP_MN_QUERY_REMOVE_DEVICE){
   KeWaitForSingleObject(&d->mutex,Executive,KernelMode,FALSE,NULL);

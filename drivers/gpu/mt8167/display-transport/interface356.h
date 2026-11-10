@@ -2,6 +2,7 @@
 #ifndef A04_DISPLAY_TRANSPORT356_H
 #define A04_DISPLAY_TRANSPORT356_H
 #include <ntddk.h>
+#include "panel_timing.h"
 #include "../wddm-render/frontend_memory.h"
 /* PnP device interface, not a named control device or legacy GPU lease.
  * DIS0 owns OVL and its DMA adapter; one render miniport owns POST/VidPn/GPU.
@@ -27,5 +28,11 @@ struct a04_display_transport_v1 {
  NTSTATUS (*Unsubscribe)(void *);
  NTSTATUS (*Raster)(void *,ULONG *line,BOOLEAN *in_blank);
  void (*EmergencyRestore)(void *); /* best-effort only; never frees/quiesces mappings */
+};
+/* v1 layout and request remain available to old consumers. v2 is required
+ * by the timed unified driver; a v1 provider must not silently satisfy it. */
+struct a04_display_transport_v2 {
+ struct a04_display_transport_v1 v1;
+ NTSTATUS (*Timing)(void *,struct a04_panel_timing *);
 };
 #endif

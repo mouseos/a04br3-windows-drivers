@@ -52,3 +52,7 @@ tools/gpu/shaders/native-copy-region-usc.c text eol=lf
 tools/ci/sign-ge8300-dwm30cb.py text eol=lf
 tools/ci/verify-dwm-certificates.ps1 text eol=lf
 tools/ci/ge8300_panel_signing_common.py text eol=lf
+
+drivers/gpu/mt8167/display-transport/panel_timing.h text eol=lf
+tests/ge8300_panel_timing_test.c text eol=lf
+docs/ge8300-panel-timing-handoff.md text eol=lf

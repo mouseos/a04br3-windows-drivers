@@ -10,6 +10,7 @@
 #ifndef _BDD_HXX_
 #define _BDD_HXX_
 #include "../wddm-render/frame_geometry356.h"
+#include "../display-transport/panel_timing.h"
 
 extern "C"
 {
@@ -194,6 +195,8 @@ private:
 #if A04_MT8167_DISPLAY_BRIGHTNESS
     A04Mt8167Brightness m_Brightness;
     PCM_RESOURCE_LIST m_UnifiedBrightnessResources;
+    struct a04_panel_timing m_PanelTiming;
+    NTSTATUS BuildPanelSignal(D3DKMDT_VIDEO_SIGNAL_INFO *,UINT,UINT);
 #endif
 #if A04_GE8300_WDDM_SHARED_AUTOSTART
     KEVENT m_SharedWorkerStop;
@@ -254,6 +257,7 @@ public:
 
     NTSTATUS StopDevice(VOID);
     NTSTATUS QueryBrightness(PQUERY_INTERFACE query);
+    void SetPanelTiming(const struct a04_panel_timing *p){m_PanelTiming=*p;}
     void SetUnifiedBrightnessResources(PCM_RESOURCE_LIST p){m_UnifiedBrightnessResources=p;}
 
     // Must be Non-Paged
