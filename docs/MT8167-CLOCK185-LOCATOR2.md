@@ -1,0 +1,17 @@
+# actual185 clock回収：optional INF locator error2の照合
+
+元185 source/policy/媒体、旧negative private-windows-rt-clock-run185-checkは変更しない。helperのみ独立branchで修正。実機操作・再試験・WDK/SDK/署名処理はない。
+
+185 pinned mt8167-peripheral-update.cのselected_runtimeはselected_identity成功後、installed_infのlocator-stage欠落だけをmetadata成功と別記録にする。inf_location_missingはstage2/3/4/5/6/8に限りERROR_FILE_NOT_FOUND(2)またはERROR_NOT_FOUND(1168)を認め、内容読出しstage7/9/11やsetup/cleanup等は任意に許可しない。node recordのinf_location_errorは診断情報であり、metadata_errorと同一ではない。
+
+旧helperはn[7]==0を無条件に要求していたため、metadata/sys成功かつoptional locator2のactual親6/thermal1を拒否した。修正ではnodeのobserved/discovery/cr/DN_STARTED/problem/metadata/sysの既条件を保持し、n[7]は0または今回観測のexact2だけを許可。1168を含む他errorはこのhelperでは許可しない。
+
+exact2はtyped REG_SZのService/ClassGUID/DriverVersion/MatchingDeviceId/InfPath/InfSection/DriverDateをexact署名rowに結合。同DiagnosticのRunId/ServicePidが一致するservice.log segmentで、各nodeのPB255許可stage→PB253=2→PB219=0→PB21A=0が一組だけあることを要求する。actualは両nodeともstage3。node metadata/sysが2、typedselected不正、stage7/欠落/順序不正や任意errorを包括許可しない。checked.jsonに元node record/error2/stage3を残し、0に書き換えない。
+
+modelは既20＋今回exact2成功と10拒否の計31ケースを一度まとめて実行し成功。同内容の再試験は行わない。actual185はfresh186 manifest80a9002888ff0c7cc5bc4051eb5a51482d429275ffcab4b68ec8dca056835baa、Recovery490fb4f5-e27b-4979-864e-009fbf4e8b88に固定。最初の入力指定が相対pathだったため、全データ照合後のresult書出しだけが失敗し、そのnegativeを保持。source/data変更やmodel再実行をせず、絶対path指定で一回の成功replayを保存した。以後CLI入力は絶対pathを使う。
+
+checked結果：ClockPid2660、ServicePid1540、CombinedRunId58234。actual親1120/thermal1.11/UM/SYS/hive hashes・raw128B・stdoutRC0・同PIDのPB220/221を照合。raw SHA256 def1b09990848a8fa42e8f61ca08d94e3d454ecf840ce1272420a4ec9f8a747d、ABI1/count11、flags56、mask0x7ff/0x7ff、正逆sweep一致。100ns uptime bracketは1340597187/1340597187で同tick。同tickをread時間0の精密測定やatomic/ABA排除の証明にしない。
+
+mux raw4の選択親ラベルはarmpll。referenceは渡していないためconfigured PLL/mux親Hzもnull、実効CPU Hz/DDR Hzはnull。stock26MHz等を代入しない。decoded.first/secondへ実register値を保持する。
+
+receiptのDiagnostic ObservedResultは21として保持しており、mainのterminal0報告やbatch全体の分類と混同しない。helperはclock個別回収の整合性のみ。mainのsameboot UART/actualtuple/新directory事前不在の最終joinは別でありhardware_verified=falseを維持する。旧negativeと新成功出力を両方残し、185のpinnedsourceは変更しない。

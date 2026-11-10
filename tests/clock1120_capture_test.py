@@ -50,10 +50,38 @@ for mutation in ['length','ABI','mask','flags','stdout_RC','stdout_duplicate','s
  except ValueError:cases+=1
  else:raise AssertionError(mutation+' accepted')
  for q,b in originals.items():q.write_bytes(b)
+# Optional locator exact2 must join typed identity and same-segment provenance.
+base_receipt=receipt.read_bytes();base_log=(base/'logs/service.log').read_bytes()
+rr=copy.deepcopy(r);nn=nodes[:]
+for role,idx,hwid in [('parent',6,'ACPI\\BEN0001'),('thermal',1,'MT8167\\Thermal')]:
+ nn[idx*8+7]=2
+ inst=rr['nodes'][hwid]['instances'][0];inst['values']['ClassGUID']=typed('String','{4d36e97d-e325-11ce-bfc1-08002be10318}')
+ inst['selected'].update(InfPath=typed('String',f['packages'][role]['names']['inf']),InfSection=typed('String','Install'),DriverDate=typed('String','11-10-2026'))
+rr['combined']['Diagnostic']['values']['Nodes']['value']=struct.pack('<104I',*nn).hex()
+log=base_log.decode()+''.join(f'PB {idx:08X} {event:08X} {value:08X}\n' for idx in [1,6] for event,value in [(0x255,3),(0x253,2),(0x219,0),(0x21a,0)])
+save(receipt,rr);(base/'logs/service.log').write_text(log)
+checked=run();assert all(v['optional_locator_missing_exact2'] and v['locator_probe_stage']==3 for v in checked['actual_selected_tuple'].values());cases+=1
+for failure in ['stage7','no_stage','error5','error1168','metadata_error','wrong_INF','wrong_section','wrong_date','untyped_INF','wrong_class']:
+ bad=copy.deepcopy(rr);bn=nn[:];badlog=log
+ if failure=='stage7':badlog=log.replace('00000255 00000003','00000255 00000007')
+ elif failure=='no_stage':badlog=log.replace('PB 00000006 00000255 00000003\n','')
+ elif failure=='error5':bn[6*8+7]=5
+ elif failure=='error1168':bn[6*8+7]=1168
+ elif failure=='metadata_error':bn[6*8+5]=2
+ elif failure=='wrong_INF':bad['nodes']['ACPI\\BEN0001']['instances'][0]['selected']['InfPath']['value']='shared-parent-usb1117.inf'
+ elif failure=='wrong_section':bad['nodes']['ACPI\\BEN0001']['instances'][0]['selected']['InfSection']['value']='Other'
+ elif failure=='wrong_date':bad['nodes']['ACPI\\BEN0001']['instances'][0]['selected']['DriverDate']['value']='11-8-2026'
+ elif failure=='untyped_INF':bad['nodes']['ACPI\\BEN0001']['instances'][0]['selected']['InfPath']['kind']='DWord'
+ elif failure=='wrong_class':bad['nodes']['ACPI\\BEN0001']['instances'][0]['values']['ClassGUID']['value']='wrong'
+ bad['combined']['Diagnostic']['values']['Nodes']['value']=struct.pack('<104I',*bn).hex();save(receipt,bad);(base/'logs/service.log').write_text(badlog)
+ try:run()
+ except ValueError:cases+=1
+ else:raise AssertionError(failure+' accepted')
+receipt.write_bytes(base_receipt);(base/'logs/service.log').write_bytes(base_log)
 # The new fragment must use exact source package() contracts from 183 without editing it.
 source=root/'windows-rt/a04br3-windows-combined183-fresh182/tools/recovery/prepare-peripheral-followup182.py';sp=importlib.util.spec_from_file_location('oldpolicy',source);old=importlib.util.module_from_spec(sp);sp.loader.exec_module(old)
 for role,row in f['packages'].items():assert old.package(root,row,role)==row;cases+=1
 text=(source.parents[1]/'winpe/mt8167-peripheral-update.c').read_text();body=text[text.index('static DWORD run_clients('):text.index('/* Fixed auxiliary signed package:')]
 assert 'if(c->phase==1)' in body and 'NULL,base_directory,&start,&process)' in body and 'combined_gpu_node_ready' in body
-summary={'model_cases':cases,'GPU_problem43_global21_clock_evidence_checked':True,'clock_hardware_success':False,'real_raw_capture':False,'old183_package_parser_rows_exact':True,'service_runtime_source_changed':False,'effective_CPU_Hz':None,'DDR_Hz':None}
+summary={'model_cases':cases,'exact2_typed_metadata_stage_proof':True,'GPU_problem43_global21_clock_evidence_checked':True,'clock_hardware_success':False,'real_raw_capture':False,'old183_package_parser_rows_exact':True,'service_runtime_source_changed':False,'effective_CPU_Hz':None,'DDR_Hz':None}
 save(out/'result.json',summary);print(json.dumps(summary))

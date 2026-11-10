@@ -32,14 +32,24 @@ def verify(root,fixed,manifest,receipt,policy,fragment):
  row=struct.unpack_from('<9I',clients);require(row[0:3]==(1,0,0) and row[3]>0 and row[3]!=0xffffffff and row[4:]==(1,0,1,0,0),'client0 did not complete successfully')
  # No requirement on ObservedResult or GPU slot: GPU readiness cannot veto clock.
  for role,index in f['role_indices'].items():
-  n=struct.unpack_from('<8I',nodes,index*32);require(n[0]==1 and n[1]==n[2]==n[4]==n[5]==n[6]==n[7]==0 and n[3]&8,'clock parent/thermal node not qualified')
+  n=struct.unpack_from('<8I',nodes,index*32);require(n[0]==1 and n[1]==n[2]==n[4]==n[5]==n[6]==0 and n[7] in (0,2) and n[3]&8,'clock parent/thermal node not qualified')
   hwid,service=('ACPI\\BEN0001','Mt8167Shared') if role=='parent' else ('MT8167\\Thermal','Mt8167Thermal')
   matches=r['nodes'][hwid];require(matches['present'] and len(matches['instances'])==1,'ambiguous selected node')
   instance=matches['instances'][0];require(instance['selected_present'],'no selected metadata')
-  require(instance['values']['Service']['present'] and instance['values']['Service']['value'].lower()==service.lower(),'selected service mismatch')
-  selected=instance['selected'];require(selected['DriverVersion']['present'] and selected['DriverVersion']['value']==f['packages'][role]['driver_version'],'selected version mismatch')
-  require(selected['MatchingDeviceId']['present'] and selected['MatchingDeviceId']['value'].lower()==hwid.lower(),'selected HWID mismatch')
-  evidence[role]={'instance':instance['instance'],'selected':selected}
+  def selected_string(fields,key):
+   x=fields[key];require(x['present'] and x['kind']=='String' and isinstance(x['value'],str),'missing typed selected string '+key);return x['value']
+  require(selected_string(instance['values'],'Service').lower()==service.lower(),'selected service mismatch')
+  selected=instance['selected'];require(selected_string(selected,'DriverVersion')==f['packages'][role]['driver_version'],'selected version mismatch')
+  require(selected_string(selected,'MatchingDeviceId').lower()==hwid.lower(),'selected HWID mismatch')
+  if n[7]==2:
+   # This helper admits only the observed ERROR_FILE_NOT_FOUND, never all
+   # errors accepted by some future caller. Locator-stage proof follows below.
+   require(selected_string(selected,'InfPath').lower()==f['packages'][role]['names']['inf'].lower(),'exact2 selected INF mismatch')
+   require(selected_string(selected,'InfSection')=='Install','exact2 selected section mismatch')
+   date='-'.join(str(int(x)) for x in f['packages'][role]['driver_date'].split('/'))
+   require(selected_string(selected,'DriverDate')==date,'exact2 selected date mismatch')
+   require(selected_string(instance['values'],'ClassGUID').lower()=='{4d36e97d-e325-11ce-bfc1-08002be10318}','exact2 selected class mismatch')
+  evidence[role]={'instance':instance['instance'],'selected':selected,'node_record':list(n),'inf_location_error':n[7],'optional_locator_missing_exact2':n[7]==2}
  files={x['source_path']:x for x in m['files']}
  for name in ['SYSTEM','SYSTEM.LOG1','SYSTEM.LOG2']:
   x=files['Windows/System32/config/'+name];q=manifest.parent/x['backup_path'];require(q.resolve().is_relative_to(manifest.parent.resolve()),'capture path escape');require(sha(q)==x['sha256']==r['source_files'][name],'hive receipt differs from actual capture')
@@ -52,6 +62,16 @@ def verify(root,fixed,manifest,receipt,policy,fragment):
  header=f'PB 00000000 00000286 {runid:08X}\nPB 00000000 00000287 {servicepid:08X}\n';logtext=logtext.replace('\r\n','\n');require(logtext.count(header)==1,'ambiguous/missing service RunId/Pid log boundary')
  segment=logtext.split(header,1)[1].split('PB 00000000 00000286 ',1)[0]
  started=f'PB 00000000 00000220 {row[3]:08X}\n';ended='PB 00000000 00000221 00000000\n';require(segment.count(started)==segment.count(ended)==1 and segment.index(started)<segment.index(ended),'client0 PID/exit log mismatch')
+ for role,index in f['role_indices'].items():
+  if evidence[role]['inf_location_error']!=2:continue
+  events={}
+  for event in [0x255,0x253,0x219,0x21a]:
+   matches=list(re.finditer(rf'^PB {index:08X} {event:08X} ([0-9A-F]{{8}})$',segment,re.M));require(len(matches)==1,'exact2 missing/ambiguous locator provenance')
+   events[event]=(int(matches[0][1],16),matches[0].start())
+  stage=events[0x255][0]
+  require(stage in (2,3,4,5,6,8) and [events[x][0] for x in [0x253,0x219,0x21a]]==[2,0,0],'exact2 not a source-qualified optional locator failure')
+  require([events[x][1] for x in [0x255,0x253,0x219,0x21a]]==sorted(events[x][1] for x in [0x255,0x253,0x219,0x21a]),'exact2 provenance order mismatch')
+  evidence[role]['locator_probe_stage']=stage
  rawpath=base/f['raw_relative_to_base_directory'];raw=bounded(rawpath,128);require(len(raw)==128,'raw length not128')
  outpath=base/f['stdout_relative_to_base_directory'];text=bounded(outpath,4096).decode('ascii');errpath=base/f['stderr_relative_to_base_directory'];require(bounded(errpath,4096)==b'','stderr not empty')
  stdout={}
