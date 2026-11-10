@@ -19,4 +19,8 @@ struct Mt8167WaveBuffer {
 NTSTATUS Mt8167AllocateBuffer(PPORTWAVERTSTREAM port, ULONG bytes, Mt8167WaveBuffer *buffer);
 /* Only for a buffer that was never exposed to the device. */
 NTSTATUS Mt8167ReleaseUnpublishedBuffer(Mt8167WaveBuffer *buffer);
+/* Only after returning the SG mapping under the CT3 source stop protocol.
+ * Client mappings must already be retired by PortCls (FreeAudioBuffer), or
+ * the buffer must never have been published. Does not clear handedToDevice. */
+NTSTATUS Mt8167ReleaseStoppedBuffer(Mt8167WaveBuffer *);
 #endif

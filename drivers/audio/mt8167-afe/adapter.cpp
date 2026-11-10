@@ -8,8 +8,14 @@
 #if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
 #include "capture_owner.h"
 #endif
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+#include "adapter_power.inc"
+#endif
 struct Mt8167DeviceExtension {
     ULONG_PTR portclsReserved[PORT_CLASS_DEVICE_EXTENSION_SIZE / sizeof(ULONG_PTR)]; Mt8167PnpBackend *owner;
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+    Mt8167AdapterPower *power;Mt8167RegisteredPorts ports;
+#endif
 #if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
     Mt8167CaptureOwner *capture;
 #endif
@@ -65,7 +71,28 @@ static NTSTATUS Mt8167PnpDispatch(PDEVICE_OBJECT device,PIRP irp)
           Mt8167CaptureRelease(ext->capture);ext->capture=NULL;}
 #endif
         Mt8167PnpBackend *owner=static_cast<Mt8167PnpBackend *>(InterlockedExchangePointer(reinterpret_cast<PVOID volatile *>(&ext->owner),NULL));
-        if (owner) { Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner); }
+        if (owner) {
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+            if(stack->MinorFunction==IRP_MN_SURPRISE_REMOVAL)Mt8167PnpBackendSurprise(owner);
+            else Mt8167PnpBackendRevoke(owner);
+        }
+        {
+            if(ext->power) {
+                NTSTATUS unregistered=PcUnregisterAdapterPowerManagement(device);
+                if(NT_SUCCESS(unregistered)){ext->power->Release();ext->power=NULL;}
+                /* A failed unregister retains the object/owner reference.
+                 * Never allow another lifecycle with a stale callback. */
+            }
+            NTSTATUS removed=Mt8167UnregisterWaveRt(device,&ext->ports);
+            if(!NT_SUCCESS(removed))DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,"A04AUD unregister failed=%08lx\n",(ULONG)removed);
+            if(!ext->power && !ext->ports.wave && !ext->ports.topology)InterlockedExchange(&ext->diagInitialized,0);
+        }
+        if(owner) {
+#else
+            Mt8167PnpBackendRevoke(owner);
+#endif
+            Mt8167PnpBackendRelease(owner);
+        }
     }
     return PcDispatchIrp(device,irp);
 }
@@ -113,8 +140,11 @@ static NTSTATUS StartDeviceBody(PDEVICE_OBJECT device,PIRP irp,PRESOURCELIST res
     PDEVICE_OBJECT pdo=NULL;
     Mt8167PnpBackend *owner=NULL;
     if (ext->owner) return STATUS_DEVICE_BUSY;
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+    if(ext->power || ext->ports.wave || ext->ports.topology)return STATUS_DEVICE_BUSY;
+#endif
 #if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
-    /* The retained bring-up driver deliberately refuses a second lifecycle. */
+    /* Legacy retained profile refuses restart; lifecycle clears after teardown. */
     if(InterlockedCompareExchange(&ext->diagInitialized,0,0))return STATUS_DEVICE_BUSY;
     ExInitializeRundownProtection(&ext->diagRundown);InterlockedExchange(&ext->diagInitialized,1);
 #endif
@@ -137,9 +167,21 @@ static NTSTATUS StartDeviceBody(PDEVICE_OBJECT device,PIRP irp,PRESOURCELIST res
 #if A04_AUDIO_START_PERSIST
         record->stage=A04_START_REGISTER;
 #endif
-        status=Mt8167RegisterWaveRt(device,irp,resources,miniport);miniport->Release(); }
+        status=Mt8167RegisterWaveRt(device,irp,resources,miniport
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+            ,&ext->ports
+#endif
+        );miniport->Release(); }
     if (!NT_SUCCESS(status)) { Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner);return status; }
     ext->owner=owner;
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+    status=Mt8167RegisterPower(device,owner,&ext->power);
+    if(!NT_SUCCESS(status)) {
+        ext->owner=NULL;Mt8167PnpBackendRevoke(owner);
+        (void)Mt8167UnregisterWaveRt(device,&ext->ports);
+        Mt8167PnpBackendRelease(owner);return status;
+    }
+#endif
 #if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
     {const Mt8167HeadphoneProvider *hp=NULL;
      NTSTATUS probe=Mt8167PnpBackendHeadphone(owner,&hp);
@@ -178,7 +220,9 @@ static NTSTATUS Mt8167StartDevice(PDEVICE_OBJECT device,PIRP irp,PRESOURCELIST r
  Mt8167AudioStartRecord record;RtlZeroMemory(&record,sizeof(record));
  LARGE_INTEGER time;KeQuerySystemTime(&time);record.system_time_low=time.LowPart;record.system_time_high=(ULONG)time.HighPart;
  record.schema=1;record.bytes=sizeof(record);record.inf_revision=
-#if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+ 1036;
+#elif defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
  1035;
 #elif defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
 #if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
@@ -196,6 +240,12 @@ static NTSTATUS Mt8167StartDevice(PDEVICE_OBJECT device,PIRP irp,PRESOURCELIST r
  record.stage=A04_START_RESOURCES;
  NTSTATUS result=StartDeviceBody(device,irp,resources,&record);record.result=result;
  if(NT_SUCCESS(result))record.stage=A04_START_READY;
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+ if(!NT_SUCCESS(result)) {
+  Mt8167DeviceExtension *ext=static_cast<Mt8167DeviceExtension *>(device->DeviceExtension);
+  if(!ext->owner && !ext->power)InterlockedExchange(&ext->diagInitialized,0);
+ }
+#endif
  NTSTATUS saved=Mt8167PersistStartRecord(&record);
  DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_INFO_LEVEL,"A04AUD START stage=%lu status=%08lx dma=%lu adapter=%lu maps=%lu snapshot=%08lx\n",record.stage,(ULONG)result,record.dma_called,record.adapter_present,record.map_registers,(ULONG)saved);
  return result;

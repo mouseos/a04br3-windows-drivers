@@ -1594,3 +1594,9 @@ test-gpu-parent-spm-resources: build/gpu_parent_spm_resources_test
 .PHONY: test-mt8167-wavert-notification
 test-mt8167-wavert-notification:
 	$(MAKE) test-mt8167-engine-pcm CXX="$(CXX) -DA04_AUDIO_DMA_NOTIFICATION=1"
+
+.PHONY: test-mt8167-audio-lifecycle
+test-mt8167-audio-lifecycle:
+	$(MAKE) test-mt8167-engine-pcm CXX="$(CXX) -DA04_AUDIO_DMA_NOTIFICATION=1 -DA04_AUDIO_LIFECYCLE=1" CFLAGS="$(CFLAGS) -DA04_AUDIO_LIFECYCLE=1"
+	$(CC) $(CFLAGS) -Itests/audio_query_stubs tests/audio_parent_lifecycle_test.c -o build/audio_parent_lifecycle_test
+	./build/audio_parent_lifecycle_test

@@ -64,3 +64,14 @@ NTSTATUS Mt8167WaveDmaRelease(Mt8167WaveDma *m,BOOLEAN drainVerified)
     KeRaiseIrql(DISPATCH_LEVEL,&old);m->adapter->DmaOperations->PutScatterGatherList(m->adapter,m->list,m->writeToDevice);KeLowerIrql(old);
     RtlZeroMemory(m,sizeof(*m));return STATUS_SUCCESS;
 }
+
+NTSTATUS Mt8167WaveDmaReleaseStopped(Mt8167WaveDma *m)
+{
+    KIRQL old;
+    if(!m || !m->adapter || !m->list || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+    /* Caller has this exact lease's source-contract stop receipt. There is
+     * no timeout or inferred physical fabric-idle bit at this boundary. */
+    KeRaiseIrql(DISPATCH_LEVEL,&old);
+    m->adapter->DmaOperations->PutScatterGatherList(m->adapter,m->list,m->writeToDevice);
+    KeLowerIrql(old);RtlZeroMemory(m,sizeof(*m));return STATUS_SUCCESS;
+}

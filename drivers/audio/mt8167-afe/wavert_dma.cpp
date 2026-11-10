@@ -48,3 +48,11 @@ NTSTATUS Mt8167ReleaseUnpublishedBuffer(Mt8167WaveBuffer *buffer)
     RtlZeroMemory(buffer, sizeof(*buffer));
     return STATUS_SUCCESS;
 }
+
+NTSTATUS Mt8167ReleaseStoppedBuffer(Mt8167WaveBuffer *buffer)
+{
+    if(!buffer || !buffer->port || !buffer->mdl || !buffer->mapping)return STATUS_INVALID_PARAMETER;
+    buffer->port->UnmapAllocatedPages(buffer->mapping,buffer->mdl);
+    buffer->port->FreePagesFromMdl(buffer->mdl);
+    buffer->port->Release();RtlZeroMemory(buffer,sizeof(*buffer));return STATUS_SUCCESS;
+}

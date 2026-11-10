@@ -28,6 +28,12 @@
 #endif
 #include "client_interface.h"
 #include "audio_interface.h"
+#ifndef A04_SHARED_AUDIO_LIFECYCLE
+#define A04_SHARED_AUDIO_LIFECYCLE 0
+#endif
+#if A04_SHARED_AUDIO_LIFECYCLE
+#include "audio_lifecycle_interface.h"
+#endif
 #ifndef A04_SHARED_SD_POWER
 #define A04_SHARED_SD_POWER 0
 #endif
@@ -331,6 +337,9 @@ int afeClockHeld,afeClockRestore,afeClockPoisoned;
 struct a04_digital_playback digitalPlayback;
 #if A04_SHARED_FIRST_PLAYBACK
 int audioPowerPinned,trimCaptured;uint16_t trimCode;
+#if A04_SHARED_AUDIO_LIFECYCLE
+ULONG audioGeneration,audioActiveGeneration,audioStopCertified,audioSavedMcuEn;int audioReleaseAuthorized,audioMcuLeaseActive;
+#endif
 #endif
 #endif
 #endif
@@ -664,6 +673,9 @@ static int ParentDigitalWrite(void *context,unsigned off,uint32_t value) {
     case 0: case 0x10: case 0x24: case 0x28: case 0x34: case 0x6c:
     case 0x108: case 0x10c: case 0x124: case 0x260: case 0x264:
     case 0xf04: case 0xf0c: case 0xf10: case 0xf28: case 0xf2c: break;
+#if A04_SHARED_AUDIO_LIFECYCLE
+    case 0x3b4: break;
+#endif
     default:return -1;
     }
     WRITE_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->audioAfe+off),value);return 0;
@@ -747,7 +759,20 @@ static int ParentFirstPreflight(void *context,uint32_t rate) {
     return 0;
 }
 /* Deliberately no release/drain certificate for a one-shot retained lease. */
+#if A04_SHARED_AUDIO_LIFECYCLE
+static int ParentProductionQuiescent(A04_PARENT_CONTEXT *c);
+static int ParentPinnedRelease(void *context) {
+ A04_PARENT_CONTEXT *c=context;
+ uint32_t src,adda,i2s,abb;
+ if(!c || !c->audioReleaseAuthorized || ParentProductionQuiescent(c) ||
+    c->voice.active || c->digitalPlayback.retained ||
+    ParentDigitalRead(c,0x108,&src) || (src&1u) || ParentDigitalRead(c,0x124,&adda) || (adda&1u) ||
+    ParentDigitalRead(c,0x34,&i2s) || (i2s&1u) || ParentDigitalRead(c,0xf00,&abb) || (abb&3u))return -1;
+ return 0;
+}
+#else
 static int ParentPinnedRelease(void *context) {UNREFERENCED_PARAMETER(context);return -1;}
+#endif
 static int ParentFirstCodecReady(void *context) {
     A04_PARENT_CONTEXT *c=context;struct a04_mt6392_audio_rails rails;
     struct a04_mt6392_audio_raw spk;uint32_t con1,con2;
@@ -794,6 +819,9 @@ static int ParentAudioAcquire(PVOID context,ULONG rate) {
     if(c->captureInput.reserved){ParentUnlock(c);WdfDeviceResumeIdle((WDFDEVICE)context);return -1;}
 #endif
     result=a04_audio_owner_acquire(&c->audio,rate);
+#if A04_SHARED_AUDIO_LIFECYCLE
+    if(!result){c->audioActiveGeneration=0;c->audioStopCertified=0;}
+#endif
 #if A04_SHARED_FIRST_PLAYBACK
     if((!result || c->audio.poisoned) && !c->audioPowerPinned) {c->audioPowerPinned=1;keepPower=1;}
 #endif
@@ -837,10 +865,21 @@ static int ParentVoiceOperation(PVOID context,int start) {
 static int ParentStartVoice(PVOID context) { return ParentVoiceOperation(context,1); }
 static int ParentStopVoice(PVOID context) { return ParentVoiceOperation(context,0); }
 static int ParentVerifyDmaDrained(PVOID context) {
+#if A04_SHARED_AUDIO_LIFECYCLE
+    A04_PARENT_CONTEXT *c;int result=-1;
+    if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
+    c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return -1;
+    /* Only the same generation's full source STOP + ISR/DPC rundown receipt
+     * authorizes release. A register snapshot alone never authorizes it.
+     * This is the Linux STOP/hw_free ownership contract, not a bus-idle probe. */
+    if(c->audioActiveGeneration && c->audioStopCertified==c->audioActiveGeneration &&
+       c->audioGeneration==c->audioActiveGeneration && !ParentProductionQuiescent(c))result=0;
+    ParentUnlock(c);return result;
+#else
     UNREFERENCED_PARAMETER(context);
-    /* DL1 disable/IRQ readback alone does not prove fabric or DMA drain. */
-    A04_TRACE("A04AUD DMA drain rejected: outstanding fabric transactions unverified\n");
+    /* Old one-shot clients cannot supply software rundown ownership. */
     return -1;
+#endif
 }
 static int ParentVerifyLivePcm(PVOID context,PVOID mdl,uint64_t logical,ULONG size) {
 #if defined(A04_SHARED_ENGINE_PCM) && A04_SHARED_ENGINE_PCM
@@ -914,6 +953,16 @@ static int ParentAudioPrepareIrq(PVOID context,PVOID afe,ULONG length) {
     irq2=READ_REGISTER_ULONG((volatile ULONG *)(base+0x3f8));
     status=READ_REGISTER_ULONG((volatile ULONG *)(base+0x3a4));
     if((irq&0x4003u) || (irq2&0x18u) || (status&0x2ffu)) {c->audio.poisoned=1;goto done;}
+#if A04_SHARED_AUDIO_LIFECYCLE
+    if(c->audioActiveGeneration) {
+        ULONG mcu=READ_REGISTER_ULONG((volatile ULONG *)(base+0x3b4));
+        if(!c->audioMcuLeaseActive){c->audioSavedMcuEn=mcu;c->audioMcuLeaseActive=1;}
+        /* CT3 resume unmasks IRQ_MCU_EN low8 after clock enable. All source
+         * CON bits are still masked/acked here, before child ISR connect. */
+        WRITE_REGISTER_ULONG((volatile ULONG *)(base+0x3b4),mcu|0xffu);
+        if((READ_REGISTER_ULONG((volatile ULONG *)(base+0x3b4))&0xffu)!=0xffu){c->audio.poisoned=1;goto done;}
+    }
+#endif
     result=0;
 done:
     ParentUnlock(c);return result;
@@ -921,6 +970,9 @@ done:
     UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(afe);UNREFERENCED_PARAMETER(length);return -1;
 #endif
 }
+#if A04_SHARED_AUDIO_LIFECYCLE
+#include "audio_lifecycle_parent.inc"
+#endif
 /* Opt-in real lease. Parent PnP owns TOP/GPIO/PWRAP; the single MSDC2
  * PDO owns the host/IRQ. This cold-start mode resets the whole combo, so no
  * Bluetooth/FM child may share it. Not a firmware handoff certificate. */
@@ -1485,6 +1537,11 @@ VOID ParentSurprise(WDFDEVICE dev)
 NTSTATUS ParentD0Exit(WDFDEVICE dev,WDF_POWER_DEVICE_STATE target)
 {
     UNREFERENCED_PARAMETER(target);
+#if A04_SHARED_AUDIO_LIFECYCLE
+    {A04_PARENT_CONTEXT *c=ParentContext(dev);int held;
+     ExAcquireFastMutex(&c->pwrapLock);held=c->audio.leased||c->audioPowerPinned;
+     ExReleaseFastMutex(&c->pwrapLock);if(held)return STATUS_DEVICE_BUSY;}
+#endif
 #if A04_SHARED_SD_POWER
     /* PowerRelations must put the consumer through quiesce/release first.
      * An unresolved lease is a real failure, never an orderly power-off. */
@@ -2038,6 +2095,18 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&audioIface,&A04SharedAudioInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);
     if(!NT_SUCCESS(status))return status;
+#if A04_SHARED_AUDIO_LIFECYCLE
+    {
+     struct A04_AUDIO_LIFECYCLE_INTERFACE lifecycle;
+     RtlZeroMemory(&lifecycle,sizeof(lifecycle));lifecycle.Header.Size=sizeof(lifecycle);
+     lifecycle.Header.Version=A04_AUDIO_LIFECYCLE_VERSION;lifecycle.Header.Context=dev;
+     lifecycle.Header.InterfaceReference=ParentInterfaceReference;lifecycle.Header.InterfaceDereference=ParentInterfaceDereference;
+     lifecycle.AcquireMuted=ParentLifecycleAcquire;lifecycle.CertifyStopped=ParentLifecycleCertify;
+     lifecycle.ReleaseStopped=ParentLifecycleRelease;
+     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&lifecycle,&A04AudioLifecycleGuid,NULL);
+     status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
+    }
+#endif
 #if A04_SHARED_USBPORT_CHILD
     RtlZeroMemory(&musbIface,sizeof(musbIface));musbIface.Header.Size=sizeof(musbIface);
     musbIface.Header.Version=MT_MUSB_OWNER_VERSION;musbIface.Header.Context=dev;

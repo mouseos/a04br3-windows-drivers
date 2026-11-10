@@ -91,6 +91,11 @@ extern "C" int Mt8167SilentDmaMiniportEnabled(void);
 #endif
 #include "dma_notification.h"
 #endif
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+#if !A04_AUDIO_ENGINE_PCM || !A04_AUDIO_DMA_NOTIFICATION || A04_AUDIO_CAPTURE || A04_AUDIO_HP_SHARED
+#error lifecycle profile is the matched native speaker path; other endpoints keep their own contracts
+#endif
+#endif
 #define OWNER_TAG 'OwnA'
 struct Mt8167PnpBackend {
     Mt8167StreamBackend iface;
@@ -112,6 +117,9 @@ struct Mt8167PnpBackend {
     EX_RUNDOWN_REF livePositions;
     BOOLEAN livePositionsClosed;
     BOOLEAN online;
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+    BOOLEAN powerD0,sourceStopComplete;
+#endif
     BOOLEAN digitalRetained;
 #if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
     ULONG diagSequence,diagStage,diagFailedStage;NTSTATUS diagStatus;
@@ -318,8 +326,12 @@ static NTSTATUS OwnerUnbindWave(void *ctx,PMDL mdl) {
 }
 #endif
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
-#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+#if (defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE) || (defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE)
 static NTSTATUS OwnerConnectMaskedIrq(Mt8167PnpBackend *);
+#endif
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+static NTSTATUS OwnerCompleteStopLocked(Mt8167PnpBackend *,BOOLEAN);
+static NTSTATUS OwnerPrepareLeaseLocked(Mt8167PnpBackend *);
 #endif
 #if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
 static NTSTATUS HpCalibrateLocked(Mt8167PnpBackend*);
@@ -343,7 +355,10 @@ static NTSTATUS OwnerCheckoutRoute(void *ctx,PPORTWAVERTSTREAM port,ULONG bytes,
         OwnerUnlock(o);return STATUS_DEVICE_BUSY;
     }
 #endif
-#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+    if(!o->powerD0){OwnerUnlock(o);return STATUS_DEVICE_NOT_READY;}
+#endif
+#if (defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE) || (defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE)
     if(o->online&&!o->shared.leased){result=OwnerConnectMaskedIrq(o);if(!NT_SUCCESS(result)){OwnerUnlock(o);return result;}}
 #endif
     if(o->online && !o->enginePoison && !o->waveProbePending &&
@@ -356,7 +371,13 @@ static NTSTATUS OwnerCheckoutRoute(void *ctx,PPORTWAVERTSTREAM port,ULONG bytes,
                     o->retainedBuffer.mapping,o->retainedBuffer.bytes);
                 if(!NT_SUCCESS(result)) {
                     if(result==STATUS_IO_TIMEOUT)InterlockedExchange(&o->enginePoison,1);
-                    else (void)Mt8167ReleaseUnpublishedBuffer(&o->retainedBuffer);
+                    else {
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+                        if(o->retainedBuffer.handedToDevice)(void)OwnerCompleteStopLocked(o,TRUE);
+                        else
+#endif
+                        (void)Mt8167ReleaseUnpublishedBuffer(&o->retainedBuffer);
+                    }
                 }
             }
         } else {
@@ -442,6 +463,10 @@ static NTSTATUS OwnerCheckin(void *ctx,PPORTWAVERTSTREAM port,PMDL mdl)
     OwnerLock(o);NTSTATUS result=STATUS_DEVICE_NOT_READY;
     if(o->engineClient==port && mdl==o->retainedBuffer.mdl &&
        o->transport.state!=AUDIO_RUNNING) {
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+        result=OwnerCompleteStopLocked(o,TRUE);
+        if(!NT_SUCCESS(result)){OwnerUnlock(o);return result;}
+#endif
 #if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
         Mt8167NotificationsClear(&o->notifications);o->notificationCount=0;o->notificationClient=NULL;
 #endif
@@ -642,7 +667,12 @@ static NTSTATUS OwnerStartHardwareLocked(void *ctx,BOOLEAN *possiblyExposed) {
     o->diagStatus=result;
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
     if(*possiblyExposed)o->retainedBuffer.handedToDevice=TRUE;
-    if(NT_SUCCESS(result))InterlockedExchange(&o->positionPaused,0);
+    if(NT_SUCCESS(result)) {
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+        if(o->livePositionsClosed){ExReInitializeRundownProtection(&o->livePositions);o->livePositionsClosed=FALSE;}
+#endif
+        InterlockedExchange(&o->positionPaused,0);
+    }
     if(!NT_SUCCESS(result) && *possiblyExposed)InterlockedExchange(&o->enginePoison,1);
 #endif
     if(NT_SUCCESS(result))o->diagStage=A04_STAGE_RUNNING;
@@ -657,6 +687,12 @@ static NTSTATUS OwnerStartHardwareLocked(void *ctx,BOOLEAN *possiblyExposed) {
 /* Called with the owner mutex held by either legacy start or SetState. */
 static NTSTATUS OwnerStartLocked(void *ctx,BOOLEAN *possiblyExposed)
 {
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+    Mt8167PnpBackend *lifecycle=static_cast<Mt8167PnpBackend *>(ctx);
+    *possiblyExposed=FALSE;
+    NTSTATUS prepared=OwnerPrepareLeaseLocked(lifecycle);
+    if(!NT_SUCCESS(prepared))return prepared;
+#endif
 #if defined(A04_AUDIO_DMA_NOTIFICATION) && A04_AUDIO_DMA_NOTIFICATION
     Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);
     *possiblyExposed=FALSE;
@@ -779,6 +815,9 @@ static NTSTATUS OwnerSetState(void *ctx,PPORTWAVERTSTREAM port,KSSTATE state)
      * never reacquire the mutex; DPC notification never takes this mutex. */
     OwnerLock(o);NTSTATUS result=STATUS_DEVICE_NOT_READY;
     if(o->online && !o->enginePoison && o->engineClient==port) {
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+        if(!o->powerD0 && state==KSSTATE_RUN){OwnerUnlock(o);return STATUS_DEVICE_NOT_READY;}
+#endif
         if(state==o->engineState)result=STATUS_SUCCESS;
         else if(state==KSSTATE_RUN) {
             BOOLEAN exposed=TRUE;result=OwnerStartLocked(o,&exposed);
@@ -793,8 +832,16 @@ static NTSTATUS OwnerSetState(void *ctx,PPORTWAVERTSTREAM port,KSSTATE state)
             else if(state==KSSTATE_RUN)o->resetOnRun=FALSE;
         }
     }
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+    if(!o->online && state==KSSTATE_STOP && o->sourceStopComplete && o->engineClient==port) {
+        o->engineState=KSSTATE_STOP;result=STATUS_SUCCESS;
+    }
+#endif
     OwnerUnlock(o);return result;
 }
+#endif
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+#include "render_lifecycle_backend.inc"
 #endif
 static NTSTATUS OwnerPosition(void *ctx,PKSAUDIO_POSITION position)
 {
@@ -865,9 +912,17 @@ static NTSTATUS OwnerConnectMaskedIrq(Mt8167PnpBackend *o)
     if (o->parentClient.parent.PrepareMaskedIrq(o->parentClient.parent.Header.Context,o->afe.base,0x1000)) {
         (void)mt8167_audio_shared_release_unexposed(&o->shared);return STATUS_DEVICE_NOT_READY;
     }
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+    o->parentClient.softwareQuiescent=0;o->sourceStopComplete=FALSE;
+#endif
     status=Mt8167ConnectIrq(&o->irq,&o->engine,o->interrupt.vector,o->interrupt.level,
         o->interrupt.affinity,o->interrupt.mode,OwnerIrqNotify,o);
-    if (!NT_SUCCESS(status)) (void)mt8167_audio_shared_release_unexposed(&o->shared);
+    if (!NT_SUCCESS(status)) {
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+        o->parentClient.softwareQuiescent=1;
+#endif
+        (void)mt8167_audio_shared_release_unexposed(&o->shared);
+    }
     return status;
 }
 #endif
@@ -935,6 +990,20 @@ static NTSTATUS CreateBackend(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt8167P
             o->adapter->DmaOperations->PutDmaAdapter(o->adapter);ExFreePoolWithTag(o,OWNER_TAG);return STATUS_DEVICE_CONFIGURATION_ERROR;
         }
 
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+        {
+         struct A04_AUDIO_LIFECYCLE_INTERFACE lifecycle;
+         status=Mt8167QueryAudioLifecycle(pdo,&lifecycle);
+         if(NT_SUCCESS(status) && Mt8167AudioParentBindLifecycle(&o->parentClient,&lifecycle)) {
+            if(lifecycle.Header.InterfaceDereference)lifecycle.Header.InterfaceDereference(lifecycle.Header.Context);
+            status=STATUS_DEVICE_CONFIGURATION_ERROR;
+         }
+         if(!NT_SUCCESS(status)) {
+            (void)Mt8167AudioParentClose(&o->parentClient);
+            o->adapter->DmaOperations->PutDmaAdapter(o->adapter);ExFreePoolWithTag(o,OWNER_TAG);return status;
+         }
+        }
+#endif
 #if A04_AUDIO_START_PERSIST
     if(record)record->stage=A04_START_SHARED_ATTACH;
 #endif
@@ -957,6 +1026,9 @@ static NTSTATUS CreateBackend(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt8167P
     }
 #endif
     ObReferenceObject(pdo);o->pdo=pdo;o->refs=1;o->online=TRUE;
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+    o->powerD0=TRUE;o->sourceStopComplete=TRUE;
+#endif
     o->interrupt.vector=irq->u.Interrupt.Vector;
     o->interrupt.level=(KIRQL)irq->u.Interrupt.Level;
     o->interrupt.affinity=irq->u.Interrupt.Affinity;
@@ -992,7 +1064,7 @@ static NTSTATUS CreateBackend(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt8167P
         o->online=FALSE;OwnerDereference(o);return STATUS_DEVICE_NOT_READY;
     }
     o->afeBound=TRUE;
-#if !defined(A04_AUDIO_CAPTURE) || !A04_AUDIO_CAPTURE
+#if (!defined(A04_AUDIO_CAPTURE) || !A04_AUDIO_CAPTURE) && (!defined(A04_AUDIO_LIFECYCLE) || !A04_AUDIO_LIFECYCLE)
 
 #if A04_AUDIO_START_PERSIST
     if(record)record->stage=A04_START_IRQ;
@@ -1132,6 +1204,15 @@ void Mt8167PnpBackendRevoke(Mt8167PnpBackend *o) {
      * close admission and wait at PASSIVE before releasing any mapping. */
     ExWaitForRundownProtectionRelease(&o->positions);
     OwnerLock(o);
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+    if(!NT_SUCCESS(OwnerCompleteStopLocked(o,FALSE))) {
+        InterlockedExchange(&o->enginePoison,1);
+        /* Even an unprovable hardware stop must retire this driver's ISR/DPC
+         * before REMOVE. Keep SG/MDL/parent power quarantined, never leave an
+         * interrupt callback into an unloaded adapter. */
+        if(o->irq.interrupt)Mt8167DisconnectIrq(&o->irq);
+    }
+#endif
 #if defined(A04_AUDIO_IRQ_DIAGNOSTIC) && A04_AUDIO_IRQ_DIAGNOSTIC
     /* Parent keeps the source masked; disconnect and flush DPC before
      * releasing its lease or invalidating the AFE mapping. */

@@ -144,8 +144,13 @@ static BOOLEAN Mt8167PositionLocked(PVOID context)
         InterlockedCompareExchange(&call->irq->fault,0,0) ||
         !engine || engine->state!=MT8167_DL1_RUNNING || !engine->io.read32)
         return FALSE;
-    if (engine->io.read32(engine->io.context,0x44u,&current) ||
-        !mt8167_dl1_position(call->plan,current,&call->offset)) return FALSE;
+    if (engine->io.read32(engine->io.context,0x44u,&current))return FALSE;
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+    /* CT3 pcm_pointer maps an observed zero CUR to BASE before the first
+     * hardware fetch. It does not manufacture elapsed bytes or a period. */
+    if(!current)current=call->plan->base;
+#endif
+    if(!mt8167_dl1_position(call->plan,current,&call->offset))return FALSE;
     call->result=0;return TRUE;
 }
 int Mt8167SynchronizedStart(Mt8167Irq *irq, const struct mt8167_dl1_plan *plan)

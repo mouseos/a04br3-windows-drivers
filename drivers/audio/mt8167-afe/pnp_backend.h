@@ -31,6 +31,11 @@ NTSTATUS Mt8167PnpBackendCreateCapture(Mt8167PnpBackend *,Mt8167CaptureOwner **)
 #endif
 void Mt8167PnpBackendRevoke(Mt8167PnpBackend *owner);
 void Mt8167PnpBackendRelease(Mt8167PnpBackend *owner);
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+NTSTATUS Mt8167PnpBackendPower(Mt8167PnpBackend *,DEVICE_POWER_STATE);
+NTSTATUS Mt8167PnpBackendQueryPower(Mt8167PnpBackend *,DEVICE_POWER_STATE);
+void Mt8167PnpBackendSurprise(Mt8167PnpBackend *);
+#endif
 #endif
 #endif
 

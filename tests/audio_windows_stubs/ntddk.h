@@ -22,6 +22,9 @@ typedef struct { uint32_t a; uint16_t b,c; uint8_t d[8]; } GUID;
 typedef void (*PINTERFACE_REFERENCE)(PVOID);
 typedef struct { USHORT Size,Version; PVOID Context; PINTERFACE_REFERENCE InterfaceReference,InterfaceDereference; } INTERFACE,*PINTERFACE;
 #endif
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+typedef enum {PowerDeviceUnspecified,PowerDeviceD0,PowerDeviceD1,PowerDeviceD2,PowerDeviceD3} DEVICE_POWER_STATE;
+#endif
 #define FALSE 0
 #define TRUE 1
 #ifndef NULL

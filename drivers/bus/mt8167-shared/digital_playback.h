@@ -14,7 +14,11 @@ struct a04_digital_io {
  int (*write)(void *,unsigned,uint32_t);
  int (*delay_us)(void *,unsigned);
 };
-struct a04_digital_playback { int retained,prepared,poisoned; };
+struct a04_digital_playback { int retained,prepared,poisoned;
+#if defined(A04_SHARED_AUDIO_LIFECYCLE) && A04_SHARED_AUDIO_LIFECYCLE
+ uint32_t saved_dac_gates,saved_conn3,saved_conn4;
+#endif
+};
 static inline int a04_digital_update(const struct a04_digital_io *io,unsigned off,
                               uint32_t mask,uint32_t bits)
 {
@@ -38,6 +42,10 @@ static inline int a04_digital_prepare(struct a04_digital_playback *s,
     io->read(io->context,0x114,&ul) || (ul&1u) ||
     io->read(io->context,0x34,&i2s) || (i2s&1u) ||
     io->read(io->context,0xf00,&abb) || (abb&3u))return -1;
+#if defined(A04_SHARED_AUDIO_LIFECYCLE) && A04_SHARED_AUDIO_LIFECYCLE
+ if(io->read(io->context,0,&s->saved_dac_gates) ||
+    io->read(io->context,0x24,&s->saved_conn3) || io->read(io->context,0x28,&s->saved_conn4))return -1;
+#endif
  s->retained=1;
  /* int_adda_startup: DAC and DAC_PREDIS clock gates; AFE_ON. */
  if(a04_digital_update(io,0, (1u<<25)|(1u<<26),0) ||
@@ -66,4 +74,28 @@ static inline int a04_digital_prepare(struct a04_digital_playback *s,
     a04_digital_update(io,0x34,1,1)) {s->poisoned=1;return -1;}
  s->prepared=1;return 0;
 }
+#if defined(A04_SHARED_AUDIO_LIFECYCLE) && A04_SHARED_AUDIO_LIFECYCLE
+/* CT3 int_adda_shutdown + FE shutdown: after STOP and software IRQ rundown,
+ * disable ADDA output/I2S and AFE_ON. Return only our route/gate bits to the
+ * values captured before prepare. Rates may remain configured while off. */
+static inline int a04_digital_shutdown(struct a04_digital_playback *s,const struct a04_digital_io *io)
+{
+ uint32_t dac,abb,irq,status;
+ if(!s || !io || !io->read || !io->write || s->poisoned)return -1;
+ if(!s->retained)return 0;
+ if(!s->prepared || io->read(io->context,0x10,&dac) || (dac&0xdeu) ||
+    io->read(io->context,0xf00,&abb) || (abb&3u) ||
+    io->read(io->context,0x3a0,&irq) || (irq&0x4003u) ||
+    io->read(io->context,0x3a4,&status) || (status&0x2ffu))return -1;
+ if(a04_digital_update(io,0x108,1,0) || a04_digital_update(io,0x124,1,0) ||
+    a04_digital_update(io,0x34,1,0) ||
+    a04_digital_update(io,0x24,1u<<21,s->saved_conn3) ||
+    a04_digital_update(io,0x28,1u<<6,s->saved_conn4) ||
+    a04_digital_update(io,0x10,1,0) ||
+    a04_digital_update(io,0,(1u<<25)|(1u<<26),s->saved_dac_gates)) {
+  s->poisoned=1;return -1;
+ }
+ s->prepared=0;s->retained=0;return 0;
+}
+#endif
 #endif

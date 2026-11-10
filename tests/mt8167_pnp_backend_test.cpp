@@ -11,6 +11,10 @@ NTSTATUS Mt8167WaveDmaMap(PDMA_ADAPTER a,PDEVICE_OBJECT p,PMDL m,ULONG n,Mt8167W
  return STATUS_IO_TIMEOUT;
 #endif
  out->adapter=a;out->list=reinterpret_cast<PSCATTER_GATHER_LIST>(1);out->logical.QuadPart=0x100000;out->bytes=n;return STATUS_SUCCESS;}
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+static int stopCertifications;
+NTSTATUS Mt8167WaveDmaReleaseStopped(Mt8167WaveDma *m){assert(stopCertifications && m->list);dmaReleases++;*m={};return STATUS_SUCCESS;}
+#endif
 NTSTATUS Mt8167WaveDmaRelease(Mt8167WaveDma *m,BOOLEAN drained){assert(m && m->list);if(m->exposed && !drained)return STATUS_DEVICE_BUSY;dmaReleases++;*m={};return STATUS_SUCCESS;}
 #endif
 #if defined(A04_AUDIO_QUERY_SHARED) && A04_AUDIO_QUERY_SHARED
@@ -182,6 +186,9 @@ static int engineWrite(void *context,uint32_t reg,uint32_t value) {
     if(!result && reg==0x3a8)*reinterpret_cast<uint32_t *>(mmio+0x3a4)&=~value;
     return result;
 }
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+#include "audio_production_fixture.inc"
+#endif
 static void engineLifecycle(PDMA_ADAPTER adapter,Resources *resources) {
     Mt8167PnpBackend *owner=NULL;parent_grant=1;live_verified=1;
     assert(!Mt8167PnpBackendCreate(adapter,resources,&owner));
@@ -288,7 +295,9 @@ static void engineLifecycle(PDMA_ADAPTER adapter,Resources *resources) {
 int main(){
  _DMA_OPERATIONS ops{put,alloc,freebuf};_DMA_ADAPTER adapter{&ops};test_dma_adapter=&adapter;
  Resources resources;
-#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+#if defined(A04_AUDIO_LIFECYCLE) && A04_AUDIO_LIFECYCLE
+ productionLifecycle(&adapter,&resources);return 0;
+#elif defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
  engineLifecycle(&adapter,&resources);return 0;
 #else
  Mt8167PnpBackend *owner=nullptr;

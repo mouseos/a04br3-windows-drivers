@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+typedef uint32_t *PULONG;
+#define STATUS_DEVICE_NOT_READY (-14)
 typedef void VOID;typedef void *PVOID;typedef uint16_t USHORT;typedef uint32_t ULONG;typedef int32_t NTSTATUS;typedef unsigned char BOOLEAN;
 typedef struct {uint32_t a;uint16_t b,c;uint8_t d[8];} GUID;
 typedef void (*PINTERFACE_REFERENCE)(PVOID);typedef struct {USHORT Size,Version;PVOID Context;PINTERFACE_REFERENCE InterfaceReference,InterfaceDereference;} INTERFACE,*PINTERFACE;
