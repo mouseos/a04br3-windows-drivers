@@ -1,4 +1,4 @@
-# main所有の既存build環境用。GPU/driver/SDKを再buildせず、単一native helperだけを生成する。
+﻿# main所有の既存build環境用。GPU/driver/SDKを再buildせず、単一native helperだけを生成する。
 param([Parameter(Mandatory=$true)][string]$Cl,
  [Parameter(Mandatory=$true)][string]$Link,
  [Parameter(Mandatory=$true)][string]$VcInclude,
