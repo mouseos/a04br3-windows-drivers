@@ -4,7 +4,7 @@ param([Parameter(Mandatory=$true)][string]$WorkspaceRoot,
  [Parameter(Mandatory=$true)][string]$SourceDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,
  [Parameter(Mandatory=$true)][string]$PolicyPath,[Parameter(Mandatory=$true)][string]$ExpectedPolicyFileSha256,
  [string]$ExpectedPolicySha256,[ValidatePattern('^MT8167CombinedFollowup[0-9]{3}$')][string]$NewServiceName='MT8167CombinedFollowup200',
- [string[]]$AdditionalServiceNames=@(),[int]$TimingCaptureNumber=0,[switch]$IncludeWifiCheckpoint)
+ [string[]]$AdditionalServiceNames=@(),[int]$TimingCaptureNumber=0,[switch]$IncludeWifiCheckpoint,[switch]$IncludeGraphicsTopologyCache)
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 function Hash($p){(Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant()}
 $w=[IO.Path]::GetFullPath($WorkspaceRoot).TrimEnd('\')
@@ -88,6 +88,7 @@ $r.captured_driver_files=$capturedDrivers
 $r.source_recipe_files=[ordered]@{}
 foreach($file in @('read-fresh200-native-inventory.ps1','ReadonlyInventory200HiveNative.cs','prepare-offline-system-service.ps1','read-post-ownership-policy360.ps1','read-gpu-native-checkpoint.ps1','read-ge8300-start-gap359.ps1')){$r.source_recipe_files[$file]=Hash (Join-Path $PSScriptRoot $file)}
 if($IncludeWifiCheckpoint){$r.source_recipe_files['read-mt6630-checkpoint-loaded.ps1']=Hash (Join-Path $PSScriptRoot 'read-mt6630-checkpoint-loaded.ps1')}
+if($IncludeGraphicsTopologyCache){$r.source_recipe_files['read-graphics-topology-cache.ps1']=Hash (Join-Path $PSScriptRoot 'read-graphics-topology-cache.ps1')}
 $wifiCheckpoint=$null
 $mount='MT8167OfflineSYSTEM_'+[Guid]::NewGuid().ToString('N');$root=$null;$priv=$null;$loaded=$false
 try{
@@ -181,6 +182,11 @@ try{
  $r.gpu_init=Read-GpuNativeCheckpoint $root $cs
  . (Join-Path $PSScriptRoot 'read-ge8300-start-gap359.ps1')
  $r.startup_gap359=Read-Ge8300StartGap359 $root
+ if($IncludeGraphicsTopologyCache){
+  . (Join-Path $PSScriptRoot 'read-graphics-topology-cache.ps1')
+  $r.graphics_topology_cache=Read-GraphicsTopologyCache $root $cs
+  if($r.graphics_topology_cache.errors.Count){$r.errors+=@('Bounded GraphicsDrivers cache observation failed; see graphics_topology_cache.errors')}
+ }
  if($IncludeWifiCheckpoint){
   . (Join-Path $PSScriptRoot 'read-mt6630-checkpoint-loaded.ps1')
   $wifiCheckpoint=Read-Mt6630LoadedCheckpoint $root $cs "$OutputDirectory\wifi-checkpoint" $ExpectedManifestSha256 $m.recovery_boot_id
