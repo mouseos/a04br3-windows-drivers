@@ -626,7 +626,10 @@ NTSTATUS GeoCompleteFromInterrupt(struct geo_kmd_adapter *a,uint64_t token,uint3
    if(j->state==2&&j->kind==GEO_COPY_MAGIC&&j->owner_job==token&&j->generation==generation&&
       a->pending[i].generation==generation&&batch&&batch->index+1u<batch->count){
     batch->index++;j->copy_region=batch->regions[batch->index];j->owner_job=0;j->state=GEO_JOB_COPY_CONTINUE;
-    InterlockedOr(&a->service_pending,2);return STATUS_SUCCESS;
+    InterlockedOr(&a->service_pending,2);
+    /* Wake the PASSIVE owner worker from this actual completion IRQ. Do
+     * not set dpc_pending: no scheduler DMA completion was notified. */
+    a->queue_dpc(a->dxgk_device);return STATUS_SUCCESS;
    }
   }
  }

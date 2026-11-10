@@ -17,6 +17,13 @@ struct geo_mdl_record;
  * release tag. The union preserves the retained adapter layout/ABI. */
 struct geo_present_batch {UINT count,index;struct geo_copy_region regions[1];};
 struct geo_pending_payload {struct geo_clear_packet clear;union {struct geo_draw_packet *draw;struct geo_present_batch *copy;};UINT generation;};
+/* Keep the retained object's adapter/pending array layout mechanically
+ * checked by the real WDK compile, not just by a host fixture. */
+struct geo_pending_payload_retained_layout {struct geo_clear_packet clear;struct geo_draw_packet *draw;UINT generation;};
+C_ASSERT(sizeof(struct geo_pending_payload)==sizeof(struct geo_pending_payload_retained_layout));
+C_ASSERT(FIELD_OFFSET(struct geo_pending_payload,draw)==FIELD_OFFSET(struct geo_pending_payload_retained_layout,draw));
+C_ASSERT(FIELD_OFFSET(struct geo_pending_payload,copy)==FIELD_OFFSET(struct geo_pending_payload_retained_layout,draw));
+C_ASSERT(FIELD_OFFSET(struct geo_pending_payload,generation)==FIELD_OFFSET(struct geo_pending_payload_retained_layout,generation));
 /* These are DDI implementation modules, not a DriverEntry that registers an
  * incomplete WDDM adapter. The full miniport owns synchronization/rundown,
  * querycaps, paging and real DIRQL ISR/DPC routing. */

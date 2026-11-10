@@ -34,7 +34,7 @@ static void *allocate(size_t n){return allocation_fail?NULL:malloc(n);}
 #define InterlockedExchange(p,n) (*(p)=(n))
 #define DXGK_INTERRUPT_DMA_COMPLETED 1
 static int irql;
-static unsigned notifications;
+static unsigned notifications,dpc_queued;
 typedef struct {UINT InterruptType;struct {UINT SubmissionFenceId,NodeOrdinal,EngineOrdinal;}DmaCompleted;} DXGKARGCB_NOTIFY_INTERRUPT_DATA;
 struct geo_present_batch {UINT count,index;struct geo_copy_region regions[1];};
 typedef struct {int32_t left,top,right,bottom;} RECT;
@@ -79,7 +79,7 @@ static int32_t copy(void*c,uint64_t s,uint64_t d,uint64_t*t){(void)c;(void)s;(vo
 static int32_t region(void*c,uint64_t s,uint64_t d,const struct geo_copy_region*r,uint64_t*t){(void)c;(void)s;(void)d;(void)r;(void)t;assert(0);return GEO_INVALID;}
 static int32_t submit(void*c,uint64_t token,uint32_t fence,uint32_t generation){(void)c;assert(token&&fence&&generation);return 0;}
 static void notify(void*p,DXGKARGCB_NOTIFY_INTERRUPT_DATA*d){(void)p;assert(d->DmaCompleted.SubmissionFenceId==1);notifications++;}
-static void dpc(void*p){(void)p;}
+static void dpc(void*p){(void)p;dpc_queued++;}
 int main(void){
  struct geo_kmd_adapter a={0};struct geo_kmd_context c={&a};struct geo_allocation primary={0},shadow={0};
  a.synchronize=sync;a.engine.owner.prepare_copy=copy;a.engine.owner.prepare_copy_region=region;a.engine.owner.submit=submit;
@@ -112,7 +112,7 @@ int main(void){
   assert(!geo_finish_submitted_prepare(&a.engine,&claimed,0,100+i));
   if(i==10)assert(!geo_request_preempt(&a.engine,7));
   assert(!GeoCompleteFromInterrupt(&a,100+i,dma.generation,0,GEO_COMPLETION_GPU_DONE|GEO_COMPLETION_CPU_VISIBLE));
-  if(i<32){assert(j->state==GEO_JOB_COPY_CONTINUE&&primary.references==1&&shadow.references==1&&!notifications&&!a.engine.completed_ever);}
+  if(i<32){assert(dpc_queued==i+1&&!a.dpc_pending);assert(j->state==GEO_JOB_COPY_CONTINUE&&primary.references==1&&shadow.references==1&&!notifications&&!a.engine.completed_ever);}
  }
  assert(notifications==1&&!j->state&&!primary.references&&!shadow.references&&a.engine.last_completed==1);
  uint32_t pf,last;assert(!geo_take_preemption(&a.engine,&pf,&last)&&pf==7&&last==1);
