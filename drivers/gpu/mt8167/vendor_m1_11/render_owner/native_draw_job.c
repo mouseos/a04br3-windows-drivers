@@ -9,6 +9,7 @@
 #include "native_clear_pds.h"
 #include "native_load_usc_generated.h"
 #include "native_color_usc_generated.h"
+#include "native_premultiplied_generated.h"
 #include "native_varying_pds.h"
 #include "native_d3d_viewport.h"
 #include "../../wddm-render/render_layout.h"
@@ -65,7 +66,7 @@ static int32_t build(struct a04_m111_draw_job *out,
  int32_t status=combined?geo_draw_validate_capture_v5(combined,blob,bytes):general?geo_draw_validate_capture_v4(general,blob,bytes):sampled?geo_draw_validate_capture_v3(sampled,blob,bytes):linked?geo_draw_validate_capture_v2(linked,blob,bytes):geo_draw_validate_capture(r,blob,bytes);if(status)return status;
  if(sampled){
   struct a04_texture2d_storage t={sizeof(t),1,sampled->texture_desc.width,sampled->texture_desc.height,sampled->texture_desc.pitch,sampled->texture_desc.pitch*sampled->texture_desc.height,(sampled->texture_desc.format==GEO_FORMAT_A8B8G8R8?A04_TEXTURE2D_RGBA8:A04_TEXTURE2D_BGRA8),1,1,1,0,texture};
-  status=a04_m111_texture2d_program(&r->ps,blob,bytes);if(status)return status;
+  status=a04_m111_texture2d_blend_program(&r->ps,blob,bytes,r->state.blend_enable);if(status)return status;
   status=a04_m111_texture2d_state_filtered(&texstate,&t,sampled->sampler_profile==1?0:(sampled->sampler_profile>>8)&255u,sampled->sampler_profile==1?1:sampled->sampler_profile&255u);if(status)return status;
   if(texture<vertex+vertex_bytes&&vertex<texture+t.bytes)return GEO_INVALID;
   if((texture<in->output_gpu+(uint64_t)r->target_desc.pitch*r->target_desc.height&&in->output_gpu<texture+t.bytes)||
@@ -78,6 +79,7 @@ static int32_t build(struct a04_m111_draw_job *out,
  else if((!combined&&!sm4_profile(&r->vs,b,linked!=NULL)) || (!sampled&&!sm4_profile(&r->ps,b,linked!=NULL)))return GEO_UNSUPPORTED;
  if(combined){vc=b+r->vs.usc.offset;vn=r->vs.usc.bytes;}
  if(linked) {
+  if(r->state.blend_enable){pc=a04_native_pair_blend_usc;pn=sizeof(a04_native_pair_blend_usc);}
   struct a04_m111_varying_pds cp;
   status=a04_m111_build_varying_pds(&cp,&linked->link);if(status)return status;
   if(linked->link.fs_uses_z || linked->link.fs_uses_w!=1 || linked->link.fs_coeffs!=20 ||
@@ -92,10 +94,10 @@ static int32_t build(struct a04_m111_draw_job *out,
     (r->vs.format==GEO_SHADER_D3D10_TOKENS&&!geo_viewport_target_valid(r->state.viewport,r->target_desc.width,r->target_desc.height)) ||
     r->state.vertex_count!=3 ||
     (!general&&!combined&&(r->vs.temps || r->vs.shareds || r->vs.vtxins!=(linked?8u:4u) || r->vs.vtxouts!=(linked?8u:4u) || r->vs.input_mask!=(linked?3u:1u) || r->vs.constant_mask ||
-    r->ps.temps!=(sampled?A04_TEXTURE2D_SAMPLE_TEMPS:5u) || r->ps.shareds!=(sampled?12u:linked?0u:4u) || r->ps.vtxins || r->ps.vtxouts || r->ps.input_mask!=(linked?1u:0u) || r->ps.constant_mask!=(linked?0u:1u) ||
+    r->ps.temps!=(r->state.blend_enable?(sampled?A04_TEXTURE_BLEND_TEMPS:linked?A04_PAIR_BLEND_TEMPS:0u):sampled?A04_TEXTURE2D_SAMPLE_TEMPS:5u) || r->ps.shareds!=(sampled?12u:linked?0u:4u) || r->ps.vtxins || r->ps.vtxouts || r->ps.input_mask!=(linked?1u:0u) || r->ps.constant_mask!=(linked?0u:1u) ||
     r->vs.usc.bytes!=vn || r->ps.usc.bytes!=pn ||
     !same(b+r->vs.usc.offset,vc,vn) || !same(b+r->ps.usc.offset,pc,pn))))return GEO_UNSUPPORTED;
- if(combined&&(r->ps.temps!=A04_TEXTURE2D_SAMPLE_TEMPS||r->ps.shareds!=12u||r->ps.vtxins||r->ps.vtxouts||r->ps.input_mask||r->ps.constant_mask!=1u))return GEO_UNSUPPORTED;
+ if(combined&&(r->ps.temps!=(r->state.blend_enable?A04_TEXTURE_BLEND_TEMPS:A04_TEXTURE2D_SAMPLE_TEMPS)||r->ps.shareds!=12u||r->ps.vtxins||r->ps.vtxouts||r->ps.input_mask||r->ps.constant_mask!=1u))return GEO_UNSUPPORTED;
  if(vertex<4096 || vertex>=(UINT64_C(1)<<40)-vertex_bytes || (vertex&3) ||
     (vertex<in->output_gpu+(uint64_t)r->target_desc.pitch*r->target_desc.height && in->output_gpu<vertex+vertex_bytes) ||
     (vertex<in->data_page_gpu+4096 && in->data_page_gpu<vertex+vertex_bytes) ||
@@ -138,6 +140,7 @@ static int32_t build(struct a04_m111_draw_job *out,
  else if(sampled){copy(m->data+0x4a0,&texstate,sizeof(texstate));copy(m->data+0x4c0,b+r->ps.constants.offset,16);put(m->pds,0x208,0x9000000cu,4);}
  else{copy(m->data+0x4a0,b+r->ps.constants.offset,16);put(m->pds,0x208,0x90000004u,4);}
  if(linked) {
+  if(r->state.blend_enable){pc=a04_native_pair_blend_usc;pn=sizeof(a04_native_pair_blend_usc);}
   struct a04_m111_varying_pds cp;
   struct a04_m111_triangle_ppp_input pp={0};
   if(a04_m111_build_varying_pds(&cp,&linked->link))return GEO_INVALID;
@@ -149,6 +152,9 @@ static int32_t build(struct a04_m111_draw_job *out,
   put(m->data,12*4,8,4); /* VDM_STATE4 main VS output:8 DWORD, source vdm.xml. */
   put(m->data,13*4,(16u<<25)|(2u<<10)|(1u<<6)|2u,4); /* input8 / unit4 */
  }
+ /* Mesa STATE_ISPA.passtype bits24..26; fbfetch requires TRANSLUCENT.
+  * Word2 is ISPA, distinct from word1 ISPCTL's upass field. */
+ if(r->state.blend_enable)put(m->data,0x248,(1u<<24)|(1u<<21)|(7u<<17)|(15u<<8),4);
  /* PPP REGION_CLIP fields use native 16px tile coordinates (ppp.xml).
   * Match HWRT/terminate dimensions, including the general/linked PS path. */
  put(m->data,0x26c,(1u<<31)|((r->target_desc.width+15u)/16u-1u),4);

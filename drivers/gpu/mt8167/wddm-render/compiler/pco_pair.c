@@ -5,6 +5,7 @@
 #include "color_sm4.h"
 #include "pco/pco.h"
 #include "pco/pco_data.h"
+#include "pco_premultiplied.h"
 #include "pco/pco_internal.h"
 #include "util/ralloc.h"
 #include <string.h>
@@ -34,12 +35,12 @@ static int encode_pair_stage(pco_ctx *ctx,nir_shader *nir,pco_data *data,struct 
 static struct geo_draw_link_range snapshot_range(pco_range r) {
  struct geo_draw_link_range out={r.start,r.count,r.offset};return out;
 }
-int32_t geo_pco_compile_pair(void *context,const uint32_t *vt,uint32_t vb,const struct geo_sm4_signatures *vsig,
- const uint32_t *ft,uint32_t fb,const struct geo_sm4_signatures *fsig,struct geo_compiled_pair *out) {
+int32_t geo_pco_compile_pair_blend(void *context,const uint32_t *vt,uint32_t vb,const struct geo_sm4_signatures *vsig,
+ const uint32_t *ft,uint32_t fb,const struct geo_sm4_signatures *fsig,struct geo_compiled_pair *out,uint32_t blend) {
  pco_ctx *ctx=context;struct a04_color_moves moves,fragment;struct geo_compiled_pair made={0};
  pco_data vd={0},fd={0};nir_builder v,f;nir_variable *position,*color,*input;int32_t status;unsigned bgra[4]={2,1,0,3};
  const pco_data *vs,*fs;unsigned components;
- if(!ctx||!out)return GEO_INVALID;
+ if(!ctx||!out||blend>1)return GEO_INVALID;
  memset(out,0,sizeof(*out));
  status=geo_pco_pair_validate_stage(0,vt,vb,vsig);if(status)return status;
  status=geo_pco_pair_validate_stage(1,ft,fb,fsig);if(status)return status;
@@ -54,7 +55,7 @@ int32_t geo_pco_compile_pair(void *context,const uint32_t *vt,uint32_t vb,const 
  nir_store_var(&v,position,nir_load_vtxin_pco(&v,4,nir_imm_int(&v,moves.position_input*4)),15);
  nir_store_var(&v,color,nir_load_vtxin_pco(&v,4,nir_imm_int(&v,moves.color_input*4)),15);
  nir_jump(&v,nir_jump_return);vd.common.vtxins=8;
- nir_frag_store_pco(&f,nir_pack_unorm_4x8(&f,nir_swizzle(&f,nir_load_var(&f,input),bgra,4)),.base=0);
+ nir_frag_store_pco(&f,blend?geo_pco_premultiplied_bgra(&f,&fd,nir_load_var(&f,input)):nir_pack_unorm_4x8(&f,nir_swizzle(&f,nir_load_var(&f,input),bgra,4)),.base=0);
  nir_jump(&f,nir_jump_return);
  components=glsl_get_vector_elements(color->type);
  pco_preprocess_nir(ctx,v.shader,&vd);pco_preprocess_nir(ctx,f.shader,&fd);
@@ -87,3 +88,7 @@ int32_t geo_pco_compile_pair(void *context,const uint32_t *vt,uint32_t vb,const 
  *out=made;memset(&made,0,sizeof(made));status=GEO_OK;
  done:ralloc_free(v.shader);ralloc_free(f.shader);ralloc_free(made.vs.storage);ralloc_free(made.ps.storage);return status;
 }
+
+int32_t geo_pco_compile_pair(void *c,const uint32_t *vt,uint32_t vb,const struct geo_sm4_signatures *vs,
+ const uint32_t *ft,uint32_t fb,const struct geo_sm4_signatures *fs,struct geo_compiled_pair *out)
+{ return geo_pco_compile_pair_blend(c,vt,vb,vs,ft,fb,fs,out,0); }

@@ -65,7 +65,7 @@ static int reg_valid(pco_ref r,unsigned width,int dst,const struct geo_shader_me
  case PCO_REG_CLASS_CONST:
   /* Mesa pco_const_imms.c: immutable numeric ROM, not arbitrary SPECIAL. */
   return !dst&&(r.val+width<=32u||(r.val>=64u&&r.val+width<=96u)||(r.val>=128u&&r.val+width<=160u));
- case PCO_REG_CLASS_PIXOUT:return dst&&m->stage&&r.val==0&&width==1;
+ case PCO_REG_CLASS_PIXOUT:return m->stage&&r.val==0&&width==1&&(dst||m->framebuffer_fetch==1);
  default:return 0;
  }
 }
@@ -90,7 +90,7 @@ static int modifiers_valid(pco_instr *i,const struct geo_shader_insn *w) {
 static int make_group(pco_igrp *g,struct local_scope *scope,const struct geo_shader_insn *w,const struct geo_shader_metadata *m,uint32_t defined[4],uint32_t *constants,uint32_t *outputs,int last) {
  pco_instr i={0};pco_ref d[2],s[3];unsigned repeat=1;memset(d,0,sizeof(d));memset(s,0,sizeof(s));
  if(w->opcode>=_PCO_OP_COUNT||w->num_dests>2||w->num_srcs>3)return 0;
- switch(w->opcode){case PCO_OP_FADD:case PCO_OP_FMUL:case PCO_OP_FMAD:case PCO_OP_MBYP:case PCO_OP_PCK:case PCO_OP_MOVI32:case PCO_OP_MOVWM:case PCO_OP_MOVS1:case PCO_OP_UVSW_WRITE:case PCO_OP_UVSW_WRITE_EMIT_ENDTASK:case PCO_OP_UVSW_EMIT_ENDTASK:break;default:return 0;}
+ switch(w->opcode){case PCO_OP_FADD:case PCO_OP_FMUL:case PCO_OP_FMAD:case PCO_OP_MBYP:case PCO_OP_PCK:case PCO_OP_UNPCK:case PCO_OP_MOVI32:case PCO_OP_MOVWM:case PCO_OP_MOVS1:case PCO_OP_UVSW_WRITE:case PCO_OP_UVSW_WRITE_EMIT_ENDTASK:case PCO_OP_UVSW_EMIT_ENDTASK:break;default:return 0;}
  const struct pco_op_info *info=&pco_op_info[w->opcode];
  if(info->num_dests!=w->num_dests||info->num_srcs!=w->num_srcs)return 0;
  i.op=w->opcode;i.num_dests=w->num_dests;i.num_srcs=w->num_srcs;i.dest=d;i.src=s;i.parent_func=(void *)scope;list_inithead(&i.link);
@@ -108,7 +108,11 @@ static int make_group(pco_igrp *g,struct local_scope *scope,const struct geo_sha
    if(!m->stage&&n==1&&s[n].bits==PCO_BITS_8&&(i.op==PCO_OP_UVSW_WRITE||i.op==PCO_OP_UVSW_WRITE_EMIT_ENDTASK)&&s[n].val<4&&repeat<=4-s[n].val){*outputs|=((1u<<repeat)-1u)<<s[n].val;continue;}
    return 0;
   }
-  if(!reg_valid(s[n],repeat,0,m,defined,constants))return 0;
+  if(!reg_valid(s[n],i.op==PCO_OP_UNPCK?1:repeat,0,m,defined,constants))return 0;
+  if(s[n].type==PCO_REF_TYPE_REG&&s[n].reg_class==PCO_REG_CLASS_PIXOUT){
+   if(i.op!=PCO_OP_MBYP||!(info->mods&(UINT64_C(1)<<PCO_OP_MOD_OLCHK))||!pco_instr_get_mod(&i,PCO_OP_MOD_OLCHK))return 0;
+   *outputs|=16u;
+  }
   enum pco_io map=i.op==PCO_OP_PCK?PCO_IO_S2:i.op==PCO_OP_MOVS1?PCO_IO_S1:(enum pco_io)(PCO_IO_S0+n);
   if(!ref_src_map_valid(s[n],map,NULL))return 0;
   uint64_t mask=info->src_mods[n];
@@ -116,14 +120,14 @@ static int make_group(pco_igrp *g,struct local_scope *scope,const struct geo_sha
  }
  for(unsigned n=0;n<w->num_dests;n++){
   if(d[n].oneminus||d[n].clamp||d[n].flr||d[n].abs||d[n].neg||!reg_valid(d[n],repeat,1,m,defined,constants))return 0;
-  if(d[n].reg_class==PCO_REG_CLASS_PIXOUT)*outputs=15;
+  if(d[n].reg_class==PCO_REG_CLASS_PIXOUT)*outputs|=15;
  }
  if((i.op==PCO_OP_UVSW_WRITE||i.op==PCO_OP_UVSW_WRITE_EMIT_ENDTASK||i.op==PCO_OP_UVSW_EMIT_ENDTASK)&&m->stage)return 0;
  if(last&&!m->stage&&i.op!=PCO_OP_UVSW_WRITE_EMIT_ENDTASK&&i.op!=PCO_OP_UVSW_EMIT_ENDTASK)return 0;
  memset(g,0,sizeof(*g));memset(scope,0,sizeof(*scope));
  switch(i.op){
  #define MAP(op,name) case PCO_OP_##op:pco_##name##_map_igrp(g,&i);break
- MAP(FADD,fadd);MAP(FMUL,fmul);MAP(FMAD,fmad);MAP(MBYP,mbyp);MAP(PCK,pck);MAP(MOVI32,movi32);MAP(MOVWM,movwm);MAP(MOVS1,movs1);MAP(UVSW_WRITE,uvsw_write);MAP(UVSW_WRITE_EMIT_ENDTASK,uvsw_write_emit_endtask);MAP(UVSW_EMIT_ENDTASK,uvsw_emit_endtask);
+ MAP(FADD,fadd);MAP(FMUL,fmul);MAP(FMAD,fmad);MAP(MBYP,mbyp);MAP(PCK,pck);MAP(UNPCK,unpck);MAP(MOVI32,movi32);MAP(MOVWM,movwm);MAP(MOVS1,movs1);MAP(UVSW_WRITE,uvsw_write);MAP(UVSW_WRITE_EMIT_ENDTASK,uvsw_write_emit_endtask);MAP(UVSW_EMIT_ENDTASK,uvsw_emit_endtask);
  #undef MAP
  default:return 0;
  }
@@ -159,7 +163,7 @@ int32_t geo_shader_witness_measure(const void *data,uint32_t bytes,uint32_t *tem
   for(unsigned j=0;j<5;j++){
    const struct geo_shader_ref *r=j<2?&rows[n].dest[j]:&rows[n].src[j-2];
    if(r->type!=PCO_REF_TYPE_REG)continue;
-   unsigned width=r->channels+1;if(width<repeat)width=repeat;
+   unsigned width=r->channels+1;if(width<repeat&&!(j>=2&&rows[n].opcode==PCO_OP_UNPCK))width=repeat;
    if(width>4||r->value>256-width)return GEO_INVALID;
    unsigned end=r->value+width;
    if(r->bank==PCO_REG_CLASS_TEMP&&end>*temps)*temps=end;
@@ -170,11 +174,11 @@ int32_t geo_shader_witness_measure(const void *data,uint32_t bytes,uint32_t *tem
 }
 int32_t geo_shader_witness_validate(const void *data,uint32_t bytes,const void *code,uint32_t codebytes,const struct geo_shader_metadata *m) {
  const struct geo_shader_witness *w=data;const struct geo_shader_insn *ins;uint32_t defined[4]={0},constants=0,outputs=0;unsigned total=0,lastlen=0,penpad=0,lastpad=0,at=0;
- if(!w||!code||!m||((uintptr_t)w&3)||bytes<sizeof(*w)||!codebytes||codebytes>GEO_SHADER_WITNESS_MAX_CODE||(codebytes&7)||m->stage>1||m->temps>128||m->shareds>16||m->vtxins>(m->stage?0u:4u)||m->vtxouts!=(m->stage?0u:4u)||(m->input_mask&~(m->stage?0u:1u))||(m->constant_mask&~15u)||m->shareds!=4*count_bits(m->constant_mask))return GEO_INVALID;
+ if(!w||!code||!m||((uintptr_t)w&3)||bytes<sizeof(*w)||!codebytes||codebytes>GEO_SHADER_WITNESS_MAX_CODE||(codebytes&7)||m->stage>1||m->framebuffer_fetch>1||(!m->stage&&m->framebuffer_fetch)||m->temps>128||m->shareds>16||m->vtxins>(m->stage?0u:4u)||m->vtxouts!=(m->stage?0u:4u)||(m->input_mask&~(m->stage?0u:1u))||(m->constant_mask&~15u)||m->shareds!=4*count_bits(m->constant_mask))return GEO_INVALID;
  if(w->magic!=GEO_SHADER_WITNESS_MAGIC||w->version!=1||w->isa!=GEO_SHADER_WITNESS_ISA||w->stage!=m->stage||w->reserved||!w->count||w->count>128||bytes!=sizeof(*w)+w->count*sizeof(*ins))return GEO_INVALID;
  ins=(const void *)(w+1);
  for(unsigned n=0;n<w->count;n++){pco_igrp g;struct local_scope scope;if(!make_group(&g,&scope,ins+n,m,defined,&constants,&outputs,n+1==w->count))return GEO_UNSUPPORTED;total+=g.enc.len.total;lastlen=g.enc.len.total;}
- if(outputs!=15||(constants&~m->constant_mask))return GEO_UNSUPPORTED;
+ if((outputs&15u)!=15u||((outputs&16u)&&!m->framebuffer_fetch)||(constants&~m->constant_mask))return GEO_UNSUPPORTED;
  lastpad=(8-lastlen%8)%8;penpad=(8-(total-lastlen)%8)%8;
  if(w->count==1&&penpad)return GEO_INVALID;
  if(total+lastpad+penpad!=codebytes)return GEO_INVALID;

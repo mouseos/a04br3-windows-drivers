@@ -14,7 +14,7 @@ static uint32_t half(uint32_t n)
 }
 int32_t a04_m111_build_d3d_viewport(uint32_t out[6],const uint32_t f[6])
 {
- uint32_t x,y,w,h,made[6];
+ uint32_t x=0,y=0,w=0,h=0,made[6];
  if(!out || !f)return GEO_INVALID;
  if(!geo_viewport_profile_valid(f))return GEO_UNSUPPORTED;
  geo_viewport_integral(f[0],GEO_RENDER_MAX_EDGE,&x);geo_viewport_integral(f[1],GEO_RENDER_MAX_EDGE,&y);

@@ -29,8 +29,9 @@ static HRESULT compile(struct geo_shader_compiler *compiler,uint32_t stage,const
 }
 void geo_umd_release_tokenized_shader(struct geo_umd_tokenized_shader *s) {
  if(!s)return;
+ if(s->premultiplied)geo_umd_release_tokenized_shader(s->premultiplied);
  if(s->compiled.storage)s->compiler->release(s->compiler->context,&s->compiled);
- if(s->tokens)HeapFree(GetProcessHeap(),0,s->tokens);
+ if(s->tokens&&!s->is_variant)HeapFree(GetProcessHeap(),0,s->tokens);
  HeapFree(GetProcessHeap(),0,s);
 }
 HRESULT geo_umd_compile_shader10(struct geo_shader_compiler *compiler,uint32_t stage,const UINT *code,
@@ -61,4 +62,21 @@ HRESULT geo_umd_compile_shader11(struct geo_shader_compiler *compiler,uint32_t s
  for(i=0;i<sig.output_count;i++){sig.outputs[i].reg=in->pOutputSignature[i].Register;sig.outputs[i].mask=in->pOutputSignature[i].Mask;sig.outputs[i].system_value=in->pOutputSignature[i].SystemValue;
   if(in->pOutputSignature[i].MinPrecision)return E_INVALIDARG;}
  return compile(compiler,stage,code,&sig,out);
+}
+
+/* Immutable token/signature identity plus the one implemented blend mode.
+ * Parent lifetime owns the variant; captured DMA copies own independent code. */
+HRESULT geo_umd_premultiplied_variant(struct geo_umd_tokenized_shader *s,struct geo_umd_tokenized_shader **out) {
+ struct geo_umd_tokenized_shader *v;int32_t status;struct geo_sm2_error error;
+ if(!s||!out||s->compiled.stage!=1||s->pair_stage||s->is_variant)return E_INVALIDARG;
+ if(s->premultiplied){*out=s->premultiplied;return S_OK;}
+ v=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*v));if(!v)return E_OUTOFMEMORY;
+ v->compiler=s->compiler;v->tokens=s->tokens;v->token_bytes=s->token_bytes;v->signatures=s->signatures;v->is_variant=1;v->texture_profile=s->texture_profile;
+ if(s->texture_profile){struct geo_texture2d_program binding;
+  status=geo_pco_compile_texture2d_blend(s->compiler->context,s->tokens,s->token_bytes,&s->signatures,&v->compiled,&binding,1);
+ }else{void *proof=NULL;
+  status=geo_pco_compile_tokenized_blend_witness(s->compiler->context,1,s->tokens,s->token_bytes,&s->signatures,&v->compiled,&error,&proof,&v->witness_bytes,1);v->witness=proof;
+ }
+ if(status){geo_umd_release_tokenized_shader(v);return status==GEO_BUSY?E_OUTOFMEMORY:E_NOTIMPL;}
+ s->premultiplied=v;*out=v;return S_OK;
 }

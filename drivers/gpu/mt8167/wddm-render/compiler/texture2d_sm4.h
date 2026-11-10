@@ -12,5 +12,6 @@ int32_t geo_sm4_texture2d_decode(const uint32_t *,uint32_t,const struct geo_sm4_
 /* Shared register contract: sampler0..3, image4..7, CB0 vectors from8.
  * Native may call this code only after negotiating an owned texture job ABI;
  * these fields must not be interpreted as the old flat draw constants. */
+int32_t geo_pco_compile_texture2d_blend(void *,const uint32_t *,uint32_t,const struct geo_sm4_signatures *,struct geo_compiled_shader *,struct geo_texture2d_program *,uint32_t);
 int32_t geo_pco_compile_texture2d(void *,const uint32_t *,uint32_t,const struct geo_sm4_signatures *,struct geo_compiled_shader *,struct geo_texture2d_program *);
 #endif

@@ -23,7 +23,8 @@ HRESULT geo_typed_submit_pair(D3D10DDI_HDEVICE h,const FLOAT vertices[3][8]) {
  hr=geo_typed_validate_native_state(h);if(FAILED(hr))return hr;
  {uint32_t vp[6];memcpy(vp,&d->viewport,sizeof(vp));if(!d->viewport_set||!geo_viewport_target_valid(vp,d->target->resource->width,d->target->resource->height))return E_NOTIMPL;}
  for(i=0;i<24;i++){UINT v;memcpy(&v,(const BYTE *)vertices+4*i,4);if((v&0x7f800000u)==0x7f800000u)return E_INVALIDARG;}
- status=geo_pco_compile_pair(d->compiler.context,vs->tokens,vs->token_bytes,&vs->signatures,ps->tokens,ps->token_bytes,&ps->signatures,&pair);
+ UINT blend=geo_typed_blend_mode(d->state);
+ status=geo_pco_compile_pair_blend(d->compiler.context,vs->tokens,vs->token_bytes,&vs->signatures,ps->tokens,ps->token_bytes,&ps->signatures,&pair,blend);
  if(status!=GEO_OK)return status==GEO_BUSY?E_OUTOFMEMORY:(status==GEO_UNSUPPORTED?E_NOTIMPL:E_INVALIDARG);
  total=1024u+vs->token_bytes+ps->token_bytes+pair.vs.code_bytes+pair.ps.code_bytes;
  if(total>GEO_DRAW_MAX_BLOB||pair.vs.code_bytes>GEO_DRAW_MAX_CODE||pair.ps.code_bytes>GEO_DRAW_MAX_CODE||d->backend.command_bytes<sizeof(*p)+total||d->backend.allocation_count<2){hr=E_OUTOFMEMORY;goto done;}
@@ -33,6 +34,7 @@ HRESULT geo_typed_submit_pair(D3D10DDI_HDEVICE h,const FLOAT vertices[3][8]) {
  p->magic=GEO_DRAW_MAGIC;p->size=sizeof(*p)+total;p->version=2;p->vertex_index=1;
  p->request.base.size=sizeof(p->request);p->request.base.version=2;p->request.base.blob_bytes=total;p->request.base.target_desc=target;
  p->request.base.state.topology=GEO_DRAW_TRIANGLE_LIST;p->request.base.state.vertex_count=3;p->request.base.state.vertex_stride=32;p->request.base.state.color_write_mask=15;
+ p->request.base.state.blend_enable=blend;
  p->request.base.state.scissor_enable=geo_typed_scissor_enabled(d->state)?1u:0u;
  if(p->request.base.state.scissor_enable&&d->scissor_set){
   p->request.base.state.scissor[0]=d->scissor.left;p->request.base.state.scissor[1]=d->scissor.top;

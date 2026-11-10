@@ -98,16 +98,20 @@ static void shader_packet(BYTE *blob,UINT *at,struct geo_draw_shader *s,const st
 }
 HRESULT geo_typed_submit_draw(D3D10DDI_HDEVICE h,const FLOAT vertices[3][4]) {
  struct geo_typed_device *d=geo_typed_device(h);struct geo_draw_packet *p;struct geo_surface_desc target;D3DKMT_HANDLE ta,va,xa=0;struct geo_surface_desc texture_desc;D3DDDICB_RENDER q;
+ struct geo_umd_tokenized_shader *selected[2];UINT blend;
  UINT constants[2][128],total=1024,at=0,stage,i,header,sampled,general,combined,sampler_profile=0;BYTE *blob;HRESULT hr;
  if(!d||!d->target||!d->bound_shader[0]||!d->bound_shader[1])return E_INVALIDARG;
  if(FAILED(d->error))return d->error;
- sampled=d->bound_shader[1]->code->texture_profile;general=!sampled&&d->bound_shader[0]->code->witness&&d->bound_shader[1]->code->witness;combined=sampled&&d->bound_shader[0]->code->witness;header=combined?sizeof(struct geo_draw_packet_v5):general?sizeof(struct geo_draw_packet_v4):sampled?sizeof(struct geo_draw_packet_v3):sizeof(*p);
+ selected[0]=d->bound_shader[0]->code;selected[1]=d->bound_shader[1]->code;
+ blend=geo_typed_blend_mode(d->state);
+ if(blend){hr=geo_umd_premultiplied_variant(selected[1],&selected[1]);if(FAILED(hr))return hr;}
+ sampled=selected[1]->texture_profile;general=!sampled&&selected[0]->witness&&selected[1]->witness;combined=sampled&&selected[0]->witness;header=combined?sizeof(struct geo_draw_packet_v5):general?sizeof(struct geo_draw_packet_v4):sampled?sizeof(struct geo_draw_packet_v3):sizeof(*p);
  if(sampled){hr=geo_typed_texture_profile(d,&sampler_profile);if(FAILED(hr))return hr;hr=geo_typed_texture_allocation(d,&texture_desc,&xa);if(FAILED(hr))return hr;}
  hr=geo_typed_validate_native_state(h);if(FAILED(hr))return hr;
  {uint32_t vp[6];memcpy(vp,&d->viewport,sizeof(vp));if(!d->viewport_set||!geo_viewport_target_valid(vp,d->target->resource->width,d->target->resource->height))return E_NOTIMPL;}
  hr=geo_umd_target_info(&d->backend,&target,&ta);if(FAILED(hr))return hr;
  for(stage=0;stage<2;stage++){
-  struct geo_umd_tokenized_shader *s=d->bound_shader[stage]->code;
+  struct geo_umd_tokenized_shader *s=selected[stage];
   if(s->token_bytes>GEO_DRAW_MAX_TOKENS*4u||s->compiled.code_bytes>GEO_DRAW_MAX_CODE)return E_INVALIDARG;
   total+=s->token_bytes+s->compiled.code_bytes+((general||(combined&&stage==0))?s->witness_bytes:0);hr=geo_typed_shader_constants(d,stage,constants[stage]);if(FAILED(hr))return hr;
  }
@@ -118,20 +122,21 @@ HRESULT geo_typed_submit_draw(D3D10DDI_HDEVICE h,const FLOAT vertices[3][4]) {
  p=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,header+total);if(!p)return E_OUTOFMEMORY;blob=(BYTE *)p+header;
  p->magic=GEO_DRAW_MAGIC;p->size=header+total;p->version=1;p->vertex_index=1;p->request.size=sizeof(p->request);p->request.version=1;p->request.blob_bytes=total;p->request.target_desc=target;
  p->request.state.topology=GEO_DRAW_TRIANGLE_LIST;p->request.state.vertex_count=3;p->request.state.vertex_stride=16;memcpy(p->request.state.viewport,&d->viewport,sizeof(d->viewport));p->request.state.color_write_mask=15;
+ p->request.state.blend_enable=blend;
  p->request.state.scissor_enable=geo_typed_scissor_enabled(d->state)?1u:0u;
  if(p->request.state.scissor_enable&&d->scissor_set){
   p->request.state.scissor[0]=d->scissor.left;p->request.state.scissor[1]=d->scissor.top;
   p->request.state.scissor[2]=d->scissor.right;p->request.state.scissor[3]=d->scissor.bottom;
  } /* Enabled with zero bound rects is the empty raster region. */
- for(stage=0;stage<2;stage++)shader_packet(blob,&at,stage?&p->request.ps:&p->request.vs,d->bound_shader[stage]->code,constants[stage]);
+ for(stage=0;stage<2;stage++)shader_packet(blob,&at,stage?&p->request.ps:&p->request.vs,selected[stage],constants[stage]);
  p->request.target=1;p->request.vertex=2;
- if(combined){struct geo_draw_packet_v5 *v5=(void *)p;struct geo_umd_tokenized_shader *vs=d->bound_shader[0]->code;
+ if(combined){struct geo_draw_packet_v5 *v5=(void *)p;struct geo_umd_tokenized_shader *vs=selected[0];
   p->version=5;p->request.version=5;p->request.size=sizeof(v5->request);v5->request.isa=GEO_SHADER_WITNESS_ISA;
   v5->request.sampled.texture=3;v5->request.sampled.texture_desc=texture_desc;v5->request.sampled.sampler_profile=sampler_profile;v5->texture_index=2;
   span(blob,&at,&v5->request.vertex_witness,vs->witness,vs->witness_bytes);
   hr=geo_draw_validate_capture_v5(&v5->request,blob,total)==GEO_OK?S_OK:E_INVALIDARG;v5->request.sampled.texture=0;
  }else if(general){struct geo_draw_packet_v4 *v4=(void *)p;p->version=4;p->request.version=4;p->request.size=sizeof(v4->request);v4->request.isa=GEO_SHADER_WITNESS_ISA;
-  for(stage=0;stage<2;stage++){struct geo_umd_tokenized_shader *s=d->bound_shader[stage]->code;span(blob,&at,&v4->request.witness[stage],s->witness,s->witness_bytes);}
+  for(stage=0;stage<2;stage++){struct geo_umd_tokenized_shader *s=selected[stage];span(blob,&at,&v4->request.witness[stage],s->witness,s->witness_bytes);}
   hr=geo_draw_validate_capture_v4(&v4->request,blob,total)==GEO_OK?S_OK:E_INVALIDARG;
  }else if(sampled){struct geo_draw_packet_v3 *v3=(struct geo_draw_packet_v3 *)p;p->version=3;p->request.version=3;p->request.size=sizeof(v3->request);v3->request.texture=3;v3->request.texture_desc=texture_desc;v3->request.sampler_profile=sampler_profile;v3->texture_index=2;hr=geo_draw_validate_capture_v3(&v3->request,blob,total)==GEO_OK?S_OK:E_INVALIDARG;v3->request.texture=0;}
  else hr=geo_draw_validate_capture(&p->request,blob,total)==GEO_OK?S_OK:E_INVALIDARG;

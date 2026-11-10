@@ -22,5 +22,6 @@ int32_t geo_pco_compiler_init(struct geo_shader_compiler *,void *pco_context);
 int32_t geo_pco_compile_tokenized(void *,uint32_t stage,const uint32_t *,uint32_t bytes,
  const struct geo_sm4_signatures *,struct geo_compiled_shader *,struct geo_sm2_error *);
 int32_t geo_pco_compile_tokenized_witness(void *,uint32_t,const uint32_t *,uint32_t,const struct geo_sm4_signatures *,struct geo_compiled_shader *,struct geo_sm2_error *,void **,uint32_t *);
+int32_t geo_pco_compile_tokenized_blend_witness(void *,uint32_t,const uint32_t *,uint32_t,const struct geo_sm4_signatures *,struct geo_compiled_shader *,struct geo_sm2_error *,void **,uint32_t *,uint32_t);
 void geo_pco_compiler_finish(struct geo_shader_compiler *);
 #endif

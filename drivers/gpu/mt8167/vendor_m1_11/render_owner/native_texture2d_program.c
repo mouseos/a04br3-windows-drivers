@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT. Finite source-compiled sample admission only. */
 #include "native_texture2d_program.h"
+#include "native_premultiplied_generated.h"
 #include "../../wddm-render/compiler/texture2d_sm4.h"
 /* Validation witness, not executable substitution. Source codegen SHA256:
  * e8f10f2555a7f3e02f47ee2fc9b74772c0a399204730662c19c6d1b2dc63d7ab */
@@ -15,14 +16,19 @@ static const uint8_t expected_sample_code[88]={
 };
 static int range(const struct geo_draw_span *s,uint32_t total)
 {return s->bytes&&!(s->offset&3u)&&!(s->bytes&3u)&&s->offset<=total&&s->bytes<=total-s->offset;}
-int32_t a04_m111_texture2d_program(const struct geo_draw_shader *s,const void *blob,uint32_t bytes)
+int32_t a04_m111_texture2d_blend_program(const struct geo_draw_shader *s,const void *blob,uint32_t bytes,uint32_t blend)
 {
  const uint8_t *b=blob;struct geo_sm4_signatures signature={0};struct geo_texture2d_program p;
- if(!s||!b||((uintptr_t)b&3u)||!range(&s->tokens,bytes)||!range(&s->usc,bytes)||!range(&s->constants,bytes)||s->constants.bytes!=512)return GEO_INVALID;
- if(s->format!=GEO_SHADER_D3D10_TOKENS||s->stage!=1||s->temps!=A04_TEXTURE2D_SAMPLE_TEMPS||s->shareds!=12||s->vtxins||s->vtxouts||s->input_mask||s->constant_mask!=1||s->usc.bytes!=sizeof(expected_sample_code))return GEO_UNSUPPORTED;
+ const uint8_t *expected=blend?a04_native_texture_blend_usc:expected_sample_code;
+ uint32_t length=blend?sizeof(a04_native_texture_blend_usc):sizeof(expected_sample_code);
+ if(blend>1||!s||!b||((uintptr_t)b&3u)||!range(&s->tokens,bytes)||!range(&s->usc,bytes)||!range(&s->constants,bytes)||s->constants.bytes!=512)return GEO_INVALID;
+ if(s->format!=GEO_SHADER_D3D10_TOKENS||s->stage!=1||s->temps!=(blend?A04_TEXTURE_BLEND_TEMPS:A04_TEXTURE2D_SAMPLE_TEMPS)||s->shareds!=12||s->vtxins||s->vtxouts||s->input_mask||s->constant_mask!=1||s->usc.bytes!=length)return GEO_UNSUPPORTED;
  signature.output_count=1;signature.outputs[0].mask=15;
  int32_t status=geo_sm4_texture2d_decode((const uint32_t *)(b+s->tokens.offset),s->tokens.bytes,&signature,&p);if(status)return status;
  if(p.coordinate_constant||p.coordinate_x||p.coordinate_y!=1)return GEO_UNSUPPORTED;
- for(uint32_t i=0;i<sizeof(expected_sample_code);i++)if(b[s->usc.offset+i]!=expected_sample_code[i])return GEO_UNSUPPORTED;
+ for(uint32_t i=0;i<length;i++)if(b[s->usc.offset+i]!=expected[i])return GEO_UNSUPPORTED;
  return GEO_OK;
 }
+
+int32_t a04_m111_texture2d_program(const struct geo_draw_shader *s,const void *b,uint32_t n)
+{ return a04_m111_texture2d_blend_program(s,b,n,0); }

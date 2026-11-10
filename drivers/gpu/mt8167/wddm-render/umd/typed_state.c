@@ -217,9 +217,18 @@ HRESULT geo_typed_state_validate_flat(const struct geo_typed_state_snapshot *s,c
   * default depth state alone must not spuriously reject a no-depth draw. */
  if(dsv&&(s->depth.DepthEnable||s->depth.StencilEnable))bits|=GEO_TYPED_FLAT_DEPTH;
  if(s->blend.AlphaToCoverageEnable||b->LogicOpEnable||b->RenderTargetWriteMask!=15u)bits|=GEO_TYPED_FLAT_BLEND;
- if(b->BlendEnable&&(b->SrcBlend!=D3D10_DDI_BLEND_ONE||b->DestBlend!=D3D10_DDI_BLEND_ZERO||b->BlendOp!=D3D10_DDI_BLEND_OP_ADD||
-    b->SrcBlendAlpha!=D3D10_DDI_BLEND_ONE||b->DestBlendAlpha!=D3D10_DDI_BLEND_ZERO||b->BlendOpAlpha!=D3D10_DDI_BLEND_OP_ADD))bits|=GEO_TYPED_FLAT_BLEND;
+ if(b->BlendEnable&&(b->SrcBlend!=D3D10_DDI_BLEND_ONE||b->BlendOp!=D3D10_DDI_BLEND_OP_ADD||
+    b->SrcBlendAlpha!=D3D10_DDI_BLEND_ONE||b->BlendOpAlpha!=D3D10_DDI_BLEND_OP_ADD||
+    !((b->DestBlend==D3D10_DDI_BLEND_ZERO&&b->DestBlendAlpha==D3D10_DDI_BLEND_ZERO)||
+      (b->DestBlend==D3D10_DDI_BLEND_INV_SRC_ALPHA&&b->DestBlendAlpha==D3D10_DDI_BLEND_INV_SRC_ALPHA))))bits|=GEO_TYPED_FLAT_BLEND;
  if(s->sample_mask!=0xffffffffu)bits|=GEO_TYPED_FLAT_SAMPLES;
  for(i=0;i<6;i++) {if(used[i]&~0xffffu)return E_INVALIDARG;if(used[i])bits|=GEO_TYPED_FLAT_TEXTURE;}
  *unsupported=bits; return bits?DXGI_ERROR_UNSUPPORTED:S_OK;
+}
+
+UINT geo_typed_blend_mode(const struct geo_typed_state *s) {
+ if(!s)return 0;const D3D11_1_DDI_RENDER_TARGET_BLEND_DESC *b=&s->value.blend.RenderTarget[0];
+ return b->BlendEnable&&b->SrcBlend==D3D10_DDI_BLEND_ONE&&b->SrcBlendAlpha==D3D10_DDI_BLEND_ONE&&
+  b->DestBlend==D3D10_DDI_BLEND_INV_SRC_ALPHA&&b->DestBlendAlpha==D3D10_DDI_BLEND_INV_SRC_ALPHA&&
+  b->BlendOp==D3D10_DDI_BLEND_OP_ADD&&b->BlendOpAlpha==D3D10_DDI_BLEND_OP_ADD;
 }

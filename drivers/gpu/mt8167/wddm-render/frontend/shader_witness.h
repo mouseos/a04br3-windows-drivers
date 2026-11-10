@@ -19,7 +19,7 @@ struct geo_shader_witness {
  uint32_t magic,version,isa,stage,count,reserved;
  /* count records follow. */
 };
-struct geo_shader_metadata {uint32_t stage,temps,shareds,vtxins,vtxouts,input_mask,constant_mask;};
+struct geo_shader_metadata {uint32_t stage,temps,shareds,vtxins,vtxouts,input_mask,constant_mask,framebuffer_fetch;};
 /* Immutable capture only. Re-encode every byte with reviewed source encoders.
  * Admits no memory op, texture, branch, predication, indirect register or spill.
  * The shader's arithmetic semantics are compiler responsibility; native checks
