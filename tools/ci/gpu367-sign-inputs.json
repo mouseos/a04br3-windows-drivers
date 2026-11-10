@@ -1,0 +1,76 @@
+{
+  "schema": "GPU367_SIGN_ONLY_INPUT_PINS_V1",
+  "baseline366_manifest_sha256": "deca993fd78b79552c5a886d062ef4aaf18a5c12d1f73bbf1f44fd4e51a93d30",
+  "baseline366_schema": "GPU-post-release366-source-overlay-v1",
+  "baseline366_outputs": {
+    "display-transport/mt8167-display-transport.cat": "66645368cd9836564fc5eadc347de3c908685bfcc71e10b21d15a4877e29497e",
+    "display-transport/mt8167-display-transport.inf": "e2cc28e52c9fee0b920d24eb5b99d243701d7919cf1b1523659bbd36312580ef",
+    "display-transport/mt8167-display-transport.sys": "902009a9201a416c6a160504d47809f1e7fbfccf08ce32376b40caa60ae829c5",
+    "ge8300-d3d-clear.exe": "f3af58c14f7a3efdee119dac971d59b5e92c069bd649a6499006242d37698597",
+    "ge8300-d3d-texture-boundary.exe": "055bbff39b5e28a8e64f5a1b358b6084f68e03bfcdcebf7425d2e1b60fae6789",
+    "ge8300-d3d-texture.exe": "2727328f3072d9cfcacc4758acf3701c7795471c76860eeac70206c82d759206",
+    "ge8300-mips.fw": "5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1",
+    "ge8300-render.cat": "dadb0e817caf19a8650750637a529bc3df898a43a7af503a0c1d2815d6a1e8ad",
+    "ge8300-render.inf": "b4742d8ebf31bb7c72dc894f0f5784bda3c3434a6b0144123dac36ad46f8635f",
+    "ge8300-render.sys": "ab730da8975e9a6751178768fcf1d7d01226dfaeb89861d244f8125beab9e4b3",
+    "ge8300-umd.dll": "a952df2c06d7d91a14a1023b8efe664db0cbb8b529da3f4ff9579250afa5dd4a",
+    "ge8300-umd.lib": "58a3c45bddbe096f08a980ba53d61d9317b4c8299f08a3b5542fe9455b86112d",
+    "mt8167-development.cer": "33680a69f647193e7f7adcecf137db525262019c3a8f971ab3095d40f894d72a",
+    "mt8167-dxgi-present356.exe": "eaa30760ebc38a1955ccb3bbd834ee5c3972ce8842b90e6a58bc5084109ef8d5"
+  },
+  "integrated_manifest_sha256": "5bd6410045fa5feb213bb9b1a39a4750357410b5093c2735397f6ed3bdf06c65",
+  "integrated_schema": "integrated197-link-only-afterfailure-v1",
+  "compiled_source_commit": "3d4a3d1097b7f6a796972e0425e37d0263b2b070",
+  "metadata_recipe_source_commit": "c30b8ca129dde82aef2e3df6454f32ef174a2d80",
+  "UMD_source_commit": "aa6613149e09b7b7be718c90103a34323c362917",
+  "PCO_source_commit": "f4b92404c4bbe139524a997c5427a8245560e522",
+  "unsigned_linked_outputs": {
+    "ge8300-render.sys": "482f4325c004b43d19300adff49ee22680aabc06f97022dd91803d4b06535099",
+    "ge8300-umd.dll": "ebba6b7af5683ae149cfa864578c252d7a7c6de0a591ee5fe470c284bc936bda",
+    "mt8167-display-transport.sys": "9cd6e6d817f07b126955e16f8cc4bce178364f9f5ec7a88914db0e57bab03bc4"
+  },
+  "signer_thumbprint": "BCBF6C456C6F0DD0818434763B189488FBF13570",
+  "inf_driverver": "11/10/2026,0.0.3.67",
+  "render_INF367_sha256": "0d6101f88ecd3337b52be450f089d822684e2d63947463e65b831a4190707e14",
+  "render_INF_hardware": [
+    "Device=\"PowerVR GE8300\"",
+    "%Device%=Install,ACPI\\MOU0006",
+    "AddService=GE8300Render"
+  ],
+  "transport_INF_hardware": [
+    "Device=\"MediaTek MT8167 display DMA transport\"",
+    "%Device%=Transport,ACPI\\MOU0007",
+    "AddService=MT8167DisplayTransport"
+  ],
+  "module_identity": {
+    "runtime_source_base": "e0727eb0d840883a31d3c501b0ee17652ebdcad4",
+    "runtime_build_id": "GPU359-start-gap-v1",
+    "source": "drivers/gpu/mt8167/wddm-render/miniport.c",
+    "source_sha256": "92b660eb9e00353d215c180eca6bd49a4582283034ec2a3291d602649d3e42f1",
+    "record_schema": 1,
+    "record_bytes": 144
+  },
+  "metadata_counts": {
+    "fixed_source_files": 467,
+    "saved_inputs_checked": 115,
+    "KMD_members_checked": 24,
+    "UMD_module_members_checked": 9,
+    "native_units": 67
+  },
+  "metadata_facts": {
+    "compile_invocations": 0,
+    "SYS_relink_invocations": 0,
+    "module_historical_include_trace_recorded": false,
+    "module_metadata_reconstructed_afterfailure": true,
+    "existing_SYS_reused": true,
+    "native_recompiled": 0,
+    "KMD_recompiled": 0,
+    "UMD_recompiled": 0,
+    "PCO_recompiled": 0,
+    "SDK_rebuilt": 0,
+    "signed": false,
+    "hardware_verified": false
+  },
+  "main_review_sha256": "67e03bdda4091103ed4bbed872e537bb51dd58c81aa0afc48541d4e524f9d657",
+  "main_review_schema": "main-integrated197-review-v1"
+}
