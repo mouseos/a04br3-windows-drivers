@@ -38,3 +38,13 @@ archive member, and uses Microsoft LINK14.29 and the existing signing cache.
 No SDK, PCO compiler, UMD or native dependency rebuild is required. The normal
 public source build also includes these sources. Real adapter publication,
 Present and DWM remain unverified for365 until a new hardware capture.
+
+## Captured365 limitation and source correction
+
+The captured365 image recorded system CreateDevice and CreateContext success,
+then POST quiesce R86/R87, firmware retirement R36, and successful R88/R89.
+It did not record R80/R81: the native TU included the private checkpoint header
+in `render_owner`, whose old stage69 limit discarded those calls during
+compilation. Current source forwards that header to the common bounded
+checkpoint implementation. This corrects future builds, not the already signed
+365 bytes; another hardware trial solely for that observation is unnecessary.
