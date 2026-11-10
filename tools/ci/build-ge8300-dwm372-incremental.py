@@ -134,6 +134,7 @@ def main():
     try:
         for name,tool in [('cl14.29',cl),('link14.29',link),('powershell',powershell),*tools.items()]: receipt['tools'].append(dict(name=name,path=str(tool),sha256=sha(tool)))
         run(['python','-B',ROOT/'tools/ci/verify-ge8300-fullsource.py'],'fullsource.log')
+        receipt['actual_child_link_inputs_preflight']=bound_link_inputs(spec,env)
         compatibility=present_compatibility(ROOT,baseline,out/'compatibility',spec,sha,a.jobs,cl)
         receipt['present_compatibility_sha256']=sha(out/'compatibility/present-compatibility.json')
         receipt['plan_only']=a.plan_only
