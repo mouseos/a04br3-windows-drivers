@@ -41,6 +41,16 @@ foreach($name in @('SYSTEM','SYSTEM.LOG1','SYSTEM.LOG2')){
  if($rows.Count -ne 1 -or (Hash $file) -cne $rows[0].sha256 -or (Get-Item -LiteralPath $file).Length -ne $rows[0].bytes){throw 'Original trio pin/size mismatch'}
  $pins[$name]=$rows[0].sha256
 }
+$capturedDrivers=[ordered]@{}
+if($IncludeWifiCheckpoint){
+ $driverDirectory=Join-Path (Split-Path ([IO.Path]::GetFullPath($SourceDirectory))) 'Drivers'
+ foreach($name in @('ge8300-render.sys','mt8167-display-transport.sys','mt6630-combo-runtime.sys')){
+  $rows=@($m.files|Where-Object {$_.source_path -ceq "Windows/System32/Drivers/$name"})
+  $file=Join-Path $driverDirectory $name
+  if($rows.Count -ne 1 -or (Hash $file) -cne $rows[0].sha256 -or (Get-Item -LiteralPath $file).Length -ne $rows[0].bytes){throw 'Captured GPU/WiFi SYS pin/size mismatch'}
+  $capturedDrivers[$name]=[ordered]@{source_path=$rows[0].source_path;sha256=$rows[0].sha256;bytes=$rows[0].bytes;capture_file_verified=$true;loaded_image_verified=$false}
+ }
+}
 New-Item -ItemType Directory "$OutputDirectory\clone"|Out-Null
 foreach($name in $pins.Keys){Copy-Item -LiteralPath (Join-Path $SourceDirectory $name) -Destination "$OutputDirectory\clone\$name"}
 $oldTemp=$env:TEMP;$oldTmp=$env:TMP
@@ -74,11 +84,12 @@ function Keypad-WdfRuntimeObservation($Root) {
  }finally{$k.Dispose()}
 }
 $r=[ordered]@{schema=$(if($TimingCaptureNumber){"GPU369_FRESH$($TimingCaptureNumber)_READONLY_NATIVE_RECEIPT_V1"}else{'GPU368_FRESH200_READONLY_NATIVE_RECEIPT_V1'});scope='Actual private clone inventory; no previous snapshot comparison and no hardware execution';capture_number=$(if($TimingCaptureNumber){$TimingCaptureNumber}else{200});source_manifest_sha256=$ExpectedManifestSha256;recovery_boot_id=$m.recovery_boot_id;template_policy_sha256=$ExpectedPolicyFileSha256;policy_sha256=$ExpectedPolicySha256;policy_sha256_is_reference_only=$true;source_files=$pins;new_service_name=$NewServiceName;nodes=[ordered]@{};old_services=[ordered]@{};captured_named_values=[ordered]@{};missing_named_values=@();actual_driver_services=[ordered]@{};full_service_preservation_equal=$null;preservation_comparison_performed=$false;full_service_capture_complete=$false;combined=[ordered]@{};errors=@();load_rc=-1;unload_rc=-1;privilege_restore_error=-1;originals_unchanged=$false;physical_boot_read_performed=$false;registry_write_requested=$false;clone_replay_may_modify_clone=$true;hardware_verified=$false}
+$r.captured_driver_files=$capturedDrivers
 $r.source_recipe_files=[ordered]@{}
 foreach($file in @('read-fresh200-native-inventory.ps1','ReadonlyInventory200HiveNative.cs','prepare-offline-system-service.ps1','read-post-ownership-policy360.ps1','read-gpu-native-checkpoint.ps1','read-ge8300-start-gap359.ps1')){$r.source_recipe_files[$file]=Hash (Join-Path $PSScriptRoot $file)}
 if($IncludeWifiCheckpoint){$r.source_recipe_files['read-mt6630-checkpoint-loaded.ps1']=Hash (Join-Path $PSScriptRoot 'read-mt6630-checkpoint-loaded.ps1')}
 $wifiCheckpoint=$null
-$mount='MT8167OfflineSYSTEM_' +[Guid]::NewGuid().ToString('N');$root=$null;$priv=$null;$loaded=$false
+$mount='MT8167OfflineSYSTEM_'+[Guid]::NewGuid().ToString('N');$root=$null;$priv=$null;$loaded=$false
 try{
  $priv=New-Object MT8167OfflineHive.Privileges
  $r.load_rc=[MT8167OfflineHive.Native]::Load($mount,"$OutputDirectory\clone\SYSTEM");if($r.load_rc){throw 'Private clone load failed'}
@@ -197,6 +208,7 @@ try{
 }
 $r.originals_unchanged=$true
 foreach($name in $pins.Keys){if((Hash (Join-Path $SourceDirectory $name)) -cne $pins[$name]){$r.originals_unchanged=$false;$r.errors+=@('Original trio changed: '+$name)}}
+foreach($name in $capturedDrivers.Keys){if((Hash (Join-Path $driverDirectory $name)) -cne $capturedDrivers[$name].sha256){$r.errors+=@('Captured SYS original changed: '+$name)}}
 $r.manifest_unchanged=(Hash $Manifest) -ceq $ExpectedManifestSha256
 $r.template_unchanged=(Hash $PolicyPath) -ceq $ExpectedPolicyFileSha256
 if(!$r.manifest_unchanged -or !$r.template_unchanged){$r.errors+=@('Input manifest/template changed')}
