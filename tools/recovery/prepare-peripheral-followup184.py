@@ -43,7 +43,11 @@ def value_contract(key,values):
 def package(root,e,role):
  e=copy.deepcopy(e);mp=rooted(root,e['manifest']);pm=read(mp)
  require(sha(mp)==e['manifest_sha256'],'Package manifest byte pin mismatch')
- require(pm.get('package_source_commit',pm.get('source_commit'))==e['source_commit'],'Package source mismatch')
+ package_source=pm.get('package_source_commit',pm.get('source_commit'))
+ if pm.get('schema')=='GE8300_VIDPN371_RELINK_SIGN_V1':
+  require(role=='render' and sha(mp)=='649612e1b5facd4b0992fea6b2c7c2a37cd2ea47d0570bcbf97b28c871b8655b' and pm['recipe_source_commit']=='9d941f9873c1e7d8c166aa04e743a31eb99218dd' and pm['runtime_source_commit']=='b63827d7c45e099d5844e2c694804a1df047ed10' and pm['driver_version']=='0.0.3.71','既知371 render schemaのみ')
+  package_source=pm['recipe_source_commit']
+ require(package_source==e['source_commit'],'Package source mismatch')
  require(set(e['names'])=={'inf','sys','cat'} and e['names']['sys']==TARGETS[role][3],'Exact role trio required')
  hashes={}
  members=pm.get('files',pm.get('outputs',[]))

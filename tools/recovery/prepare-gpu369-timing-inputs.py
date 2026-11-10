@@ -106,6 +106,10 @@ def main():
 # Existing200 generator is shared; only candidate/capture-dependent admissions
 # differ. No old policy is relabelled and no snapshot is reconstructed.
 class TimingInputs:
+    contract_family="GPU369"
+    @property
+    def install_targets(self):return ["display","render"]+(["wifi"] if self.wifi_activation else [])
+    def validate_output_review(self,review,hashes):require(review["outputs"]==hashes,"実369全出力とreviewの一致")
     def __init__(self,root,spec,pending):
         self.root,self.spec,self.pending=root,spec,pending
         self.wifi_activation=wifi_activation(spec);self.wifi_candidate=None

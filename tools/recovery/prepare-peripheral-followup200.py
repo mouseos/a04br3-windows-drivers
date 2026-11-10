@@ -15,7 +15,7 @@ THUMB='BCBF6C456C6F0DD0818434763B189488FBF13570'
 PRESENT='ab17ed4cf69e6407fa5b017375d39318a89cf544a193ba89fb8a104173eff423';PRESENTER='eaa30760ebc38a1955ccb3bbd834ee5c3972ce8842b90e6a58bc5084109ef8d5'
 def paths():return base.paths()
 def inventory_contract(c,n,prior):
- require(c['capture_number']==CAPTURE and c['schema']==(f'GPU369_FRESH{CAPTURE}_CAPTURE_CONTRACT_V1' if TIMING else f'GPU368_FRESH{CAPTURE}_CAPTURE_CONTRACT_V1'),'実fresh200専用capture contract')
+ require(c['capture_number']==CAPTURE and c['schema']==(f'{TIMING.contract_family}_FRESH{CAPTURE}_CAPTURE_CONTRACT_V1' if TIMING else f'GPU368_FRESH{CAPTURE}_CAPTURE_CONTRACT_V1'),'実fresh200専用capture contract')
  names=c['service_names'];ids=c['named_value_ids']
  require(len(names)==len(set(names)) and names and len(names)<=128 and SERVICE not in names,'service集合の重複/範囲')
  require(len(ids)==len(set(ids)) and ids and len(ids)<=2048,'named値集合の重複/範囲')
@@ -78,7 +78,7 @@ def build_policy(root,spec):
   require(isinstance(ref,dict) and re.fullmatch('[0-9a-f]{64}',ref.get('sha256','')) and ref['sha256']!='0'*64,'未確定入力は拒否')
   q=rooted(root,ref['path']);require(sha(q)==ref['sha256'],'実入力SHA不一致 '+ref['path']);pins[q.relative_to(root).as_posix()]=ref['sha256'];return read(q)
  require(spec['profile']==PROFILE and spec['hardware_owner']=='main' and spec['install_targets']==INSTALL,'GPU368 renderのみ')
- if TIMING:require(INSTALL==(['display','render','wifi'] if TIMING.wifi_activation else ['display','render']),'明示WiFi activationとINSTALL一致')
+ if TIMING:require(INSTALL==TIMING.install_targets,'明示WiFi activationとINSTALL一致')
  require(spec['fresh']['path'].endswith(f'private-windows-rt-prebackup-run{CAPTURE}/manifest.json'),'実fresh200 manifest pathのみ')
  fm=pin(spec['fresh']);n=pin(spec['native']);c=pin(spec['capture_contract']);prior=pin(spec['template_policy'])
  require(fm['status']=='captured-unmounted' and fm['read_only'] is True and fm['unmounted'] is True and fm['errors']==[],'完了済み実capture必須')
@@ -109,7 +109,7 @@ def build_policy(root,spec):
  gp=Path(spec['GPU368_manifest']['path']).parent;hashes={x['name']:x['sha256'] for x in gm['outputs']}
  for name,h in hashes.items():
   q=rooted(root,gp/name);require(sha(q)==h,'署名済368出力');pins[q.relative_to(root).as_posix()]=h
- if TIMING:require(hand['outputs']==hashes,'実369全出力とreviewの一致')
+ if TIMING:TIMING.validate_output_review(hand,hashes)
  else:require(hashes['ge8300-render.sys']==hand['SYS_sha256'] and hashes['ge8300-umd.dll']==hand['UMD_sha256'],'SYS/UMD同manifest')
  rows=pin(spec['actual_package_rows']);require(set(rows)==set(ROLES),'全13実package行必須')
  if TIMING:rows=TIMING.package_rows(rows,pin)
