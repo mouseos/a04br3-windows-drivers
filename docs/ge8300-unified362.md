@@ -14,3 +14,12 @@
 32bit true colourのみを公開する現実装に合わせ、SetPaletteは不正なsourceを拒否し、存在するdisplay contextに対してもSTATUS_NOT_SUPPORTEDを返す。パレット設定を偽成功にせず、indexed mode/CLUT/capabilityを追加しない。実WDK ARM構造体のcallback offset0x74もcompile-time検査する。WindowsのCode 43が消えるかは、この修正版の実機結果で判断する。
 
 一次資料: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/nc-d3dkmddi-dxgkddi_setpalette
+
+
+## 実配置された親1120・温度1.11のソース整合
+
+統合元の運用treeには、署名済み実機版より古い親・温度sourceが残っていた。実配置の署名manifestが示す0f4a51ba3bbcff090e8f24b30291c7564c41eb48から、親・温度・clock consumerと実helper依存先を限定採用した。7個のcompile記録のsource hashと、byte再利用したhelperの35依存pathを照合した。親resource contract1117、thermal V3、HP V2、GPIO/RTC/USBの実配置機能を古いsourceへ戻さないための整合で、実機への再インストールや新機能の成功を意味しない。Git正本blobとINFのCRLF変換後bytesは区別する。
+
+## SSH維持とキャッシュ復元
+
+開発runnerは既存のSDK/WDK/compiler/signing inputsを復元するcache-only modeを使う。SSH中継のaliasだけが失われてVMのプロセスが残る場合に備え、60秒間隔でalias経由のSSH bannerを確認し、失われていれば同じVM上でトンネルだけ再接続する。通常のビルド完了や実機試験待ちを環境破棄の条件にしない。旧署名済みtupleと実機証拠は変更しない。

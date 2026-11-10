@@ -1,0 +1,27 @@
+{
+  "baseline_source": "c3cda7a0889e7ce036f07ed13daed1374c33a2ba",
+  "installed_parent_source": "2d6231727e8ed72b6d7dca4148debc101ac5aeef",
+  "thermal_supplier_source": "03593b574f596674111644c163206d261afdcacb",
+  "parent_version": "2026.11.8.1101",
+  "thermal_version": "0.0.1.7",
+  "rtc_version": "0.0.1.0",
+  "rtc_frozen_manifest_sha256": "49f698b8770d0382d478385d743d6217571831da9973081224897f828814d386",
+  "uefi_source": "6c96c6f60149f2b01d068909c8d0c308e5b4f3ee",
+  "native_measure_interface_version": 2,
+  "native_measure_parent_build": 1101,
+  "parent_raw_ranges": 8,
+  "thermal_child_ranges": 2,
+  "changed_existing_flags": {
+    "A04_SHARED_THERMAL_DIAGNOSTIC": "1"
+  },
+  "added_flags": {
+    "A04_SHARED_THERMAL_NATIVE_EXPERIMENT": "1",
+    "A04_SHARED_GPU_THERMAL_PROFILE": "1"
+  },
+  "retained_extra_flags": {
+    "A04_SHARED_CAPTURE": "1",
+    "MT6392_RTC_CALENDAR": "1"
+  },
+  "hfp_105x_merged": false,
+  "hardware_verified": false
+}

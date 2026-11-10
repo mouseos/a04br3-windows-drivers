@@ -1,3 +1,4 @@
+#include "usbport_child.h"
 /* SPDX-License-Identifier: BSD-2-Clause-Patent
  * Experimental PnP parent. D0 rejects by default; the opt-in button D0
  * experiment checks WACS2 readiness and admits the fixed button transaction.
@@ -5,12 +6,38 @@
 #include <initguid.h>
 #include <ntddk.h>
 #include <wdf.h>
+#include <wdmguid.h>
 #include "parent_resources.h"
 #include "usb_admission.h"
 #include "pwrap_owner.h"
+#ifndef MT6392_RTC_CALENDAR
+#define MT6392_RTC_CALENDAR 0
+#endif
+#if MT6392_RTC_CALENDAR
+#include "../../system/mt6392-rtc/rtc_interface.h"
+#if !A04_SHARED_QUERY_EXPERIMENTAL || !A04_SHARED_CHILD_PROBE || !A04_SHARED_BUTTON_D0_EXPERIMENT
+#error RTC calendar requires the existing shared owner and child topology
+#endif
+#endif
 #include "register_owner.h"
+#ifndef A04_SHARED_ACCDET_READ
+#define A04_SHARED_ACCDET_READ 0
+#endif
+#if A04_SHARED_ACCDET_READ
+#include "../../input/mt8167-accdet/gpio_lease.h"
+#endif
 #include "client_interface.h"
 #include "audio_interface.h"
+#ifndef A04_SHARED_SD_POWER
+#define A04_SHARED_SD_POWER 0
+#endif
+#if A04_SHARED_SD_POWER
+#include "../../storage/mt8167-sd/power_owner.h"
+#include "../../storage/mt8167-sd/power_interface.h"
+#if !defined(A04_SHARED_BUTTON_D0_EXPERIMENT) || !A04_SHARED_BUTTON_D0_EXPERIMENT || !defined(A04_SHARED_APMIXED_RESOURCE) || !A04_SHARED_APMIXED_RESOURCE
+#error SD power requires the single active PWRAP/TOP/APMIXED parent owner
+#endif
+#endif
 #ifndef A04_SHARED_FIRST_PLAYBACK
 #define A04_SHARED_FIRST_PLAYBACK 0
 #endif
@@ -38,7 +65,22 @@
 #endif
 #include "wifi_interface.h"
 #include "audio_owner.h"
+#ifndef A04_SHARED_CAPTURE
+#define A04_SHARED_CAPTURE 0
+#endif
+#if A04_SHARED_CAPTURE
+#include "capture_input_owner.h"
+#include "capture_interface.h"
+#if !A04_SHARED_ENGINE_PCM || !A04_SHARED_FIRST_PLAYBACK
+#error Capture requires the matched retained Engine parent profile
+#endif
+#endif
 #include "usb_interface.h"
+#include "musb_owner_interface.h"
+#if A04_SHARED_USBPORT_CHILD
+#include "musb_parent_state.h"
+#include "../../usb/mt8167-usb20/pnp_resources.h"
+#endif
 #include "usb_owner.h"
 #ifndef A04_SHARED_USB_ONLY
 #define A04_SHARED_USB_ONLY 0
@@ -59,6 +101,27 @@
 #include "thermal_interface.h"
 #include "thermal_owner.h"
 #include "adc_observation.h"
+#endif
+#ifndef A04_SHARED_THERMAL_NATIVE_EXPERIMENT
+#define A04_SHARED_THERMAL_NATIVE_EXPERIMENT 0
+#endif
+#ifndef A04_SHARED_SD_POWER
+#define A04_SHARED_SD_POWER 0
+#endif
+#ifndef A04_SHARED_GPU_THERMAL_PROFILE
+#define A04_SHARED_GPU_THERMAL_PROFILE 0
+#endif
+#if A04_SHARED_GPU_THERMAL_PROFILE && (!A04_SHARED_THERMAL_NATIVE_EXPERIMENT || !A04_SHARED_THERMAL_DIAGNOSTIC || !A04_SHARED_SD_POWER || !A04_SHARED_GPU_PLATFORM || !A04_SHARED_GPU_DOMAIN_SPM)
+#error Parent1101 requires native PIO thermal and the SD-on GPU SPM profile
+#endif
+#if A04_SHARED_THERMAL_NATIVE_EXPERIMENT && !A04_SHARED_GPU_THERMAL_PROFILE
+#error Legacy thermal parents are frozen: use the matched1101 RTC SD1 profile
+#endif
+#if A04_SHARED_GPU_THERMAL_PROFILE && (!MT6392_RTC_CALENDAR || !A04_SHARED_CAPTURE)
+#error Parent1101 requires the retained RTC calendar and capture1026
+#endif
+#if A04_SHARED_THERMAL_NATIVE_EXPERIMENT
+#include "thermal_parent_pio_interface.h"
 #endif
 #ifndef A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
 #define A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC 0
@@ -179,7 +242,57 @@
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
 #include "shared_interface.h"
 #endif
-typedef struct { PVOID topck,infra,gpio,pwrap,apmixed; ULONG apmixedLength; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio; struct a04_usb_owner usb; ULONG wifiGeneration; int wifiActive;
+#ifndef A04_SHARED_GPU_PLATFORM
+#define A04_SHARED_GPU_PLATFORM 0
+#endif
+#if A04_SHARED_GPU_PLATFORM != 0 && A04_SHARED_GPU_PLATFORM != 1
+#error A04_SHARED_GPU_PLATFORM must be zero or one
+#endif
+#if A04_SHARED_GPU_PLATFORM
+#if !A04_SHARED_QUERY_EXPERIMENTAL || !A04_SHARED_BUTTON_D0_EXPERIMENT
+#error GPU platform service requires the existing shared query and actual parent D0 profile
+#endif
+#include "gpu_domain_owner.h"
+#include "gpu_platform_interface.h"
+#endif
+#ifndef A04_SHARED_GPU_DOMAIN_SPM
+#define A04_SHARED_GPU_DOMAIN_SPM 0
+#endif
+#if A04_SHARED_GPU_DOMAIN_SPM && (!A04_SHARED_GPU_PLATFORM || !A04_SHARED_APMIXED_RESOURCE)
+#error SPM profile requires GPU platform and matched APMIXED parent
+#endif
+#ifndef A04_SHARED_HP_PCM
+#define A04_SHARED_HP_PCM 0
+#endif
+#if A04_SHARED_HP_PCM
+#if !A04_SHARED_THERMAL_NATIVE_EXPERIMENT || !A04_SHARED_VOICE_PCM_DIAGNOSTIC || !A04_SHARED_ACCDET_READ
+#error HP requires the matched single-owner thermal V3/audio/ACCDET profile
+#endif
+#include "headphone_interface.h"
+#include "thermal_pio_record.h"
+#include "codec_headphone.h"
+#include "codec_adc_probe.h"
+#endif
+#ifndef MT8167_CLOCK_SNAPSHOT_QUERY
+#define MT8167_CLOCK_SNAPSHOT_QUERY 0
+#endif
+#if MT8167_CLOCK_SNAPSHOT_QUERY
+#if !A04_SHARED_QUERY_EXPERIMENTAL || !A04_SHARED_THERMAL_DIAGNOSTIC || !A04_SHARED_THERMAL_NATIVE_EXPERIMENT || !A04_SHARED_APMIXED_RESOURCE
+#error Clock snapshot requires the existing query, thermal rundown/topology and APMIXED resource
+#endif
+#include "clock_snapshot_interface.h"
+#endif
+typedef struct {
+#if A04_SHARED_USBPORT_CHILD
+ struct mt_musb_parent musb;WDFDEVICE musbChild;WDFTIMER musbRoleTimer;WDFWORKITEM musbRoleWork;ULONG musbChildCreated;
+#endif
+#if A04_SHARED_SD_POWER
+ struct a04_sd_power sdPower;
+#endif
+#if A04_SHARED_ACCDET_READ
+ struct mt8167_accdet_gpio_lease accdetGpio;
+#endif
+ PVOID topck,infra,gpio,pwrap,apmixed; ULONG apmixedLength; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio; struct a04_usb_owner usb; ULONG wifiGeneration; int wifiActive;
 #if A04_SHARED_WIFI_RUNTIME
 struct a04_rtc32k_lease wifiRtc;
 #endif
@@ -190,7 +303,26 @@ struct a04_codec_voice voice;
 #endif
 #endif
 #if A04_SHARED_THERMAL_DIAGNOSTIC
-struct a04_shared_thermal_owner thermal;EX_RUNDOWN_REF thermalRundown;BOOLEAN thermalRundownClosed;
+struct a04_shared_thermal_owner thermal;
+#if A04_SHARED_THERMAL_NATIVE_EXPERIMENT
+    PHYSICAL_ADDRESS thermalAssigned[2];
+    PVOID thermalPioMappings[2];volatile LONG thermalPioUsed;ULONGLONG thermalPioDeadline;
+#endif
+EX_RUNDOWN_REF thermalRundown;BOOLEAN thermalRundownClosed;
+#endif
+#if A04_SHARED_GPU_PLATFORM
+struct a04_gpu_domain_owner gpuDomain;
+#if A04_SHARED_GPU_DOMAIN_SPM
+PVOID gpuSpm;
+#endif
+#endif
+#if A04_SHARED_HP_PCM
+/* Purpose/admission and cached boot proof of the SAME thermal/AUXADC owner. */
+volatile LONG adcPurpose;int adcProofValid;A04_THERMAL_PIO_RECORD adcProof;
+struct a04_hp_route hpRoute;struct a04_hp_measurements hpMeasured;
+struct a04_hp_calibration hpCalibration;ULONG hpPhaseMask[2];
+int hpCalibrationValid,hpRetainedMute;ULONGLONG hpRouteDeadline;
+struct a04_hp_calibration_report hpCali;ULONG hpCaliSaved[4];
 #endif
 PVOID audioAfe;
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
@@ -210,6 +342,9 @@ struct a04_mt6392_classd classd;
 #if A04_MT6392_CLK_ALIAS_EXPERIMENT
 struct a04_pmic_spk_clock speakerClock;
 #endif
+#endif
+#if A04_SHARED_CAPTURE
+struct a04_capture_input_owner captureInput;
 #endif
 } A04_PARENT_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(A04_PARENT_CONTEXT,ParentContext)
@@ -252,6 +387,9 @@ static int ParentRegWrite(void *context,enum a04_shared_bank bank,unsigned offse
     if(!base)return -1;
     WRITE_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)base+offset),value);return 0;
 }
+#if A04_SHARED_ACCDET_READ
+#include "../../input/mt8167-accdet/parent.inc"
+#endif
 static int ParentRegLock(void *context) { return ParentLock(context); }
 static void ParentRegUnlock(void *context) { ParentUnlock(context); }
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
@@ -633,6 +771,9 @@ static int ParentFirstUnmuteReady(void *context) {
     return 0;
 }
 #endif
+#if A04_SHARED_CAPTURE
+#include "capture_parent.inc"
+#endif
 static int ParentAudioAcquire(PVOID context,ULONG rate) {
     A04_PARENT_CONTEXT *c;int result;
 #if A04_SHARED_FIRST_PLAYBACK
@@ -649,6 +790,9 @@ static int ParentAudioAcquire(PVOID context,ULONG rate) {
 #endif
         return -1;
     }
+#if A04_SHARED_CAPTURE
+    if(c->captureInput.reserved){ParentUnlock(c);WdfDeviceResumeIdle((WDFDEVICE)context);return -1;}
+#endif
     result=a04_audio_owner_acquire(&c->audio,rate);
 #if A04_SHARED_FIRST_PLAYBACK
     if((!result || c->audio.poisoned) && !c->audioPowerPinned) {c->audioPowerPinned=1;keepPower=1;}
@@ -748,7 +892,13 @@ static int ParentAudioPrepareIrq(PVOID context,PVOID afe,ULONG length) {
     A04_PARENT_CONTEXT *c;volatile UCHAR *base;ULONG dac,irq,irq2,status;int result=-1;
     if(!context || !afe || length!=0x1000 || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
     c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return -1;
-    if(afe!=c->audioAfe || !c->audio.online || !c->audio.leased || c->audio.poisoned ||
+    if(afe!=c->audioAfe || !c->audio.online ||
+#if A04_SHARED_CAPTURE
+       (!c->audio.leased && (!c->captureInput.ready || c->captureInput.poisoned)) ||
+#else
+       !c->audio.leased ||
+#endif
+       c->audio.poisoned ||
        !c->pmic.online || !c->audioTopClock.held || c->audioTopClock.poisoned ||
        !c->afeClockHeld || c->afeClockPoisoned)goto done;
     base=(volatile UCHAR *)afe;
@@ -783,7 +933,12 @@ static NTSTATUS ParentWifiAcquire(PVOID context,ULONG *generation)
  if(c->wifiActive||c->wifiRtc.held||c->wifiRtc.uncertain||!c->pmic.online||c->pmic.bus.poisoned||
     !c->regs.online||c->regs.poisoned||!c->topck||!c->gpio||!c->pwrap){ParentUnlock(c);return STATUS_DEVICE_BUSY;}
  if(c->wifiGeneration==0xffffffffu){ParentUnlock(c);return STATUS_DEVICE_NOT_READY;}
+#if A04_SHARED_WIFI_RTC_BORROW
+ e=a04_pmic_rtc32k_acquire_shared(&c->pmic.bus,&c->wifiRtc);
+ A04_TRACE("A04WIFI RTC lease result=%d held=%d inherited=%d uncertain=%d\n",e,c->wifiRtc.held,c->wifiRtc.inherited,c->wifiRtc.uncertain);
+#else
  e=a04_pmic_rtc32k_acquire(&c->pmic.bus,&c->wifiRtc);
+#endif
  if(e&&!c->wifiRtc.held&&!c->wifiRtc.uncertain){ParentUnlock(c);return STATUS_DEVICE_NOT_READY;}
  /* A partially changed RTC is a retained lease, never a clean rejection. */
  c->pmic.rtc_lease=&c->wifiRtc;c->wifiGeneration++;c->wifiActive=e?-1:1;
@@ -857,6 +1012,25 @@ static int ParentWifiWrite(PVOID c,ULONG g,unsigned b,unsigned o,ULONG v)
 {return ParentWifiOperation(c,g,b,o,0,v,0);}
 static VOID ParentInterfaceReference(PVOID context) { WdfObjectReference((WDFDEVICE)context); }
 static VOID ParentInterfaceDereference(PVOID context) { WdfObjectDereference((WDFDEVICE)context); }
+#if MT8167_CLOCK_SNAPSHOT_QUERY
+#include "clock_snapshot_parent.inc"
+#endif
+#if A04_SHARED_GPU_PLATFORM
+#include "gpu_parent_service.inc"
+#endif
+#if A04_SHARED_SD_POWER
+#include "../../storage/mt8167-sd/power_parent.inc"
+#endif
+#if MT6392_RTC_CALENDAR
+static NTSTATUS Mt6392ReadCalendar(PVOID context,struct mt6392_rtc_raw *out)
+{
+    int result;
+    if(!context || !out || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+    result=mt6392_pwrap_read_calendar(&ParentContext((WDFDEVICE)context)->pmic,out);
+    if(result==MT6392_RTC_UNSTABLE)return STATUS_RETRY;
+    return result==0?STATUS_SUCCESS:STATUS_DEVICE_NOT_READY;
+}
+#endif
 static NTSTATUS ParentReadButtons(PVOID context,USHORT *value) {
     A04_PARENT_CONTEXT *c;
     if(!context || !value || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
@@ -873,6 +1047,13 @@ static void ParentUsbGpioWrite(void *p,unsigned off,unsigned v) { A04_PARENT_CON
 static int ParentUsbOvercurrent(void *p) {
  A04_PARENT_CONTEXT*c=p;
  if(!c->gpio)return -1;
+#if A04_SHARED_USBPORT_CHILD
+ if(c->musb.held){
+  struct mt_musb_board_io io;struct mt_musb_board_sample sample;
+  RtlZeroMemory(&io,sizeof(io));io.context=c;io.gpio=ParentUsbGpioRead;
+  return mt_musb_pin_candidate(&io,&sample)||!sample.oc_valid||!sample.oc||sample.id?-1:0;
+ }
+#endif
 #if A04_USB_GPIO22_SOURCE_EXPERIMENT
  /* Board usb20_host.c has CONFIG_OC disabled. Do not make an unconfigured
   * GPIO21 a mandatory overcurrent measurement. This profile has ID/source
@@ -934,10 +1115,37 @@ static int ParentUsbVerify(void *p) {
  return ((ParentUsbTopRead(c,4)>>20)&7u)==2u ? 0:-1;
 }
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
-static int ParentUsbAcquire(PVOID p) { return a04_usb_owner_acquire(&ParentContext((WDFDEVICE)p)->usb); }
-static int ParentUsbVbus(PVOID p,int on) { return a04_usb_owner_vbus(&ParentContext((WDFDEVICE)p)->usb,on); }
-static int ParentUsbHealth(PVOID p) { return a04_usb_owner_health(&ParentContext((WDFDEVICE)p)->usb); }
-static int ParentUsbRelease(PVOID p) { return a04_usb_owner_release(&ParentContext((WDFDEVICE)p)->usb); }
+#if A04_SHARED_USBPORT_CHILD
+#include "musb_parent.inc"
+#endif
+static int ParentUsbAcquire(PVOID p) {
+#if A04_SHARED_USBPORT_CHILD
+ UNREFERENCED_PARAMETER(p);return -1; /* standard profile: only ABI2 owns this controller */
+#else
+ return a04_usb_owner_acquire(&ParentContext((WDFDEVICE)p)->usb);
+#endif
+}
+static int ParentUsbVbus(PVOID p,int on) {
+#if A04_SHARED_USBPORT_CHILD
+ UNREFERENCED_PARAMETER(p);UNREFERENCED_PARAMETER(on);return -1; /* standard profile: only ABI2 owns this controller */
+#else
+ return a04_usb_owner_vbus(&ParentContext((WDFDEVICE)p)->usb,on);
+#endif
+}
+static int ParentUsbHealth(PVOID p) {
+#if A04_SHARED_USBPORT_CHILD
+ UNREFERENCED_PARAMETER(p);return -1; /* standard profile: only ABI2 owns this controller */
+#else
+ return a04_usb_owner_health(&ParentContext((WDFDEVICE)p)->usb);
+#endif
+}
+static int ParentUsbRelease(PVOID p) {
+#if A04_SHARED_USBPORT_CHILD
+ UNREFERENCED_PARAMETER(p);return -1; /* standard profile: only ABI2 owns this controller */
+#else
+ return a04_usb_owner_release(&ParentContext((WDFDEVICE)p)->usb);
+#endif
+}
 #endif
 #if A04_SHARED_THERMAL_DIAGNOSTIC && defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
 static NTSTATUS ParentThermalAcquire(PVOID p,ULONG *generation)
@@ -1068,18 +1276,40 @@ static NTSTATUS ParentThermalRelease(PVOID p,ULONG generation)
  return result?STATUS_DEVICE_NOT_READY:STATUS_SUCCESS;
 }
 #endif
+#if A04_SHARED_THERMAL_NATIVE_EXPERIMENT
+#include "thermal_native_parent.inc"
+#endif
+#if A04_SHARED_HP_PCM
+#include "headphone_parent.inc"
+#endif
 static void ParentStop(A04_PARENT_CONTEXT *c,int can_access)
 {
     /* Both owners share this mutex. Close admission in one critical section
      * before any mapping is released; neither client can enter in between. */
     InterlockedExchange(&c->admissionClosed,1);
+#if A04_SHARED_USBPORT_CHILD
+    if(c->musbRoleTimer)WdfTimerStop(c->musbRoleTimer,TRUE);
+    if(c->musbRoleWork)WdfWorkItemFlush(c->musbRoleWork);
+#endif
+#if A04_SHARED_HP_PCM
+    c->adcProofValid=0;
+#endif
 #if A04_SHARED_THERMAL_DIAGNOSTIC
     if(!c->thermalRundownClosed){ExWaitForRundownProtectionRelease(&c->thermalRundown);c->thermalRundownClosed=TRUE;}
 #endif
     ExAcquireFastMutex(&c->pwrapLock);
+#if A04_SHARED_SD_POWER
+    if(c->sdPower.held)c->sdPower.poisoned=1;
+#endif
 #if A04_SHARED_FIRST_PLAYBACK
     if(can_access && !c->removed && c->classd.active && c->pmic.online)
         (void)a04_mt6392_classd_mute(&c->classd);
+#endif
+#if A04_SHARED_GPU_PLATFORM
+    a04_gpu_domain_revoke(&c->gpuDomain);
+#endif
+#if A04_SHARED_ACCDET_READ
+    ParentAccdetRelease(c,can_access&&!c->removed);
 #endif
     c->wifiActive=0;
     c->regs.online=0;
@@ -1091,6 +1321,15 @@ static void ParentStop(A04_PARENT_CONTEXT *c,int can_access)
     c->usb.online=0;
     /* Surprise removal may already make MMIO unsafe. On ordered D0 exit,
      * remove VBUS while mappings remain valid; revoke the lease in either case. */
+#if A04_SHARED_USBPORT_CHILD
+    if(c->musb.held){
+        if(can_access&&!c->removed&&c->gpio){
+            (void)a04_usb_owner_vbus_locked(&c->usb,0);c->musb.powered=0;
+        }
+        else c->musb.accessible=0;
+        c->musb.poisoned=1; /* retain until child's independent shutdown/release */
+    } else
+#endif
     if(c->usb.leased) {
         if(can_access && !InterlockedCompareExchange(&c->removed,0,0) && c->gpio &&
            !A04Gpio22Vbus(&c->usb.gpio,0) && !c->usb.otg_held)c->usb.leased=0;
@@ -1103,7 +1342,22 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
     ParentStop(c,1);
     /* Failed/partial audio ownership cannot be interpreted as quiescent.
      * Retain mappings; this is not proof PnP retains physical resources. */
+#if A04_SHARED_USBPORT_CHILD
+    if(c->musb.held||c->musb.mac||c->musb.phy)return STATUS_DEVICE_BUSY;
+#endif
     if(c->audio.poisoned || c->audio.leased || c->audioAfe || c->usb.leased)return STATUS_DEVICE_BUSY;
+#if A04_SHARED_ACCDET_READ
+    if(c->accdetGpio.held||c->accdetGpio.poisoned)return STATUS_DEVICE_BUSY;
+#endif
+#if A04_SHARED_CAPTURE
+    if(c->captureInput.reserved||c->captureInput.poisoned)return STATUS_DEVICE_BUSY;
+#endif
+#if A04_SHARED_GPU_PLATFORM
+    if(c->gpuDomain.held || c->gpuDomain.poisoned)return STATUS_DEVICE_BUSY;
+#endif
+#if A04_SHARED_SD_POWER
+    if(c->sdPower.held || c->sdPower.poisoned)return STATUS_DEVICE_BUSY;
+#endif
 #if defined(A04_MT6392_RTC32K_DIAGNOSTIC) && A04_MT6392_RTC32K_DIAGNOSTIC
     /* A retained or ambiguous RTC lease must outlive the PWRAP mapping. */
     if(c->pmic.rtc_lease)return STATUS_DEVICE_BUSY;
@@ -1126,6 +1380,9 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
 #if A04_MT6392_CLK_ALIAS_EXPERIMENT
     if(c->speakerClock.held)return STATUS_DEVICE_BUSY;
 #endif
+#if A04_SHARED_GPU_DOMAIN_SPM
+    if(c->gpuSpm){MmUnmapIoSpace(c->gpuSpm,0x1000);c->gpuSpm=NULL;}
+#endif
     if(c->apmixed){MmUnmapIoSpace(c->apmixed,c->apmixedLength);c->apmixed=NULL;c->apmixedLength=0;}
     if(c->pwrap){MmUnmapIoSpace(c->pwrap,0x1000);c->pwrap=NULL;}
     if(c->gpio){MmUnmapIoSpace(c->gpio,0x1000);c->gpio=NULL;}
@@ -1135,10 +1392,16 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
 }
 NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
 {
-    A04_PARENT_CONTEXT *c=ParentContext(dev);struct a04_parent_resource r[5],t[5];
+    A04_PARENT_CONTEXT *c=ParentContext(dev);struct a04_parent_resource r[8],t[8];
     struct a04_parent_mapping mapping;ULONG i,n=0;PHYSICAL_ADDRESS pa;
 #if A04_SHARED_APMIXED_RESOURCE
     uint64_t apmixed=0;
+#if A04_SHARED_GPU_DOMAIN_SPM
+    uint64_t gpuSpm=0;
+#endif
+#endif
+#if A04_SHARED_GPU_DOMAIN_SPM
+    if(c->gpuSpm)return STATUS_INVALID_DEVICE_STATE;
 #endif
     if(c->topck||c->infra||c->gpio||c->pwrap||c->apmixed)return STATUS_INVALID_DEVICE_STATE;
     if(!raw || !translated || WdfCmResourceListGetCount(raw)!=WdfCmResourceListGetCount(translated))return STATUS_DEVICE_CONFIGURATION_ERROR;
@@ -1147,7 +1410,10 @@ NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
         PCM_PARTIAL_RESOURCE_DESCRIPTOR original=WdfCmResourceListGetDescriptor(raw,i);
         if(!d || !original || d->Type!=original->Type)return STATUS_DEVICE_CONFIGURATION_ERROR;
         if(d->Type!=CmResourceTypeMemory)continue;
-        if(n>=5)return STATUS_DEVICE_CONFIGURATION_ERROR;
+#if A04_SHARED_GPU_THERMAL_PROFILE
+        if((d->Flags|original->Flags)&CM_RESOURCE_MEMORY_READ_ONLY)return STATUS_DEVICE_CONFIGURATION_ERROR;
+#endif
+        if(n>=(A04_SHARED_GPU_THERMAL_PROFILE?8u:(A04_SHARED_GPU_DOMAIN_SPM?6u:5u)))return STATUS_DEVICE_CONFIGURATION_ERROR;
         if(d->u.Memory.Start.QuadPart<0 || original->u.Memory.Start.QuadPart<0)return STATUS_DEVICE_CONFIGURATION_ERROR;
         r[n].base=(uint64_t)original->u.Memory.Start.QuadPart;r[n].length=original->u.Memory.Length;
         r[n].exclusive=original->ShareDisposition==CmResourceShareDeviceExclusive ? 1u:0u;
@@ -1155,11 +1421,25 @@ NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
         t[n].exclusive=d->ShareDisposition==CmResourceShareDeviceExclusive ? 1u:0u;++n;
     }
 #if A04_SHARED_APMIXED_RESOURCE
+#if A04_SHARED_GPU_DOMAIN_SPM
+#if A04_SHARED_GPU_THERMAL_PROFILE
+    if(a04_parent_translate_gpu_thermal_resources(r,t,n,&mapping,&apmixed,&gpuSpm))return STATUS_DEVICE_CONFIGURATION_ERROR;
+    c->thermalAssigned[0].QuadPart=c->thermalAssigned[1].QuadPart=0;
+    for(i=0;i<n;++i){
+        if(r[i].base==0x1100d000u)c->thermalAssigned[0].QuadPart=(LONGLONG)t[i].base;
+        if(r[i].base==0x11003000u)c->thermalAssigned[1].QuadPart=(LONGLONG)t[i].base;
+    }
+    if(!c->thermalAssigned[0].QuadPart||!c->thermalAssigned[1].QuadPart)return STATUS_DEVICE_CONFIGURATION_ERROR;
+#else
+    if(a04_parent_translate_gpu_domain_resources(r,t,n,&mapping,&apmixed,&gpuSpm))return STATUS_DEVICE_CONFIGURATION_ERROR;
+#endif
+#else
     /* Integrated parent keeps the platform's existing four/five windows.
      * Absence of APMIXED only withholds USB/audio admission, not input D0. */
     if(!A04_SHARED_USB_ONLY && n==4){
         if(a04_parent_translate_resources(r,t,n,&mapping))return STATUS_DEVICE_CONFIGURATION_ERROR;
     } else if(a04_parent_translate_audio_resources(r,t,n,&mapping,&apmixed))return STATUS_DEVICE_CONFIGURATION_ERROR;
+#endif
 #else
     if(a04_parent_translate_resources(r,t,n,&mapping))return STATUS_DEVICE_CONFIGURATION_ERROR;
 #endif
@@ -1179,6 +1459,10 @@ NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
         pa.QuadPart=(LONGLONG)apmixed;c->apmixed=MmMapIoSpace(pa,c->apmixedLength,MmNonCached);
         if(!c->apmixed)goto fail;
     }
+#endif
+#if A04_SHARED_GPU_DOMAIN_SPM
+    pa.QuadPart=(LONGLONG)gpuSpm;c->gpuSpm=MmMapIoSpace(pa,0x1000,MmNonCached);
+    if(!c->gpuSpm)goto fail;
 #endif
     /* Mapping alone does not admit clients; D0 must establish readiness. */
     return STATUS_SUCCESS;
@@ -1200,7 +1484,24 @@ VOID ParentSurprise(WDFDEVICE dev)
 }
 NTSTATUS ParentD0Exit(WDFDEVICE dev,WDF_POWER_DEVICE_STATE target)
 {
-    UNREFERENCED_PARAMETER(target);ParentStop(ParentContext(dev),1);return STATUS_SUCCESS;
+    UNREFERENCED_PARAMETER(target);
+#if A04_SHARED_SD_POWER
+    /* PowerRelations must put the consumer through quiesce/release first.
+     * An unresolved lease is a real failure, never an orderly power-off. */
+    {
+     A04_PARENT_CONTEXT*c=ParentContext(dev);int held;
+     InterlockedExchange(&c->admissionClosed,1);ExAcquireFastMutex(&c->pwrapLock);
+     held=c->sdPower.held;ExReleaseFastMutex(&c->pwrapLock);
+     if(held)return STATUS_DEVICE_BUSY;
+    }
+#endif
+    ParentStop(ParentContext(dev),1);
+#if A04_SHARED_USBPORT_CHILD
+    {A04_PARENT_CONTEXT *c=ParentContext(dev);int held;ExAcquireFastMutex(&c->pwrapLock);
+     held=c->musb.held||c->usb.leased;ExReleaseFastMutex(&c->pwrapLock);
+     if(held)return STATUS_DEVICE_BUSY;}
+#endif
+    return STATUS_SUCCESS;
 }
 NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
 {
@@ -1248,25 +1549,38 @@ NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
         A04_TRACE("A04AUD parent d0 TOP_CKPDN1=%04x; observation only\n",(unsigned)raw);
     }
 #endif
+#if A04_SHARED_GPU_PLATFORM
+    if(!c->gpuDomain.held && !c->gpuDomain.poisoned)c->gpuDomain.revoked=0;
+#endif
     c->pmic.online=1;
 #if A04_SHARED_FIRST_PLAYBACK
     c->audio.online=(c->apmixed && c->apmixedLength>=0x714 && !c->audio.poisoned && !c->audio.leased && !c->audioPowerPinned);
     c->regs.online=c->regs.poisoned?0:1;
 #endif
 #if A04_SHARED_THERMAL_DIAGNOSTIC
-    /* No known provider proves release by EL3 or every AUXADC consumer. */
+    /* Legacy generic ADC admission remains closed. Native Measure only opens
+     * its own lease after the real board record + live mode/reset check. */
     c->thermal.online=1;c->thermal.firmware_released=0;c->thermal.adc_exclusive=0;
 #endif
     c->usb.online=(c->apmixed && !c->usb.poisoned) ? 1 : 0;
 #if A04_SHARED_TOUCH_D0_EXPERIMENT
     c->regs.online=c->regs.poisoned ? 0 : 1;
 #endif
+#if A04_SHARED_ACCDET_READ
+    /* GPIO failure is local to ACCDET; never fail GPU/thermal/other devices
+     * merely because a jack pin was inherited in an unowned/foreign state. */
+    if(c->regs.online)ParentAccdetAcquire(c);
+#endif
     if (InterlockedCompareExchange(&c->admissionClosed,0,2)==2) result=STATUS_SUCCESS;
     else { c->pmic.online=0; c->usb.online=0; c->regs.online=0;c->audio.online=0; }
 done:
     if (!NT_SUCCESS(result)) { c->pmic.online=0; c->usb.online=0; c->regs.online=0;c->audio.online=0;(void)InterlockedCompareExchange(&c->admissionClosed,1,2); }
     A04_TRACE("A04AUD parent d0 result=%08lx poisoned=%d audio-online=%d\n",(ULONG)result,c->pmic.bus.poisoned,c->audio.online);
-    ExReleaseFastMutex(&c->pwrapLock);return result;
+    ExReleaseFastMutex(&c->pwrapLock);
+#if A04_SHARED_USBPORT_CHILD
+    if(NT_SUCCESS(result)&&c->musbRoleTimer)WdfTimerStart(c->musbRoleTimer,WDF_REL_TIMEOUT_IN_MS(500));
+#endif
+    return result;
 #else
     UNREFERENCED_PARAMETER(dev);
     /* Existing direct owners, boot ordering and shared lease teardown have not
@@ -1275,32 +1589,25 @@ done:
 #endif
 }
 #if defined(A04_SHARED_CHILD_PROBE) && A04_SHARED_CHILD_PROBE
-/* Compile-only topology. PnP arbitrates these exclusive child ranges; the
- * parent must not map them. Parent D0 remains gated, and legacy ACPI devices
+/* PnP arbitrates these exclusive child ranges. USBPORT opt-in delegates
+ * its assigned MAC/PHY to the single parent owner through the versioned lease;
+ * no second PnP claim is created. Other legacy children are unchanged. Parent D0 remains gated, and legacy ACPI devices
  * must be disabled in a future mutually exclusive firmware configuration. */
-typedef struct { ULONG base; } A04_CHILD_CONTEXT;
+typedef struct { ULONG base;WDFDEVICE parent; } A04_CHILD_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(A04_CHILD_CONTEXT,ChildContext)
 EVT_WDF_DEVICE_RESOURCE_REQUIREMENTS_QUERY ChildRequirements;
 NTSTATUS ChildRequirements(WDFDEVICE child,WDFIORESREQLIST requirements)
 {
     A04_CHILD_CONTEXT *c=ChildContext(child); WDFIORESLIST list;
     IO_RESOURCE_DESCRIPTOR descriptor; NTSTATUS status;
+#if MT6392_RTC_CALENDAR
+    /* Register access stays in the parent: this child claims no MMIO/IRQ. */
+    if(c->base==0xfffffffdu)return STATUS_SUCCESS;
+#endif
 #if A04_SHARED_THERMAL_DIAGNOSTIC
-    if(c->base==0xfffffffeu) {
-        static const ULONG thermalBase[2]={0x1100d000u,0x11003000u};unsigned i;
-        status=WdfIoResourceListCreate(requirements,WDF_NO_OBJECT_ATTRIBUTES,&list);
-        if(!NT_SUCCESS(status))return status;
-        for(i=0;i<2;i++) {
-            RtlZeroMemory(&descriptor,sizeof(descriptor));descriptor.Type=CmResourceTypeMemory;
-            descriptor.ShareDisposition=CmResourceShareDeviceExclusive;descriptor.Flags=CM_RESOURCE_MEMORY_READ_WRITE;
-            descriptor.u.Memory.Length=0x1000;descriptor.u.Memory.Alignment=1;
-            descriptor.u.Memory.MinimumAddress.QuadPart=thermalBase[i];descriptor.u.Memory.MaximumAddress.QuadPart=thermalBase[i]+0xfff;
-            status=WdfIoResourceListAppendDescriptor(list,&descriptor);
-            if(!NT_SUCCESS(status)){WdfObjectDelete(list);return status;}
-        }
-        status=WdfIoResourceRequirementsListAppendIoResList(requirements,list);
-        if(!NT_SUCCESS(status))WdfObjectDelete(list);return status;
-    }
+    /* These ranges are already assigned to the eight-range parent. A child
+     * must not submit a second exclusive claim to the system arbiter. */
+    if(c->base==0xfffffffeu)return STATUS_SUCCESS;
 #endif
 #if defined(A04_AUDIO_CHILD_RESOURCES) && A04_AUDIO_CHILD_RESOURCES
     if(c->base==0xffffffffu) {
@@ -1374,23 +1681,97 @@ NTSTATUS ChildRequirements(WDFDEVICE child,WDFIORESREQLIST requirements)
     if(!NT_SUCCESS(status))WdfObjectDelete(list);
     return status;
 }
+#if A04_SHARED_USBPORT_CHILD
+static VOID MusbChildCleanup(WDFOBJECT object)
+{
+ WDFDEVICE child=(WDFDEVICE)object;A04_CHILD_CONTEXT *x=ChildContext(child);
+ A04_PARENT_CONTEXT *c;if(!x->parent)return;c=ParentContext(x->parent);
+ ExAcquireFastMutex(&c->pwrapLock);
+ if(c->musbChild==child){c->musbChild=NULL;c->musbChildCreated=0;}
+ ExReleaseFastMutex(&c->pwrapLock);
+}
+static NTSTATUS MusbChildPrepare(WDFDEVICE child,WDFCMRESLIST raw,WDFCMRESLIST translated)
+{
+ A04_PARENT_CONTEXT *c=ParentContext(WdfPdoGetParent(child));ULONG n,j=0,irqs=0;
+ struct a04_usb_memory_pair pairs[2];uint64_t mac,phy;
+ if(ChildContext(child)->base!=0x11100000u||!raw||!translated||
+    WdfCmResourceListGetCount(raw)!=3||WdfCmResourceListGetCount(translated)!=3)return STATUS_DEVICE_CONFIGURATION_ERROR;
+ for(n=0;n<3;n++){
+  PCM_PARTIAL_RESOURCE_DESCRIPTOR a=WdfCmResourceListGetDescriptor(raw,n),b=WdfCmResourceListGetDescriptor(translated,n);
+  if(!a||!b||a->Type!=b->Type||a->ShareDisposition!=CmResourceShareDeviceExclusive||b->ShareDisposition!=CmResourceShareDeviceExclusive)return STATUS_DEVICE_CONFIGURATION_ERROR;
+  if(a->Type==CmResourceTypeMemory){
+   if(j==2||a->u.Memory.Start.QuadPart<0||b->u.Memory.Start.QuadPart<0||a->u.Memory.Length!=b->u.Memory.Length)return STATUS_DEVICE_CONFIGURATION_ERROR;
+   pairs[j].raw=a->u.Memory.Start.QuadPart;pairs[j].translated=b->u.Memory.Start.QuadPart;pairs[j].length=a->u.Memory.Length;j++;
+  }else if(a->Type==CmResourceTypeInterrupt){
+   if(++irqs!=1||a->u.Interrupt.Vector!=104||!b->u.Interrupt.Vector||!b->u.Interrupt.Affinity||
+      ((a->Flags|b->Flags)&(CM_RESOURCE_INTERRUPT_LATCHED|CM_RESOURCE_INTERRUPT_MESSAGE)))return STATUS_DEVICE_CONFIGURATION_ERROR;
+  }else return STATUS_DEVICE_CONFIGURATION_ERROR;
+ }
+ if(j!=2||irqs!=1||a04_usb_translate_memory(pairs,&mac,&phy))return STATUS_DEVICE_CONFIGURATION_ERROR;
+ ExAcquireFastMutex(&c->pwrapLock);
+ if(c->musb.held||c->usb.leased){ExReleaseFastMutex(&c->pwrapLock);return STATUS_DEVICE_BUSY;}
+ c->musb.mac_pa.QuadPart=(LONGLONG)mac;c->musb.phy_pa.QuadPart=(LONGLONG)phy;
+ c->musb.bound=c->musb.accessible=1;if(!++c->musb.generation)++c->musb.generation;
+ ExReleaseFastMutex(&c->pwrapLock);return STATUS_SUCCESS;
+}
+static NTSTATUS MusbChildRelease(WDFDEVICE child,WDFCMRESLIST translated)
+{
+ A04_PARENT_CONTEXT *c=ParentContext(WdfPdoGetParent(child));NTSTATUS s=STATUS_SUCCESS;UNREFERENCED_PARAMETER(translated);
+ ExAcquireFastMutex(&c->pwrapLock);
+ if(c->musb.held||c->musb.mac||c->musb.phy)s=STATUS_DEVICE_BUSY;
+ else {c->musb.bound=c->musb.accessible=0;++c->musb.generation;}
+ ExReleaseFastMutex(&c->pwrapLock);return s;
+}
+static VOID MusbChildSurprise(WDFDEVICE child)
+{A04_PARENT_CONTEXT *c=ParentContext(WdfPdoGetParent(child));ExAcquireFastMutex(&c->pwrapLock);if(!c->removed&&c->gpio&&c->musb.held){(void)A04Gpio22Vbus(&c->usb.gpio,0);c->musb.powered=0;}c->musb.accessible=0;c->musb.poisoned=1;ExReleaseFastMutex(&c->pwrapLock);}
+#endif
 static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance, ULONG base)
 {
     PWDFDEVICE_INIT init; WDFDEVICE child; WDF_QUERY_INTERFACE_CONFIG query;
     UNICODE_STRING name; NTSTATUS status; WDF_OBJECT_ATTRIBUTES attr; WDF_PDO_EVENT_CALLBACKS callbacks;
+#if A04_SHARED_USBPORT_CHILD
+    /* A distinct devnode prevents the old HID transport's LowerFilters from
+     * being inherited by the standalone USBPORT function driver. */
+    if(base==0x11100000u)id=L"MT8167\\USBPORT20";
+#endif
     init=WdfPdoInitAllocate(parent);if(!init)return STATUS_INSUFFICIENT_RESOURCES;
     RtlInitUnicodeString(&name,id);status=WdfPdoInitAssignDeviceID(init,&name);
     if(!NT_SUCCESS(status))goto fail;
     status=WdfPdoInitAddHardwareID(init,&name);if(!NT_SUCCESS(status))goto fail;
     RtlInitUnicodeString(&name,instance);status=WdfPdoInitAssignInstanceID(init,&name);
     if(!NT_SUCCESS(status))goto fail;
+#if A04_SHARED_USBPORT_CHILD
+    if(base==0x11100000u){WDF_PNPPOWER_EVENT_CALLBACKS pc;WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pc);
+        pc.EvtDevicePrepareHardware=MusbChildPrepare;pc.EvtDeviceReleaseHardware=MusbChildRelease;
+        pc.EvtDeviceSurpriseRemoval=MusbChildSurprise;WdfDeviceInitSetPnpPowerEventCallbacks(init,&pc);}
+#endif
     WDF_PDO_EVENT_CALLBACKS_INIT(&callbacks);
     callbacks.EvtDeviceResourceRequirementsQuery=ChildRequirements;
     WdfPdoInitSetEventCallbacks(init,&callbacks);
+#if A04_SHARED_USBPORT_CHILD
+    if(base==0x11100000u){
+        status=WdfDeviceInitAssignWdmIrpPreprocessCallback(init,A04UsbPortChildIoctl,IRP_MJ_DEVICE_CONTROL,NULL,0);
+        if(!NT_SUCCESS(status))goto fail;
+    }
+#endif
     WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr,A04_CHILD_CONTEXT);
+#if A04_SHARED_USBPORT_CHILD
+    if(base==0x11100000u){attr.EvtCleanupCallback=MusbChildCleanup;attr.ExecutionLevel=WdfExecutionLevelPassive;}
+#endif
     status=WdfDeviceCreate(&init,&attr,&child);
     if(!NT_SUCCESS(status))goto fail;
-    ChildContext(child)->base=base;
+    ChildContext(child)->base=base;ChildContext(child)->parent=parent;
+#if A04_SHARED_USBPORT_CHILD
+    if(base==0x11100000u){A04_PARENT_CONTEXT *c=ParentContext(parent);ExAcquireFastMutex(&c->pwrapLock);c->musbChild=child;ExReleaseFastMutex(&c->pwrapLock);}
+#endif
+#if MT6392_RTC_CALENDAR
+    if(base==0xfffffffdu) {
+        WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&Mt6392RtcInterfaceGuid,NULL);
+        query.SendQueryToParentStack=TRUE;
+        status=WdfDeviceAddQueryInterface(child,&query);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+    }
+#endif
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedInterfaceGuid,NULL);
     query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);
@@ -1404,6 +1785,45 @@ static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance
     query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);
     if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+#if A04_SHARED_USBPORT_CHILD
+    if(base==0x11100000u){
+        WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&MT8167MusbOwnerInterfaceGuid,NULL);
+        query.SendQueryToParentStack=TRUE;status=WdfDeviceAddQueryInterface(child,&query);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+        WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&GUID_BUS_INTERFACE_STANDARD,NULL);
+        query.SendQueryToParentStack=TRUE;status=WdfDeviceAddQueryInterface(child,&query);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+    }
+#endif
+#if A04_SHARED_THERMAL_NATIVE_EXPERIMENT
+    if(base==0xfffffffeu) {
+#if MT8167_CLOCK_SNAPSHOT_QUERY
+        WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&Mt8167ClockSnapshotInterfaceGuid,NULL);
+        query.SendQueryToParentStack=TRUE;status=WdfDeviceAddQueryInterface(child,&query);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+#endif
+        WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&Mt8167ThermalParentPioGuid,NULL);
+        query.SendQueryToParentStack=TRUE;status=WdfDeviceAddQueryInterface(child,&query);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+    }
+#endif
+    if(base==0xffffffffu) {
+        /* AFE is a synthesized child, not an ACPI PDO. Preserve the real
+         * parent-bus DMA/translation interface, including its ref callbacks;
+         * never return fabricated bus methods or an identity-translation stub.
+         * WDF_QUERY_INTERFACE_CONFIG.SendQueryToParentStack is the documented
+         * PDO forwarding path. Existing touch/USB/WiFi interfaces are unchanged. */
+#if A04_SHARED_CAPTURE
+        WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04CaptureInterfaceGuid,NULL);
+        query.SendQueryToParentStack=TRUE;
+        status=WdfDeviceAddQueryInterface(child,&query);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+#endif
+        WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&GUID_BUS_INTERFACE_STANDARD,NULL);
+        query.SendQueryToParentStack=TRUE;
+        status=WdfDeviceAddQueryInterface(child,&query);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+    }
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedAudioInterfaceGuid,NULL);
     query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);
@@ -1422,16 +1842,62 @@ fail:
     return status;
 }
 #endif
+#if A04_SHARED_USBPORT_CHILD
+static VOID MusbRoleTimer(WDFTIMER timer)
+{WDFDEVICE dev=(WDFDEVICE)WdfTimerGetParentObject(timer);A04_PARENT_CONTEXT *c=ParentContext(dev);WdfWorkItemEnqueue(c->musbRoleWork);}
+static VOID MusbRoleWork(WDFWORKITEM work)
+{
+ WDFDEVICE dev=(WDFDEVICE)WdfWorkItemGetParentObject(work);A04_PARENT_CONTEXT *c=ParentContext(dev);
+ struct mt_musb_board_sample sample;struct mt_musb_board_io io;NTSTATUS status;int ready=0;WDFDEVICE retire=NULL;
+ if(ParentLock(c))return;io=MusbIo(c);
+ if(!c->musbChildCreated&&c->usb.online&&!c->usb.leased&&!c->usb.poisoned&&c->gpio&&
+    !mt_musb_pin_candidate(&io,&sample)&&!sample.id&&sample.detect&&!sample.source&&(!sample.oc_valid||sample.oc)){c->musbChildCreated=1;ready=1;}
+ if(c->musbChildCreated==1&&c->musbChild&&!c->musb.held&&!c->usb.leased&&
+    !mt_musb_pin_candidate(&io,&sample)&&(sample.id||!sample.detect)){
+  c->musbChildCreated=2;retire=c->musbChild;WdfObjectReference(retire);
+ }
+ ParentUnlock(c);
+ if(retire){status=WdfPdoMarkMissing(retire);
+  if(!NT_SUCCESS(status)){ExAcquireFastMutex(&c->pwrapLock);if(c->musbChild==retire)c->musbChildCreated=1;ExReleaseFastMutex(&c->pwrapLock);}
+  WdfObjectDereference(retire);}
+ /* PC cable never creates a failing USBPORT devnode. A later host-role
+  * cable is observed read-only and enumerates a fresh standard stack. */
+ if(ready){status=ParentAddProbeChild(dev,L"MT8167\\USB20",L"0",0x11100000u);
+  if(!NT_SUCCESS(status)){ExAcquireFastMutex(&c->pwrapLock);c->musbChildCreated=0;ExReleaseFastMutex(&c->pwrapLock);}}
+ if(!ParentLock(c)){WdfTimerStart(c->musbRoleTimer,WDF_REL_TIMEOUT_IN_MS(500));ParentUnlock(c);}
+}
+static NTSTATUS MusbRoleCreate(WDFDEVICE dev)
+{
+ A04_PARENT_CONTEXT *c=ParentContext(dev);WDF_TIMER_CONFIG tc;WDF_WORKITEM_CONFIG wc;WDF_OBJECT_ATTRIBUTES a;NTSTATUS s;
+ WDF_OBJECT_ATTRIBUTES_INIT(&a);a.ParentObject=dev;
+ WDF_WORKITEM_CONFIG_INIT(&wc,MusbRoleWork);wc.AutomaticSerialization=FALSE;
+ s=WdfWorkItemCreate(&wc,&a,&c->musbRoleWork);if(!NT_SUCCESS(s))return s;
+ WDF_TIMER_CONFIG_INIT(&tc,MusbRoleTimer);tc.AutomaticSerialization=FALSE;
+ return WdfTimerCreate(&tc,&a,&c->musbRoleTimer);
+}
+#endif
 NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 {
     WDF_PNPPOWER_EVENT_CALLBACKS pnp;WDF_OBJECT_ATTRIBUTES attr;WDFDEVICE dev;NTSTATUS status;
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
     A04_LEGACY_SHARED_INTERFACE iface;WDF_QUERY_INTERFACE_CONFIG query;
     A04_SHARED_INTERFACE inputIface;
+#if MT8167_CLOCK_SNAPSHOT_QUERY
+    MT8167_CLOCK_SNAPSHOT_INTERFACE clockIface;
+#endif
+#if MT6392_RTC_CALENDAR
+    MT6392_RTC_INTERFACE rtcIface;
+#endif
 #if A04_SHARED_THERMAL_DIAGNOSTIC
     A04_SHARED_THERMAL_INTERFACE thermalIface;
+#if A04_SHARED_THERMAL_NATIVE_EXPERIMENT
+    MT8167_THERMAL_PARENT_PIO_INTERFACE nativeIface;
+#endif
 #endif
     A04_SHARED_AUDIO_INTERFACE audioIface; A04_SHARED_USB_INTERFACE usbIface;
+#if A04_SHARED_USBPORT_CHILD
+    MT_MUSB_OWNER_INTERFACE musbIface;
+#endif
     A04_SHARED_WIFI_INTERFACE wifiIface;
 #endif
     UNREFERENCED_PARAMETER(driver);
@@ -1491,6 +1957,19 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     if(!NT_SUCCESS(status))return status;
     RtlZeroMemory(&inputIface,sizeof(inputIface));
     inputIface.Size=sizeof(inputIface);inputIface.Version=A04_SHARED_INTERFACE_VERSION;
+#if A04_SHARED_GPU_PLATFORM
+    status=ParentGpuRegister(dev);if(!NT_SUCCESS(status))return status;
+#endif
+#if MT8167_CLOCK_SNAPSHOT_QUERY
+    RtlZeroMemory(&clockIface,sizeof(clockIface));
+    clockIface.Header.Size=sizeof(clockIface);clockIface.Header.Version=MT8167_CLOCK_INTERFACE_VERSION;
+    clockIface.Header.Context=dev;clockIface.Header.InterfaceReference=ParentInterfaceReference;
+    clockIface.Header.InterfaceDereference=ParentInterfaceDereference;
+    clockIface.ParentResourceContract=MT8167_CLOCK_PARENT_RESOURCE_CONTRACT;
+    clockIface.Snapshot=ParentClockSnapshot;
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&clockIface,&Mt8167ClockSnapshotInterfaceGuid,NULL);
+    status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
+#endif
     inputIface.Context=dev;inputIface.InterfaceReference=ParentInterfaceReference;
     inputIface.InterfaceDereference=ParentInterfaceDereference;
     inputIface.TouchUpdate=ParentTouchUpdate;inputIface.TouchWrite=ParentTouchWrite;
@@ -1511,6 +1990,27 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&thermalIface,&A04SharedThermalInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
 #endif
+#if A04_SHARED_CAPTURE
+    {A04_CAPTURE_INTERFACE capture;RtlZeroMemory(&capture,sizeof(capture));
+     ParentCaptureInitialize(ParentContext(dev));
+     capture.Header.Size=sizeof(capture);capture.Header.Version=A04_CAPTURE_INTERFACE_VERSION;
+     capture.Header.Context=dev;capture.Header.InterfaceReference=ParentInterfaceReference;
+     capture.Header.InterfaceDereference=ParentInterfaceDereference;
+     capture.AcquireInput=ParentCaptureAcquire;capture.PrepareMaskedIrq=ParentAudioPrepareIrq;
+     capture.ReleaseUnexposed=ParentCaptureRelease;capture.QueryLatency=ParentCaptureLatency;
+     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&capture,&A04CaptureInterfaceGuid,NULL);
+     status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;}
+#endif
+#if A04_SHARED_THERMAL_NATIVE_EXPERIMENT
+    RtlZeroMemory(&nativeIface,sizeof(nativeIface));
+    nativeIface.Header.Size=sizeof(nativeIface);nativeIface.Header.Version=MT8167_THERMAL_PARENT_PIO_VERSION;
+    nativeIface.Header.Context=dev;nativeIface.Header.InterfaceReference=ParentInterfaceReference;nativeIface.Header.InterfaceDereference=ParentInterfaceDereference;
+    nativeIface.ParentBuild=MT8167_THERMAL_PARENT_PIO_BUILD;
+    nativeIface.Measure=ParentThermalPioMeasure;
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&nativeIface,&Mt8167ThermalParentPioGuid,NULL);
+    status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
+#endif
+
     RtlZeroMemory(&audioIface,sizeof(audioIface));
     audioIface.Header.Size=sizeof(audioIface);audioIface.Header.Version=A04_SHARED_AUDIO_INTERFACE_VERSION;
     audioIface.Header.Context=dev;audioIface.Header.InterfaceReference=ParentInterfaceReference;
@@ -1528,6 +2028,15 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&audioIface,&A04SharedAudioInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);
     if(!NT_SUCCESS(status))return status;
+#if A04_SHARED_USBPORT_CHILD
+    RtlZeroMemory(&musbIface,sizeof(musbIface));musbIface.Header.Size=sizeof(musbIface);
+    musbIface.Header.Version=MT_MUSB_OWNER_VERSION;musbIface.Header.Context=dev;
+    musbIface.Header.InterfaceReference=ParentInterfaceReference;musbIface.Header.InterfaceDereference=ParentInterfaceDereference;
+    musbIface.Query=ParentMusbQuery;musbIface.Observe=ParentMusbObserve;musbIface.StopAndProve=ParentMusbStopAndProve;
+    musbIface.Acquire=ParentMusbAcquire;musbIface.SetVbus=ParentMusbVbus;musbIface.Release=ParentMusbRelease;
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&musbIface,&MT8167MusbOwnerInterfaceGuid,NULL);
+    status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
+#endif
     RtlZeroMemory(&usbIface,sizeof(usbIface));usbIface.Header.Size=sizeof(usbIface);usbIface.Header.Version=A04_SHARED_USB_INTERFACE_VERSION;
     usbIface.Header.Context=dev;usbIface.Header.InterfaceReference=ParentInterfaceReference;usbIface.Header.InterfaceDereference=ParentInterfaceDereference;
     usbIface.Acquire=ParentUsbAcquire;usbIface.SetVbus=ParentUsbVbus;usbIface.Health=ParentUsbHealth;usbIface.Release=ParentUsbRelease;
@@ -1543,11 +2052,38 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&wifiIface,&A04SharedWifiInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);
 #endif
+#if A04_SHARED_SD_POWER
+    if(!NT_SUCCESS(status))return status;
+    status=ParentSdPublish(dev);if(!NT_SUCCESS(status))return status;
+#endif
 #if defined(A04_SHARED_CHILD_PROBE) && A04_SHARED_CHILD_PROBE
     if(!NT_SUCCESS(status))return status;
 #if !A04_SHARED_USB_ONLY
+#if MT6392_RTC_CALENDAR
+    RtlZeroMemory(&rtcIface,sizeof(rtcIface));
+    rtcIface.Header.Size=sizeof(rtcIface);rtcIface.Header.Version=MT6392_RTC_INTERFACE_VERSION;
+    rtcIface.Header.Context=dev;rtcIface.Header.InterfaceReference=ParentInterfaceReference;
+    rtcIface.Header.InterfaceDereference=ParentInterfaceDereference;
+    rtcIface.ReadCalendar=Mt6392ReadCalendar;
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&rtcIface,&Mt6392RtcInterfaceGuid,NULL);
+    status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
+    status=ParentAddProbeChild(dev,L"MT6392\\RTC",L"0",0xfffffffdu);
+    if(!NT_SUCCESS(status))return status;
+#endif
     status=ParentAddProbeChild(dev,L"MT6392\\Buttons",L"0",0x10002000u);
     if(!NT_SUCCESS(status))return status;
+#if A04_SHARED_HP_PCM
+    {A04_HEADPHONE_INTERFACE hp;WDF_QUERY_INTERFACE_CONFIG query;
+     RtlZeroMemory(&hp,sizeof(hp));hp.Header.Size=sizeof(hp);hp.Header.Version=A04_HP_PARENT_VERSION;
+     hp.Header.Context=dev;hp.Header.InterfaceReference=ParentInterfaceReference;hp.Header.InterfaceDereference=ParentInterfaceDereference;
+     hp.ParentBuild=1107;hp.BeginAdc=ParentHpAdcBegin;hp.ReadAdc=ParentHpAdcRead;hp.EndAdc=ParentHpAdcEnd;
+     hp.Readiness=ParentHpReadiness;hp.ReadJack=ParentHpJack;hp.Start=ParentHpStart;
+     hp.MuteRetained=ParentHpMute;hp.ResumeRetained=ParentHpResume;hp.Stop=ParentHpStop;hp.Latency=ParentHpLatency;
+     hp.CalibratePrepare=ParentHpCalibratePrepare;hp.CalibrateMeasure=ParentHpCalibrateMeasure;
+     hp.CalibrateFinish=ParentHpCalibrateFinish;hp.CalibrationStatus=ParentHpCalibrationStatus;
+     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&hp,&A04HeadphoneParentGuid,NULL);
+     status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;}
+#endif
     status=ParentAddProbeChild(dev,L"MT8167\\BU21025",L"0",0x11009000u);
     if(!NT_SUCCESS(status))return status;
 #if A04_SHARED_THERMAL_DIAGNOSTIC
@@ -1555,8 +2091,12 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     if(!NT_SUCCESS(status))return status;
 #endif
 #endif
+#if A04_SHARED_USBPORT_CHILD
+    status=MusbRoleCreate(dev);if(!NT_SUCCESS(status))return status;
+#else
     status=ParentAddProbeChild(dev,L"MT8167\\USB20",L"0",0x11100000u);
     if(!NT_SUCCESS(status))return status;
+#endif
 #if !A04_SHARED_USB_ONLY
     /* The audio sentinel remains unavailable unless the diagnostic flag is set. */
     status=ParentAddProbeChild(dev,L"MT8167\\AFE",L"0",0xffffffffu);
@@ -1565,6 +2105,10 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
      * translation verification; it does not describe the separate EINT5. */
     status=ParentAddProbeChild(dev,L"A04BR3\\MT6630SDIO",L"0",0x11170000u);
 #endif
+#endif
+#if A04_SHARED_ACCDET_READ
+    if(!NT_SUCCESS(status))return status;
+    status=ParentAccdetPublish(dev);
 #endif
     return status;
 }
