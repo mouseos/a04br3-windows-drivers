@@ -99,6 +99,7 @@ def build_policy(root,spec):
    else:originals[name]=f;origin_sources[name]=q.relative_to(root).as_posix()
  require(len(originals)==c['file_count'],'実combined file件数')
  for name,h in n['source_files'].items():require(originals['Windows/System32/config/'+name]['sha256']==h,'同SYSTEM trio')
+ if TIMING:TIMING.validate_capture_contract(c,pin)
  values=inventory_contract(c,n,prior)
  post=n['post_ownership_policy360'];require(post['controlset']=='ControlSet001' and post['name']=='DisableAutoAcpiPostDeivce' and post['raw']=='00000000','POST0実値保持')
  gm=pin(spec['GPU368_manifest']);hand=pin(spec['GPU368_handoff'])

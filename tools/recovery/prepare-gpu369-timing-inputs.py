@@ -107,6 +107,7 @@ def main():
 # differ. No old policy is relabelled and no snapshot is reconstructed.
 class TimingInputs:
     contract_family="GPU369"
+    def validate_capture_contract(self,contract,pin):pass
     @property
     def install_targets(self):return ["display","render"]+(["wifi"] if self.wifi_activation else [])
     def validate_output_review(self,review,hashes):require(review["outputs"]==hashes,"実369全出力とreviewの一致")

@@ -25,6 +25,15 @@ def validate_manifest(g):
  require(g['hardware_verified'] is False and g['deployment_performed'] is False,'署名receiptを実機成功へ読み替えない')
 
 def validate_boot_retention(boot,fresh,bootid,pin,pin_file):
+ if boot.get('schema')=='GPU371_RETAINED_BOOT209_V1':
+  original=pin(boot['schema_adaptation_of'])
+  extras={'schema_adaptation_of','host_boot','matched_boot_manifest','no_intervening_boot_write_reported_by_main','retained_steps'}
+  require(set(boot)==set(original)|extras and original['schema']=='GPU369_RETAINED_BOOT98DE_CHAIN_V1' and all(boot[k]==v for k,v in original.items() if k!='schema'),'boot copyの事実を変更しない')
+  require(boot['host_boot']==original['host_artifact'] and boot['matched_boot_manifest']==original['firmware_composition_manifest'] and boot['no_intervening_boot_write_reported_by_main'] is True,'main copyのalias/保持申告一致')
+  for ref in boot['retained_steps']:
+   report=pin(ref);require(report['schema']=='MAIN_BOOT_RETENTION_REPORT_V1' and report['reported_by']=='main' and report['boot_written'] is False and report['gpt_written'] is False and report['boot_sha256']==m.BOOT and report['physical_read_performed'] is False and report['capture_ref']['sha256']==fresh,'実212に結合したmain申告のみ、physical readへ昇格しない')
+   pin(report['capture_ref']);pin(report['supplement_ref']);pin(report['prior_return_normal'])
+  boot=original
  require(boot['schema']=='GPU369_RETAINED_BOOT98DE_CHAIN_V1' and boot['kind']=='retained-chain' and boot['source_manifest_sha256']==fresh and boot['recovery_boot_id']==bootid and boot['read_only'] is True and boot['physical_read_this_capture'] is False and boot['physical_boot_read_operations']==0,'実212の既98de chain schemaのみ。新witnessへ改名しない')
  require(boot['boot_sha256']==m.BOOT and boot['no_intervening_boot_or_gpt_write_reported'] is True and boot['hardware_success_inferred'] is False,'実209後保持報告とscope')
  report=boot['no_additional_write_report'];require(report['boot_written_after_run209'] is False and report['gpt_written_after_run209'] is False and report['continuous_independent_monitoring_performed'] is False,'main申告を連続独立監視に置換しない')
@@ -44,6 +53,12 @@ def validate_boot_retention(boot,fresh,bootid,pin,pin_file):
 
 class Output371(m.TimingInputs):
  contract_family='GPU369' # Actual212 capture producer schema is retained verbatim.
+ def validate_capture_contract(self,contract,pin):
+  if contract['schema']=='GPU371_FRESH212_CAPTURE_CONTRACT_V1':
+   original=pin(contract['schema_adaptation_of'])
+   require(original['schema']=='GPU369_FRESH212_CAPTURE_CONTRACT_V1' and set(contract)==set(original)|{'schema_adaptation_of'} and all(contract[k]==v for k,v in original.items() if k!='schema'),'capture copyの実fact/集合を変更しない')
+   self.contract_family='GPU371'
+  else:require(contract['schema']=='GPU369_FRESH212_CAPTURE_CONTRACT_V1','実212の既知producer/copy schemaだけ')
  @property
  def install_targets(self):return ['render']
  def validate_manifest(self,gm,review,spec):

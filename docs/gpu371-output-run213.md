@@ -68,3 +68,7 @@ python3 -B "$repo/tools/recovery/run-gpu371-fresh212.py" \
 
 実行はmainだけが`--validate-only`を外す。terminal後のWindowsを保持し、mainが回収を選ぶ場合のみ同じ引数へ`--collect-only`を追加する。`--collect-only --validate-only`は既held terminalのread-only検証。二度目のcollectや候補再実行は不可。
 出力captureは`port/xnu/out/private-windows-rt-prebackup-run214`、diagnosticsは`port/xnu/out/private-windows-rt-gpu371-run213-diagnostics`、latchは`gpu371-run213-executions/combined-run213.json`に分離。
+
+## mainの原本保持copyも受理
+
+mainのprivate-map371.jsonが指定する`capture-contract.gpu371.json`（GPU371_FRESH212_CAPTURE_CONTRACT_V1）と`retained-boot-witness.gpu371.json`（GPU371_RETAINED_BOOT209_V1）も受理する。`schema_adaptation_of`の実path/hashをpinし、schema/明示alias/原本参照以外の全事実・集合が原本と一致することを要求する。boot aliasはhost_artifact/firmware_composition_manifestと完全一致させる。main-retention-report212はreported_by=main、physical_read_performed=false、fresh212 hash結合を保持し、そのcapture/supplement/return-normal参照もpinする。原本/copyのいずれでも事実や実測成功へ変換しない。
