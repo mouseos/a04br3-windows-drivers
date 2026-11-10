@@ -2147,7 +2147,7 @@
       "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_job.c",
       "source_commit": "f96948533601f9fdcdcc22b9700aacd96dbf7204",
       "source_sha256": "467d756facb7f196f82b73bf09b2df07399805a073bcdb91278ace0136bc3165",
-      "sha256": "28810069a08be40ea8394b3aed0894d111165e95b8a875a18955ac027d35ec36",
+      "sha256": "95937238d41a0556482f15dfd67f3ad75f7ee413a1401a43050f7668eacfd2b1",
       "include_rewrites": [
         [
           "windows_native_job_private.h",
@@ -2172,35 +2172,42 @@
       ],
       "rewrite_includes_only": false,
       "reviewed_delta": {
-        "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+        "source_commit": "e0727eb0d840883a31d3c501b0ee17652ebdcad4",
         "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_job.c",
-        "sha256": "28810069a08be40ea8394b3aed0894d111165e95b8a875a18955ac027d35ec36",
-        "baseline_destination_sha256": "03466bccdd2595cdc5be38677a2574030b7bba13d8dc510caf098bc554c8a324",
-        "role": "Unified356 explicit native geometry/full PT and same-owner display retirement",
+        "sha256": "95937238d41a0556482f15dfd67f3ad75f7ee413a1401a43050f7668eacfd2b1",
+        "baseline_destination_sha256": "28810069a08be40ea8394b3aed0894d111165e95b8a875a18955ac027d35ec36",
+        "role": "358 strict segmented cold zero validation; unchanged capacity/ownership",
         "previous_reviewed_delta": {
-          "source_commit": "83f2652eb2b4fd957be38d16a6c7580efe60bbba",
+          "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
           "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_job.c",
-          "sha256": "03466bccdd2595cdc5be38677a2574030b7bba13d8dc510caf098bc554c8a324",
-          "baseline_destination_sha256": "88412ddcd5dcdfe7a2f76e5b73bee1fe495b65aa02f4097275fd2531470ed94e",
-          "role": "Resident cold/live341, immutable Draw reuse and TQ Clear342",
+          "sha256": "28810069a08be40ea8394b3aed0894d111165e95b8a875a18955ac027d35ec36",
+          "baseline_destination_sha256": "03466bccdd2595cdc5be38677a2574030b7bba13d8dc510caf098bc554c8a324",
+          "role": "Unified356 explicit native geometry/full PT and same-owner display retirement",
           "previous_reviewed_delta": {
-            "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
+            "source_commit": "83f2652eb2b4fd957be38d16a6c7580efe60bbba",
             "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_job.c",
-            "sha256": "b835ecbd0f7b48fd51831da576f79b002ada78346f72dddeec63359f78dcc4fa",
+            "sha256": "03466bccdd2595cdc5be38677a2574030b7bba13d8dc510caf098bc554c8a324",
             "baseline_destination_sha256": "88412ddcd5dcdfe7a2f76e5b73bee1fe495b65aa02f4097275fd2531470ed94e",
-            "role": "Matrix VS + sampled PS331 / explicit owned ABI5 composition",
+            "role": "Resident cold/live341, immutable Draw reuse and TQ Clear342",
             "previous_reviewed_delta": {
-              "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
+              "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
               "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_job.c",
-              "sha256": "26f4c4bec7e236c242aabf3632a14ff89211f7b426e1f29dfe6fe790ec4d779b",
+              "sha256": "b835ecbd0f7b48fd51831da576f79b002ada78346f72dddeec63359f78dcc4fa",
               "baseline_destination_sha256": "88412ddcd5dcdfe7a2f76e5b73bee1fe495b65aa02f4097275fd2531470ed94e",
-              "role": "ABI4 real ALU shader witness / ownership-preserving native overlay329",
+              "role": "Matrix VS + sampled PS331 / explicit owned ABI5 composition",
               "previous_reviewed_delta": {
-                "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
+                "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
                 "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_job.c",
-                "sha256": "e91d8765c38c19961b8522b7e1bd0d721f19d54b02614d95dd50a9e01f7bfb9d",
+                "sha256": "26f4c4bec7e236c242aabf3632a14ff89211f7b426e1f29dfe6fe790ec4d779b",
                 "baseline_destination_sha256": "88412ddcd5dcdfe7a2f76e5b73bee1fe495b65aa02f4097275fd2531470ed94e",
-                "role": "Texture326 binding + source filter327"
+                "role": "ABI4 real ALU shader witness / ownership-preserving native overlay329",
+                "previous_reviewed_delta": {
+                  "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
+                  "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_job.c",
+                  "sha256": "e91d8765c38c19961b8522b7e1bd0d721f19d54b02614d95dd50a9e01f7bfb9d",
+                  "baseline_destination_sha256": "88412ddcd5dcdfe7a2f76e5b73bee1fe495b65aa02f4097275fd2531470ed94e",
+                  "role": "Texture326 binding + source filter327"
+                }
               }
             }
           }
@@ -3086,6 +3093,14 @@
       "drivers/gpu/mt8167/wddm-render/umd/typed_resource.c",
       "drivers/gpu/mt8167/wddm-render/umd/typed_texture.c"
     ],
-    "POST_policy_and_nontexture_source_preserved": true
+    "POST_policy_and_nontexture_source_preserved": true,
+    "signed359_observability_source_reconciled": [
+      "drivers/gpu/mt8167/wddm-render/miniport.c",
+      "drivers/gpu/mt8167/wddm-render/display_adapter356.c",
+      "drivers/gpu/mt8167/start_gap359.h",
+      "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_job.c",
+      "drivers/gpu/mt8167/wddm-display/bdd.cxx"
+    ],
+    "reconciliation_reason": "185 operational checkout carries older GPU source snapshots while signed installed binary remains359; preserve359 exact GPU runtime and segmented-zero fix, no POST runtime fallback"
   }
 }

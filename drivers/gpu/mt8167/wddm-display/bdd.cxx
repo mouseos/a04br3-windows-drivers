@@ -11,6 +11,7 @@
 #include "BDD.hxx"
 #include "present_bounds.h"
 #include "ge8300_trace.hxx"
+#include "../start_gap359.h"
 
 #pragma code_seg("PAGE")
 
@@ -246,7 +247,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StartDevice(_In_  DXGK_START_INFO*   pDxgkStartIn
                                            _Out_ ULONG*             pNumberOfViews,
                                            _Out_ ULONG*             pNumberOfChildren)
 {
-    PAGED_CODE();
+    PAGED_CODE();struct geo_gap359_record gap;Geo359Begin(&gap,3);
 
     BDD_ASSERT(pDxgkStartInfo != NULL);
     BDD_ASSERT(pDxgkInterface != NULL);
@@ -259,12 +260,12 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StartDevice(_In_  DXGK_START_INFO*   pDxgkStartIn
     m_CurrentModes[0].DispInfo.TargetId = D3DDDI_ID_UNINITIALIZED;
 
     // Get device information from OS.
-    NTSTATUS Status = m_DxgkInterface.DxgkCbGetDeviceInformation(m_DxgkInterface.DeviceHandle, &m_DeviceInfo);
+    Geo359Enter(&gap,0);NTSTATUS Status = m_DxgkInterface.DxgkCbGetDeviceInformation(m_DxgkInterface.DeviceHandle, &m_DeviceInfo);Geo359Result(&gap,0,Status);
     if (!NT_SUCCESS(Status))
     {
         BDD_LOG_ASSERTION1("DxgkCbGetDeviceInformation failed with status 0x%I64x",
                            Status);
-        return Status;
+        return Geo359End(&gap,Status);
     }
 
     // Ignore return value, since it's not the end of the world if we failed to write these values to the registry
@@ -274,28 +275,30 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StartDevice(_In_  DXGK_START_INFO*   pDxgkStartIn
 //    Status = CheckHardware();
     if (!NT_SUCCESS(Status))
     {
-        return Status;
+        return Geo359End(&gap,Status);
     }
 
     // This sample driver only uses the frame buffer of the POST device. DxgkCbAcquirePostDisplayOwnership
     // gives you the frame buffer address and ensures that no one else is drawing to it. Be sure to give it back!
-    Status = m_DxgkInterface.DxgkCbAcquirePostDisplayOwnership(m_DxgkInterface.DeviceHandle, &(m_CurrentModes[0].DispInfo));
+    Geo359Enter(&gap,1);Status = m_DxgkInterface.DxgkCbAcquirePostDisplayOwnership(m_DxgkInterface.DeviceHandle, &(m_CurrentModes[0].DispInfo));Geo359Result(&gap,1,Status);
+    gap.value[0]=m_CurrentModes[0].DispInfo.Width;gap.value[1]=m_CurrentModes[0].DispInfo.Height;gap.value[2]=m_CurrentModes[0].DispInfo.Pitch;gap.value[3]=(ULONG)m_CurrentModes[0].DispInfo.ColorFormat;gap.value[4]=m_CurrentModes[0].DispInfo.PhysicAddress.LowPart;gap.value[5]=(ULONG)m_CurrentModes[0].DispInfo.PhysicAddress.HighPart;gap.value[6]=m_CurrentModes[0].DispInfo.TargetId;gap.value[7]=m_CurrentModes[0].DispInfo.AcpiId;
     if (!NT_SUCCESS(Status) || m_CurrentModes[0].DispInfo.Width == 0)
     {
         // The most likely cause of failure is that the driver is simply not running on a POST device, or we are running
         // after a pre-WDDM 1.2 driver. Since we can't draw anything, we should fail to start.
-        return STATUS_UNSUCCESSFUL;
+        return Geo359End(&gap,STATUS_UNSUCCESSFUL);
     }
     {
         const DXGK_DISPLAY_INFORMATION* info=&m_CurrentModes[0].DispInfo;
         uint32_t w,h,offset;
         /* The map, blackout and unmap paths use Pitch * Height. Reject
          * unsupported or overflowing POST surfaces before any of them run. */
-        if (BPPFromPixelFormat(info->ColorFormat)!=32 ||
+        Geo359Enter(&gap,2);if (BPPFromPixelFormat(info->ColorFormat)!=32 ||
             a04_present_layout(info->Width,info->Height,info->Width,info->Height,
                                info->Pitch,0,0,&w,&h,&offset) ||
             (uint64_t)info->PhysicAddress.QuadPart>UINT64_MAX-(uint64_t)info->Pitch*info->Height)
-            return STATUS_DEVICE_CONFIGURATION_ERROR;
+            return Geo359End(&gap,STATUS_DEVICE_CONFIGURATION_ERROR);
+        Geo359Result(&gap,2,STATUS_SUCCESS);
     }
 #if A04_GE8300_WDDM_DIRECT_EXPERIMENT
 #if A04_GE8300_WDDM_GPU_DIRECT_POST
@@ -338,7 +341,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StartDevice(_In_  DXGK_START_INFO*   pDxgkStartIn
     *pNumberOfChildren = MAX_CHILDREN;
 
 
-   return STATUS_SUCCESS;
+   return Geo359End(&gap,STATUS_SUCCESS);
 }
 
 NTSTATUS BASIC_DISPLAY_DRIVER::StopDevice(VOID)
