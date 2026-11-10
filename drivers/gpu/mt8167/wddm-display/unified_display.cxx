@@ -148,3 +148,9 @@ extern "C" NTSTATUS GeoDisplaySetBrightnessResources(void *handle,PCM_RESOURCE_L
  geo_display *s=state(handle);if(!s||s->started||!resources)return STATUS_INVALID_PARAMETER;
  s->bdd->SetUnifiedBrightnessResources(resources);return STATUS_SUCCESS;
 }
+
+extern "C" NTSTATUS GeoDisplaySetPanelTiming(void *handle,const struct a04_panel_timing *timing){
+ geo_display *s=state(handle);struct a04_panel_frequencies f;
+ if(!s||s->started||KeGetCurrentIrql()!=PASSIVE_LEVEL||!a04_panel_timing_frequencies(timing,&f))return STATUS_INVALID_PARAMETER;
+ s->bdd->SetPanelTiming(timing);return STATUS_SUCCESS;
+}

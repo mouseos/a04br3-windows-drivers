@@ -10,14 +10,14 @@
 struct display_map356 {struct display_map356 *next;struct geo_allocation *allocation;void *cookie;};
 struct display_adapter356 {
  struct geo_kmd_adapter *adapter;void *bdd;PFILE_OBJECT provider_file;
- struct a04_display_transport_v1 transport;struct display_map356 *maps,*active,*selected;
+ struct a04_panel_timing timing;struct a04_display_transport_v1 transport;struct display_map356 *maps,*active,*selected;
  DXGKRNL_INTERFACE dxgk;LONG vsync_enabled,scanout_active;UINT started,subscribed;volatile LONG primary_offset_pages;
 };
 static struct display_adapter356 *display(struct geo_kmd_adapter *a){return a?a->display:NULL;}
 void *GeoUnifiedDisplayContext(HANDLE a){struct display_adapter356 *d=display(a);return d?d->bdd:NULL;}
 static NTSTATUS query_completed(PDEVICE_OBJECT device,PIRP irp,void *event){UNREFERENCED_PARAMETER(device);UNREFERENCED_PARAMETER(irp);KeSetEvent(event,IO_NO_INCREMENT,FALSE);return STATUS_MORE_PROCESSING_REQUIRED;}
 static NTSTATUS find_transport(struct display_adapter356 *d){
- PWSTR links=NULL;PDEVICE_OBJECT target=NULL;PIRP irp;PIO_STACK_LOCATION sp;KEVENT event;NTSTATUS status;struct geo_gap359_record gap;Geo359Begin(&gap,4);
+ PWSTR links=NULL;PDEVICE_OBJECT target=NULL;PIRP irp;PIO_STACK_LOCATION sp;KEVENT event;NTSTATUS status;struct geo_gap359_record gap;struct a04_display_transport_v2 api;Geo359Begin(&gap,4);RtlZeroMemory(&api,sizeof(api));
  Geo359Enter(&gap,0);status=IoGetDeviceInterfaces(&A04DisplayTransport356Guid,NULL,0,&links);Geo359Result(&gap,0,status);if(!NT_SUCCESS(status))return Geo359End(&gap,status);
  gap.value[0]=links&&links[0];if(!links||!links[0]){if(links)ExFreePool(links);return Geo359End(&gap,STATUS_DEVICE_NOT_READY);}
  /* Multiple owners would make the standard display route ambiguous. */
@@ -26,16 +26,20 @@ static NTSTATUS find_transport(struct display_adapter356 *d){
  Geo359Enter(&gap,3);irp=IoAllocateIrp(target->StackSize,FALSE);if(!irp)return Geo359End(&gap,STATUS_INSUFFICIENT_RESOURCES);
  Geo359Result(&gap,3,STATUS_SUCCESS);KeInitializeEvent(&event,NotificationEvent,FALSE);irp->RequestorMode=KernelMode;irp->IoStatus.Status=STATUS_NOT_SUPPORTED;
  sp=IoGetNextIrpStackLocation(irp);sp->MajorFunction=IRP_MJ_PNP;sp->MinorFunction=IRP_MN_QUERY_INTERFACE;
- sp->Parameters.QueryInterface.InterfaceType=&A04DisplayTransport356Guid;sp->Parameters.QueryInterface.Size=sizeof(d->transport);sp->Parameters.QueryInterface.Version=1;
- sp->Parameters.QueryInterface.Interface=(PINTERFACE)&d->transport;sp->Parameters.QueryInterface.InterfaceSpecificData=NULL;
+ sp->Parameters.QueryInterface.InterfaceType=&A04DisplayTransport356Guid;sp->Parameters.QueryInterface.Size=sizeof(api);sp->Parameters.QueryInterface.Version=2;
+ sp->Parameters.QueryInterface.Interface=(PINTERFACE)&api;sp->Parameters.QueryInterface.InterfaceSpecificData=NULL;
  IoSetCompletionRoutine(irp,query_completed,&event,TRUE,TRUE,TRUE);Geo359Enter(&gap,4);status=IoCallDriver(target,irp);if(status==STATUS_PENDING)KeWaitForSingleObject(&event,Executive,KernelMode,FALSE,NULL);
  status=irp->IoStatus.Status;IoFreeIrp(irp);Geo359Result(&gap,4,status);
  if(!NT_SUCCESS(status))return Geo359End(&gap,status);
+ d->transport=api.v1;
  gap.value[2]=d->transport.Header.Size;gap.value[3]=d->transport.Header.Version;
  gap.value[4]=(!!d->transport.Header.Context)|((!!d->transport.Header.InterfaceDereference)<<1)|((!!d->transport.Map)<<2)|((!!d->transport.Unmap)<<3)|((!!d->transport.Select)<<4)|((!!d->transport.Restore)<<5)|((!!d->transport.Subscribe)<<6)|((!!d->transport.Unsubscribe)<<7)|((!!d->transport.BrightnessResources)<<8)|((!!d->transport.Snapshot)<<9)|((!!d->transport.Raster)<<10)|((!!d->transport.EmergencyRestore)<<11);
- Geo359Enter(&gap,5);if(d->transport.Header.Size!=sizeof(d->transport)||d->transport.Header.Version!=1||!d->transport.Header.Context||!d->transport.Header.InterfaceDereference||
+ Geo359Enter(&gap,5);if(d->transport.Header.Size!=sizeof(api)||d->transport.Header.Version!=2||!api.Timing||!d->transport.Header.Context||!d->transport.Header.InterfaceDereference||
     !d->transport.Map||!d->transport.Unmap||!d->transport.Select||!d->transport.Restore||!d->transport.Subscribe||!d->transport.Unsubscribe||!d->transport.BrightnessResources||!d->transport.Snapshot||!d->transport.Raster||!d->transport.EmergencyRestore)return Geo359End(&gap,STATUS_NOINTERFACE);
- Geo359Result(&gap,5,STATUS_SUCCESS);return Geo359End(&gap,STATUS_SUCCESS);
+ Geo359Result(&gap,5,STATUS_SUCCESS);
+ d->timing.size=sizeof(d->timing);status=api.Timing(d->transport.Header.Context,&d->timing);
+ if(NT_SUCCESS(status)){struct a04_panel_frequencies f;if(!a04_panel_timing_frequencies(&d->timing,&f))status=STATUS_DEVICE_CONFIGURATION_ERROR;}
+ return Geo359End(&gap,status);
 }
 static void vsync(void *context,ULONGLONG serial){
  struct display_adapter356 *d=context;DXGKARGCB_NOTIFY_INTERRUPT_DATA n;UNREFERENCED_PARAMETER(serial);
@@ -59,6 +63,7 @@ NTSTATUS GeoDisplay356Start(struct geo_kmd_adapter *a,PDEVICE_OBJECT pdo,DXGK_ST
  Geo359Result(&gap,4,STATUS_SUCCESS);Geo359Enter(&gap,5);status=GeoDisplayCreate(pdo,&d->bdd);Geo359Result(&gap,5,status);if(!NT_SUCCESS(status))return Geo359End(&gap,status);
  Geo359Enter(&gap,6);status=d->transport.BrightnessResources(d->transport.Header.Context,&brightness);Geo359Result(&gap,6,status);if(status!=STATUS_SUCCESS)return Geo359End(&gap,status);
  Geo359Enter(&gap,7);status=GeoDisplaySetBrightnessResources(d->bdd,brightness);Geo359Result(&gap,7,status);if(status!=STATUS_SUCCESS)return Geo359End(&gap,status);
+ status=GeoDisplaySetPanelTiming(d->bdd,&d->timing);if(!NT_SUCCESS(status))return Geo359End(&gap,status);
  Geo359Enter(&gap,8);status=GeoDisplayStart(d->bdd,start,dxgk,&v,&c);Geo359Result(&gap,8,status);if(!NT_SUCCESS(status))return Geo359End(&gap,status);
  d->started=1;Geo359Enter(&gap,9);status=GeoDisplayPostInfo(d->bdd,&info);Geo359Result(&gap,9,status);
  gap.value[7]=v;gap.value[8]=c;

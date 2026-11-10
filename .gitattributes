@@ -42,3 +42,7 @@ drivers/gpu/mt8167/start_gap359.h text eol=lf
 tools/ci/build-ge8300-compiler-source.py text eol=lf
 tools/ci/ge8300_compiler_cache.py text eol=lf
 tools/ci/build-ge8300-from-source.ps1 text eol=lf
+
+drivers/gpu/mt8167/display-transport/panel_timing.h text eol=lf
+tests/ge8300_panel_timing_test.c text eol=lf
+docs/ge8300-panel-timing-handoff.md text eol=lf
