@@ -79,7 +79,9 @@ adb reboot
   with uart.open('rb') as f:
    f.seek(offset)
    while time.monotonic()<deadline:
-    time.sleep(.5);raw+=f.read();(out/'normal-uart.log').write_bytes(raw);parts=raw.split(b'\n')[:-1]
+    time.sleep(.5);raw+=f.read();(out/'normal-uart.log').write_bytes(raw)
+    clean=re.sub(rb'A04WIN (?:StartIo fn=[0-9A-F]{8} opcode=[0-9A-F]{8}|blocks lba=[0-9A-F]{8} count=[0-9A-F]{8}|CDB=[0-9A-F]{8} status=[0-9A-F]{8})\r?\n',b'',raw)
+    (out/'normal-uart-deinterleaved.log').write_bytes(clean);parts=clean.split(b'\n')[:-1]
     for line in parts[processed:]:
      if b'ExitBootServices event signaled' in line:seen_os=True
      event=re.search(rb'U198 000000C6 ([0-9A-F]{8}) ([0-9A-F]{8}) ([0-9A-F]{8}) ([0-9A-F]{8})',line)
