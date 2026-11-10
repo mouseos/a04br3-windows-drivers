@@ -296,8 +296,20 @@ static NDIS_STATUS control_impl(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
  return copy_query(q,&value,sizeof(value));
 }
 
-/* Capture the actual OID gate and final dispatch result, including a rejected
- * scan before HIF submission. Completion semantics remain unchanged. */
+/* BSS enumeration is a read-only method, including its sizing response.
+ * Do not let routine polling evict connection/authentication history or
+ * overwrite the last actual rejection. This classifies telemetry only;
+ * bss_list's existing return status and byte counts are not changed. */
+static int oid_trace_failure(PNDIS_OID_REQUEST q,NDIS_STATUS status)
+{
+ if(status==NDIS_STATUS_SUCCESS||status==NDIS_STATUS_PENDING)return 0;
+ if(q->RequestType==NdisRequestMethod&&q->DATA.METHOD_INFORMATION.Oid==OID_DOT11_ENUM_BSS_LIST&&
+    status==NDIS_STATUS_BUFFER_TOO_SHORT&&q->DATA.METHOD_INFORMATION.BytesWritten==0&&
+    q->DATA.METHOD_INFORMATION.BytesNeeded>q->DATA.METHOD_INFORMATION.OutputBufferLength)return 0;
+ return 1;
+}
+/* Retain SET results, the state-changing RESET method and actual failures,
+ * including a rejected scan before HIF submission. */
 NDIS_STATUS a04_ndis_control(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
 {
  int request_type=q->RequestType;ULONG oid=q->DATA.QUERY_INFORMATION.Oid;
@@ -312,10 +324,10 @@ NDIS_STATUS a04_ndis_control(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
  if(scan_oid)a04_ndis_runtime_snapshot(a,A04_CP_SCAN,0,1);
  a->runtime_last_oid=q->DATA.QUERY_INFORMATION.Oid;
  status=control_impl(a,q);a->runtime_last_oid_status=status;
- if(request_type==NdisRequestSetInformation||request_type==NdisRequestMethod||
-    (status!=NDIS_STATUS_SUCCESS&&status!=NDIS_STATUS_PENDING))
+ if(request_type==NdisRequestSetInformation||
+    (request_type==NdisRequestMethod&&oid==OID_DOT11_RESET_REQUEST)||oid_trace_failure(q,status))
   a04_ndis_connection_trace(a,A04_CT_OID,A04_CP_RESULT,A04_CP_NDIS,status,oid);
- if(status!=NDIS_STATUS_SUCCESS&&status!=NDIS_STATUS_PENDING){a->prior_rejected_oid=oid;a->prior_rejected_status=status;}
+ if(oid_trace_failure(q,status)){a->prior_rejected_oid=oid;a->prior_rejected_status=status;}
  if(connect_oid)a04_ndis_connection_trace(a,A04_CT_GATE,A04_CP_RESULT,A04_CP_NDIS,status,0);
  if(oid==OID_DOT11_CIPHER_KEY_MAPPING_KEY||oid==OID_DOT11_CIPHER_DEFAULT_KEY)
   a04_ndis_connection_trace(a,A04_CT_KEY_OID,A04_CP_RESULT,A04_CP_NDIS,status,0);
