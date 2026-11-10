@@ -66,10 +66,21 @@ def retained_client_boot(boot,transition,fresh,bootid,pin,pin_file,capture):
  require(boot['schema']==f"GPU{v['version']}_RETAINED_BOOT{capture}_V1" and boot['source_manifest_sha256']==fresh and boot['recovery_boot_id']==bootid and boot['physical_read_this_capture'] is False and boot['boot_sha256']==admission.BOOT,'実215保持chainのみ。physical bootreadを主張しない')
  previous=pin(boot['previous_witness'])
  evidence=(m.validate_boot_retention(previous,previous['source_manifest_sha256'],previous['recovery_boot_id'],pin,pin_file) if capture==215 else retained_client_boot(previous,{},previous['source_manifest_sha256'],previous['recovery_boot_id'],pin,pin_file,{218:215,221:218}[capture]))
- seal=pin(boot[f'run{run}_seal']);result=pin(boot[f'run{run}_result']);collected=pin(boot[f'run{run}_collection']);cap214=pin(boot[f'capture{post}'])
+ seal=pin(boot[f'run{run}_seal']);result=pin(boot[f'run{run}_result']);cap214=pin(boot[f'capture{post}'])
  require(seal['schema']=={215:'GPU371_RUN213_MAIN_SEAL_V1',218:'GPU373_RUN216_MAIN_SEAL_V1',221:'GPU374_RUN219_MAIN_SEAL_V1'}[capture] and seal['status']=='validated-main-seal' and seal['matched_boot_sha256']==admission.BOOT and seal['boot_write_required'] is False,'実213 retained98de seal')
- for row in (result,collected):require(row['transaction']==f'combined-run{run}' and row['seal_sha256']==boot[f'run{run}_seal']['sha256'] and row['boot_written'] is False and row['gpt_written'] is False,'実213 no boot/GPT write result')
- require(collected['collection_only'] is True and collected['capture_manifest_sha256']==boot[f'capture{post}']['sha256'] and cap214['status']=='captured-unmounted' and cap214['read_only'] and cap214['unmounted'] and cap214['errors']==[],'実214 collection結合')
+ require(result['transaction']==f'combined-run{run}' and result['seal_sha256']==boot[f'run{run}_seal']['sha256'] and result['boot_written'] is False and result['gpt_written'] is False,'実no boot/GPT write result')
+ require(cap214['status']=='captured-unmounted' and cap214['read_only'] and cap214['unmounted'] and cap214['errors']==[],'実read-only post captureのみ')
+ if capture==221 and boot.get('collection_mode')=='main-manual-capture220':
+  # Actual219 ended held; main captured220 and returned normal manually.
+  # Do not synthesize a controller collection_only/success receipt.
+  require(result['status']=='terminal-windows-held' and result['safe_flush_terminal'] is True and result['same_candidate_reexecution'] is False and result['hardware_success'] is False,'実219 held/failureの事実を保持')
+  classification=pin(boot['main_classification219']);returned=pin(boot['return_normal_after220']);pin(boot['fresh221'])
+  require(classification['trial']==219 and classification['boot_GPT_writes']==0 and classification['post220_manifest_sha256']==boot['capture220']['sha256'] and classification['drawing_success'] is False,'main実220capture結合と描画未成功')
+  require(returned['unmount_guard_passed'] is True and returned['new_image_write'] is False and returned['normal_boot_requested'] is True,'実220後normal復帰、新image書込なし')
+  require(boot['fresh221']['sha256']==fresh,'現fresh221への保持申告結合')
+ else:
+  collected=pin(boot[f'run{run}_collection'])
+  require(collected['transaction']==f'combined-run{run}' and collected['seal_sha256']==boot[f'run{run}_seal']['sha256'] and collected['boot_written'] is False and collected['gpt_written'] is False and collected['collection_only'] is True and collected['capture_manifest_sha256']==boot[f'capture{post}']['sha256'],'実controller collection結合')
  require(boot['no_later_boot_or_gpt_write_reported_by_main'] is True and boot['continuous_independent_monitoring_performed'] is False,'main保持申告を独立監視へ昇格しない')
  require(boot['host_artifact']==previous['host_artifact'] and boot['firmware_composition_manifest']==previous['firmware_composition_manifest'],'既209 boot98de出自保持')
  transition.update(mode='retained-panel-timing-DTM0-209-v1',boot_path=boot['host_artifact']['path'],boot_sha256=admission.BOOT,baseline_boot_sha256=admission.BOOT,boot_write_required=False,gpt_written=False,mixed_old_new_allowed=False,next_windows_boot_blocked_until_matched_boot=False,firmware_manifest=boot['firmware_composition_manifest'])
