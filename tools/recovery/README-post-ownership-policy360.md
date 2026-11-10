@@ -6,7 +6,7 @@ GPU359/DIS0 357/FW0943は変更しない。183実機ではAcquirePostDisplayOwne
 
 1は旧offscreen GE8300RenderBase向け明示policyとしてf5797a07で導入。別DODからunified displayへ移行した現在の実fresh184でも1が残る。360はその抑止だけを厳密DWORD1→0へ復元する。実POST取得/表示の解消は次実機まで未証明。
 
-PostOwnershipPolicy360.csは既OfflineSystemHiveNative.csと同時にAdd-Typeし、既load済みprivate mount名をPolicy.Applyへ渡す。実Select Current/Default1、GPU3.59/DIS0 3.57の実選択を検証し、既0や異型/異サイズを拒否。対象以外の全SYSTEM raw値・型・サイズ・key構造を前後hash照合する。REG_LINKはraw targetのみ記録し追跡しない。正綴り別key/ValidateWDDMCaps/他controlsetも除外しない。未知や読取り失敗は拒否しcloneを破棄する。
+PostOwnershipPolicy360.csは既OfflineSystemHiveNative.csと同時にAdd-Typeし、既load済みprivate mount名をPolicy.Applyへ渡す。実Select Current/Default1、GPU3.59/DIS0 3.57の実選択を検証し、既0や異型/異サイズを拒否。対象GraphicsDriversの当該1値以外の全raw値・型・サイズ・子key構造を前後hash照合する。正綴り別key/ValidateWDDMCapsも除外しない。全SYSTEM監査は行わない。未知や読取り失敗は拒否しcloneを破棄する。
 
 専用test-post-ownership-policy360.ps1はfresh184のimmutable SYSTEM3fileを新outputへcopyしnative replay、1→0、既0への再実行拒否、原本hash不変、unload/privilege復元を確認する。元1証拠と失敗receiptを保持する。185ではservice184登録と同じcloneだけを変更し、最終candidate hashを正式native reportへ記録する。実機やlive SYSTEMへ適用しない。
 
