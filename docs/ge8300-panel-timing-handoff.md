@@ -86,3 +86,8 @@ python -B tools/ci/sign-ge8300-panel-timing.py --enable-candidate --baseline-pac
 
 各入口は成功／失敗ともoutput同名ZIPを作る。署名入口は成功した同HEADの12TU receiptが必要。
 追加helperは旧cold/fullsource/cache既定を変更しない。
+
+署名recipeのみの修正後は`--compiled-source-commit`で実compile HEADを明示できる。
+既12TUの元source/include/tool/output SHAとcurrent GPU source snapshotの全一致をlive確認し、
+new_display_source_commitには実compile HEADを維持する。再compile/relinkは行わない。
+GPU369 INF日は11/10/2026（既GPU368と同日）。VM時刻・machine設定は変更しない。

@@ -14,10 +14,10 @@ def inf369(data,old):
     logical=text.replace('\r\n','\n');require('\r' not in logical,'Unexpected INF line endings')
     matches=list(re.finditer(r'(?m)^DriverVer=([^\n]+)$',logical))
     require(len(matches)==1 and matches[0][1]==old,'Baseline INF identity mismatch')
-    a,b=matches[0].span(1);new=logical[:a]+'11/11/2026,0.0.3.69'+logical[b:]
+    a,b=matches[0].span(1);new=logical[:a]+'11/10/2026,0.0.3.69'+logical[b:]
     return bom+new.replace('\n','\r\n').encode(encoding)
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--enable-candidate',action='store_true')
+    p=argparse.ArgumentParser();p.add_argument('--enable-candidate',action='store_true');p.add_argument('--compiled-source-commit')
     p.add_argument('--baseline-package',type=Path,required=True);p.add_argument('--linked-directory',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
     p.add_argument('--sign-tool',type=Path,required=True);p.add_argument('--inf2cat',type=Path,required=True)
     a=p.parse_args();require(a.enable_candidate and os.name=='nt','Explicit Windows signing opt-in required')
@@ -25,7 +25,19 @@ def main():
     commit=subprocess.check_output(['git','-C',str(ROOT),'rev-parse','HEAD'],text=True).strip()
     spec=read(Path(__file__).with_name('ge8300-panel-timing-incremental-pins.json'));base=a.baseline_package.resolve();linked=a.linked_directory.resolve();out=a.output.resolve()
     for name,h in spec['package_files'].items():pin(base/name,h)
-    build=read(linked/'incremental-build-manifest.json');require(build['success'] and build['source_commit']==commit,'Successful same-source build required')
+    build=read(linked/'incremental-build-manifest.json')
+    compiled_source=a.compiled_source_commit or commit
+    require(build['success'] and build['source_commit']==compiled_source,'Successful explicitly pinned compile source required')
+    require(re.fullmatch('[0-9a-f]{40}',compiled_source),'Full compile commit required')
+    # A signing-only recipe fix may differ from the real compile commit.
+    # Verify current production bytes AND the originally recorded live closure;
+    # never relabel the old object source or re-probe a replacement trace.
+    for name,h in spec['gpu_source_files'].items():pin(ROOT/name,h)
+    for row in build['new_compiles']:
+        pin(ROOT/row['source'],row['source_sha256'])
+        require(row['actual_include_closure'],'Original actual include trace required')
+        for path,h in row['actual_include_closure'].items():pin(Path(path),h)
+    for row in build['tools']:pin(Path(row['path']),row['sha256'])
     require(build['baseline_compiled_source_commit']==spec['baseline_source_commit'] and len(build['new_compiles'])==12,'Wrong incremental provenance')
     require(all(build[k]==0 for k in ('native_recompiled','UMD_recompiled','PCO_recompiled','SDK_rebuilt')),'Unexpected rebuild')
     for name,h in build['outputs'].items():pin(linked/name,h)
@@ -33,7 +45,7 @@ def main():
     for key,tool in [('signtool.exe',a.sign_tool),('Inf2Cat.exe',a.inf2cat),('powershell.exe',powershell)]:pin(tool,spec['signing_tools'][key])
     require(not out.exists() and out.is_relative_to(ROOT),'Fresh source-local signed output required')
     out.mkdir();(out/'evidence').mkdir();package=out/'package369';package.mkdir()
-    receipt=dict(schema='panel-timing369-sign-only-v1',recipe_source_commit=commit,new_display_source_commit=commit,native_owner_source_commit=spec['baseline_source_commit'],umd_source_commit=spec['baseline_source_commit'],baseline_GPU368_manifest_sha256=sha(base/'signed-manifest.json'),input_build_manifest_sha256=sha(linked/'incremental-build-manifest.json'),compile_count=0,link_count=0,PCO_rebuilt=False,SDK_rebuilt=False,hardware_verified=False,deployment_performed=False,signed=False,success=False,signer_thumbprint=THUMB,receipts=[])
+    receipt=dict(schema='panel-timing369-sign-only-v1',recipe_source_commit=commit,new_display_source_commit=compiled_source,explicit_compiled_source_commit=compiled_source,signing_recipe_only_change=(compiled_source!=commit),native_owner_source_commit=spec['baseline_source_commit'],umd_source_commit=spec['baseline_source_commit'],baseline_GPU368_manifest_sha256=sha(base/'signed-manifest.json'),input_build_manifest_sha256=sha(linked/'incremental-build-manifest.json'),compile_count=0,link_count=0,PCO_rebuilt=False,SDK_rebuilt=False,hardware_verified=False,deployment_performed=False,signed=False,success=False,signer_thumbprint=THUMB,receipts=[])
     def run(args,name):
         q=subprocess.run(list(map(str,args)),capture_output=True,text=True,errors='replace');log=out/'evidence'/name;log.write_text(q.stdout+q.stderr)
         receipt['receipts'].append(dict(arguments=list(map(str,args)),returncode=q.returncode,log=log.relative_to(out).as_posix(),sha256=sha(log)));require(q.returncode==0,'Signing command failed: '+name)
