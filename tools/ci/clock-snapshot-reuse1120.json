@@ -1,0 +1,189 @@
+{
+  "objects": [
+    {
+      "scope": "parent",
+      "name": "pmic_read",
+      "sha256": "f81e449e4fc4068f72312c1814df51c48caf600a59e18af8431bd61729acd5dd",
+      "source_commit": "1d248a71a95360966ff867e4b063504ac764e074",
+      "dependencies": {
+        "drivers/input/a04br3-buttons/pmic_read.c": "69541eb7fd40fe1da607d168e4ae981dd7328f31e96a0083943aa5e6e4dcf18a",
+        "drivers/input/a04br3-buttons/pmic_read.h": "88ba67b0e10c9c3986ef04227f8cfd074a1abd738e4c4832850ab640e32c25e2",
+        "drivers/system/mt6392-rtc/calendar.h": "e5b48ae9343971f786d74eab85a7d0d266bb981593bf1e614ffe81d4e4f26d77"
+      }
+    },
+    {
+      "scope": "parent",
+      "name": "parent_resources",
+      "sha256": "5d1f3fe144c7d02c44f23c3f8fbcd7f9e89ee1669673308996bed289f47644e6",
+      "source_commit": "1d248a71a95360966ff867e4b063504ac764e074",
+      "dependencies": {
+        "drivers/bus/mt8167-shared/parent_resources.c": "f533638b00fc4a1feca304ca6d2422f74a67378a0e97d1ab6d1fb021c0350228",
+        "drivers/bus/mt8167-shared/parent_resources.h": "b2a7f30d907f6097539800eafa53a81c8e1de814ca5930a93ebeb40a288aa038"
+      }
+    },
+    {
+      "scope": "parent",
+      "name": "pwrap_owner",
+      "sha256": "d1fb8d7496fd34fb36e0332a3d25456bc93a9bee1265a0d6302382dc8c109644",
+      "source_commit": "1d248a71a95360966ff867e4b063504ac764e074",
+      "dependencies": {
+        "drivers/bus/mt8167-shared/pwrap_owner.c": "d834bf0e4987c028f87d23ded3fbbf3794361a33eb5876393c4013867150f5f7",
+        "drivers/bus/mt8167-shared/pwrap_owner.h": "9ee35e5e7fce12e85a818f77d2c1df597489549ee9b94bcfa28ddd46f882c9c1",
+        "drivers/input/a04br3-buttons/pmic_read.h": "88ba67b0e10c9c3986ef04227f8cfd074a1abd738e4c4832850ab640e32c25e2",
+        "drivers/system/mt6392-rtc/calendar.h": "e5b48ae9343971f786d74eab85a7d0d266bb981593bf1e614ffe81d4e4f26d77"
+      }
+    },
+    {
+      "scope": "parent",
+      "name": "register_owner",
+      "sha256": "9f3892d7e3bc529b58aa1e97983d47e5980c65237bedc90b5fdb6260ff215c76",
+      "source_commit": "1d248a71a95360966ff867e4b063504ac764e074",
+      "dependencies": {
+        "drivers/bus/mt8167-shared/register_owner.c": "ec547f84ebb9007304c737e070ce5a0a4f8847b519a8481ba1006c51152ec0fe",
+        "drivers/bus/mt8167-shared/register_owner.h": "f6d77f766e2656df7e5040f128b256320a5e3c6a3c1f6c3ad1bfb8320f819e61"
+      }
+    },
+    {
+      "scope": "parent",
+      "name": "audio_owner",
+      "sha256": "e35405a5d9a7065b9d42d26b85b23e5624449f36286c92265a53f93695dc4423",
+      "source_commit": "1d248a71a95360966ff867e4b063504ac764e074",
+      "dependencies": {
+        "drivers/bus/mt8167-shared/audio_owner.c": "9a37ae56b9a92cbc38ff5704c9be55eb549ee1a64bd55487582be49fb68c6831",
+        "drivers/bus/mt8167-shared/audio_owner.h": "099557b2a7410726c007e9e528a6858933bad3694189c9fd85d7f0ffff311077"
+      }
+    },
+    {
+      "scope": "parent",
+      "name": "mt6392_classd",
+      "sha256": "ff34e0f4a59713471cf82c0127408c1a0a0bb551389720c29ec9ae1eb8b12d93",
+      "source_commit": "1d248a71a95360966ff867e4b063504ac764e074",
+      "dependencies": {
+        "drivers/bus/mt8167-shared/mt6392_classd.c": "de13bf3c681bc257855cc1f5a8e7fac1db3b54b0c84cde5f09fecd91add37aec",
+        "drivers/bus/mt8167-shared/mt6392_classd.h": "d9349c007f6101d91d5060e223ad41944a30996ae51fcc357ceff4836f92ac90"
+      }
+    },
+    {
+      "scope": "parent",
+      "name": "gpu_domain_owner",
+      "sha256": "306da1360da423aed5932dafa3f9ac60bae4318ac27a12fd66358472db035c69",
+      "source_commit": "1d248a71a95360966ff867e4b063504ac764e074",
+      "dependencies": {
+        "drivers/bus/mt8167-shared/gpu_domain_owner.c": "0e27fc44809645351c3c374f898fb25aaeb217c801cea70fdef4e9e1817a6141",
+        "drivers/bus/mt8167-shared/gpu_domain_owner.h": "30c152264f157f300314309cb0be2b6ae3487c8431eceb10708e5b02640d64bf"
+      }
+    },
+    {
+      "scope": "parent",
+      "name": "codec_adc_probe",
+      "sha256": "4dc1e6e6de74bcb3632e2e3bf038c0ef2def55b5b0cdf8f698750336793a5cf0",
+      "source_commit": "1d248a71a95360966ff867e4b063504ac764e074",
+      "dependencies": {
+        "drivers/bus/mt8167-shared/codec_adc_probe.c": "d8b0041456bb51584b38cea20fc77ead353f3e3dc7cd55f464485895e9f2ce29",
+        "drivers/bus/mt8167-shared/codec_adc_probe.h": "488a13dc5ce6ca6f2d60897e719e08fcf07fce2aebddb0206867753662e725f1",
+        "drivers/bus/mt8167-shared/codec_calibration.h": "1e7bd3f43c19c8fc76d36c44bffb0ae4fc2ff1bd7bea10802b6293c38a07cef1"
+      }
+    },
+    {
+      "scope": "parent",
+      "name": "codec_capture",
+      "sha256": "988dcbbfaebe0938c60ed49b88d8169892cbb0863ad8a14b34152e675d443c51",
+      "source_commit": "1d248a71a95360966ff867e4b063504ac764e074",
+      "dependencies": {
+        "drivers/bus/mt8167-shared/codec_capture.c": "e3ab1b64bb3c3c8f53a3ee17084d5d3c641824ff9e09cdda97177680eaa10b22",
+        "drivers/bus/mt8167-shared/codec_capture.h": "65154b56bf848ac7fd79b67cac9c3d35510e07e6707d43f9460977cc64cc624c"
+      }
+    },
+    {
+      "scope": "parent",
+      "name": "capture_input_owner",
+      "sha256": "3d52d2cbd7d2230c14aa73962831b9639437ed031551c09c59a87af82d73bf6c",
+      "source_commit": "1d248a71a95360966ff867e4b063504ac764e074",
+      "dependencies": {
+        "drivers/bus/mt8167-shared/capture_input_owner.c": "f405417486ee5280fb49c73172aee7ab9f8e147114af86fb104ab424c89dc6de",
+        "drivers/bus/mt8167-shared/capture_input_owner.h": "8f3262427f57880ab450e0feed699f817a89505ec15cd9f22b6c95fb48227014",
+        "drivers/bus/mt8167-shared/codec_capture.h": "65154b56bf848ac7fd79b67cac9c3d35510e07e6707d43f9460977cc64cc624c"
+      }
+    },
+    {
+      "scope": "parent",
+      "name": "gpio22",
+      "sha256": "dd816e2245b52796cf53fce7eb2392b147ba970a4667fa2bdf08b0cf4d563100",
+      "source_commit": "1d248a71a95360966ff867e4b063504ac764e074",
+      "dependencies": {
+        "drivers/usb/mt8167-usb20/gpio22.c": "f7df7f07bb9a84136d625a25a334128654f04f890056c46f1cfe6f948e30b282",
+        "drivers/usb/mt8167-usb20/gpio22.h": "ce8bc798c338e38e5ea9763bf8a37629e22e43dc074cee46ae1fff33d27c5b19"
+      }
+    },
+    {
+      "scope": "parent",
+      "name": "sd_power_owner",
+      "sha256": "80ac11ac27747f1772591c1d06d189842593af0b964d4c0c98f0e15c9db6558b",
+      "source_commit": "1d248a71a95360966ff867e4b063504ac764e074",
+      "dependencies": {
+        "drivers/input/a04br3-buttons/pmic_read.h": "88ba67b0e10c9c3986ef04227f8cfd074a1abd738e4c4832850ab640e32c25e2",
+        "drivers/storage/mt8167-sd/power_owner.c": "ff412f6275495fb61eb5bfd1e4166809b74b12db6c7eea9a4834934dd8cd265f",
+        "drivers/storage/mt8167-sd/power_owner.h": "f6774d7b6d4ff28efe4b6a81795f24579d18dbd7d5c843f69f76838c3e4608f4",
+        "drivers/system/mt6392-rtc/calendar.h": "e5b48ae9343971f786d74eab85a7d0d266bb981593bf1e614ffe81d4e4f26d77"
+      }
+    },
+    {
+      "scope": "parent",
+      "name": "usb_owner",
+      "sha256": "8eedda4669994afd7d5f90932addc3ade7ab2d1c40aeb218ebcea9a4f21a90b3",
+      "source_commit": "df7892ef316e8ce7ffdf01d9f2fbbbbf3840cf2d",
+      "dependencies": {
+        "drivers/bus/mt8167-shared/pwrap_owner.h": "9ee35e5e7fce12e85a818f77d2c1df597489549ee9b94bcfa28ddd46f882c9c1",
+        "drivers/bus/mt8167-shared/usb_admission.h": "c369f78d4dce4bac76f0710f3e983cbed15e886c8cbf9eb01ab1104a412eabba",
+        "drivers/bus/mt8167-shared/usb_owner.c": "117ebe19ba4890e64ae5b0cbcde4231fd42762690219a6813f2bd9f42dfbf0a0",
+        "drivers/bus/mt8167-shared/usb_owner.h": "7e660d577fa20a507ad0c36d3abba5e698eb8002d9183592f583b18e40598210",
+        "drivers/input/a04br3-buttons/pmic_read.h": "88ba67b0e10c9c3986ef04227f8cfd074a1abd738e4c4832850ab640e32c25e2",
+        "drivers/system/mt6392-rtc/calendar.h": "e5b48ae9343971f786d74eab85a7d0d266bb981593bf1e614ffe81d4e4f26d77",
+        "drivers/usb/mt8167-usb20/gpio22.h": "ce8bc798c338e38e5ea9763bf8a37629e22e43dc074cee46ae1fff33d27c5b19"
+      }
+    },
+    {
+      "scope": "thermal",
+      "name": "thermal",
+      "sha256": "a2c87ba2ee7a0305939b3e7d7df8030d435b1732f623e14b91185809640d1e3d",
+      "source_commit": "740800733fe9741023038026a717fd54d43cd7c3",
+      "dependencies": {
+        "drivers/power/mt8167-thermal/thermal.c": "1fba1cb81f7d7ec232e0b8545e0fadb608ec38f7503d60275c878d6383816d75",
+        "drivers/power/mt8167-thermal/thermal.h": "2b87fa96a75ec68225088a9696876f25080173fefbea17c85b69d17dae07ef38"
+      }
+    },
+    {
+      "scope": "thermal",
+      "name": "boot_record",
+      "sha256": "2dc061019f51e42ec71b3c66e2fcffd693f448291745e71041eb23bcfccae559",
+      "source_commit": "740800733fe9741023038026a717fd54d43cd7c3",
+      "dependencies": {
+        "drivers/power/mt8167-thermal/boot_record.c": "c2dcca0280047834cae1f5bb9cc3db0fd0862087551b73112022236d29f0b33b",
+        "drivers/power/mt8167-thermal/boot_record.h": "b1d29b6df4de85bbe2ffcebcf48867c52bff77b5b5ff6aa64b03414b9a2e0dd0",
+        "drivers/power/mt8167-thermal/thermal.h": "2b87fa96a75ec68225088a9696876f25080173fefbea17c85b69d17dae07ef38"
+      }
+    },
+    {
+      "scope": "thermal",
+      "name": "readout",
+      "sha256": "2129b3f0b6db69ac73d1b11ce578979411d24b54ca203c4e5f7536068800ac21",
+      "source_commit": "740800733fe9741023038026a717fd54d43cd7c3",
+      "dependencies": {
+        "drivers/power/mt8167-thermal/readout.c": "25b7e02a96c89b3b5d2e9b9c5646cf36590fb64ea9d3459e28fb8a7e59101cb7",
+        "drivers/power/mt8167-thermal/readout.h": "29e0958adca1d5c5c78313d41a8916a9a06dbb05a77c9dfba555876807d08f23",
+        "drivers/power/mt8167-thermal/thermal.h": "2b87fa96a75ec68225088a9696876f25080173fefbea17c85b69d17dae07ef38"
+      }
+    }
+  ],
+  "wdf_libraries": {
+    "wdfdriverentry.lib": "34fa9a8e28cfd8691732d96d3838a7452e3bbb5846b7fdc341d809494343dbe3",
+    "wdfldr.lib": "5637ab5b6468c7bcac793b5be4052e26e6dc4e8b024f9bdf62b7f1189a1c6ab2"
+  },
+  "kernel_libraries": {
+    "ntoskrnl.lib": "629c39140f6a222811461eff7f16dd63cca1f5d6e8f9ec31ed73eca2eecd965b",
+    "hal.lib": "f4a9b51c2011636ba55129ae230b829739e9d436be8def3e9efb882689e8a9b2",
+    "bufferoverflowfastfailk.lib": "477922667688067b93c85b98dd788713e731c9ed62f867e1b4aa971711d1fa5e",
+    "libcntpr.lib": "717e99050a9df5e6ad20458029a9f95c5f5839540cb0e0f044b307dda2f7822c"
+  },
+  "kernel_library_provenance": "Existing recovered WDK8.1 compiler-libs cache42378720261; actualRT81 exports and frozen1117/thermal1.10 import checks also required."
+}

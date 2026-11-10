@@ -20,5 +20,19 @@
   ],
   "new_user_object": "mt8167-clock-snapshot",
   "ARM_build_performed": false,
-  "runner_used": false
+  "runner_used": false,
+  "parent_compile_common": [
+    "--target=thumbv7-pc-windows-msvc",
+    "-fno-vectorize",
+    "-fno-slp-vectorize",
+    "-mno-unaligned-access",
+    "-mfpu=none",
+    "-ffreestanding",
+    "-O2",
+    "-fno-builtin",
+    "-fno-stack-protector",
+    "-fms-extensions",
+    "-std=c11"
+  ],
+  "parent_object_cache_archive_sha256": "5513da6f70bc5b6baa40a8c0438c934d09c4288704bd206d301feb2ed76ca7c2"
 }

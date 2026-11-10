@@ -1,0 +1,97 @@
+{
+  "baseline": {
+    "parent": {
+      "sha256": "bbced952c499ba0588c77b861b20141043929773d703cdd327ffa92e61990979",
+      "imports": {
+        "ntoskrnl.exe": [
+          "DbgPrintEx",
+          "ExAcquireFastMutex",
+          "ExAcquireRundownProtection",
+          "ExGetFirmwareEnvironmentVariable",
+          "ExInitializeRundownProtection",
+          "ExReInitializeRundownProtection",
+          "ExReleaseFastMutex",
+          "ExReleaseRundownProtection",
+          "ExWaitForRundownProtectionRelease",
+          "IofCompleteRequest",
+          "KeDelayExecutionThread",
+          "KeInitializeEvent",
+          "KeQueryInterruptTime",
+          "MmMapIoSpace",
+          "MmUnmapIoSpace",
+          "RtlCopyUnicodeString",
+          "RtlInitUnicodeString"
+        ],
+        "hal.dll": [
+          "KeGetCurrentIrql",
+          "KeStallExecutionProcessor"
+        ],
+        "wdfldr.sys": [
+          "WdfVersionBind",
+          "WdfVersionBindClass",
+          "WdfVersionUnbind",
+          "WdfVersionUnbindClass"
+        ]
+      }
+    },
+    "thermal": {
+      "sha256": "1c6558e922d3c0517ccd5734b712050a429cadf645fb53263a398b374e42d3e7",
+      "imports": {
+        "ntoskrnl.exe": [
+          "DbgPrintEx",
+          "ExGetFirmwareEnvironmentVariable",
+          "KeQueryInterruptTime",
+          "RtlCopyUnicodeString",
+          "RtlRaiseException"
+        ],
+        "wdfldr.sys": [
+          "WdfVersionBind",
+          "WdfVersionBindClass",
+          "WdfVersionUnbind",
+          "WdfVersionUnbindClass"
+        ]
+      }
+    }
+  },
+  "actual_RT81_exports": {
+    "ntoskrnl.exe": {
+      "actual_RT81_sha256": "54234b55f388f42424fdcbd57d14283be5f3b9d5ff4648c1a1d86b378760d659",
+      "symbols": [
+        "DbgPrintEx",
+        "ExAcquireFastMutex",
+        "ExAcquireRundownProtection",
+        "ExGetFirmwareEnvironmentVariable",
+        "ExInitializeRundownProtection",
+        "ExReInitializeRundownProtection",
+        "ExReleaseFastMutex",
+        "ExReleaseRundownProtection",
+        "ExWaitForRundownProtectionRelease",
+        "IofCompleteRequest",
+        "KeDelayExecutionThread",
+        "KeInitializeEvent",
+        "KeQueryInterruptTime",
+        "MmMapIoSpace",
+        "MmUnmapIoSpace",
+        "RtlCopyUnicodeString",
+        "RtlInitUnicodeString",
+        "RtlRaiseException"
+      ]
+    },
+    "hal.dll": {
+      "actual_RT81_sha256": "5f5c1dcab2bb41ac0316a93ce453741727b7623022426d4ae31cf88620bbe9d1",
+      "symbols": [
+        "KeGetCurrentIrql",
+        "KeStallExecutionProcessor"
+      ]
+    },
+    "wdfldr.sys": {
+      "actual_RT81_sha256": "930d583fafda45ebc0804ed303832dd7270184b768c9db13e139f0d0c09cde16",
+      "symbols": [
+        "WdfVersionBind",
+        "WdfVersionBindClass",
+        "WdfVersionUnbind",
+        "WdfVersionUnbindClass"
+      ]
+    }
+  }
+}

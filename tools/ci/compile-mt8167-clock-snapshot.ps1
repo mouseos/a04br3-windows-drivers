@@ -5,7 +5,7 @@ param([Parameter(Mandatory=$true)][string]$ParentManifest,
  [Parameter(Mandatory=$true)][string]$KitInclude,
  [Parameter(Mandatory=$true)][string]$UmInclude,
  [Parameter(Mandatory=$true)][string]$WdfInclude,
- [Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$Compile)
+ [Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$Compile,[string[]]$Only)
 $ErrorActionPreference='Stop'
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $out=[IO.Path]::GetFullPath($OutputDirectory)
@@ -35,18 +35,23 @@ function RemapFlags($flags){
  return $result
 }
 $common=@('--target=thumbv7-pc-windows-msvc','-ffreestanding','-fno-stack-protector','-fms-extensions')
+$parentCommon=@($pins.parent_compile_common)
 $parentFlags=(RemapFlags -flags @($parent.kernel_flags))+@($parent.parent_flags)
 $leafFlags=RemapFlags -flags @($leaf.flags)
 $opt=@('-DMT8167_CLOCK_SNAPSHOT_QUERY=1')
 $rows=@(
- @{name='parent';source='drivers/bus/mt8167-shared/wdf_parent_probe.c';flags=$common+$parentFlags+$opt+@('-w')},
- @{name='clock_snapshot';source='drivers/bus/mt8167-shared/clock_snapshot.c';flags=$common+@('-std=c11','-O2','-fno-vectorize','-fno-slp-vectorize','-Wall','-Wextra','-Werror')},
+ @{name='parent';source='drivers/bus/mt8167-shared/wdf_parent_probe.c';flags=$parentCommon+$parentFlags+$opt+@('-w')},
+ @{name='clock_snapshot';source='drivers/bus/mt8167-shared/clock_snapshot.c';flags=$parentCommon+@('-std=c11','-O2','-fno-vectorize','-fno-slp-vectorize','-Wall','-Wextra','-Werror')},
  @{name='parent_snapshot_client';source='drivers/system/mt8167-clock/parent_snapshot_client.c';flags=$leafFlags+$opt},
  @{name='wdf_native_thermal';source='drivers/power/mt8167-thermal/wdf_native_thermal.c';flags=$leafFlags+$opt},
  @{name='mt8167-clock-snapshot';source='tools/clock/mt8167-clock-snapshot.c';flags=$common+@('-O2','-fno-builtin','-w','-D_ARM_','-DARM','-D_WIN32_WINNT=0x0603','-DNTDDI_VERSION=0x06030000',"-I$UmInclude","-I$KitInclude\shared")},
- @{name='parent-flag-off';source='drivers/bus/mt8167-shared/wdf_parent_probe.c';flags=$common+$parentFlags+@('-DMT8167_CLOCK_SNAPSHOT_QUERY=0','-w')},
+ @{name='parent-flag-off';source='drivers/bus/mt8167-shared/wdf_parent_probe.c';flags=$parentCommon+$parentFlags+@('-DMT8167_CLOCK_SNAPSHOT_QUERY=0','-w')},
  @{name='thermal-flag-off';source='drivers/power/mt8167-thermal/wdf_native_thermal.c';flags=$leafFlags+@('-DMT8167_CLOCK_SNAPSHOT_QUERY=0')}
 )
+if($Only){
+ if(@($Only|Where-Object{$_ -notin @($rows.name)}).Count){throw 'Unknown compile target'}
+ $rows=@($rows|Where-Object{$_.name -in $Only})
+}
 if($Compile){
  if(@(& git -C $root status --porcelain).Count){throw 'Clean committed source required'}
  if(((& clang --version)[0]) -cne ($parent.compiler -split "`n")[0]){throw 'Reuse the baseline compiler; do not setup a new one'}
