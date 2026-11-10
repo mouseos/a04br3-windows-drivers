@@ -66,6 +66,23 @@ def members(path):
     require(offset == len(data), 'Archive alignment invalid')
     return rows
 
+def bound_link_inputs(spec, environment):
+    # Bind the actual child environment used by the unchanged public helper,
+    # not just an unrelated list of files with acceptable bytes.
+    matches=[v for k,v in environment.items() if k.casefold()=='programfiles(x86)']
+    require(len(matches)==1 and bool(matches[0]),'One unambiguous actual ProgramFiles(x86) kit mapping is required')
+    kit=matches[0]
+    km=Path(kit)/'Windows Kits/8.1/Lib/winv6.3/km/arm'
+    expected={Path(re.sub(r'\\+',r'\\',r['path'])).name.lower():r for r in spec['link_inputs']}
+    require(set(expected)=={'displib.lib','ntoskrnl.lib','hal.lib','libcntpr.lib','bufferoverflowfastfailk.lib'},'Exact five kernel libraries required')
+    pin(ROOT/'drivers/gpu/mt8167/wddm-render/link-kmd-msvc-wdk81.ps1',spec['link_helper_sha256'])
+    rows=[]
+    for name,row in expected.items():
+        actual=(km/name).resolve(strict=True);fixed=Path(re.sub(r'\\+',r'\\',row['path'])).resolve(strict=True)
+        require(actual==fixed,'Actual link helper resolves an unpinned library: '+str(actual))
+        pin(actual,row['sha256']);rows.append({'helper_selected_path':str(km/name),'resolved_path':str(actual),'sha256':sha(actual)})
+    return rows
+
 def validate(baseline, package, spec):
     for name, digest in spec['baseline_files'].items(): pin(baseline/name,digest)
     for row in spec['link_inputs']:pin(Path(re.sub(r'\\+',r'\\',row['path'])),row['sha256'])
@@ -158,6 +175,7 @@ def main():
             require({n:hashlib.sha256(b).hexdigest() for n,b in members(archive)}=={r['name']:r['new_sha256'] for r in rows},'New archive member drift')
             archives[newname]=dict(sha256=sha(archive),members=rows)
         receipt['archives']=archives
+        receipt['actual_child_link_inputs']=bound_link_inputs(spec,env)
         for name,library in [('ge8300-render','ge8300-kmd-clear.lib'),('mt8167-display-transport','ge8300-display-transport.lib')]:
             run([powershell,'-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',ROOT/'drivers/gpu/mt8167/wddm-render/link-kmd-msvc-wdk81.ps1','-KernelLibrary',out/library,'-NativeLibrary',native,'-OutputFile',out/(name+'.sys'),'-MapFile',out/(name+'.map'),'-MetadataFile',out/(name+'-link.json'),'-MicrosoftLinker',link,'-UnifiedDisplay'],name+'.link.log')
             linked=read(out/(name+'-link.json'));require(linked['sha256']==spec['LINK_sha256'] and linked['version'].startswith('14.29.'),'Wrong actual linker')
@@ -166,6 +184,7 @@ def main():
         consumed=dict(HASH_CACHE)
         HASH_CACHE.clear()
         for path,digest in consumed.items():require(sha(Path(path))==digest,'Consumed input/output changed during batch: '+path)
+        bound_link_inputs(spec,env)
         validate(baseline,package,spec);require(clean_source()==commit,'Source changed during build')
         for row in receipt['tools']:pin(Path(row['path']),row['sha256'])
         receipt['retained_native_include_trace_limits']={'compile_time_traces':38,'historical_unrecorded':29,'later_probes_are_not_historical':True}

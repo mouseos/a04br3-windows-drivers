@@ -2859,5 +2859,6 @@
   "link_input_pin_origins": {
     "displib.lib": "actual DWM370 kernel-link.json",
     "ntoskrnl.lib,hal.lib,libcntpr.lib,bufferoverflowfastfailk.lib": "actual DWM370 native/build-manifest.json; not historical per-TU include proof"
-  }
+  },
+  "link_helper_sha256": "6b513ec307a3a71631f9d37b3a490dc6024ba2d73e23ac114860dac7c9e80f91"
 }

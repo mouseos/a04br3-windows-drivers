@@ -76,3 +76,11 @@ The signer preserves the actual signed source30cb UMD, import library, FW and
 clients. Five individual BCBF checks include the retained UMD, plus six catalogue
 membership checks. New traces belong only to new compiles. The cold entry is
 unchanged. Failure manifests, stdout/stderr and archives are always retained.
+
+Independent review of source802034da approved the production composition and
+13TU scope, and required binding the actual link helper environment to the five
+pinned WDK library paths. The recipe now resolves those paths from the exact
+child environment (case-insensitive Windows variable name), requires canonical
+path equality and SHA equality, pins the unchanged helper source, and records
+all five bindings before link and verifies them again after link. This guard
+requires follow-up peer approval before any Windows compile/sign execution.
