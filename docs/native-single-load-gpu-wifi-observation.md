@@ -28,3 +28,5 @@ python3 -B "$src/tools/winpe/decode-mt6630-checkpoint.py" --receipt-directory "$
 `initialize_parent_bound`と`connection_parent_bound`を確認し、build/generation/parent_generationと`last_observed_connection_event`を報告する。旧RuntimeFailureは現接続へ結合しない。選択情報だけでloaded SYS byte一致を認定しない。StartGapの欠落/entry-only/zero/module identityだけで今回bootやGPU公開成功を認定せず、実bootとFILETIME/interrupttimeを別途結合する。未指定frequency fallbackを前提にしない。
 
 既decoderのfixture testで1029結合/旧記録除外/raw改変拒否を確認。本公開変更後のWindows native実行は未実施。実capture/hash通知後の許可された一回に含めて検証する。
+
+`-IncludeWifiCheckpoint`時はSourceDirectoryを実captureの`files/Windows/System32/config`形に配置し、隣接`Drivers`へ同captureのge8300-render.sys/mt8167-display-transport.sys/mt6630-combo-runtime.sysを置く。3SYSのmanifest SHA/sizeをload前とcleanup後に照合し、`captured_driver_files`へ記録する。これはcaptureされた実配置byteの証拠で、loaded imageの証明ではない。
