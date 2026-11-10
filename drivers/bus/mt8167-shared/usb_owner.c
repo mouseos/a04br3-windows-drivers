@@ -6,10 +6,10 @@
 #define USB78_GATE (1u<<31)
 static int enter(struct a04_usb_owner *o)
 { return !o || !o->lock || !o->unlock ? -1 : o->lock(o->context); }
-int a04_usb_owner_acquire(struct a04_usb_owner *o)
+int a04_usb_owner_acquire_locked(struct a04_usb_owner *o)
 {
  int r=-1, gpio_attempted=0; unsigned clk1,clk2; uint16_t rail;
- if(enter(o))return -1;
+
  if(!o->online || o->leased || o->poisoned || !o->verify_upstream || !o->top_read || !o->top_write || !o->pmic || o->pmic->poisoned)goto done;
  if(o->probe_source) {
   int admission=o->probe_source(o->context);
@@ -29,7 +29,7 @@ fail:
   * driven off if possible; retain shared clocks/rail to protect other users. */
  if(gpio_attempted)(void)A04Gpio22Vbus(&o->gpio,0);
  o->poisoned=1;
-done: o->unlock(o->context); return r;
+done: return r;
 }
 /* Caller holds the parent lock. Stop the board switch before releasing the
  * charger/source owner; a failed release retains both leases. */
@@ -42,9 +42,12 @@ static int off_locked(struct a04_usb_owner *o)
  }
  return 0;
 }
-int a04_usb_owner_vbus(struct a04_usb_owner *o,int on)
+int a04_usb_owner_acquire(struct a04_usb_owner *o)
+{int r;if(enter(o))return -1;r=a04_usb_owner_acquire_locked(o);o->unlock(o->context);return r;}
+
+int a04_usb_owner_vbus_locked(struct a04_usb_owner *o,int on)
 {
- int r=-1,source;if(on!=0 && on!=1)return -1;if(enter(o))return -1;
+ int r=-1,source;if(on!=0 && on!=1)return -1;
  if(o->leased) {
   if(!on) r=off_locked(o);
   else if(o->online && !o->poisoned) {
@@ -60,24 +63,33 @@ int a04_usb_owner_vbus(struct a04_usb_owner *o,int on)
    }
   }
  }
- o->unlock(o->context);return r;
+ return r;
 }
-int a04_usb_owner_health(struct a04_usb_owner *o)
+int a04_usb_owner_vbus(struct a04_usb_owner *o,int on)
+{int r;if(enter(o))return -1;r=a04_usb_owner_vbus_locked(o,on);o->unlock(o->context);return r;}
+
+int a04_usb_owner_health_locked(struct a04_usb_owner *o)
 {
- int r=-1;if(enter(o))return -1;
+ int r=-1;
  if(o->online && o->leased && !o->poisoned && o->verify_overcurrent) {
   if(!o->verify_overcurrent(o->context))r=0;
   else { (void)off_locked(o);o->poisoned=1; }
  }
- o->unlock(o->context);return r;
+ return r;
 }
-int a04_usb_owner_release(struct a04_usb_owner *o)
+int a04_usb_owner_health(struct a04_usb_owner *o)
+{int r;if(enter(o))return -1;r=a04_usb_owner_health_locked(o);o->unlock(o->context);return r;}
+
+int a04_usb_owner_release_locked(struct a04_usb_owner *o)
 {
- int r=-1;if(enter(o))return -1;
+ int r=-1;
  if(o->leased) {r=off_locked(o);if(!r)o->leased=0;}
  /* Other consumers may still require the clocks and VUSB. */
- o->unlock(o->context);return r;
+ return r;
 }
+int a04_usb_owner_release(struct a04_usb_owner *o)
+{int r;if(enter(o))return -1;r=a04_usb_owner_release_locked(o);o->unlock(o->context);return r;}
+
 int a04_usb_owner_stop(struct a04_usb_owner *o)
 {
  int r; if(enter(o))return -1; o->online=0; r=o->leased?-1:0; o->unlock(o->context); return r;

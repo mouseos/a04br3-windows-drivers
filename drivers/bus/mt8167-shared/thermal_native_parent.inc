@@ -2,8 +2,45 @@
  * V3 board-stopped producer -> one synchronous parent PIO owner.
  * GPIO/PMIC/audio/USB state is not changed on thermal failure. */
 #include "thermal_pio_record.h"
+#include <acpiioct.h>
 /* GPL-2.0-only ADC algorithm retained with its source license. */
 #include "../../power/mt8167-thermal/auxadc_pio.c"
+/* The volatile runtime record is read-only after ExitBootServices. The
+ * board's serialized ACPI latch instead survives FDO/PDO re-creation and
+ * resets only with the OS ACPI namespace. No variable attributes change. */
+static NTSTATUS ParentAdcAcpiInteger(WDFDEVICE device,ULONG method,ULONG *value)
+{
+ ACPI_EVAL_INPUT_BUFFER input;ACPI_EVAL_OUTPUT_BUFFER output;
+ WDF_MEMORY_DESCRIPTOR in,out;WDF_REQUEST_SEND_OPTIONS options;
+ ULONG_PTR bytes=0;NTSTATUS status;
+ ULONG end=FIELD_OFFSET(ACPI_EVAL_OUTPUT_BUFFER,Argument)+
+  FIELD_OFFSET(ACPI_METHOD_ARGUMENT,Data)+sizeof(ULONG);
+ if(!device||!value||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ *value=0;RtlZeroMemory(&input,sizeof(input));RtlZeroMemory(&output,sizeof(output));
+ input.Signature=ACPI_EVAL_INPUT_BUFFER_SIGNATURE;input.MethodNameAsUlong=method;
+ WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(&in,&input,sizeof(input));
+ WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(&out,&output,sizeof(output));
+ WDF_REQUEST_SEND_OPTIONS_INIT(&options,WDF_REQUEST_SEND_OPTION_TIMEOUT);
+ WDF_REQUEST_SEND_OPTIONS_SET_TIMEOUT(&options,WDF_REL_TIMEOUT_IN_MS(2000));
+ status=WdfIoTargetSendIoctlSynchronously(WdfDeviceGetIoTarget(device),NULL,
+  IOCTL_ACPI_EVAL_METHOD,&in,&out,&options,&bytes);
+ if(!NT_SUCCESS(status))return status;
+ if(bytes<end||bytes>sizeof(output)||output.Signature!=ACPI_EVAL_OUTPUT_BUFFER_SIGNATURE||
+    output.Count!=1||output.Length<end||output.Length>bytes||
+    output.Argument[0].Type!=ACPI_METHOD_ARGUMENT_INTEGER||
+    output.Argument[0].DataLength!=sizeof(ULONG))return STATUS_DATA_ERROR;
+ *value=output.Argument[0].Argument;return STATUS_SUCCESS;
+}
+static NTSTATUS ParentAdcConsumeProof(A04_PARENT_CONTEXT *c)
+{
+ WDFDEVICE device=(WDFDEVICE)WdfObjectContextGetObject(c);ULONG value;NTSTATUS status;
+ status=ParentAdcAcpiInteger(device,0x56435441u,&value); /* ATCV */
+ if(!NT_SUCCESS(status))return status;
+ if(value!=1u)return STATUS_REVISION_MISMATCH;
+ status=ParentAdcAcpiInteger(device,0x4f435441u,&value); /* ATCO */
+ if(!NT_SUCCESS(status))return status; /* uncertain consumption stays closed */
+ return value==1u?STATUS_SUCCESS:STATUS_ACCESS_DENIED;
+}
 static int ThermalPioQualified(void *p)
 {
  A04_PARENT_CONTEXT *c=p;
@@ -25,10 +62,30 @@ static int ThermalPioWait(void *p,unsigned us)
 { if(!ThermalPioQualified(p)||!us||us>1000)return -1;KeStallExecutionProcessor(us);return 0; }
 static int ThermalPioRecordValid(const A04_THERMAL_PIO_RECORD *r,ULONG bytes,ULONG attributes)
 {
- return bytes==sizeof(*r)&&sizeof(*r)==72&&attributes==6&&r->version==2&&r->bytes==sizeof(*r)&&r->ready==1&&r->stage==6&&
-  r->clock_after!=MAXULONG&&!(r->clock_after&0x40000002u)&&r->reset_after!=MAXULONG&&(r->reset_after&1)&&
+ return bytes==sizeof(*r)&&sizeof(*r)==72&&attributes==6&&(r->version==2||r->version==3)&&r->bytes==sizeof(*r)&&r->ready==1&&r->stage==6&&
+  r->clock_after!=MAXULONG&&!(r->clock_after&0x40000002u)&&(r->version==3||(r->reset_after!=MAXULONG&&(r->reset_after&1)))&&
   !r->irq_after&&!(r->ahb_after>>16)&&!r->mon_after&&(r->pause_after&0x10eu)==0x10eu&&
   !r->adc_mode&&!r->adc_trigger&&r->adc_busy!=0xffffu&&!(r->adc_busy&1)&&!r->irq_pending;
+}
+/* v3 uses the CT3 paused/disabled producer stop, not an STA latch promise.
+ * Called under ParentLock at BOTH ends of the same single ADC lease. */
+static int ParentAdcProducerStopped(A04_PARENT_CONTEXT *c,PVOID th,ULONG version)
+{
+ ULONG state;
+ if(version==2){
+  state=READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->infra+0x128));
+  if(state==MAXULONG||!(state&1))return 0;
+ }else if(version!=3)return 0;
+ ULONG pause;
+ if(!th)return 0;
+ if(version==3){
+  pause=READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)th+0x3c));
+  if(pause==MAXULONG||(pause&0x10eu)!=0x10eu)return 0;
+ }
+ return !READ_REGISTER_ULONG((volatile ULONG*)th)&&
+  !READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)th+0xc))&&
+  !READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)th+0x10))&&
+  !(READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)th+0x418))>>16);
 }
 #if A04_SHARED_HP_PCM
 /* Serialized by adcPurpose, not an additional AUXADC owner. Cache only the
@@ -41,7 +98,7 @@ static NTSTATUS ParentAdcProof(A04_PARENT_CONTEXT *c,A04_THERMAL_PIO_RECORD *rec
  RtlZeroMemory(record,sizeof(*record));
  status=ExGetFirmwareEnvironmentVariable(&name,&guid,record,&bytes,&attrs);
  if(!NT_SUCCESS(status)||!ThermalPioRecordValid(record,bytes,attrs))return STATUS_DEVICE_NOT_READY;
- status=ExSetFirmwareEnvironmentVariable(&name,&guid,NULL,0,0);
+ status=ParentAdcConsumeProof(c);
  if(!NT_SUCCESS(status))return status;
  if(InterlockedCompareExchange(&c->admissionClosed,0,0)||InterlockedCompareExchange(&c->removed,0,0))return STATUS_DEVICE_NOT_READY;
  c->adcProof=*record;c->adcProofValid=1;return STATUS_SUCCESS;
@@ -80,15 +137,13 @@ static NTSTATUS ParentThermalPioMeasure(PVOID p,ULONG *adopted,ULONG raw[3],ULON
  if(!NT_SUCCESS(status)||!ThermalPioRecordValid(&record,bytes,attrs)){status=STATUS_DEVICE_NOT_READY;goto outside;}
  /* Consume once for this boot. A recreated PDO/parent cannot reuse the record
   * after an uncertain operation. Failure to consume never opens admission. */
- *stage=3;status=ExSetFirmwareEnvironmentVariable(&name,&guid,NULL,0,0);
+ *stage=3;status=ParentAdcConsumeProof(c);
  if(!NT_SUCCESS(status))goto outside;
 #endif
  *stage=4;if(ParentLock(c)){status=STATUS_DEVICE_NOT_READY;goto outside;}
  if(c->thermal.poisoned||c->thermal.leased||!c->topck||!c->infra||!c->apmixed||c->apmixedLength<0x608){status=STATUS_DEVICE_NOT_READY;goto unlock;}
  value=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->topck+0x24));
  if(value==MAXULONG||(value&0x40000002u)){status=STATUS_DEVICE_NOT_READY;goto unlock;}
- value=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->infra+0x128));
- if(value==MAXULONG||!(value&1)){status=STATUS_DEVICE_NOT_READY;goto unlock;}
  /* ParentPrepare checked the complete exclusive eight-range assignment.
   * No child-supplied physical address or pointer can reach this owner. Map
   * only after strict firmware/clock/reset admission, before the first use. */
@@ -97,11 +152,8 @@ static NTSTATUS ParentThermalPioMeasure(PVOID p,ULONG *adopted,ULONG raw[3],ULON
  if(!thermal){status=STATUS_INSUFFICIENT_RESOURCES;goto unlock;}
  adc=MmMapIoSpace(c->thermalAssigned[1],0x1000,MmNonCached);
  if(!adc){status=STATUS_INSUFFICIENT_RESOURCES;goto unlock;}
- /* Firmware left the old bus master in reset; no IRQ/ISR/DPC is created. */
- if(READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)thermal+0xc))||
-    READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)thermal+0x10))||
-    READ_REGISTER_ULONG((volatile ULONG *)thermal)||
-    (READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)thermal+0x418))>>16)||
+ /* v2 reset-held or v3 stock paused/disabled; no IRQ/ISR/DPC. */
+ if(!ParentAdcProducerStopped(c,thermal,record.version)||
     READ_REGISTER_USHORT((volatile USHORT *)adc)||READ_REGISTER_USHORT((volatile USHORT *)((volatile UCHAR *)adc+4))||
     (READ_REGISTER_USHORT((volatile USHORT *)((volatile UCHAR *)adc+0x10))&1)) {status=STATUS_DEVICE_NOT_READY;goto unlock;}
  /* 500ms total observation/cleanup budget. Expiration after touching hardware
@@ -134,8 +186,9 @@ static NTSTATUS ParentThermalPioMeasure(PVOID p,ULONG *adopted,ULONG raw[3],ULON
  if(READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+0x604))!=value)goto retain;
  if(READ_REGISTER_USHORT((volatile USHORT *)((volatile UCHAR *)adc+4))||
     (READ_REGISTER_USHORT((volatile USHORT *)((volatile UCHAR *)adc+0x10))&1))goto retain;
- value=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->infra+0x128));
- if(value==MAXULONG||!(value&1))goto retain;
+ value=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->topck+0x24));
+ if(value==MAXULONG||(value&0x40000002u)||
+    !ParentAdcProducerStopped(c,thermal,record.version)||READ_REGISTER_USHORT((volatile USHORT*)adc))goto retain;
  *stage=10;c->thermal.quiescent=1;c->thermal.leased=0;c->thermal.native_claim=0;c->thermal.firmware_released=0;c->thermal.adc_exclusive=0;
  MmUnmapIoSpace(c->thermalPioMappings[0],0x1000);MmUnmapIoSpace(c->thermalPioMappings[1],0x1000);
  c->thermalPioMappings[0]=c->thermalPioMappings[1]=NULL;

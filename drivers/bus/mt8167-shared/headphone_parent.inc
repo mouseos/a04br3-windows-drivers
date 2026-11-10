@@ -40,13 +40,9 @@ static NTSTATUS ParentHpAdcBegin(PVOID p,ULONG *generation)
     c->thermalPioMappings[0]||c->thermalPioMappings[1]||!c->thermalAssigned[0].QuadPart||!c->thermalAssigned[1].QuadPart){status=STATUS_DEVICE_BUSY;goto unlock;}
  value=READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->topck+0x24));
  if(value==MAXULONG||(value&0x40000002u)){status=STATUS_DEVICE_NOT_READY;goto unlock;}
- value=READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->infra+0x128));
- if(value==MAXULONG||!(value&1)){status=STATUS_DEVICE_NOT_READY;goto unlock;}
  th=MmMapIoSpace(c->thermalAssigned[0],0x1000,MmNonCached);if(!th){status=STATUS_INSUFFICIENT_RESOURCES;goto unlock;}
  adc=MmMapIoSpace(c->thermalAssigned[1],0x1000,MmNonCached);if(!adc){status=STATUS_INSUFFICIENT_RESOURCES;goto unlock;}
- if(READ_REGISTER_ULONG((volatile ULONG*)th)||READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)th+0xc))||
-    READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)th+0x10))||
-    (READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)th+0x418))>>16)||
+ if(!ParentAdcProducerStopped(c,th,proof.version)||
     READ_REGISTER_USHORT((volatile USHORT*)adc)||READ_REGISTER_USHORT((volatile USHORT*)((volatile UCHAR*)adc+4))||
     (READ_REGISTER_USHORT((volatile USHORT*)((volatile UCHAR*)adc+0x10))&1)){status=STATUS_DEVICE_NOT_READY;goto unlock;}
  now=KeQueryInterruptTime();if(now>UINT64_MAX-100000000ULL){status=STATUS_DEVICE_NOT_READY;goto unlock;}
@@ -102,12 +98,7 @@ static NTSTATUS ParentHpAdcEnd(PVOID p,ULONG generation)
  if(!c->thermalPioMappings[0]||!c->thermalPioMappings[1]||!c->topck||!c->infra||
     READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->topck+0x24))==MAXULONG||
     (READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->topck+0x24))&0x40000002u)||
-    READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->infra+0x128))==MAXULONG||
-    !(READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->infra+0x128))&1)||
-    READ_REGISTER_ULONG((volatile ULONG*)c->thermalPioMappings[0])||
-    READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->thermalPioMappings[0]+0xc))||
-    READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->thermalPioMappings[0]+0x10))||
-    (READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->thermalPioMappings[0]+0x418))>>16)||
+    !ParentAdcProducerStopped(c,c->thermalPioMappings[0],c->adcProof.version)||
     READ_REGISTER_USHORT((volatile USHORT*)c->thermalPioMappings[1])||
     READ_REGISTER_USHORT((volatile USHORT*)((volatile UCHAR*)c->thermalPioMappings[1]+4))||
     (READ_REGISTER_USHORT((volatile USHORT*)((volatile UCHAR*)c->thermalPioMappings[1]+0x10))&1)){
