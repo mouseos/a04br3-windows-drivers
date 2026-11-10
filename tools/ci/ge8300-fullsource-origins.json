@@ -1633,9 +1633,9 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/unified_display.cxx",
-      "source_commit": "465679f24402ff822b2c2a815b02379595aeaad5",
+      "source_commit": "0d1bc0a7c9ca68f49fd0449ee9116a8c75c9d58d",
       "role": "Required SetPalette rejection for unified32-bit true-colour display; no palette hardware claimed",
-      "sha256": "b479edd77688abad3338f63f002393b443ed30b63549b59cb537bd7fc0d682ec",
+      "sha256": "8a79ff258e8fad2f779403b9576cc3d2a90417f01ca117f98f047857e1ef8ef2",
       "previous_origins": [
         {
           "path": "drivers/gpu/mt8167/wddm-display/unified_display.cxx",
@@ -1648,6 +1648,12 @@
           "source_commit": "523584213f3624551c86100a18039216a683b736",
           "role": "Required SetPalette rejection for unified32-bit true-colour display; no palette hardware claimed",
           "sha256": "2fd6b2d574474f1f1dbbc06bb0417b5b73e8de4c1ac89c207f46377251affdb2"
+        },
+        {
+          "path": "drivers/gpu/mt8167/wddm-display/unified_display.cxx",
+          "source_commit": "465679f24402ff822b2c2a815b02379595aeaad5",
+          "role": "Required SetPalette rejection for unified32-bit true-colour display; no palette hardware claimed",
+          "sha256": "b479edd77688abad3338f63f002393b443ed30b63549b59cb537bd7fc0d682ec"
         }
       ]
     },
