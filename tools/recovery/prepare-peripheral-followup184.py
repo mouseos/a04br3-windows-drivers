@@ -149,6 +149,11 @@ def build_policy(root,spec):
  p['present_collect']=copy.deepcopy(p['present_collect'])
  p['present_collect']['join']=p['present_collect']['join'].replace('SCM client0','SCM client1')
  p['present_collect']['sameboot_required']=p['present_collect']['sameboot_required'].replace('ModuleIdentity356','ModuleIdentity359')
+ p['parent_contract']=copy.deepcopy(p['parent_contract'])
+ p['parent_contract']['matched_parent_version']=packages['parent']['driver_version']
+ p['standard_present_artifact_contract_reference']=copy.deepcopy(p['standard_present_contract'])
+ p['standard_present_contract']=copy.deepcopy(p['standard_present_contract'])
+ p['standard_present_contract'].update(diagnostic_clients=2,execution_index=1,driver_package_source_commit=packages['render']['source_commit'],driver_signed_manifest_sha256=spec['GPU359_manifest']['sha256'])
  p['input_pins']=[{'path':k,'sha256':v}for k,v in sorted(pins.items())]
  return p
 
