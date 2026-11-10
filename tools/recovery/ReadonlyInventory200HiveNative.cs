@@ -85,13 +85,20 @@ namespace MT8167OfflineHive {
             try { CheckLink(h); RegistryKey result=RegistryKey.FromHandle(new SafeRegistryHandle(h,true),RegistryView.Registry64);PrivateRoots.Add(h);return result; }
             catch { RegCloseKey(h); throw; }
         }
+        public static bool IsInventoryPathAllowed(string path) {
+            if(String.IsNullOrEmpty(path)) return false;
+            foreach(string part in path.Split('\\'))
+                if(part.Length==0 || part=="." || part=="..") return false;
+            // Two exact environment leaves, never an arbitrary Setup subtree.
+            bool allowed=path=="Select" || path=="ControlSet001" || path=="Setup" || path=="ControlSet001\\Control\\MiniNT";
+            foreach(string prefix in new string[]{"ControlSet001\\Services","ControlSet001\\Enum","ControlSet001\\Control\\Class","ControlSet001\\Control\\GraphicsDrivers","ControlSet001\\Control\\Video"})
+                if(path==prefix || path.StartsWith(prefix+"\\",StringComparison.Ordinal)) allowed=true;
+            return allowed;
+        }
         public static RegistryKey OpenPath(RegistryKey root,string path,bool writable) {
             if(!PrivateRoots.Contains(root.Handle.DangerousGetHandle())) throw new ArgumentException("Only our private clone root is allowed");
             if(writable) throw new InvalidOperationException("Inventory does not allow writable paths");
-            bool allowed=path=="Select" || path=="ControlSet001";
-            foreach(string prefix in new string[]{"ControlSet001\\Services","ControlSet001\\Enum","ControlSet001\\Control\\Class","ControlSet001\\Control\\GraphicsDrivers","ControlSet001\\Control\\Video"})
-                if(path==prefix || path.StartsWith(prefix+"\\",StringComparison.Ordinal)) allowed=true;
-            if(!allowed) throw new ArgumentException("Bounded inventory path required");
+            if(!IsInventoryPathAllowed(path)) throw new ArgumentException("Bounded inventory path required");
             RegistryKey current=null;
             try {
                 foreach(string part in path.Split('\\')) {

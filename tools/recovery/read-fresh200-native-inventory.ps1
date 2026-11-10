@@ -103,10 +103,6 @@ try{
  $cs='ControlSet001'
  . "$PSScriptRoot\read-post-ownership-policy360.ps1"
  $r.post_ownership_policy360=Read-PostOwnershipPolicy360 $root
- if($IncludeBootEnvironment){
-  . (Join-Path $PSScriptRoot 'read-boot-environment.ps1')
-  $r.boot_environment=Read-BootEnvironment $root $cs
- }
  # These are observed fresh values, not a comparison against the old template.
  $names=@($p.service_preservation.PSObject.Properties.Name)+@($AdditionalServiceNames)
  $services=[MT8167OfflineHive.Native]::OpenPath($root,"$cs\Services",$false)
@@ -217,6 +213,10 @@ try{
  }finally{$key.Dispose()}}
  $r.observed_counts=@{old_services=$r.old_services.Count;named_values=$r.captured_named_values.Count;nodes=$r.nodes.Count}
  $r.full_service_capture_complete=$true
+ if($IncludeBootEnvironment){
+  . (Join-Path $PSScriptRoot 'read-boot-environment.ps1')
+  $r.boot_environment=Read-BootEnvironment $root $cs
+ }
  if($r.new_service.present){throw 'NewServiceName200 is actually present; do not arm or mislabel it absent'}
 }catch{$r.errors+=@($_.Exception.Message)}finally{
  if($root){$root.Dispose()}
