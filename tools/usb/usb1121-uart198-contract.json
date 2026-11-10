@@ -1,0 +1,33 @@
+{
+  "schema": "MT8167_USB1121_UART198_V1",
+  "prefix": "U198",
+  "profile_hex": "000000C6",
+  "line_regex": "^U198 000000C6 ([0-9A-F]{8}) ([0-9A-F]{8}) ([0-9A-F]{8}) ([0-9A-F]{8})$",
+  "fields": [
+    "run",
+    "PID",
+    "event",
+    "code"
+  ],
+  "line_bytes_including_LF": 50,
+  "events": {
+    "START": 1,
+    "RUN_RESULT": 2,
+    "REBOOT_REQUIRED": 3,
+    "SCM_STOP": 4,
+    "VOLUME_FLUSH": 5,
+    "TERMINAL": 6,
+    "REBOOT_REQUEST": 7
+  },
+  "reboot_required_code": 3010,
+  "collection_gate": "same boot/run/PID START, RUN_RESULT, SCM_STOP(code0), final VOLUME_FLUSH(code0), TERMINAL(code!=3010); no later REBOOT_REQUIRED without successful request; actual observed UART only",
+  "pending_reboot": "TERMINAL code00000BC2 requires REBOOT_REQUEST code0 and means wait next Windows START/Resume; no Recovery collect yet",
+  "terminal_code0": "installer returned an expected deployment phase; not proof of host enumeration, VBUS or power improvement",
+  "missing_terminal": "unknown; no timeout-based reset permission",
+  "driver_rebuilt": false,
+  "helper_rebuilt": false,
+  "SDK_setup": false,
+  "maximum_planned_reboots": 4,
+  "reboot_budget": "logs/planned-reboots.bin, durable per deployment; fifth request returns ERROR_RETRY(1237), no reboot",
+  "SCM_stop_observer": "same signed EXE --uart-terminal RUN PID RESULT; QueryServiceStatusEx confirms STOPPED; original SCM callback performs no work after SetServiceStatus(STOPPED)"
+}

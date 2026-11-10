@@ -112,3 +112,85 @@ media builderもこのbinary/native recipe出自の分離を受け付ける。
 
 修正recipeのWindows実行・Access denied解消・保全照合はmainの再実行待ち。
 実機適用・host列挙・給電改善は引き続き未検証。
+
+## UART terminal版（ready7ecを保持し、新service 1 TUだけ更新）
+
+branch `work/usb1121-service198-uart-terminal`。
+元ready7ec manifest `5447b112e3be16a7b6fd13c1733cc4411bab6b2eee3abaa6da5a4da3ed0f3d7b`、
+SYSTEM `e9fcc62c3abf5464cb4fd3d2c0bd01c80172adc4bae198d8532090d695003b71`、
+native result `0f6570cca2b78d39e7731b677aa24dde5c8269a021364d5caf9a2928aa49c023`を固定。
+旧packageを変更せず、新規checkout-local outputへnative全leafをexact copyする。
+service name/登録値とnative preparer/helper source bytesは同一。新native処理は実行しない。
+新EXEのsource_commitはUART branch、native_preparation_source_commitは7ec02fc5として分離する。
+input closure/profile/helper/driverは同じ。driver/helper/SDK rebuild=0、新serviceだけ1 TU compile/link/sign。
+
+```powershell
+& "$src\tools\ci\build-usb1121-service198.ps1" -Inputs 'C:\mt8167-usb1121-fresh198\inputs' -ExpectedInputClosureSha256 '09fcdfca60dac35fd3572a23d43c9de4100ab70e799ccdb9e1bd6bb7b2598955' -ReadyPackage 'C:\mt8167-usb1121-fresh198\source\out\usb1121-service198' -OutputDirectory "$src\out\usb1121-service198-uart" -KitHeaderRoot $ExistingKitHeaders -LibraryRoot $ExistingArmLibraries -SignTool $ExistingSignTool
+```
+
+媒体はこのUART版manifestを回収・mainがpin確定した後に一度だけ生成する。
+新media builderはUART契約を持たない旧packageを拒否する。旧WIMを先にbuildする必要はない。
+mediaのSYSTEMは上記e9fcc62cと同一。boot/GPT変更0。
+
+### wire formatとcontrollerの判定
+
+`tools/usb/usb1121-uart198-contract.json`が機械可読契約。
+各recordはASCII、LF込み50 bytes。PBとは異なる固定prefix：
+
+```text
+U198 000000C6 RRRRRRRR PPPPPPPP EEEEEEEE CCCCCCCC\n
+```
+
+run/PID/event/codeは大文字hex各8桁。profileは198（hex C6）。
+runは同bootのFILETIME/tick/PIDから生成。PIDは元SCM serviceのPIDであり、
+後述observer processでも同じrun/PIDを引き継ぐ。hostは今回bootのSTARTからjoinし、
+旧UARTや別run/PIDのeventを混ぜない。
+
+| Event | 意味 | Code |
+|---|---|---|
+| 1 START | SCM登録・RUNNING/log準備後、installer開始前 | 0または開始準備error |
+| 2 RUN_RESULT | PowerShell/90e installer process終了 | Win32/process exit code |
+| 3 REBOOT_REQUIRED | installerが要求した再起動 | 3010 (`00000BC2`) |
+| 4 SCM_STOP | observerが実SERVICE_STOPPEDを確認 | 0。非0は観測失敗、回収gate不成立 |
+| 5 VOLUME_FLUSH | LocalSystem/C:\Windows確認後のC: FlushFileBuffers戻り値 | 0またはerror |
+| 6 TERMINAL | SCM停止・log close・volume flush後、以後disk変更なし | 最終結果。3010なら予定再起動待ち |
+| 7 REBOOT_REQUEST | source上限確認後の再起動要求API結果、またはbudget拒否 | 0またはerror |
+
+通常順序は1→2→4→5→6。予定再起動は1→2(3010)→3(3010)→4(0)→5(0)→7(0)→6(3010)。
+再起動API失敗は7(error)の後にnewservice disable・再flush(5)を行い、6(error)となる。
+budget超過は4(0)→7(ERROR_RETRY)→5(0)→6(ERROR_RETRY)で、再起動を要求しない。
+
+予定再起動は**最大4回**。旧provider停止、親bind、親restart、HCD bindの最大4境界を覆う。
+`logs/planned-reboots.bin`でdeployment全体のattempt数を保持し、5回目はERROR_RETRY(1237)で停止。
+counterを自動で削除・初期化しない。同候補の失敗後の再適用や任意retryを許可するものではない。
+
+hostは同boot/run/PIDのSTART・RESULT・SCM_STOP(0)・最後のFLUSH(0)と実UART TERMINALを要求する。
+TERMINAL=3010ではRESULT/REBOOT_REQUIRED=3010およびREBOOT_REQUEST=0も必須で、
+予定Windows reboot/Resumeだけを待つ。Recovery回収へ進まない。
+TERMINAL≠3010なら正常／失敗のどちらでも静止・flushの回収境界としてRecoveryへ進める。
+STARTが非0でも、その後の停止/flush/terminalが成立すれば失敗ログ回収は可能。
+code0自体はhost列挙・VBUS・USB給電改善の証明ではない。journalのphaseも回収・判定する。
+
+terminalがない、flushが非0、SCM停止が未確認の場合はunknownとして証拠を保持する。
+実行中timeoutを根拠にresetしない。observerのSCM待ちは30秒で観測失敗を返すが、
+そのtimeoutはhostへresetを許可するeventではない。
+
+### bounded UART・停止後observer
+
+peripheral serviceの`uart_record`を再用（2秒BUSY上限、pending待機1000ms、cancel後250ms、
+未完了OVERLAPPEDはquarantineしてprocess寿命まで保持、96-byte上限）。
+C: volume flushも既peripheralのhelperをbyte同一で再用。lock/dismount/raw書込みはない。
+
+SERVICE_STOPPEDをSetServiceStatusした後はSCM processが終了され得るため、
+同署名EXEの`--uart-terminal RUN PID RESULT`を先に起動する。
+元SCM callbackはlogを閉じ、最後にSERVICE_STOPPEDを報告して戻る。以後処理しない。
+独立observerがQueryServiceStatusExで実STOPPEDを確認し、SCM_STOP record、log close、
+volume flush、UART-only FLUSH/TERMINALを行う。terminal後のfile/registry変更はない。
+予定再起動要求はflush後、30秒delayで行い、その結果と3010 terminalを先に通知する。
+
+### 検証と未確認
+
+host stubで実production formatter・停止observer・reboot上限関数をcompileし、固定50-byte形式と
+正常／installer失敗／3010／SCM未停止／flush失敗／reboot API失敗／4回上限の7経路を確認。
+これはWindows service自体のbuild、実UART、C: flush、予定再起動、実機PnPの証明ではない。
+それらはmain実行待ち。ready7ec packageとnative proofは保持する。
