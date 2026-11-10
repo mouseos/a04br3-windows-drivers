@@ -199,6 +199,9 @@ static NDIS_STATUS reset_request(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
  if(any&&!a04_wlan_equal(input.dot11MacAddress,a->radio.bridge->regulatory.mac,6))return NDIS_STATUS_NOT_SUPPORTED;
  unsigned activity=a->ps_activity;a->ps_activity=1;
  e=a04_ndis_radio_reset(a);
+ /* ExtSTA RESET clears privacy exemptions even when bSetDefaultMIB is
+  * FALSE. The generic radio reset preserves policy for non-OID callers. */
+ if(!e){a->os_security.exemption_count=0;RtlSecureZeroMemory(a->os_security.exemptions,sizeof(a->os_security.exemptions));}
  if(!e&&input.bSetDefaultMIB){
   NdisZeroMemory(&a->desired,sizeof(a->desired));a->desired_bssid_set=FALSE;
   a->excluded_count=a->multicast_count=a->assoc_ies_length=0;a->hidden_network=a->media_streaming=a->safe_mode=FALSE;
