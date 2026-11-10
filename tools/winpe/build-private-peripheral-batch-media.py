@@ -172,7 +172,10 @@ def main():
  if signed_source!=a.source_commit:
   subprocess.run(['git','-C',str(repo),'merge-base','--is-ancestor',signed_source,a.source_commit],check=True)
   changed=set(subprocess.check_output(['git','-C',str(repo),'diff','--name-only',signed_source,a.source_commit],text=True).splitlines())
-  if a.combined196_profile or a.combined194_profile or a.combined192_profile or a.combined190_profile or a.combined188_profile:
+  if a.combined196_profile:
+   require(changed and changed<={'tools/recovery/prepare-offline-system-service.ps1','tools/winpe/build-private-peripheral-batch-media.py'},'197 exact post-sign snapshot/media-helper-only differences required')
+   require(sha(repo/'tools/winpe/mt8167-peripheral-update.c')==sm['source_sha256'],'Signed197 SCM TU unchanged')
+  elif a.combined194_profile or a.combined192_profile or a.combined190_profile or a.combined188_profile:
    require(not changed,'Console188 service and media use the exact same source')
   elif a.combined186_profile:
    require(changed and changed<={'tools/recovery/prepare-offline-system-service.ps1','tools/winpe/private_hardware_probe_input.py','tools/winpe/build-private-peripheral-batch-media.py'},'187 exact post-sign native-reader-only differences required')
