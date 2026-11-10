@@ -41,10 +41,11 @@ static HRESULT APIENTRY create_resource(HANDLE h,D3DDDIARG_CREATERESOURCE *p) {
  if(r->desc.width>1024&&p->Format==D3DDDIFMT_A8R8G8B8&&!p->Flags.Texture){HeapFree(GetProcessHeap(),0,r);return E_NOTIMPL;}
  r->desc.pitch=(p->Format==D3DDDIFMT_A8R8G8B8||p->Format==D3DDDIFMT_A8B8G8R8)?r->desc.width*4u:r->desc.width;r->desc.format=(UINT)p->Format;
  r->desc.usage=p->Format==D3DDDIFMT_VERTEXDATA?GEO_USAGE_VERTEX_BUFFER:
-  ((p->Format==D3DDDIFMT_INDEX16||p->Format==D3DDDIFMT_INDEX32)?GEO_USAGE_INDEX_BUFFER:(p->Flags.RenderTarget?GEO_USAGE_RENDER_TARGET:p->Flags.Texture?GEO_USAGE_TEXTURE2D:GEO_USAGE_STAGING));
+  ((p->Format==D3DDDIFMT_INDEX16||p->Format==D3DDDIFMT_INDEX32)?GEO_USAGE_INDEX_BUFFER:(p->Flags.RenderTarget?(p->Flags.Texture?GEO_USAGE_RT_TEXTURE2D:GEO_USAGE_RENDER_TARGET):p->Flags.Texture?GEO_USAGE_TEXTURE2D:GEO_USAGE_STAGING));
  if(r->desc.usage==GEO_USAGE_TEXTURE2D){r->desc.version=GEO_TEXTURE_STORAGE_VERSION;r->desc.pitch=geo_texture_default_pitch(r->desc.width);}
  r->logical_width=r->desc.width;r->logical_height=r->desc.height;
- if(r->desc.usage==GEO_USAGE_RENDER_TARGET){
+ if(geo_usage_renderable(r->desc.usage)){
+  if(r->desc.usage==GEO_USAGE_RT_TEXTURE2D&&(r->logical_width!=800||r->logical_height!=A04_NATIVE_FRAME_HEIGHT)){HeapFree(GetProcessHeap(),0,r);return E_NOTIMPL;}
   if(r->logical_width>800u||r->logical_height>A04_NATIVE_FRAME_HEIGHT){HeapFree(GetProcessHeap(),0,r);return E_NOTIMPL;}
   r->desc.width=800;r->desc.height=A04_NATIVE_FRAME_HEIGHT;r->desc.pitch=3200;
  }
@@ -121,7 +122,7 @@ static HRESULT APIENTRY set_target(HANDLE h,const D3DDDIARG_SETRENDERTARGET *p) 
  struct geo_umd_device *d=h;struct geo_umd_resource *r;
  if(!d||!p||p->RenderTargetIndex||p->SubResourceIndex)return E_INVALIDARG;
  if(!p->hRenderTarget){d->target=NULL;return S_OK;}
- r=find(d,p->hRenderTarget);if(!r||r->desc.usage!=GEO_USAGE_RENDER_TARGET||r->locked||r->offered)return E_INVALIDARG;
+ r=find(d,p->hRenderTarget);if(!r||!geo_usage_renderable(r->desc.usage)||r->locked||r->offered)return E_INVALIDARG;
  d->target=r;return S_OK;
 }
 static HRESULT APIENTRY clear(HANDLE h,const D3DDDIARG_CLEAR *p,UINT count,const RECT *rects) {
@@ -190,7 +191,7 @@ static HRESULT APIENTRY blt(HANDLE h,const D3DDDIARG_BLT *p) {
  if(p->SrcRect.left||p->SrcRect.top||p->DstRect.left||p->DstRect.top||
     p->SrcRect.right!=(LONG)src->logical_width||p->SrcRect.bottom!=(LONG)src->logical_height||
     p->DstRect.right!=(LONG)dst->logical_width||p->DstRect.bottom!=(LONG)dst->logical_height)return E_NOTIMPL;
- if(src->desc.usage==GEO_USAGE_RENDER_TARGET){
+ if(geo_usage_renderable(src->desc.usage)){
   struct geo_copy_packet packet={GEO_COPY_MAGIC,sizeof(packet),1,0,1,800,A04_NATIVE_FRAME_HEIGHT,0};D3DDDICB_RENDER q;
   if(src->desc.format!=GEO_FORMAT_A8R8G8B8||dst->desc.format!=GEO_FORMAT_A8R8G8B8||
      src->logical_width!=800||src->logical_height!=A04_NATIVE_FRAME_HEIGHT||dst->logical_width!=800||dst->logical_height!=A04_NATIVE_FRAME_HEIGHT||
@@ -305,7 +306,7 @@ int geo_umd_has_external_resources(struct geo_umd_device *d) {
 }
 HRESULT geo_umd_resource_info(struct geo_umd_device *d,HANDLE h,UINT usage,struct geo_surface_desc *desc,D3DKMT_HANDLE *allocation) {
  struct geo_umd_resource *r;
- if(!d||!desc||!allocation||!(r=find(d,h))||r->desc.usage!=usage||r->locked||r->offered||!r->allocation)return E_INVALIDARG;
+ if(!d||!desc||!allocation||!(r=find(d,h))||!(r->desc.usage==usage||(r->desc.usage==GEO_USAGE_RT_TEXTURE2D&&(usage==GEO_USAGE_RENDER_TARGET||usage==GEO_USAGE_TEXTURE2D)))||r->locked||r->offered||!r->allocation)return E_INVALIDARG;
  *desc=r->desc;*allocation=r->allocation;return S_OK;
 }
 HRESULT geo_umd_target_extent(struct geo_umd_device *d,UINT *width,UINT *height) {

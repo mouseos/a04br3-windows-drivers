@@ -3,6 +3,8 @@
 #include "texture_layout.h"
 int geo_desc_valid(const struct geo_surface_desc *d) {
  uint64_t bytes;
+ if(d&&d->size==sizeof(*d)&&d->version==GEO_ABI_VERSION&&!d->reserved&&d->usage==GEO_USAGE_RT_TEXTURE2D)
+  return d->format==GEO_FORMAT_A8R8G8B8&&d->width==800&&d->height==A04_NATIVE_FRAME_HEIGHT&&d->pitch==3200;
  if(d&&d->size==sizeof(*d)&&d->version==GEO_TEXTURE_STORAGE_VERSION&&!d->reserved&&d->usage==GEO_USAGE_TEXTURE2D)
   return (d->format==GEO_FORMAT_A8R8G8B8||d->format==GEO_FORMAT_A8B8G8R8)&&
    geo_texture_layout_valid(d->width,d->height,d->pitch);

@@ -50,7 +50,7 @@ static int32_t capture(const struct geo_draw_request *r,const void *blob,uint32_
  const unsigned char *b=blob;uint32_t i;
  if(!r || !b || r->size!=size || r->version!=version || r->reserved ||
     r->blob_bytes!=bytes || !bytes || bytes>GEO_DRAW_MAX_BLOB || !r->target || !r->vertex ||
-    r->target==r->vertex || !geo_desc_valid(&r->target_desc) || r->target_desc.usage!=GEO_USAGE_RENDER_TARGET)return GEO_INVALID;
+    r->target==r->vertex || !geo_desc_valid(&r->target_desc) || !geo_usage_renderable(r->target_desc.usage))return GEO_INVALID;
  /* V1 non-indexed float4 POSITION0 triangle list. No texture/blend/depth/clip
   * success claim; E may support a narrower profile and must reject it honestly. */
  if(r->state.topology!=GEO_DRAW_TRIANGLE_LIST || !r->state.vertex_count || r->state.vertex_count%3u ||

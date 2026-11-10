@@ -11,8 +11,8 @@ int32_t geo_draw_validate_capture_v3(const struct geo_draw_request_v3 *r,const v
 {
  struct geo_draw_request flat;
  if(!r||r->base.size!=sizeof(*r)||r->base.version!=3||r->reserved||!geo_texture_sampler_profile_valid(r->sampler_profile)||
-    !r->texture||r->texture==r->base.target||r->texture==r->base.vertex||r->texture_desc.version!=GEO_TEXTURE_STORAGE_VERSION||
-    r->texture_desc.usage!=GEO_USAGE_TEXTURE2D||!geo_desc_valid(&r->texture_desc))return GEO_INVALID;
+    !r->texture||r->texture==r->base.target||r->texture==r->base.vertex||(r->texture_desc.usage==GEO_USAGE_TEXTURE2D&&r->texture_desc.version!=GEO_TEXTURE_STORAGE_VERSION)||
+    !geo_usage_sampleable(r->texture_desc.usage)||!geo_desc_valid(&r->texture_desc))return GEO_INVALID;
  flat=r->base;flat.size=sizeof(flat);flat.version=1;
  return geo_draw_validate_capture(&flat,blob,bytes);
 }

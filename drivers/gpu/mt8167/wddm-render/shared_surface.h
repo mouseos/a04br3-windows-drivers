@@ -23,6 +23,8 @@ static inline int geo_shared_surface_valid(const struct geo_shared_surface *s) {
     !s->base.logical_width||!s->base.logical_height)return 0;
  d=&s->base.storage;
  if(!geo_desc_valid(d))return 0;
+ if(s->bind==(GEO_SHARED_RT|GEO_SHARED_SRV))return s->format==GEO_SHARED_BGRA&&d->usage==GEO_USAGE_RT_TEXTURE2D&&
+  s->base.logical_width==800&&s->base.logical_height==A04_NATIVE_FRAME_HEIGHT;
  if(s->bind==GEO_SHARED_RT)return s->format==GEO_SHARED_BGRA&&d->usage==GEO_USAGE_RENDER_TARGET&&
   d->format==GEO_FORMAT_A8R8G8B8&&d->width==800&&d->height==A04_NATIVE_FRAME_HEIGHT&&d->pitch==3200&&
   s->base.logical_width<=d->width&&s->base.logical_height<=d->height;

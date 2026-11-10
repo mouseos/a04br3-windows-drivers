@@ -66,5 +66,10 @@ int main(void){
  /* Shared RT retains the existing padded physical backing and logical extent. */
  s.base.logical_width=320;s.base.logical_height=200;s.base.storage=(struct geo_surface_desc){sizeof(struct geo_surface_desc),1,800,A04_NATIVE_FRAME_HEIGHT,3200,GEO_FORMAT_A8R8G8B8,GEO_USAGE_RENDER_TARGET,0};s.bind=GEO_SHARED_RT;
  assert(geo_shared_surface_valid(&s));s.format=GEO_SHARED_RGBA;assert(!geo_shared_surface_valid(&s));
+ s.format=GEO_SHARED_BGRA;s.bind=GEO_SHARED_RT|GEO_SHARED_SRV;s.base.storage.usage=GEO_USAGE_RT_TEXTURE2D;
+ assert(!geo_shared_surface_valid(&s)); /* padded logical texture is not sampled as full-size */
+ s.base.logical_width=800;s.base.logical_height=A04_NATIVE_FRAME_HEIGHT;assert(geo_shared_surface_valid(&s));
+ bad=s;bad.base.storage.version=2;assert(!geo_shared_surface_valid(&bad));
+ bad=s;bad.base.storage.pitch=3264;assert(!geo_shared_surface_valid(&bad));
  puts("PASS existing native resource opened twice without allocation; malformed descriptors/failures rejected; pending-close and last-open lifetime");return 0;
 }

@@ -94,7 +94,7 @@ static NTSTATUS finish_published(struct a04_vendor_native_cold *n,
         for(j=0;j<64u;j++){
             uint32_t index=i+j,expected=0xa5a5a5a5u;
             c->scan.scanned_words++;
-            if(index<480000u){
+            if(index<(A04_NATIVE_FRAME_WIDTH*A04_NATIVE_FRAME_HEIGHT)){
 #if A04_GE8300_NATIVE_OWNER_MDL_TARGET
                 if(c->draw_job){
                     /* Arbitrary triangle coverage is not a fixed-clear
@@ -123,9 +123,9 @@ static NTSTATUS finish_published(struct a04_vendor_native_cold *n,
                 switch(index){
                 case 0:sample=0;break;
                 case 799:sample=1;break;
-                case 479200:sample=2;break;
-                case 479999:sample=3;break;
-                case 240400:sample=4;break; /* x400,y300 */
+                case A04_NATIVE_FRAME_WIDTH*(A04_NATIVE_FRAME_HEIGHT-1u):sample=2;break;
+                case A04_NATIVE_FRAME_WIDTH*A04_NATIVE_FRAME_HEIGHT-1u:sample=3;break;
+                case A04_NATIVE_FRAME_WIDTH*(A04_NATIVE_FRAME_HEIGHT/2u)+400u:sample=4;break; /* frame center */
                 default:break;
                 }
                 if(sample<5){
@@ -136,15 +136,15 @@ static NTSTATUS finish_published(struct a04_vendor_native_cold *n,
             if(!c->scan.first_valid && pixels[j]!=expected){
                 c->scan.first_valid=1;c->scan.first_index=index;
                 c->scan.first_expected=expected;c->scan.first_observed=pixels[j];
-                c->scan.first_is_guard=index>=480000u;
+                c->scan.first_is_guard=index>=(A04_NATIVE_FRAME_WIDTH*A04_NATIVE_FRAME_HEIGHT);
             }
         }
     }
     if(out->mismatched_pixels || out->guard_errors ||
 #if A04_GE8300_NATIVE_OWNER_MDL_TARGET
-       (c->draw_job?c->scan.scanned_pixels!=480000u:out->matching_pixels!=480000u)
+       (c->draw_job?c->scan.scanned_pixels!=(A04_NATIVE_FRAME_WIDTH*A04_NATIVE_FRAME_HEIGHT):out->matching_pixels!=(A04_NATIVE_FRAME_WIDTH*A04_NATIVE_FRAME_HEIGHT))
 #else
-       out->matching_pixels!=480000u
+       out->matching_pixels!=(A04_NATIVE_FRAME_WIDTH*A04_NATIVE_FRAME_HEIGHT)
 #endif
        )goto poison;
     c->verified=TRUE;c->completed_frames++;out->completed_frames=c->completed_frames;out->phase=4;status=STATUS_SUCCESS;goto done;

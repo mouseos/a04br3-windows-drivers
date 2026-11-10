@@ -84,7 +84,7 @@ NTSTATUS e_native_stop_locked(struct e_native_owner *c)
         if(linear->linear==a->vertex)vertex_covered=TRUE;
     }
     if(a->vertex && !vertex_covered){status=a04_native_mdl_retire_after_gpu_off(a->vertex);if(!NT_SUCCESS(status))return status;}
-    if(a->binding){status=a04_native_mdl_retire_after_gpu_off(a->binding);if(!NT_SUCCESS(status))return status;}
+    if(a->binding&&!a->binding_borrowed){status=a04_native_mdl_retire_after_gpu_off(a->binding);if(!NT_SUCCESS(status))return status;}
     c->receipt_valid=TRUE;c->job_state=E_JOB_NONE;
     return STATUS_SUCCESS;
 }
@@ -106,7 +106,7 @@ NTSTATUS e_native_retire_graph_locked(struct e_native_owner *c)
             if(linear->linear==a->vertex)vertex_covered=TRUE;
         }
         if(a->vertex && !vertex_covered){status=a04_native_mdl_retire_after_gpu_off(a->vertex);if(!NT_SUCCESS(status))return status;}
-        if(a->binding){status=a04_native_mdl_retire_after_gpu_off(a->binding);if(!NT_SUCCESS(status))return status;}
+        if(a->binding&&!a->binding_borrowed){status=a04_native_mdl_retire_after_gpu_off(a->binding);if(!NT_SUCCESS(status))return status;}
         a->start.online=FALSE;
         status=a04_vendor_m1_11_start_release_cold(&a->start);if(!NT_SUCCESS(status))return status;
         /* Actual consumer gate was closed under Dxgk IRQ synchronization;
@@ -134,7 +134,7 @@ NTSTATUS e_native_build_graph_locked(struct e_native_owner *c)
     if(!NT_SUCCESS(status))return status;
     if(a->binding){status=a04_vendor_native_attach_mdl_target_preserve_cold(a->native,a->binding,c->aperture_offset,c->colour);if(!NT_SUCCESS(status))return status;}
     if(a->vertex){status=a04_vendor_native_attach_vertex_cold(a->native,a->vertex,c->vertex_aperture_offset);if(!NT_SUCCESS(status))return status;}
-    for(struct e_native_resource *linear=c->resources;linear;linear=linear->next)if(linear->linear && linear->linear!=a->vertex){
+    for(struct e_native_resource *linear=c->resources;linear;linear=linear->next)if(linear->linear && linear->linear!=a->vertex && linear->linear!=a->binding){
         status=a04_vendor_native_attach_linear_cold(a->native,linear->linear,linear->linear_offset);if(!NT_SUCCESS(status))return status;
     }
     return STATUS_SUCCESS;

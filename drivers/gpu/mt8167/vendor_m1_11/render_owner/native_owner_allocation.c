@@ -10,7 +10,7 @@ NTSTATUS a04_native_allocation_release_cold(struct a04_native_owner_allocation *
     /* These flags are NOT cleared by power-off ack or IRQ mask. A separately
      * proven future retirement must remove exposure before any DMA release. */
     if(a->adapter && (!a->adapter->DmaOperations || !a->adapter->DmaOperations->PutDmaAdapter))return STATUS_INVALID_DEVICE_STATE;
-    if(a->frontend_orphan || a->firmware.hardware_owned || a->start.attempted || a->irq.core ||
+    if(a->binding_borrowed || a->frontend_orphan || a->firmware.hardware_owned || a->start.attempted || a->irq.core ||
        a->dispatch.state)return STATUS_DEVICE_BUSY;
     if(a->native){status=a04_vendor_native_release_cold(&a->native);if(!NT_SUCCESS(status))return status;}
     if(a->vertex){status=a04_native_mdl_release_cold(&a->vertex);if(!NT_SUCCESS(status))return status;}

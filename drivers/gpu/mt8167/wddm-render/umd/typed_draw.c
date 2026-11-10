@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: MIT */
 #include "typed_device.h"
+#include "../viewport_profile.h"
 #include "../frontend/shader_draw_abi.h"
 void geo_typed_device_trace(struct geo_typed_device *,const char *,UINT);
 #include "../memory.h"
 #include "../frontend/texture_draw_abi.h"
 struct geo_typed_layout {struct geo_typed_layout *next;struct geo_typed_device *device;UINT refs,deleted,offset[2],elements;};
-static UINT bits(FLOAT f){UINT v;memcpy(&v,&f,4);return v;}
 static void layout_unref(struct geo_typed_layout *v) {
  struct geo_typed_layout **p;if(!v||!v->refs||--v->refs)return;
  for(p=&v->device->layouts;*p&&*p!=v;p=&(*p)->next){}if(!*p)return;*p=v->next;HeapFree(GetProcessHeap(),0,v);
@@ -104,7 +104,7 @@ HRESULT geo_typed_submit_draw(D3D10DDI_HDEVICE h,const FLOAT vertices[3][4]) {
  if(sampled){hr=geo_typed_texture_profile(d,&sampler_profile);if(FAILED(hr))return hr;hr=geo_typed_texture_allocation(d,&texture_desc,&xa);if(FAILED(hr))return hr;}
  if(d->target->resource->width!=800||d->target->resource->height!=A04_NATIVE_FRAME_HEIGHT)return E_NOTIMPL;
  hr=geo_typed_validate_native_state(h);if(FAILED(hr))return hr;
- if(!d->viewport_set||d->viewport.TopLeftX||d->viewport.TopLeftY||d->viewport.Width!=800.0f||d->viewport.Height!=600.0f||d->viewport.MinDepth||d->viewport.MaxDepth!=1.0f)return E_NOTIMPL;
+ {uint32_t vp[6];memcpy(vp,&d->viewport,sizeof(vp));if(!d->viewport_set||!geo_viewport_profile_valid(vp))return E_NOTIMPL;}
  hr=geo_umd_target_info(&d->backend,&target,&ta);if(FAILED(hr))return hr;
  for(stage=0;stage<2;stage++){
   struct geo_umd_tokenized_shader *s=d->bound_shader[stage]->code;
@@ -117,7 +117,7 @@ HRESULT geo_typed_submit_draw(D3D10DDI_HDEVICE h,const FLOAT vertices[3][4]) {
  hr=geo_umd_write_private_vertex(&d->backend,&d->converted,vertices,48,&va);if(FAILED(hr))return hr;
  p=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,header+total);if(!p)return E_OUTOFMEMORY;blob=(BYTE *)p+header;
  p->magic=GEO_DRAW_MAGIC;p->size=header+total;p->version=1;p->vertex_index=1;p->request.size=sizeof(p->request);p->request.version=1;p->request.blob_bytes=total;p->request.target_desc=target;
- p->request.state.topology=GEO_DRAW_TRIANGLE_LIST;p->request.state.vertex_count=3;p->request.state.vertex_stride=16;p->request.state.viewport[2]=bits(800.0f);p->request.state.viewport[3]=bits(600.0f);p->request.state.viewport[5]=bits(1.0f);p->request.state.color_write_mask=15;
+ p->request.state.topology=GEO_DRAW_TRIANGLE_LIST;p->request.state.vertex_count=3;p->request.state.vertex_stride=16;memcpy(p->request.state.viewport,&d->viewport,sizeof(d->viewport));p->request.state.color_write_mask=15;
  for(stage=0;stage<2;stage++)shader_packet(blob,&at,stage?&p->request.ps:&p->request.vs,d->bound_shader[stage]->code,constants[stage]);
  p->request.target=1;p->request.vertex=2;
  if(combined){struct geo_draw_packet_v5 *v5=(void *)p;struct geo_umd_tokenized_shader *vs=d->bound_shader[0]->code;

@@ -34,8 +34,8 @@ static NTSTATUS GeoCreateAllocationImpl(HANDLE adapter,DXGKARG_CREATEALLOCATION 
  }else if(info->PrivateDriverDataSize!=sizeof(shared)&&(data.size!=sizeof(data)||data.version!=1u))return STATUS_INVALID_PARAMETER;
  if(!data.logical_width||!data.logical_height)return STATUS_INVALID_PARAMETER;
  desc=data.storage;
- if(desc.usage==GEO_USAGE_RENDER_TARGET){
-  if(desc.width!=800u||desc.height!=A04_NATIVE_FRAME_HEIGHT||desc.pitch!=3200u||data.logical_width>800u||data.logical_height>A04_NATIVE_FRAME_HEIGHT)return STATUS_NOT_SUPPORTED;
+ if(geo_usage_renderable(desc.usage)){
+  if((desc.usage==GEO_USAGE_RT_TEXTURE2D&&(data.logical_width!=800||data.logical_height!=A04_NATIVE_FRAME_HEIGHT))||desc.width!=800u||desc.height!=A04_NATIVE_FRAME_HEIGHT||desc.pitch!=3200u||data.logical_width>800u||data.logical_height>A04_NATIVE_FRAME_HEIGHT)return STATUS_NOT_SUPPORTED;
  }else if(data.logical_width!=desc.width||data.logical_height!=desc.height)return STATUS_INVALID_PARAMETER;
 if(!a->aperture_ready||!geo_desc_valid(&desc)||ROUND_TO_PAGES(desc.pitch*desc.height)>a->aperture.commit_limit)return STATUS_NOT_SUPPORTED;
  allocation=ExAllocatePoolWithTag(NonPagedPool,sizeof(*allocation),'rOeG');if(!allocation)return STATUS_INSUFFICIENT_RESOURCES;
@@ -299,7 +299,7 @@ static NTSTATUS GeoRenderDrawImpl(struct geo_kmd_context *c,DXGKARG_RENDER *r) {
   UINT reserved_texture=packet->version==5?((struct geo_draw_packet_v5 *)packet)->reserved_texture:((struct geo_draw_packet_v3 *)packet)->reserved_texture;
   if(texture_index!=2||reserved_texture||sampled->texture||r->pAllocationList[2].WriteOperation){status=STATUS_INVALID_PARAMETER;goto done;}
   x=GeoResolveReadAllocation(c,r->pAllocationList[2].hDeviceSpecificAllocation);
-  if(!x||x->desc.version!=GEO_TEXTURE_STORAGE_VERSION||x->desc.usage!=GEO_USAGE_TEXTURE2D||RtlCompareMemory(&x->desc,&sampled->texture_desc,sizeof(x->desc))!=sizeof(x->desc)){status=STATUS_INVALID_PARAMETER;goto done;}
+  if(!x||!geo_desc_valid(&x->desc)||!geo_usage_sampleable(x->desc.usage)||RtlCompareMemory(&x->desc,&sampled->texture_desc,sizeof(x->desc))!=sizeof(x->desc)){status=STATUS_INVALID_PARAMETER;goto done;}
   sampled->texture=x->surface;
  }
  a=GeoResolveWriteAllocation(c,r->pAllocationList[0].hDeviceSpecificAllocation);

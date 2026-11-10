@@ -122,7 +122,7 @@ static int32_t create(void *p,const struct geo_surface_desc *d,uint64_t *id)
         if(d->size!=sizeof(*d) || d->version!=1 || d->width<4 || d->width>65536 ||
            d->height!=1 || d->pitch!=d->width || d->reserved)return STATUS_INVALID_PARAMETER;
     }else if(!d || d->size!=sizeof(*d) || d->version!=1 || d->width!=A04_NATIVE_FRAME_WIDTH || d->height!=A04_NATIVE_FRAME_HEIGHT ||
-       d->pitch!=3200 || d->format!=GEO_FORMAT_A8R8G8B8 || d->usage!=GEO_USAGE_RENDER_TARGET || d->reserved)return STATUS_NOT_SUPPORTED;
+       d->pitch!=3200 || d->format!=GEO_FORMAT_A8R8G8B8 || !geo_usage_renderable(d->usage) || d->reserved)return STATUS_NOT_SUPPORTED;
     s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
     if(c->next_id==UINT64_MAX)return leave(c,STATUS_INTEGER_OVERFLOW);
     /* Logical allocations are not current hardware bindings. In particular,
@@ -182,30 +182,17 @@ static int32_t bind(void *p,uint64_t surface,void *mdl,uint32_t offset,uint32_t 
     GeoFactoryCheckpoint(15,STATUS_SUCCESS,3,(ULONG)surface,bytes,0);
     s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
     r=resource(c,surface);if(!r || offset)return leave(c,STATUS_INVALID_PARAMETER);
-    if(r->desc.usage==GEO_USAGE_STAGING || r->desc.usage==GEO_USAGE_INDEX_BUFFER || r->desc.usage==GEO_USAGE_TEXTURE2D || r->desc.usage==GEO_USAGE_VERTEX_BUFFER){
+    if(r->desc.usage==GEO_USAGE_STAGING || r->desc.usage==GEO_USAGE_INDEX_BUFFER || r->desc.usage==GEO_USAGE_TEXTURE2D || r->desc.usage==GEO_USAGE_VERTEX_BUFFER || geo_usage_renderable(r->desc.usage)){
         if(r->linear || bytes!=(uint64_t)r->desc.pitch*r->desc.height)return leave(c,STATUS_INVALID_PARAMETER);
         s=cold_for_bind(c);if(!NT_SUCCESS(s))return leave(c,s);
         s=e_native_build_graph_locked(c);if(!NT_SUCCESS(s))return leave(c,s);
-        s=a04_native_allocation_bind_frontend_linear_cold(c->allocation,&c->memory,mdl,bytes,r->desc.usage!=GEO_USAGE_STAGING,&r->linear);
+        s=a04_native_allocation_bind_frontend_linear_cold(c->allocation,&c->memory,mdl,bytes,!geo_usage_renderable(r->desc.usage)&&r->desc.usage!=GEO_USAGE_STAGING,&r->linear);
         if(NT_SUCCESS(s)){r->linear_offset=aperture;s=a04_vendor_native_attach_linear_cold(c->allocation->native,r->linear,aperture);}
         if(NT_SUCCESS(s))s=e_native_prepare_copy_storage_locked(c);
         if(!NT_SUCCESS(s) && (r->linear || c->allocation->frontend_orphan))c->state=E_OWNER_FAILED;
         return leave(c,s);
     }
-    /* Vertex MDLs are resource-owned read-only bindings above. Multiple
-     * resident VBs must coexist; a->vertex is only a borrowed per-draw
-     * selection, never a second owner or an admission limit. */
-    if(bytes!=A04_NATIVE_FRAME_BYTES || c->allocation->binding)return leave(c,STATUS_DEVICE_BUSY);
-    s=cold_for_bind(c);if(!NT_SUCCESS(s))return leave(c,s);
-    c->surface=surface;c->description=r->desc;c->aperture_offset=aperture;
-    s=e_native_build_graph_locked(c);
-    if(NT_SUCCESS(s))s=a04_native_allocation_bind_frontend_cold(c->allocation,&c->memory,mdl,bytes,aperture,c->colour);
-    if(NT_SUCCESS(s))s=e_native_prepare_copy_storage_locked(c);
-    if(!NT_SUCCESS(s)){
-        if(c->allocation->binding || c->allocation->frontend_orphan)c->state=E_OWNER_FAILED;
-        else c->surface=0;
-    }
-    return leave(c,s);
+    return leave(c,STATUS_NOT_SUPPORTED);
 }
 static int32_t unbind(void *p,uint64_t surface)
 {
@@ -219,6 +206,10 @@ static int32_t unbind(void *p,uint64_t surface)
         if(NT_SUCCESS(s) && c->allocation->vertex==linear->linear){
             c->allocation->vertex=NULL;c->vertex=0;c->vertex_aperture_offset=0;
             RtlZeroMemory(&c->vertex_description,sizeof(c->vertex_description));
+        }
+        if(NT_SUCCESS(s) && c->allocation->binding==linear->linear){
+            c->allocation->binding=NULL;c->allocation->binding_borrowed=FALSE;
+            c->surface=0;c->aperture_offset=0;RtlZeroMemory(&c->description,sizeof(c->description));
         }
         if(NT_SUCCESS(s))s=a04_native_mdl_release_cold(&linear->linear);
         if(NT_SUCCESS(s)){linear->linear_offset=0;c->job=0;c->job_state=E_JOB_NONE;}else c->state=E_OWNER_FAILED;
@@ -246,13 +237,30 @@ static int32_t destroy(void *p,uint64_t surface)
     if((surface==c->vertex && c->allocation->vertex) || (surface==c->surface && c->allocation->binding))return leave(c,STATUS_DEVICE_BUSY);
     *link=r->next;ExFreePoolWithTag(r,E_FACTORY_TAG);return leave(c,STATUS_SUCCESS);
 }
+static NTSTATUS select_target_locked(struct e_native_owner *c,uint64_t surface)
+{
+    struct e_native_resource *r=resource(c,surface);NTSTATUS s;
+    if(!r||!r->linear||!geo_usage_renderable(r->desc.usage))return STATUS_INVALID_PARAMETER;
+    s=wait_boundary_locked(c);if(!NT_SUCCESS(s))return s;
+    if(c->surface==surface&&c->allocation->binding==r->linear)return STATUS_SUCCESS;
+    s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=retire_from365(c,10,0);
+    if(!NT_SUCCESS(s)){c->state=E_OWNER_FAILED;return s;}
+    if(c->allocation->binding&&!c->allocation->binding_borrowed){c->state=E_OWNER_FAILED;return STATUS_INVALID_DEVICE_STATE;}
+    c->allocation->binding=r->linear;c->allocation->binding_borrowed=TRUE;
+    c->surface=surface;c->description=r->desc;c->aperture_offset=r->linear_offset;
+    c->job=0;c->job_state=E_JOB_NONE;
+    s=e_native_build_graph_locked(c);
+    if(!NT_SUCCESS(s))c->state=E_OWNER_FAILED;
+    return s;
+}
 static int32_t prepare(void *p,uint64_t surface,uint32_t colour,uint64_t *job)
 {
     struct e_native_owner *c=p;RGXFWIF_CCB_CTL k;NTSTATUS s;
     if(!job)return STATUS_INVALID_PARAMETER;*job=0;
     GeoFactoryCheckpoint(15,STATUS_SUCCESS,1,(ULONG)surface,colour,0);
     s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
-    if(!surface || surface!=c->surface || !c->allocation->binding || c->next_id==UINT64_MAX)return leave(c,STATUS_DEVICE_BUSY);
+    if(!surface||c->next_id==UINT64_MAX)return leave(c,STATUS_DEVICE_BUSY);
+    s=select_target_locked(c,surface);if(!NT_SUCCESS(s))return leave(c,s);
     s=wait_boundary_locked(c);native_progress(c,34,s);if(!NT_SUCCESS(s))return leave(c,s);
     /* A completed Copy leaves a live TQ context and both resident MDLs.
      * Fast clear uses its cold-installed RT EOT, with colour in CCB data.
@@ -293,8 +301,9 @@ static int32_t prepare_copy(void *p,uint64_t source,uint64_t destination,uint64_
  GeoFactoryCheckpoint(15,STATUS_SUCCESS,2,(ULONG)source,(ULONG)destination,0);
  s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
  src=resource(c,source);dst=resource(c,destination);
- if(!src||!dst||src==dst||source!=c->surface||src->desc.usage!=GEO_USAGE_RENDER_TARGET||
-    dst->desc.usage!=GEO_USAGE_STAGING||!dst->linear||!c->allocation->binding||c->next_id==UINT64_MAX)return leave(c,STATUS_INVALID_PARAMETER);
+ if(!src||!dst||src==dst||!geo_usage_renderable(src->desc.usage)||
+    dst->desc.usage!=GEO_USAGE_STAGING||!dst->linear||c->next_id==UINT64_MAX)return leave(c,STATUS_INVALID_PARAMETER);
+ s=select_target_locked(c,source);if(!NT_SUCCESS(s))return leave(c,s);
  s=wait_boundary_locked(c);if(!NT_SUCCESS(s))return leave(c,s);
  /* Copy is an idle-to-submit transition on the current FW root. No stop,
   * power cycle, PTE edit, resource release or bootstrap occurs here. */
@@ -493,11 +502,12 @@ static int32_t prepare_draw_impl(void *p,const struct geo_draw_request *request,
     s=combined?geo_draw_validate_capture_v5(combined,blob,bytes):general?geo_draw_validate_capture_v4(general,blob,bytes):sampled?geo_draw_validate_capture_v3(sampled,blob,bytes):linked?geo_draw_validate_capture_v2(linked,blob,bytes):geo_draw_validate_capture(request,blob,bytes);if(!NT_SUCCESS(s))return s;
     ULONG trace_cookie=GeoDrawTraceCookie(request,blob,bytes);
     s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
+    s=select_target_locked(c,request->target);if(!NT_SUCCESS(s))return leave(c,s);
     vertex=resource(c,request->vertex);
     if(request->target!=c->surface || !vertex || !vertex->linear || vertex->desc.usage!=GEO_USAGE_VERTEX_BUFFER ||
        !c->allocation->binding || c->next_id==UINT64_MAX ||
        RtlCompareMemory(&c->description,&request->target_desc,sizeof(c->description))!=sizeof(c->description))return leave(c,STATUS_INVALID_DEVICE_STATE);
-    if(sampled){texture=resource(c,sampled->texture);if(!texture||!texture->linear||texture->desc.usage!=GEO_USAGE_TEXTURE2D||RtlCompareMemory(&texture->desc,&sampled->texture_desc,sizeof(texture->desc))!=sizeof(texture->desc))return leave(c,STATUS_INVALID_PARAMETER);}
+    if(sampled){texture=resource(c,sampled->texture);if(!texture||!texture->linear||!geo_usage_sampleable(texture->desc.usage)||RtlCompareMemory(&texture->desc,&sampled->texture_desc,sizeof(texture->desc))!=sizeof(texture->desc))return leave(c,STATUS_INVALID_PARAMETER);}
     s=wait_boundary_locked(c);native_progress(c,34,s);if(!NT_SUCCESS(s))return leave(c,s);
     if(c->vertex!=request->vertex || c->allocation->vertex!=vertex->linear){
         /* Select only after the old graph's real stop/IRQ/OFF proof. All

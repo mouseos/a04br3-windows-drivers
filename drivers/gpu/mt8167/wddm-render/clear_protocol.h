@@ -15,6 +15,10 @@
 #define GEO_USAGE_INDEX_BUFFER 4u
 #define GEO_TEXTURE_STORAGE_VERSION 2u
 #define GEO_USAGE_TEXTURE2D 5u
+/* One linear BGRA backing, full native extent, both PBE output and SMP input. */
+#define GEO_USAGE_RT_TEXTURE2D 6u
+static inline int geo_usage_renderable(uint32_t u) {return u==GEO_USAGE_RENDER_TARGET||u==GEO_USAGE_RT_TEXTURE2D;}
+static inline int geo_usage_sampleable(uint32_t u) {return u==GEO_USAGE_TEXTURE2D||u==GEO_USAGE_RT_TEXTURE2D;}
 #define GEO_FORMAT_INDEX16 101u
 #define GEO_FORMAT_INDEX32 102u
 #define GEO_VERTEX_MAX_BYTES 65536u

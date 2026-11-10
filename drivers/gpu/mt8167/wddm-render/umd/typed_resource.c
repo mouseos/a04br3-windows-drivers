@@ -59,7 +59,7 @@ static HRESULT desc_valid(const D3D11DDIARG_CREATERESOURCE *p) {
  const D3D10DDI_MIPINFO *m;
  if(!p||!p->pMipInfoList||p->MipLevels!=1||p->ArraySize!=1||(p->MiscFlags&~D3D10_DDI_RESOURCE_MISC_SHARED)||(!A04_GE8300_UNIFIED_DISPLAY356&&p->pPrimaryDesc)||p->ByteStride||p->DecoderBufferType)return E_NOTIMPL;
  if(p->MiscFlags&&(p->ResourceDimension!=D3D10DDIRESOURCE_TEXTURE2D||p->Usage!=D3D10_DDI_USAGE_DEFAULT||p->MapFlags||p->pPrimaryDesc||
-    (p->BindFlags!=D3D10_DDI_BIND_RENDER_TARGET&&p->BindFlags!=D3D10_DDI_BIND_SHADER_RESOURCE)))return E_NOTIMPL;
+    (p->BindFlags!=D3D10_DDI_BIND_RENDER_TARGET&&p->BindFlags!=D3D10_DDI_BIND_SHADER_RESOURCE&&p->BindFlags!=(D3D10_DDI_BIND_RENDER_TARGET|D3D10_DDI_BIND_SHADER_RESOURCE))))return E_NOTIMPL;
  m=p->pMipInfoList;
  if(p->pPrimaryDesc&&(!(p->BindFlags&D3D10_DDI_BIND_PRESENT)||p->pPrimaryDesc->VidPnSourceId||p->pPrimaryDesc->ModeDesc.Width!=m->TexelWidth||p->pPrimaryDesc->ModeDesc.Height!=m->TexelHeight))return E_NOTIMPL;
  if(!m->TexelWidth||!m->TexelHeight||m->TexelDepth!=1||m->PhysicalWidth!=m->TexelWidth||m->PhysicalHeight!=m->TexelHeight||m->PhysicalDepth!=1)return E_INVALIDARG;
@@ -71,7 +71,10 @@ static HRESULT desc_valid(const D3D11DDIARG_CREATERESOURCE *p) {
  } else if(p->ResourceDimension==D3D10DDIRESOURCE_TEXTURE2D){
   if(p->SampleDesc.Count!=1||p->SampleDesc.Quality||(p->BindFlags&~(D3D10_DDI_BIND_RENDER_TARGET|D3D10_DDI_BIND_SHADER_RESOURCE|(A04_GE8300_UNIFIED_DISPLAY356?D3D10_DDI_BIND_PRESENT:0))))return E_NOTIMPL;
   if(p->BindFlags&D3D10_DDI_BIND_SHADER_RESOURCE){
-   if(p->BindFlags!=D3D10_DDI_BIND_SHADER_RESOURCE||
+   if(p->BindFlags&D3D10_DDI_BIND_RENDER_TARGET){
+    if(p->BindFlags!=(D3D10_DDI_BIND_RENDER_TARGET|D3D10_DDI_BIND_SHADER_RESOURCE)||p->Usage!=D3D10_DDI_USAGE_DEFAULT||p->MapFlags||p->pPrimaryDesc||p->pInitialDataUP||
+       p->Format!=DXGI_FORMAT_B8G8R8A8_UNORM||m->TexelWidth!=800||m->TexelHeight!=A04_NATIVE_FRAME_HEIGHT)return E_NOTIMPL;
+   }else if(p->BindFlags!=D3D10_DDI_BIND_SHADER_RESOURCE||
       (p->Format!=DXGI_FORMAT_B8G8R8A8_UNORM&&p->Format!=DXGI_FORMAT_R8G8B8A8_UNORM)||
       !geo_texture_layout_valid(m->TexelWidth,m->TexelHeight,geo_texture_default_pitch(m->TexelWidth)))return E_NOTIMPL;
   }else if(p->Format!=DXGI_FORMAT_B8G8R8A8_UNORM||m->TexelWidth>800u||m->TexelHeight>A04_NATIVE_FRAME_HEIGHT)return E_NOTIMPL;
@@ -127,9 +130,9 @@ static void APIENTRY create_resource(D3D10DDI_HDEVICE h,const D3D11DDIARG_CREATE
  if(p->MiscFlags==D3D10_DDI_RESOURCE_MISC_SHARED){
   struct geo_shared_surface shared={0};
   shared.base.size=sizeof(shared);shared.base.version=3;shared.base.logical_width=r->width;shared.base.logical_height=r->height;
-  shared.base.storage=(struct geo_surface_desc){sizeof(struct geo_surface_desc),q.Flags.Texture?GEO_TEXTURE_STORAGE_VERSION:1,
-   q.Flags.Texture?r->width:800,q.Flags.Texture?r->height:A04_NATIVE_FRAME_HEIGHT,
-   q.Flags.Texture?geo_texture_default_pitch(r->width):3200,(UINT)q.Format,q.Flags.Texture?GEO_USAGE_TEXTURE2D:GEO_USAGE_RENDER_TARGET,0};
+  shared.base.storage=(struct geo_surface_desc){sizeof(struct geo_surface_desc),q.Flags.RenderTarget?1:GEO_TEXTURE_STORAGE_VERSION,
+   q.Flags.RenderTarget?800:r->width,q.Flags.RenderTarget?A04_NATIVE_FRAME_HEIGHT:r->height,
+   q.Flags.RenderTarget?3200:geo_texture_default_pitch(r->width),(UINT)q.Format,q.Flags.RenderTarget?(q.Flags.Texture?GEO_USAGE_RT_TEXTURE2D:GEO_USAGE_RENDER_TARGET):GEO_USAGE_TEXTURE2D,0};
   shared.magic=GEO_SHARED_MAGIC;shared.bind=p->BindFlags;shared.format=p->Format;shared.dimension=p->ResourceDimension;shared.misc=p->MiscFlags;
   hr=geo_umd_create_shared(&d->backend,&shared,runtime.handle,&q.hResource);
  }else hr=d->memory.pfnCreateResource(&d->backend,&q);

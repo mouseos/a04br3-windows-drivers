@@ -22,7 +22,7 @@ static HRESULT unref(struct geo_typed_srv *v) {
 }
 static HRESULT validate(D3D10DDI_HDEVICE h,const D3D11DDIARG_CREATESHADERRESOURCEVIEW *p) {
  struct geo_typed_resource *r;if(!p||!(r=geo_typed_resource(h,p->hDrvResource)))return E_INVALIDARG;
- if(r->bind!=D3D10_DDI_BIND_SHADER_RESOURCE||r->dimension!=D3D10DDIRESOURCE_TEXTURE2D||p->ResourceDimension!=D3D10DDIRESOURCE_TEXTURE2D||
+ if(!(r->bind&D3D10_DDI_BIND_SHADER_RESOURCE)||r->dimension!=D3D10DDIRESOURCE_TEXTURE2D||p->ResourceDimension!=D3D10DDIRESOURCE_TEXTURE2D||
     (p->Format!=DXGI_FORMAT_B8G8R8A8_UNORM&&p->Format!=DXGI_FORMAT_R8G8B8A8_UNORM)||p->Format!=r->format||p->Tex2D.MostDetailedMip||p->Tex2D.FirstArraySlice||p->Tex2D.MipLevels!=1||p->Tex2D.ArraySize!=1)return E_NOTIMPL;
  return S_OK;
 }
@@ -69,6 +69,7 @@ HRESULT geo_typed_texture_profile(struct geo_typed_device *d,UINT *profile) {
 }
 HRESULT geo_typed_texture_allocation(struct geo_typed_device *d,struct geo_surface_desc *desc,D3DKMT_HANDLE *a) {
  UINT profile;HRESULT hr;if(!d||!d->texture||!desc||!a)return E_INVALIDARG;
+ if(d->target&&d->target->resource==d->texture->resource)return E_INVALIDARG;
  hr=geo_typed_texture_profile(d,&profile);if(FAILED(hr))return hr;
  return geo_umd_resource_info(&d->backend,d->texture->resource->backend,GEO_USAGE_TEXTURE2D,desc,a);
 }

@@ -93,7 +93,7 @@ static struct geo_job *job(struct geo_engine *e,const struct geo_dma_ticket *t) 
 }
 int32_t geo_prepare_begin(struct geo_engine *e,struct geo_allocation *a,const struct geo_clear_packet *p,struct geo_dma_ticket *t) {
  uint32_t i;struct geo_job *j;
- if(!e||!a||!t||!geo_packet_valid(p,1)||p->allocation_index||a->desc.usage!=GEO_USAGE_RENDER_TARGET)return GEO_INVALID;
+ if(!e||!a||!t||!geo_packet_valid(p,1)||p->allocation_index||!geo_usage_renderable(a->desc.usage))return GEO_INVALID;
  if(e->poisoned||a->poisoned)return GEO_POISONED;
  if(!a->surface)return GEO_NOT_READY;
  for(i=0;i<GEO_MAX_JOBS;i++)if(!e->jobs[i].state&&e->jobs[i].generation!=UINT32_MAX)break;
@@ -103,7 +103,7 @@ int32_t geo_prepare_begin(struct geo_engine *e,struct geo_allocation *a,const st
 }
 int32_t geo_prepare_draw_begin(struct geo_engine *e,struct geo_allocation *a,struct geo_allocation *v,struct geo_dma_ticket *t) {
  uint32_t i;struct geo_job *j;
- if(!e||!a||!v||a==v||!t||a->desc.usage!=GEO_USAGE_RENDER_TARGET||v->desc.usage!=GEO_USAGE_VERTEX_BUFFER)return GEO_INVALID;
+ if(!e||!a||!v||a==v||!t||!geo_usage_renderable(a->desc.usage)||v->desc.usage!=GEO_USAGE_VERTEX_BUFFER)return GEO_INVALID;
  if(e->poisoned||a->poisoned||v->poisoned)return GEO_POISONED;
  if(!a->surface||!v->surface)return GEO_NOT_READY;
  for(i=0;i<GEO_MAX_JOBS;i++)if(!e->jobs[i].state&&e->jobs[i].generation!=UINT32_MAX)break;
@@ -115,7 +115,7 @@ int32_t geo_prepare_draw_begin(struct geo_engine *e,struct geo_allocation *a,str
 }
 int32_t geo_prepare_copy_begin(struct geo_engine *e,struct geo_allocation *d,struct geo_allocation *s,struct geo_dma_ticket *t) {
  uint32_t i;struct geo_job *j;
- if(!e||!d||!s||d==s||!t||!e->owner.prepare_copy||d->desc.usage!=GEO_USAGE_STAGING||s->desc.usage!=GEO_USAGE_RENDER_TARGET||
+ if(!e||!d||!s||d==s||!t||!e->owner.prepare_copy||d->desc.usage!=GEO_USAGE_STAGING||!geo_usage_renderable(s->desc.usage)||
     d->desc.format!=GEO_FORMAT_A8R8G8B8||s->desc.format!=GEO_FORMAT_A8R8G8B8||
     d->desc.width!=800||d->desc.height!=A04_NATIVE_FRAME_HEIGHT||d->desc.pitch!=3200||
     s->desc.width!=800||s->desc.height!=A04_NATIVE_FRAME_HEIGHT||s->desc.pitch!=3200)return GEO_INVALID;
@@ -130,7 +130,7 @@ int32_t geo_prepare_copy_begin(struct geo_engine *e,struct geo_allocation *d,str
 }
 int32_t geo_prepare_texture_begin(struct geo_engine *e,struct geo_allocation *a,struct geo_allocation *v,struct geo_allocation *x,struct geo_dma_ticket *t) {
  int32_t status;
- if(!e||!a||!v||!x||x==a||x==v||x->desc.usage!=GEO_USAGE_TEXTURE2D)return GEO_INVALID;
+ if(!e||!a||!v||!x||x==a||x==v||!geo_usage_sampleable(x->desc.usage))return GEO_INVALID;
  if(x->poisoned||e->poisoned)return GEO_POISONED;
  if(!x->surface)return GEO_NOT_READY;
  if(x->references==UINT32_MAX)return GEO_BUSY;
