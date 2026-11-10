@@ -4,7 +4,7 @@ param([Parameter(Mandatory=$true)][string]$WorkspaceRoot,
  [Parameter(Mandatory=$true)][string]$SourceDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,
  [Parameter(Mandatory=$true)][string]$PolicyPath,[Parameter(Mandatory=$true)][string]$ExpectedPolicyFileSha256,
  [string]$ExpectedPolicySha256,[ValidatePattern('^MT8167CombinedFollowup[0-9]{3}$')][string]$NewServiceName='MT8167CombinedFollowup200',
- [string[]]$AdditionalServiceNames=@(),[int]$TimingCaptureNumber=0)
+ [string[]]$AdditionalServiceNames=@(),[int]$TimingCaptureNumber=0,[switch]$IncludeWifiCheckpoint)
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 function Hash($p){(Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant()}
 $w=[IO.Path]::GetFullPath($WorkspaceRoot).TrimEnd('\')
@@ -75,8 +75,10 @@ function Keypad-WdfRuntimeObservation($Root) {
 }
 $r=[ordered]@{schema=$(if($TimingCaptureNumber){"GPU369_FRESH$($TimingCaptureNumber)_READONLY_NATIVE_RECEIPT_V1"}else{'GPU368_FRESH200_READONLY_NATIVE_RECEIPT_V1'});scope='Actual private clone inventory; no previous snapshot comparison and no hardware execution';capture_number=$(if($TimingCaptureNumber){$TimingCaptureNumber}else{200});source_manifest_sha256=$ExpectedManifestSha256;recovery_boot_id=$m.recovery_boot_id;template_policy_sha256=$ExpectedPolicyFileSha256;policy_sha256=$ExpectedPolicySha256;policy_sha256_is_reference_only=$true;source_files=$pins;new_service_name=$NewServiceName;nodes=[ordered]@{};old_services=[ordered]@{};captured_named_values=[ordered]@{};missing_named_values=@();actual_driver_services=[ordered]@{};full_service_preservation_equal=$null;preservation_comparison_performed=$false;full_service_capture_complete=$false;combined=[ordered]@{};errors=@();load_rc=-1;unload_rc=-1;privilege_restore_error=-1;originals_unchanged=$false;physical_boot_read_performed=$false;registry_write_requested=$false;clone_replay_may_modify_clone=$true;hardware_verified=$false}
 $r.source_recipe_files=[ordered]@{}
-foreach($file in @('read-fresh200-native-inventory.ps1','ReadonlyInventory200HiveNative.cs','prepare-offline-system-service.ps1','read-post-ownership-policy360.ps1','read-gpu-native-checkpoint.ps1')){$r.source_recipe_files[$file]=Hash (Join-Path $PSScriptRoot $file)}
-$mount='MT8167OfflineSYSTEM_'+[Guid]::NewGuid().ToString('N');$root=$null;$priv=$null;$loaded=$false
+foreach($file in @('read-fresh200-native-inventory.ps1','ReadonlyInventory200HiveNative.cs','prepare-offline-system-service.ps1','read-post-ownership-policy360.ps1','read-gpu-native-checkpoint.ps1','read-ge8300-start-gap359.ps1')){$r.source_recipe_files[$file]=Hash (Join-Path $PSScriptRoot $file)}
+if($IncludeWifiCheckpoint){$r.source_recipe_files['read-mt6630-checkpoint-loaded.ps1']=Hash (Join-Path $PSScriptRoot 'read-mt6630-checkpoint-loaded.ps1')}
+$wifiCheckpoint=$null
+$mount='MT8167OfflineSYSTEM_' +[Guid]::NewGuid().ToString('N');$root=$null;$priv=$null;$loaded=$false
 try{
  $priv=New-Object MT8167OfflineHive.Privileges
  $r.load_rc=[MT8167OfflineHive.Native]::Load($mount,"$OutputDirectory\clone\SYSTEM");if($r.load_rc){throw 'Private clone load failed'}
@@ -166,6 +168,13 @@ try{
  if(!$key){$r.gpu_factory=@{present=$false}}else{try{$fields=@($key.GetValueNames()|Where-Object {$_ -cmatch '^R[0-6][0-9]$'});$r.gpu_factory=@{present=$true;values=(Values $key $fields 90);timestamps_retained=$true;records_not_assumed_current_boot=$true}}finally{$key.Dispose()}}
  . "$PSScriptRoot\read-gpu-native-checkpoint.ps1"
  $r.gpu_init=Read-GpuNativeCheckpoint $root $cs
+ . (Join-Path $PSScriptRoot 'read-ge8300-start-gap359.ps1')
+ $r.startup_gap359=Read-Ge8300StartGap359 $root
+ if($IncludeWifiCheckpoint){
+  . (Join-Path $PSScriptRoot 'read-mt6630-checkpoint-loaded.ps1')
+  $wifiCheckpoint=Read-Mt6630LoadedCheckpoint $root $cs "$OutputDirectory\wifi-checkpoint" $ExpectedManifestSha256 $m.recovery_boot_id
+  $r.wifi_checkpoint=[ordered]@{receipt_relative_path='wifi-checkpoint/receipt.json';selection=$wifiCheckpoint.selection;record_headers=$wifiCheckpoint.record_headers;values=$wifiCheckpoint.values;same_loaded_root=$true;connection_success_claimed=$false}
+ }
  $key=[MT8167OfflineHive.Native]::OpenPath($root,"$cs\Services\GE8300Render\Parameters\NativeCheckpoint",$false)
  $r.module_identity=@{present=$false}
  if($key){try{
@@ -191,6 +200,13 @@ foreach($name in $pins.Keys){if((Hash (Join-Path $SourceDirectory $name)) -cne $
 $r.manifest_unchanged=(Hash $Manifest) -ceq $ExpectedManifestSha256
 $r.template_unchanged=(Hash $PolicyPath) -ceq $ExpectedPolicyFileSha256
 if(!$r.manifest_unchanged -or !$r.template_unchanged){$r.errors+=@('Input manifest/template changed')}
+if($null -ne $wifiCheckpoint){
+ foreach($field in @('load_rc','unload_rc','privilege_restore_error','originals_unchanged','manifest_unchanged')){$wifiCheckpoint[$field]=$r[$field]}
+ $wifiCheckpoint.errors=@($r.errors)
+ $clean=(!$r.errors.Count -and $r.load_rc -eq 0 -and $r.unload_rc -eq 0 -and $r.privilege_restore_error -eq 0 -and $r.originals_unchanged -and $r.manifest_unchanged)
+ $wifiCheckpoint.status=if($clean){'checkpoint-extracted-not-a-connection-diagnosis'}else{'failed'}
+ $wifiCheckpoint|ConvertTo-Json -Depth 25|Set-Content -LiteralPath "$OutputDirectory\wifi-checkpoint\receipt.json" -Encoding UTF8
+}
 $r|ConvertTo-Json -Depth 30|Set-Content -LiteralPath "$OutputDirectory\receipt.json" -Encoding UTF8
 if($r.errors.Count -or $r.load_rc -or $r.unload_rc -or $r.privilege_restore_error -or !$r.originals_unchanged){throw 'Read-only inventory failed; retain receipt and clone'}
 'FRESH200_ACTUAL_NATIVE_INVENTORY_CAPTURED_NO_ARMING_OR_HARDWARE_SUCCESS'
