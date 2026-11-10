@@ -31,3 +31,5 @@ make CC=clang test-mt8167-usb-pnp-resources test-mt8167-usb-host-core test-mt816
 `host_include`は既存の決定論的USB試験をLinuxで実行する型定義だけで、Windows ABI／WDK検証の代わりではない。OS／MMIO seamは既存試験のものを使う。新しい実機probeやテストdriverは追加しない。
 
 実Windows USBPORT登録、PnP通知・削除の実際の順序、host列挙、5V供給、給電改善は未検証。Windows/ARMビルド・署名も本branchでは未実施。親WDF全体の既存host targetは同梱stubの `wdmguid.h` 不足により実行できていない。実機採用には別途mainによる対応packageの検証が必要。
+
+親1121／HCD1019の対応ビルド・署名と固定入力closureは [Windowsビルドrecipe](musb1121-hcd1019-build.md) を参照。recipe自体のWindows実行は未検証で、mainが既存runnerで実行する。現実機USB20の選択はkeyboard1010であり、1018 HCDが採用済みとは仮定しない。
