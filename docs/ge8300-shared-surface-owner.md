@@ -87,3 +87,36 @@ source gateの16ケースも通過した。native TUをlegacy sourceへ転送す
 compiler cacheのhost検証は合成375TU fixture。source/include/新しいshadow headerによる解決先変更/flags/compiler/API library/object/pair/証拠欠落を拒否することと、VFSで提供するarm_neon.hを実Clang headerへ対応させることを確認した。実在のPCO375 cacheを合格認定した結果ではない。
 
 PowerShell/Windows toolchainのrecipe実行は行っていない。runner禁止を維持し、Windows buildの成否、署名、実機/DWM成功はmain側の後続確認事項として残す。
+
+## 明示opt-inのwarm build：旧f4 compilerを固定tool入力として使用
+
+旧375 libraryはmainが同一VMで実compileした固定成果物であり、ユーザーの明示指示により、新strict cache認定とは別のprebuilt compiler toolとして使用する。旧include証明を作り直す機能ではない。冷build入口とstrict cache入口の既定は変更していない。
+
+```powershell
+.\tools\ci\build-ge8300-shared-surface-warm.ps1 -EnableCandidate -EnablePinnedPrebuiltCompiler -UnifiedDisplay -PrebuiltCompilerDirectory 'C:/mt8167-public-unified362/source/build/ge8300-source-complete/compiler' -OutputDirectory "$PWD\build\shared-surface-warm-f4"
+```
+
+新しいclean checkoutの現HEADで実行する。既存VMにあるVC14.44.35207、UCRT10.0.22621.0、WDK8.1 lookupを既定とし、toolchain/SDKのinstallや再構築を行わない。出力先は未作成のcheckout内directoryを指定する。opt-in switchがなければ停止する。
+
+### live入力照合と実compile
+
+`ge8300-pco375-f4-prebuilt.json`は、保存済みactual manifest3本のSHA、元compile commit f4b92404c4bbe139524a997c5427a8245560e522、source-plan、pair、library10本、記録済みClang/llvm-lib tool hashを固定する。
+
+mainがrecipeを実行した時点で、旧manifest3本、10library、pair、live LLVM toolsと現在使用するMicrosoft API/CRT6本を保存hashと照合する。375行の旧object hashも保持し、存在するstandalone objectは照合、欠落は数と名称を記録する。リンクに不要な旧objectの欠落だけで停止・再buildはしない。375source・全記録args・source-plan全604filesも照合する。これは「現在headerで旧includeを証明する」処理ではない。
+
+照合後にlibrary10本・pair・元manifest3本を新しい出力先の`compiler-tool`へコピーし、保存SHAと再照合する。元cache/source/SDKは変更しない。UMD入口でもprebuilt入力を再検査し、build終了前にも再検査する。入力不一致なら停止し、PCO/SDK再buildへ自動fallbackしない。`cache-evidence.json`の不在はこのwarm modeの停止条件ではない。
+
+native67TU、全KMD/bridge/display TU、全UMD TUは現HEADのソースから再compileする。旧native/KMD/UMD objectは使用しない。再利用するのは固定compiler toolと既存Microsoft libraryだけであり、PCO375のcompile・archiveを再実行しない。
+
+### provenanceと制約
+
+出力`warm-build-manifest.json`は現HEADのnative/KMD/UMDと各子manifestを結び付け、次を明記する。
+
+- `compiler_input_kind = SHA-fixed historical prebuilt compiler tool`
+- `CompilerSourceCommit = f4b92404c4bbe139524a997c5427a8245560e522`
+- `includeClosureRecorded = false`、`strict_cache_qualified = false`
+- `PCO_rebuilt = 0`、`SDK_rebuilt = 0`、`native_KMD_UMD_objects_reused = 0`
+
+`prebuilt-compiler-input.json`にはlive照合内容と元cache/stage/APIの対応を記録する。元manifestは旧sourceのまま保持し、旧include/toolのunknown値を現在値で補完しない。新しい現HEADのcompiler source buildやstrict cache完全適合とは主張しない。
+
+SHARED DEFAULT single mip/slice/sample、既存storage範囲、RT-only/SRV-onlyの制約を維持する。RT/SRV・blend・DWMは未完了。Windows warm recipe、live旧cacheの照合、実機/DWMはこのbranch作業では未実行であり、mainの後続実行結果を別途確認する。

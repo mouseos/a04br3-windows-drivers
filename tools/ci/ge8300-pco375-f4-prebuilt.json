@@ -1,0 +1,93 @@
+{
+  "schema": "pco375-f4-pinned-prebuilt-spec-v1",
+  "compiled_source_commit": "f4b92404c4bbe139524a997c5427a8245560e522",
+  "source_plan_sha256": "d0de81280cdac3bafc856111f29a22f3bd4b1969fd6779a02fe5e34a107b19c1",
+  "compiled_units": 375,
+  "manifest_sha256": {
+    "compile-manifest.json": "560223f6068c469e3ae58fe4777e2a13ea29b438de40c27962a7080c95528953",
+    "link-manifest.json": "87633304e3ab40bdabbd198195c5b27f15a0ca1eec77b185a7b1d56dc3429806",
+    "pair-manifest.json": "df9092a2d716b8577df8b91fc846d5c530324a2a9bb9f99e276c5acb18eddca6"
+  },
+  "tool_sha256": {
+    "clang": "57e32b1ea2456f12f97bf802453171bbff12d56b2c486b4eca0c75343c0cda2c",
+    "llvm-lib": "ac241b193d1954102c9282caa1fb0f2faf0331c6b3d137bc704a04b0f8763e76"
+  },
+  "tool_hash_origins": {
+    "clang": "recovered compiler/link-manifest.json",
+    "llvm-lib": "recovered same-job native/build-manifest.json"
+  },
+  "pair_object_sha256": "aaa7585658e54241edc8c6de324a7e19136e0a557ac83a37957bd9860059fd91",
+  "pair_source_sha256": "e67d31c4942ad294a1e889cc2e2390ff96d4a0cdb68d5ae1be5ffa153e5cc426",
+  "libraries": [
+    {
+      "path": "C:\\mt8167-public-unified362\\source\\build\\ge8300-source-complete\\compiler\\ge8300-pco-arm32.lib",
+      "sha256": "de6e966c2cd252a89d694b77635a0abe6d6bd96dcec62c85e72631e9c26ef79f",
+      "role": "source-built compiler pco",
+      "name": "ge8300-pco-arm32.lib"
+    },
+    {
+      "path": "C:\\mt8167-public-unified362\\source\\build\\ge8300-source-complete\\compiler\\ge8300-nir-arm32.lib",
+      "sha256": "28f491fad6f11b5caf1ae3c8df807e46140f029287b340a536fb3ef663fd9f1d",
+      "role": "source-built compiler nir",
+      "name": "ge8300-nir-arm32.lib"
+    },
+    {
+      "path": "C:\\mt8167-public-unified362\\source\\build\\ge8300-source-complete\\compiler\\ge8300-util-arm32.lib",
+      "sha256": "efb9ce3e7aba87c0ac7fefaf940c03ab884a7b579b07fd7b7bd64a1cc37771b4",
+      "role": "source-built compiler util",
+      "name": "ge8300-util-arm32.lib"
+    },
+    {
+      "path": "C:\\mt8167-public-unified362\\source\\build\\ge8300-source-complete\\compiler\\ge8300-support-arm32.lib",
+      "sha256": "46dbda6273bbea15b2f4e7df0718760659052b7d95b00d554d77e7db4ee532c2",
+      "role": "source-built compiler support",
+      "name": "ge8300-support-arm32.lib"
+    },
+    {
+      "path": "C:\\mt8167-public-unified362\\source\\build\\ge8300-source-complete\\compiler\\libcmt.lib",
+      "sha256": "0e4658145da9cf02c645df457abab6bc9797f7fd8afc4d442f06a83691576a4a",
+      "role": "Microsoft ARM toolchain CRT or SDK",
+      "name": "libcmt.lib"
+    },
+    {
+      "path": "C:\\mt8167-public-unified362\\source\\build\\ge8300-source-complete\\compiler\\libvcruntime.lib",
+      "sha256": "2048dc1a46e86a2c3e3a512b704c9ebfd936a1ad53bc8502a43057f44d7e0291",
+      "role": "Microsoft ARM toolchain CRT or SDK",
+      "name": "libvcruntime.lib"
+    },
+    {
+      "path": "C:\\mt8167-public-unified362\\source\\build\\ge8300-source-complete\\compiler\\libcpmt.lib",
+      "sha256": "50d17254b6c2d84b283f524eabb59b5c0cf0217f0bdd146c0cb39550b8a9f260",
+      "role": "Microsoft ARM toolchain CRT or SDK",
+      "name": "libcpmt.lib"
+    },
+    {
+      "path": "C:\\mt8167-public-unified362\\source\\build\\ge8300-source-complete\\compiler\\libucrt.lib",
+      "sha256": "58a7241ab801978c0ec48646cd7fc46e892d32ce2b623f4e64e40c889d2010ca",
+      "role": "Microsoft ARM toolchain CRT or SDK",
+      "name": "libucrt.lib"
+    },
+    {
+      "path": "C:\\mt8167-public-unified362\\source\\build\\ge8300-source-complete\\compiler\\kernel32.lib",
+      "sha256": "c91612edab9e074a6daa2baafdf5fdf345a551f6bc20ea133782d6423737f61e",
+      "role": "Microsoft ARM toolchain CRT or SDK",
+      "name": "kernel32.lib"
+    },
+    {
+      "path": "C:\\mt8167-public-unified362\\source\\build\\ge8300-source-complete\\compiler\\synchronization.lib",
+      "sha256": "92b1d52feb6aca972b5914e4ca4397a3f81b4e0616188a852d261447875b27ef",
+      "role": "Microsoft ARM toolchain CRT or SDK",
+      "name": "synchronization.lib"
+    }
+  ],
+  "recorded_include_roots": {
+    "REPO": "C:/mt8167-public-unified362/source",
+    "VC_INCLUDE": "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/14.44.35207/include",
+    "UCRT_INCLUDE": "C:/Program Files (x86)/Windows Kits/10/Include/10.0.22621.0/ucrt",
+    "SDK_SHARED": "C:/mt8167-public-fullsource323/wdk81/Include/shared",
+    "SDK_UM": "C:/mt8167-minimal-service-host/cache/kit81/Include/um"
+  },
+  "includeClosureRecorded": false,
+  "strict_cache_qualified": false,
+  "historical_old_include_hashes": "unknown; not filled from current source"
+}
