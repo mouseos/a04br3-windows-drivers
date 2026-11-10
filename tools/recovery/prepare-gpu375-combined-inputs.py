@@ -186,6 +186,10 @@ def load_map(path, root):
             pins[(Path(row['directory']) / name).as_posix()] = row['hashes'][kind]
         for leaf in row.get('extra_members', []):
             pins[(Path(row['directory']) / leaf['name']).as_posix()] = leaf['sha256']
+    # The validator reads the original372 UMD/FW as well as their identical
+    # candidate376 copies. Both actual paths belong in the transfer closure.
+    for leaf in p['packages']['render']['extra_members']:
+        pins[(Path(lock['retained372']['manifest']['path']).parent / leaf['name']).as_posix()] = leaf['sha256']
     for ref in (spec['client_map'], lock['retained372']['manifest'], lock['main_review_bundle'], *delta['main_package_reviews'].values()):
         a.pinned(root, ref)
         pins[ref['path']] = ref['sha256']
