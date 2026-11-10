@@ -70,7 +70,7 @@ foreach($kind in @('parent','thermal')){
   if($line -match '^\s*Symbol:\s+(\S+)\s+\('){
    $symbol=$Matches[1]
    if(!$dll -or !$rt.actual_RT81_exports.$dll -or $symbol -notin $rt.actual_RT81_exports.$dll.symbols -or
-      $symbol -notin $rt.baseline.$kind.imports.$dll){throw "Actual RT81/baseline import mismatch: $dll $symbol"}
+      ($symbol -notin $rt.baseline.$kind.imports.$dll -and $symbol -notin $rt.allowed_added_imports.$kind.$dll)){throw "Actual RT81/baseline import mismatch: $dll $symbol"}
    $table[$dll]+=$symbol
   }
  }

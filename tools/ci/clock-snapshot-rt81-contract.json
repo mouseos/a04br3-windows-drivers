@@ -93,5 +93,14 @@
         "WdfVersionUnbindClass"
       ]
     }
-  }
+  },
+  "allowed_added_imports": {
+    "parent": {},
+    "thermal": {
+      "hal.dll": [
+        "KeGetCurrentIrql"
+      ]
+    }
+  },
+  "added_import_reason": "Snapshot consumer rejects non-PASSIVE IRQL before querying parent. KeGetCurrentIrql is an actual RT8.1 hal export already used by parent1117."
 }
