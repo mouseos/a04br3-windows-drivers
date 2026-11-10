@@ -52,6 +52,29 @@ int32_t geo_unbind(struct geo_engine *e,struct geo_allocation *a) {
  if(s!=GEO_OK){a->poisoned=1;e->poisoned=1;return s;}
  a->bound=0;return GEO_OK;
 }
+/* Caller holds frontend PASSIVE serialization; close additionally uses the
+ * existing IRQ synchronizer because jobs can finish concurrently. No native
+ * create/destroy/bind is performed on a per-process open/close. */
+int32_t geo_open_reference(struct geo_engine *e,struct geo_allocation *a) {
+ struct geo_allocation *scan;
+ if(!e||!a)return GEO_INVALID;
+ for(scan=e->allocations;scan&&scan!=a;scan=scan->next){}
+ if(!scan)return GEO_INVALID;
+ if(e->poisoned||a->poisoned)return GEO_POISONED;
+ if(a->open_count==UINT32_MAX)return GEO_BUSY;
+ a->open_count++;return GEO_OK;
+}
+int32_t geo_close_reference(struct geo_engine *e,struct geo_allocation *a,void *handle) {
+ struct geo_allocation *scan;uint32_t i;
+ if(!e||!a||!handle)return GEO_INVALID;
+ for(scan=e->allocations;scan&&scan!=a;scan=scan->next){}
+ if(!scan||!a->open_count)return GEO_INVALID;
+ for(i=0;i<GEO_MAX_JOBS;i++){
+  const struct geo_job *j=&e->jobs[i];
+  if(j->state&&j->state!=4&&(j->open_handle==handle||j->vertex_open_handle==handle||j->texture_open_handle==handle))return GEO_BUSY;
+ }
+ a->open_count--;return GEO_OK;
+}
 int32_t geo_destroy(struct geo_engine *e,struct geo_allocation *a) {
  int32_t s;struct geo_allocation **link;
  if(!e||!a||(!a->surface&&!a->cpu_only))return GEO_INVALID;

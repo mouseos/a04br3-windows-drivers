@@ -19,7 +19,9 @@ struct geo_pending_payload {struct geo_clear_packet clear;struct geo_draw_packet
  * querycaps, paging and real DIRQL ISR/DPC routing. */
 struct geo_owner_session;
 struct geo_kmd_device;
+struct geo_kmd_shared_resource {struct geo_kmd_shared_resource *next;struct geo_allocation *allocation;};
 struct geo_kmd_adapter {
+ struct geo_kmd_shared_resource *shared_resources;
  struct geo_owner_session *session;
  void *display; /* Same WDDM adapter; owns POST/VidPn, not a second GPU owner. */
  struct geo_kmd_device *devices;

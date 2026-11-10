@@ -3122,5 +3122,81 @@
       "drivers/gpu/mt8167/wddm-display/bdd.cxx"
     ],
     "reconciliation_reason": "185 operational checkout carries older GPU source snapshots while signed installed binary remains359; preserve359 exact GPU runtime and segmented-zero fix, no POST runtime fallback"
+  },
+  "shared_surface_integration": {
+    "base_source": "23e44487c0a8352d735631bef1a93a347cc2eeeb",
+    "implementation_source_commit": "8f5d372d523018f67d03f7671021312b9a2cae0c",
+    "files": [
+      {
+        "path": "drivers/gpu/mt8167/wddm-render/clear_engine.c",
+        "source_commit": "8f5d372d523018f67d03f7671021312b9a2cae0c",
+        "sha256": "5652ab39a2329965c27bc095c38a1c80ee4081938890ab1c80b5d825f8597e9c",
+        "previous_origin_row_sha256": "691fc065b7214d12c56e13b31ac6aca07b5e377b332d63e2de4deff912fb6c86"
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-render/clear_engine.h",
+        "source_commit": "8f5d372d523018f67d03f7671021312b9a2cae0c",
+        "sha256": "0c532927ad8fa8aaf015b87ba1c3ecc8a416537fe38f0c61e7b478d137ed5bb2",
+        "previous_origin_row_sha256": "53a0bce29732d737bb3eefb12f14620a78bdbc89869e8dcb5c0151e224d9c3f2"
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-render/kmd_clear.c",
+        "source_commit": "8f5d372d523018f67d03f7671021312b9a2cae0c",
+        "sha256": "1af8a699b3cd03d5fc49d30c376597f7d827e260302cf6d9ec25e5c9c0e40126",
+        "previous_origin_row_sha256": "29b75cceabe69ba18370998d8bebe0e38f6d271c6651254913e605f7a3db80c2"
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-render/kmd_clear.h",
+        "source_commit": "8f5d372d523018f67d03f7671021312b9a2cae0c",
+        "sha256": "8e5983e1e461aca5e5ea06a57443350bacdd61f79074f867fdd255e165e41353",
+        "previous_origin_row_sha256": "53a5487825030ee99a4cdffcd067d5c2bee3e6c44d98a9addd844517734e7185"
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-render/kmd_objects.c",
+        "source_commit": "8f5d372d523018f67d03f7671021312b9a2cae0c",
+        "sha256": "88689a720cbf96ba520e98dafa6221a14a5a2358bac76136973efcceb697c2b4",
+        "previous_origin_row_sha256": "ac1ec391132d5d24c846fbe2f453dbe8bd81bdaaf16fa2cb962a0bd903b96713"
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-render/lifecycle.c",
+        "source_commit": "8f5d372d523018f67d03f7671021312b9a2cae0c",
+        "sha256": "a00e1c1610c63ebb8665042869482ef931493d648be6c61d4fe9cc8a1abb58a6",
+        "previous_origin_row_sha256": "de1c238fe304e692159e30cf94ecfd40766e88a1b4133d4a1d6513f989203c75"
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
+        "source_commit": "8f5d372d523018f67d03f7671021312b9a2cae0c",
+        "sha256": "9f864340cb09041feb3a03c9f9627ef07faba74e723fd69dc923d150d02c15eb",
+        "previous_origin_row_sha256": "12d5fe6c83519d0001b6cf402e67f4639cc685d75396739081562767e5046995"
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-render/umd/clear_ddi.c",
+        "source_commit": "8f5d372d523018f67d03f7671021312b9a2cae0c",
+        "sha256": "b384d7151514af07c6a1a42154c4639736ec707cf03f19c5982cd68b425c7b86",
+        "previous_origin_row_sha256": "20d3e001d9f71f1ef0da984677bdc06d571ae8100f8c2a57a10d3289489f8311"
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-render/umd/clear_ddi.h",
+        "source_commit": "8f5d372d523018f67d03f7671021312b9a2cae0c",
+        "sha256": "1ee34d775f875364e427607329f66fe1bef30abb8486654352a1de11fda6fa26",
+        "previous_origin_row_sha256": "0d6e7fe83fe7903b3f78b366949d09d7a98131cdfc48ac6475b98620a7cee681"
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-render/umd/typed_resource.c",
+        "source_commit": "8f5d372d523018f67d03f7671021312b9a2cae0c",
+        "sha256": "6c98bafd08544fa373794033bbd1a55679d5e210910233c575430739dbea4e82",
+        "previous_origin_row_sha256": "529b058beb12c25c076b4a3079422620d5354686b26b79f4325527f7488f8a7a"
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-render/shared_surface.h",
+        "source_commit": "8f5d372d523018f67d03f7671021312b9a2cae0c",
+        "sha256": "dc6a5d23e11a63e48ae6afce47a549655584f7541b708aa592fc9ed1a0c44db6"
+      }
+    ],
+    "native_compilation_map_changed": false,
+    "native_sources_changed": false,
+    "all_internal_header_consumers_recompile_required": true,
+    "hardware_verified": false,
+    "DWM_verified": false
   }
 }

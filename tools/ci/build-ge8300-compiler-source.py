@@ -2,6 +2,7 @@
 """Build the checked-in PCO/NIR source closure; no previous driver artifacts."""
 import argparse,concurrent.futures,hashlib,json,os,shutil,subprocess
 from pathlib import Path
+from ge8300_compiler_cache import dependency_rows
 p=argparse.ArgumentParser()
 for n in ('vc-include','ucrt-include','sdk-shared','sdk-um','vc-arm-libraries','sdk-arm-libraries','ucrt-arm-libraries','output'):p.add_argument('--'+n,type=Path,required=True)
 p.add_argument('--jobs',type=int,default=2);a=p.parse_args();root=Path(__file__).resolve().parents[2];out=a.output.resolve()
@@ -23,11 +24,12 @@ def expand(s):
  for key,value in subs.items():s=s.replace('${'+key+'}',value)
  if '${' in s:raise ValueError('Unresolved source-plan variable')
  return s
+dep_roots={k:Path(v).resolve() for k,v in subs.items()};dep_roots['CLANG_RESOURCE']=resource.resolve()
 rows=[]
 def compile_one(pair):
- i,u=pair;obj=out/(str(i)+'-'+Path(u['source']).stem+'.obj');cmd=[clang,*map(expand,u['arguments']),'-ivfsoverlay',str(vfs),'-c',str(root/u['source']),'-o',str(obj)]
+ i,u=pair;obj=out/(str(i)+'-'+Path(u['source']).stem+'.obj');cmd=[clang,*map(expand,u['arguments']),'-ivfsoverlay',str(vfs),'-MD','-MF',str(out/(str(i)+'.d')),'-MT','ge8300-unit','-c',str(root/u['source']),'-o',str(obj)]
  with (out/(str(i)+'.log')).open('w') as f:rc=subprocess.run(cmd,stdout=f,stderr=subprocess.STDOUT,env=env).returncode
- return {'component':u['component'],'source':u['source'],'source_sha256':sha(root/u['source']),'command':cmd,'exit_code':rc,'object':obj.name,'object_sha256':sha(obj) if not rc else None}
+ return {'component':u['component'],'source':u['source'],'source_sha256':sha(root/u['source']),'command':cmd,'exit_code':rc,'object':obj.name,'object_sha256':sha(obj) if not rc else None,'dependencies':dependency_rows(out/(str(i)+'.d'),dep_roots) if not rc else []}
 with concurrent.futures.ThreadPoolExecutor(max_workers=a.jobs) as pool:rows=list(pool.map(compile_one,enumerate(plan['units'])))
 (out/'compile-manifest.json').write_text(json.dumps({'units':rows,'source_plan_sha256':sha(planpath)},indent=2)+'\n')
 failed=[u for u in rows if u['exit_code']]
@@ -43,6 +45,13 @@ for directory,names in [(a.vc_arm_libraries,['libcmt.lib','libvcruntime.lib','li
 commit=subprocess.check_output(['git','-C',str(root),'rev-parse','HEAD'],text=True).strip()
 pair=next(u for u in rows if u['component']=='pair');shutil.copyfile(out/pair['object'],out/'pco_pair.obj')
 (out/'pair-manifest.json').write_text(json.dumps({'source_commit':commit,'source_dirty':False,'user_mode_fp':True,'kernel_no_fp_applied':False,'dependencies':{},'object_sha256':sha(out/'pco_pair.obj'),'source_plan_sha256':sha(planpath),'compiled_source_sha256':pair['source_sha256'],'source_built':True},indent=2)+'\n')
+# Evidence is generated at compilation, including system includes (-MD, not
+# -MMD). An old manifest without this evidence is never retroactively blessed.
+evidence={'schema':'pco375-all-includes-cache-v1','source_plan_sha256':sha(planpath),'compiler_sha256':sha(clang),
+ 'cache_verifier_sha256':sha(root/'tools/ci/ge8300_compiler_cache.py'),'build_recipe_sha256':sha(Path(__file__)),'compile_manifest_sha256':sha(out/'compile-manifest.json'),
+ 'units':[{'source':u['source'],'component':u['component'],'arguments':plan['units'][i]['arguments'],
+ 'source_sha256':u['source_sha256'],'object_sha256':u['object_sha256'],'dependencies':u['dependencies']} for i,u in enumerate(rows)]}
+(out/'cache-evidence.json').write_text(json.dumps(evidence,indent=2)+'\n')
 # The UMD linker consumes these verified source-built libraries directly.
-(out/'link-manifest.json').write_text(json.dumps({'schema':'compiler-source-closure-v1','source_commit':commit,'source_dirty':False,'source_plan_sha256':sha(planpath),'compiled_units':len(rows),'all_compile_exit_codes_zero':True,'source_built':True,'inputs':inputs,'compiler_version':subprocess.check_output([clang,'--version'],text=True),'compiler_sha256':sha(clang),'runtime_verified':False},indent=2)+'\n')
+(out/'link-manifest.json').write_text(json.dumps({'schema':'compiler-source-closure-v1','cache_evidence_sha256':sha(out/'cache-evidence.json'),'source_commit':commit,'source_dirty':False,'source_plan_sha256':sha(planpath),'compiled_units':len(rows),'all_compile_exit_codes_zero':True,'source_built':True,'inputs':inputs,'compiler_version':subprocess.check_output([clang,'--version'],text=True),'compiler_sha256':sha(clang),'runtime_verified':False},indent=2)+'\n')
 print('PCO_NIR_UTIL_SUPPORT_AND_PAIR_FROM_SOURCE_COMPLETE')

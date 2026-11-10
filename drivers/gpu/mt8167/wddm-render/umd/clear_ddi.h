@@ -11,6 +11,7 @@
 #endif
 #include <d3dumddi.h>
 #include "../clear_protocol.h"
+#include "../shared_surface.h"
 struct geo_umd_resource;
 struct geo_umd_shader_state;
 struct geo_umd_device {
@@ -40,6 +41,8 @@ int geo_umd_has_external_resources(struct geo_umd_device *);
 HRESULT geo_umd_resource_info(struct geo_umd_device *,HANDLE,UINT usage,struct geo_surface_desc *,D3DKMT_HANDLE *);
 HRESULT geo_umd_target_extent(struct geo_umd_device *,UINT *,UINT *);
 HRESULT geo_umd_target_info(struct geo_umd_device *,struct geo_surface_desc *,D3DKMT_HANDLE *);
+HRESULT geo_umd_create_shared(struct geo_umd_device *,const struct geo_shared_surface *,HANDLE,HANDLE *);
+HRESULT geo_umd_open_shared(struct geo_umd_device *,const struct geo_shared_surface *,const D3DDDI_OPENALLOCATIONINFO *,HANDLE,HANDLE *);
 HRESULT geo_umd_open_primary(struct geo_umd_device *,const D3DDDI_OPENALLOCATIONINFO *,HANDLE,HANDLE *,struct geo_surface_desc *);
 void geo_umd_install_clear_ddis(D3DDDI_DEVICEFUNCS *);
 #ifdef __cplusplus

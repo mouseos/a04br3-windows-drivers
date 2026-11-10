@@ -103,7 +103,7 @@ NTSTATUS GeoStopOwnerSession(struct geo_owner_session *s) {
  if(!s||!s->initialized||!s->lease.cookie||!s->adapter->notifications_ready||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  KeWaitForSingleObject(&s->control_lock,Executive,KernelMode,FALSE,NULL);
  status=drain(s,GEO_QUIESCE_STOP);
- if(status==STATUS_SUCCESS&&(s->adapter->engine.allocation_count||s->adapter->device_count)) {
+ if(status==STATUS_SUCCESS&&(s->adapter->engine.allocation_count||s->adapter->device_count||s->adapter->shared_resources)) {
   /* Real drain succeeded but live VidMm surfaces still own the lease. Allow
    * only unmap/destroy, then retry Stop. No successful release is reported. */
   reopen(s,GEO_SESSION_HALTED);status=STATUS_DEVICE_BUSY;

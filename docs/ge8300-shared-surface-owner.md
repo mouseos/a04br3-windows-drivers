@@ -1,0 +1,142 @@
+# 共有surfaceの既存owner取込み
+
+23e44487を基点とする実装。実機、Windowsのプロセス間動作、DWM成功は未確認。
+
+## 対応する契約
+
+D3D10/11 typed CreateResourceでMiscFlagsがSHAREDのみの、DEFAULT・CPU accessなし・single mip/slice/sampleのTexture2Dを扱う。既存native ownerが扱うRT単独BGRAと、SRV単独BGRA/RGBAだけを許可する。共有RTは既存の800×native height/pitch3200 backingとlogical extentを維持し、SRVは既存texture layoutを使う。RT/SRV併用は追加していない。
+
+UMDはポインタを含まないv3 descriptorをpfnAllocateCbのresource private dataとallocation private dataの両方へ渡す。hResourceにはruntimeから渡されたresource handleを指定する。runtimeがkernel resource/allocation handleを返す経路であり、ドライバ独自の共有handleを作らない。
+
+KMDは両descriptorの一致、版、format/usage/bind、実storage形状を検証し、一度だけ既存geo_create→owner.createを実行する。resource handle用の小さな管理情報はallocationと別に持つ。allocation解放とDestroyResourceの同時呼出し、別呼出しに対応する。元のallocationが消えてもresource管理情報を先に失わない。
+
+OpenResourceはOSが開いたallocation handleと両descriptorを検証し、そのhandleを既存backend resourceへ結び付ける。Allocate、native resource作成、画素コピー、擬似完了は行わない。primaryのv2取込みと共有surfaceのv3取込みは別経路とし、共有surfaceをprimaryへ誤分類しない。
+
+## 参照と同期
+
+既存KMD OpenAllocationはDxgkCbGetHandleDataで同じadapter内の元allocationを取得する。共有descriptorを元allocationの記録と照合し、各deviceに独立したopenを置く。ReadOnlyは既存write resolverで引き続き拒否する。exporterのclose後もimporterのopen_countが元owner resourceの破棄を防ぐ。
+
+CloseAllocationは既存IRQ synchronizerの下で、そのopenを使う未完了job（target/vertex/texture）の存在を確認する。未完了ならBUSYを返し、参照もopenも残す。GPU completionは作らない。実際のRender/Submit/fence、allocationのresidency/MDL/PFN、GPU/CPU cache処理は既存経路を使う。共有API自体にproducer/consumerの完了を仮定せず、アプリケーションが必要な所有権・順序を確立する必要がある。
+
+resource管理情報が残るStopは既存owner drain後のHALTED/cleanup可能状態を維持する。allocation・deviceと同様、管理情報の解放が済むまでownerの最終releaseを報告しない。Removeも管理情報が残る場合はBUSY。
+
+## この変更に含めないもの
+
+RT/SRV併用、render-to-textureのlayout/cache遷移、blend/scissor/可変viewport、部分コピー、GDI互換、keyed mutex/NT handle/cross-adapterの新しい契約・capsは含まない。受入flagsやfeature levelの拡張だけでDWM対応とはしない。Present経路と既存固定clientも変更しない。
+
+## 検証とビルド時の注意
+
+`python tests/ge8300_shared_surface_host_test.py --output <プロジェクトroot内の出力先>`で実production UMD helper、KMD create/open/close/destroy本体とclear_engineをhostで実行する。OS callback、pool、IRQ同期、native ownerはmock。ASan/UBSan付きでrender-only/unified両geometryを確認する。descriptor不一致、未対応bind/flags、確保失敗、再openの無再確保、exporter先close、未完了jobのclose拒否、allocation/resource別解放を検証する。これは実OSの並行性やプロセス間同期を実証しない。
+
+既存copy residency、texture lifetime、render residency hostテストも対象。保存済みMicrosoftヘッダを使うClang ARM構文確認はリンク・署名・実機動作を保証しない。
+
+geo_allocation、geo_engine、geo_kmd_adapterのlayoutが変わる。変更した.cだけを旧KMD/native libraryへ差し替えてはならない。これらのheaderを読む全translation unitを同じsource/設定から再コンパイルし、構造体offsetの混在を防ぐ。UMDも対応v3と一組で更新する。旧v1非共有/v2 primary descriptorは維持するが、旧KMDで新共有descriptorを利用することはできない。
+
+## 一次資料
+
+- Microsoft WDK8.1相当の保存済みd3d10umddi.h: RESOURCE_MISC_SHARED=2、D3D10DDIARG_OPENRESOURCEのper-resource private dataとallocation情報。
+- 保存済みd3dumddi.h: D3DDDICB_ALLOCATEのhResource/hKMResource/per-resource private data、D3DDDICB_DEALLOCATE。
+- 保存済みd3dkmddi.h: DXGKARG_CREATEALLOCATION/OpenAllocation/DestroyAllocation、resourceとallocationの独立した寿命。
+- https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dumddi/ns-d3dumddi-_d3dddicb_allocate
+- https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3d10umddi/ns-d3d10umddi-d3d10ddiarg_openresource
+- https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/ns-d3dkmddi-_dxgkarg_createallocation
+- https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/ns-d3dkmddi-_dxgkarg_openallocation
+- https://learn.microsoft.com/en-us/windows-hardware/drivers/display/handling-resource-creation-and-destruction
+
+## cloneからのfullsource recipe
+
+公開originは8f5d372dの実装11ファイルへ更新し、以前のorigin行全体をprevious_originsとして保持する。native_source_commit・native TU67本のrouting・legacy114ファイルは変更しない。shared_surface_integrationをoriginとnative mapの両方で照合し、以前のorigin行のdigestも検査する。verifierは古いGit履歴もdriver cacheも使わない。
+
+Windows側では既存のfullsource入口を使う。新しい出力先を選び、既存objectのReuseDirectory/ReuseVerifiedDirectoryは渡さない。この入口はnative67TU、全KMD module/bridge/display TU、全UMD TUを同じclean HEADで再compileする。SDK・licensed toolchainの既存ファイルだけを利用し、インストールやSDK再構築は行わない。
+
+```powershell
+# このcheckoutのHEADを固定した後に実行。既存のMSVC ARM32/WDK8.1/ARM32 UCRTを使用。
+python -B .\tools\ci\verify-ge8300-fullsource.py
+if ($LASTEXITCODE) { throw 'fullsource verifier failed' }
+.\tools\ci\build-ge8300-from-source.ps1 -EnableCandidate -UnifiedDisplay -OutputDirectory "$PWD\build\shared-surface-owner"
+```
+
+これは証拠付きcacheを指定しない通常経路であり、PCO/NIR/support/pairの375TUもsourceからcompileする。SDK再構築は0。Windows上のbuildはこのbranch作業では未実行。
+
+### PCO375だけを再利用する場合
+
+既存cacheに`cache-evidence.json`があり、そのdigestが`link-manifest.json`に記録されている場合だけ再利用できる。新しいsource compiler recipeは各実compileに`-MD`を付け、system includeを含む全dependencyのhashを記録する。source-plan/API/pair、375TUすべてのsourceとflags、objectとlibrary、Clang binary、現在のMicrosoft API libraryが一致する必要がある。さらに現在のsource/全includeの解決先を375回の`clang -M`で再確認する。object compileは行わない。追加されたshadow headerも検出する。
+
+古いcacheにcompile時点の全include証拠がなければ、現在のheaderだけを調べて旧objectの出自を後付け認定しない。指定cacheの検査失敗時は停止し、自動でPCOやSDKの再構築へ切り替えない。
+
+```powershell
+# $Pco375にはmainが保有する証拠付きcacheの実在directoryを指定する。
+$PcoManifestSha = (Get-FileHash "$Pco375\link-manifest.json" -Algorithm SHA256).Hash
+.\tools\ci\build-ge8300-from-source.ps1 -EnableCandidate -UnifiedDisplay -OutputDirectory "$PWD\build\shared-surface-owner-cached-pco" -VerifiedCompilerDirectory $Pco375 -ExpectedCompilerCacheManifestSha256 $PcoManifestSha
+```
+
+cacheを別commitから利用しても、compiled_source_commitは旧commitのまま記録する。current_source_commitと同一扱いに改名しない。検査receiptはcurrent HEAD、link/pair manifest、source-plan、all-include evidenceを結び付け、UMD build時にも照合する。
+
+### 一括manifestと未確認事項
+
+`source-build-manifest.json`が同じHEADのnative owner library・KMD library/SYS・UMD DLLと各子manifestのhashをまとめる。PCOの元compile commit/cache receipt、native/KMD/UMD旧object再利用0、SDK再構築0も記録する。SHARED DEFAULT single mip/slice/sample、既存storage範囲、RT-onlyまたはSRV-onlyという制約を維持し、RT/SRV・blend・DWMはfalseのまま。
+
+Windowsでのリンク/署名/配置・実機/DWM成功は未確認。manifest生成は実際のbuild成功後だけ行う。Linuxのhost/clone verifier通過をWindows build成功と扱わない。
+
+### 公開cloneでの検証結果
+
+GitHub公開branchをdepth1でcloneし、fullsource verifierが通過した。native67TU、compiler375TU、origin147、legacy114、native scoped127、reviewed overlay47。old_git_history_used=false、driver_cache_used=false。
+
+source gateの16ケースも通過した。native TUをlegacy sourceへ転送する改変、TU欠落/alias、旧originの再ラベル、Copy asset改変、共有source旧履歴の改変、内部header変更後の旧native object再利用を拒否した。
+
+compiler cacheのhost検証は合成375TU fixture。source/include/新しいshadow headerによる解決先変更/flags/compiler/API library/object/pair/証拠欠落を拒否することと、VFSで提供するarm_neon.hを実Clang headerへ対応させることを確認した。実在のPCO375 cacheを合格認定した結果ではない。
+
+PowerShell/Windows toolchainのrecipe実行は行っていない。runner禁止を維持し、Windows buildの成否、署名、実機/DWM成功はmain側の後続確認事項として残す。
+
+## 明示opt-inのwarm build：旧f4 compilerを固定tool入力として使用
+
+旧375 libraryはmainが同一VMで実compileした固定成果物であり、ユーザーの明示指示により、新strict cache認定とは別のprebuilt compiler toolとして使用する。旧include証明を作り直す機能ではない。冷build入口とstrict cache入口の既定は変更していない。
+
+```powershell
+.\tools\ci\build-ge8300-shared-surface-warm.ps1 -EnableCandidate -EnablePinnedPrebuiltCompiler -UnifiedDisplay -PrebuiltCompilerDirectory 'C:/mt8167-public-unified362/source/build/ge8300-source-complete/compiler' -OutputDirectory "$PWD\build\shared-surface-warm-f4"
+```
+
+新しいclean checkoutの現HEADで実行する。既存VMにあるVC14.44.35207、UCRT10.0.22621.0、WDK8.1 lookupを既定とし、toolchain/SDKのinstallや再構築を行わない。出力先は未作成のcheckout内directoryを指定する。opt-in switchがなければ停止する。
+
+### live入力照合と実compile
+
+`ge8300-pco375-f4-prebuilt.json`は、保存済みactual manifest3本のSHA、元compile commit f4b92404c4bbe139524a997c5427a8245560e522、source-plan、pair、library10本、記録済みClang/llvm-lib tool hashを固定する。
+
+mainがrecipeを実行した時点で、旧manifest3本、10library、pair、live LLVM toolsと現在使用するMicrosoft API/CRT6本を保存hashと照合する。375行の旧object hashも保持し、存在するstandalone objectは照合、欠落は数と名称を記録する。リンクに不要な旧objectの欠落だけで停止・再buildはしない。375source・全記録args・source-plan全604filesも照合する。これは「現在headerで旧includeを証明する」処理ではない。
+
+照合後にlibrary10本・pair・元manifest3本を新しい出力先の`compiler-tool`へコピーし、保存SHAと再照合する。元cache/source/SDKは変更しない。UMD入口でもprebuilt入力を再検査し、build終了前にも再検査する。入力不一致なら停止し、PCO/SDK再buildへ自動fallbackしない。`cache-evidence.json`の不在はこのwarm modeの停止条件ではない。
+
+native67TU、全KMD/bridge/display TU、全UMD TUは現HEADのソースから再compileする。旧native/KMD/UMD objectは使用しない。再利用するのは固定compiler toolと既存Microsoft libraryだけであり、PCO375のcompile・archiveを再実行しない。
+
+### provenanceと制約
+
+出力`warm-build-manifest.json`は現HEADのnative/KMD/UMDと各子manifestを結び付け、次を明記する。
+
+- `compiler_input_kind = SHA-fixed historical prebuilt compiler tool`
+- `CompilerSourceCommit = f4b92404c4bbe139524a997c5427a8245560e522`
+- `includeClosureRecorded = false`、`strict_cache_qualified = false`
+- `PCO_rebuilt = 0`、`SDK_rebuilt = 0`、`native_KMD_UMD_objects_reused = 0`
+
+`prebuilt-compiler-input.json`にはlive照合内容と元cache/stage/APIの対応を記録する。元manifestは旧sourceのまま保持し、旧include/toolのunknown値を現在値で補完しない。新しい現HEADのcompiler source buildやstrict cache完全適合とは主張しない。
+
+SHARED DEFAULT single mip/slice/sample、既存storage範囲、RT-only/SRV-onlyの制約を維持する。RT/SRV・blend・DWMは未完了。Windows warm recipe、live旧cacheの照合、実機/DWMはこのbranch作業では未実行であり、mainの後続実行結果を別途確認する。
+
+## warm196完了cacheからのMSVC14.29限定resume
+
+公開warm入口に`KernelVcToolsDirectory`を分離した。PCO用`VcToolsDirectory=14.44.35207`とAPI6本の照合は維持し、kernelのCL/CRT include/LINKだけ14.29.30133を既定とする。
+
+既に完了したwarm196をやり直す必要はない。旧cacheを残したまま、新しいrecipe commitへcheckoutして次を実行する。
+
+```powershell
+python -B C:/mt8167-shared-surface-warm196/tools/ci/resume-ge8300-warm196-msvc1429.py --enable-candidate --warm-directory C:/mt8167-shared-surface-warm196/build/shared-surface-warm-f4 --kernel-vc-tools-directory 'C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/14.29.30133' --output C:/mt8167-shared-surface-warm196/build/shared-surface-msvc1429-resume
+```
+
+実compile前の照合だけなら`--validate-only`を追加する。この場合outputは作成しない。
+
+回収したdriver-build-cacheから固定した146ファイルのSHAと、native/modules manifestのsource snapshotおよび表示10C++ sourceを検査する。C/Hの追加・欠落も拒否する。旧Git履歴へのdiff依存はない。現在源泉が一致しない場合は停止し、warm cacheや旧manifestを上書きしない。
+
+現HEADの表示10C++とmdl_pin.cだけをcl14.29で再compileし、実`/showIncludes`の新include closureを保存する。baselineのUCRT22621は維持し、GPU366のUCRT26100と完全一致とは主張しない。保持するClang13 memberと新MSVC11 memberからKMD24-member archiveを新規作成し、両SYSをSHA固定LINK14.29と既WDKで再linkする。native67、PCO375、UMDは再compileしない。PCOやSDKへのfallback rebuild、署名、実機操作は行わない。
+
+`resume-build-manifest.json`は新recipe HEADとbaseline compile commit aa661314を分け、source bytesの一致、146 cache pin、501 source snapshot、MSVC11 TUのactual include closure、tool/hash/arguments、新KMD archive/SYS、保持native/UMDの出自を記録する。元warm manifestもコピーして履歴を残す。CompilerSourceCommit旧f4とincludeClosureRecorded=falseはPCO入力の属性として維持する。
+
+出力は未署名。Registry文字列参照の静的確認、署名/CAT、実機検証は後続工程であり未完了として記録する。local hostでは回収cache/source照合とobject改変拒否を確認済み。Windows compile/linkはこのrecipe作成作業では実行していない。

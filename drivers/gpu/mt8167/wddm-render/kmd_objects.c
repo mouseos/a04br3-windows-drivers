@@ -66,24 +66,42 @@ NTSTATUS APIENTRY GeoDestroyContext(HANDLE handle) {
 NTSTATUS APIENTRY GeoOpenAllocation(HANDLE handle,const DXGKARG_OPENALLOCATION *p) {
  struct geo_kmd_device *d=handle;struct geo_kmd_adapter *a;struct geo_allocation *allocation,*scan;
  struct geo_open_allocation *open;DXGKARGCB_GETHANDLEDATA query;NTSTATUS status=STATUS_SUCCESS;
- if(!d||!p||p->NumAllocations!=1||!p->pOpenAllocation||p->PrivateDriverSize||p->SubresourceIndex||(p->Flags.Value&~3u))return STATUS_NOT_SUPPORTED;
+ if(!d||!p||p->NumAllocations!=1||!p->pOpenAllocation||p->SubresourceIndex||(p->Flags.Value&~3u))return STATUS_NOT_SUPPORTED;
  a=d->adapter;if(!GeoSessionEnter(a,1))return STATUS_DEVICE_NOT_READY;
  RtlZeroMemory(&query,sizeof(query));query.hObject=p->pOpenAllocation[0].hAllocation;query.Type=DXGK_HANDLE_ALLOCATION;
  allocation=a->get_handle_data(&query); /* Real dxgkrnl handle translation; never cast a user D3DKMT handle. */
  for(scan=a->engine.allocations;scan&&scan!=allocation;scan=scan->next){}
- if(!scan||allocation->open_count==UINT32_MAX){status=STATUS_INVALID_PARAMETER;goto done;}
+ if(!scan){status=STATUS_INVALID_PARAMETER;goto done;}
+ if(allocation->shared.magic){
+  struct geo_shared_surface resource_data,allocation_data;
+  if(!p->pPrivateDriverData||p->PrivateDriverSize!=sizeof(resource_data)||!p->pOpenAllocation[0].pPrivateDriverData||
+     p->pOpenAllocation[0].PrivateDriverDataSize!=sizeof(allocation_data)){status=STATUS_INVALID_PARAMETER;goto done;}
+  RtlCopyMemory(&resource_data,p->pPrivateDriverData,sizeof(resource_data));
+  RtlCopyMemory(&allocation_data,p->pOpenAllocation[0].pPrivateDriverData,sizeof(allocation_data));
+  if(!geo_shared_surface_equal(&allocation->shared,&resource_data)||!geo_shared_surface_equal(&allocation->shared,&allocation_data)){status=STATUS_INVALID_PARAMETER;goto done;}
+ }else if(p->PrivateDriverSize){status=STATUS_INVALID_PARAMETER;goto done;}
  open=ExAllocatePoolWithTag(NonPagedPool,sizeof(*open),'oOeG');if(!open){status=STATUS_INSUFFICIENT_RESOURCES;goto done;}
  RtlZeroMemory(open,sizeof(*open));open->allocation=allocation;open->readonly=p->Flags.ReadOnly;
- open->next=d->opens;d->opens=open;allocation->open_count++;p->pOpenAllocation[0].hDeviceSpecificAllocation=open;
+ status=geo_open_reference(&a->engine,allocation);
+ if(status!=STATUS_SUCCESS){ExFreePoolWithTag(open,'oOeG');goto done;}
+ open->next=d->opens;d->opens=open;p->pOpenAllocation[0].hDeviceSpecificAllocation=open;
  done:GeoSessionLeave(a,1);return status;
 }
+struct close_reference_call {struct geo_kmd_adapter *adapter;struct geo_open_allocation *open;NTSTATUS status;};
+static BOOLEAN close_reference_locked(void *p){
+ struct close_reference_call *c=p;
+ c->status=geo_close_reference(&c->adapter->engine,c->open->allocation,c->open);return TRUE;
+}
 NTSTATUS APIENTRY GeoCloseAllocation(HANDLE handle,const DXGKARG_CLOSEALLOCATION *p) {
- struct geo_kmd_device *d=handle;struct geo_kmd_adapter *a;struct geo_open_allocation **link,*open;NTSTATUS status=STATUS_SUCCESS;
+ struct geo_kmd_device *d=handle;struct geo_kmd_adapter *a;struct geo_open_allocation **link,*open;struct close_reference_call call;NTSTATUS status=STATUS_SUCCESS;
  if(!d||!p||p->NumAllocations!=1||!p->pOpenHandleList)return STATUS_INVALID_PARAMETER;
  a=d->adapter;if(!GeoSessionEnter(a,2))return STATUS_DEVICE_NOT_READY;
  for(link=&d->opens;*link&&*link!=p->pOpenHandleList[0];link=&(*link)->next){}
  if(!*link||!(*link)->allocation->open_count){status=STATUS_INVALID_PARAMETER;goto done;}
- open=*link;*link=open->next;open->allocation->open_count--;ExFreePoolWithTag(open,'oOeG');
+ open=*link;call.adapter=a;call.open=open;call.status=STATUS_UNSUCCESSFUL;
+ if(!a->synchronize||!a->synchronize(a->sync_context,close_reference_locked,&call)){status=STATUS_DEVICE_NOT_READY;goto done;}
+ status=call.status;if(status!=STATUS_SUCCESS)goto done;
+ *link=open->next;ExFreePoolWithTag(open,'oOeG');
  done:GeoSessionLeave(a,2);return status;
 }
 struct geo_allocation *GeoResolveReadAllocation(struct geo_kmd_context *c,HANDLE handle) {

@@ -64,6 +64,36 @@ static HRESULT APIENTRY create_resource(HANDLE h,D3DDDIARG_CREATERESOURCE *p) {
  if(!r->allocation){/* Retain the ambiguous allocation in the device list. */return E_UNEXPECTED;}
  p->hResource=r;return S_OK;
 }
+/* Allocate exactly once in the exporting process. Both descriptor levels are
+ * retained by the runtime and presented to the importing UMD/KMD. */
+HRESULT geo_umd_create_shared(struct geo_umd_device *d,const struct geo_shared_surface *s,HANDLE runtime,HANDLE *out) {
+ struct geo_umd_resource *r;D3DDDICB_ALLOCATE q;D3DDDI_ALLOCATIONINFO info;HRESULT hr;
+ if(!d||!runtime||!out||!geo_shared_surface_valid(s)||!d->cb.pfnAllocateCb)return E_INVALIDARG;
+ *out=NULL;r=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*r));if(!r)return E_OUTOFMEMORY;
+ r->device=d;r->runtime=runtime;r->desc=s->base.storage;r->logical_width=s->base.logical_width;r->logical_height=s->base.logical_height;
+ memset(&q,0,sizeof(q));memset(&info,0,sizeof(info));
+ q.hResource=runtime;q.pPrivateDriverData=s;q.PrivateDriverDataSize=sizeof(*s);q.NumAllocations=1;q.pAllocationInfo=&info;
+ info.pPrivateDriverData=(void *)s;info.PrivateDriverDataSize=sizeof(*s);
+ hr=d->cb.pfnAllocateCb(d->runtime,&q);
+ if(FAILED(hr)){HeapFree(GetProcessHeap(),0,r);return hr;}
+ r->allocation=info.hAllocation;r->next=d->resources;d->resources=r;
+ /* Ambiguous successful allocation is retained, never silently freed. */
+ if(!r->allocation||!q.hKMResource)return E_UNEXPECTED;
+ *out=r;return S_OK;
+}
+HRESULT geo_umd_open_shared(struct geo_umd_device *d,const struct geo_shared_surface *s,const D3DDDI_OPENALLOCATIONINFO *info,HANDLE runtime,HANDLE *out) {
+ struct geo_shared_surface allocation;struct geo_umd_resource *r;
+ if(!d||!runtime||!out||!info||!info->hAllocation||!info->pPrivateDriverData||
+    info->PrivateDriverDataSize!=sizeof(allocation)||!geo_shared_surface_valid(s))return E_INVALIDARG;
+ memcpy(&allocation,info->pPrivateDriverData,sizeof(allocation));
+ if(!geo_shared_surface_equal(s,&allocation))return E_INVALIDARG;
+ *out=NULL;r=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*r));if(!r)return E_OUTOFMEMORY;
+ /* The runtime has already opened this handle on this device. Do not allocate,
+  * clone pixels, create an owner surface, or manufacture a completion here. */
+ r->device=d;r->runtime=runtime;r->allocation=info->hAllocation;r->desc=s->base.storage;
+ r->logical_width=s->base.logical_width;r->logical_height=s->base.logical_height;
+ r->next=d->resources;d->resources=r;*out=r;return S_OK;
+}
 HRESULT geo_umd_open_primary(struct geo_umd_device *d,const D3DDDI_OPENALLOCATIONINFO *info,HANDLE runtime,HANDLE *out,struct geo_surface_desc *desc) {
  struct geo_allocation_data_v2 data;struct geo_umd_resource *r;
  if(!A04_GE8300_UNIFIED_DISPLAY356||!d||!info||!out||!desc||!info->hAllocation||!info->pPrivateDriverData||info->PrivateDriverDataSize!=sizeof(data))return E_INVALIDARG;
