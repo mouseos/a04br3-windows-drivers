@@ -34,7 +34,7 @@ static NTSTATUS MtTestQueryOwner(PDEVICE_OBJECT f,MT_MUSB_OWNER_INTERFACE *o)
 static VOID Work(void){PIO_WORKITEM_ROUTINE f=test_work;PVOID c=test_work_context;test_work=NULL;if(f)f(NULL,c);}
 static VOID Fixture(void)
 {
- RtlZeroMemory(test_mac,sizeof(test_mac));RtlZeroMemory(test_phy,sizeof(test_phy));
+ test_banked=0;RtlZeroMemory(test_mac,sizeof(test_mac));RtlZeroMemory(test_phy,sizeof(test_phy));
  test_mac[0x60]=0;test_phy[0x800+0x710]=1;test_phy[0x800+0x70c]=1;
  /* 1024*48*28 / 4096 gives calibrated value <8. */
  test_phy[0x800+0x70c]=0;test_phy[0x800+0x70d]=0x10;
@@ -52,32 +52,67 @@ int main(void)
  test_mac[0xa]=0x10;TimerDpc(NULL,r,NULL,NULL);Work();CHECK(r->connected);
  e.address=1;e.endpoint=1;e.packet=8;e.speed=1;e.type=2;e.direction=1;p.bytes=3;
  CHECK(!MtMusbSubmit(r,1,&e,0,&p,data));data[0]=0;
- CHECK(r->shadow[0]==0x61);Work();CHECK(r->hardware_job);
+ CHECK(r->lanes[1].shadow[0]==0x61);Work();CHECK(r->lanes[1].hardware_job);
  test_mac[0x12]=test_mac[0x13]=0;test_mac[2]=2;TimerDpc(NULL,r,NULL,NULL);Work();
  CHECK(!MtMusbTake(r,1,data,sizeof(data),&n,&s,&t)&&n==3&&s==USBD_STATUS_SUCCESS);
+ /* 512-byte HS bulk traverses the same shadow/worker/completion path. */
+ {UCHAR bulk[1025];ULONG i;
+ for(i=0;i<sizeof(bulk);i++)bulk[i]=(UCHAR)i;
+ e.packet=512;e.speed=2;p.bytes=sizeof(bulk);
+ CHECK(!MtMusbSubmit(r,20,&e,0,&p,bulk));bulk[0]=0xee;Work();
+ CHECK(r->lanes[1].shadow[0]==0&&r->lanes[1].pio.pending==512&&test_mac[0x62]==6&&test_mac[0x66]==72);
+ for(i=0;i<3;i++){
+  test_mac[0x12]=0;test_mac[0x13]=(UCHAR)((i&1)?0:1);test_mac[2]=2;
+  TimerDpc(NULL,r,NULL,NULL);Work();
+ }
+ CHECK(!MtMusbTake(r,20,bulk,sizeof(bulk),&n,&s,&t)&&n==1025&&!s);
+ /* HS IN full packet then short packet, copied only by Take. */
+ e.endpoint=0x81;e.direction=0;p.bytes=sizeof(bulk);
+ CHECK(!MtMusbSubmit(r,21,&e,0,&p,bulk));Work();
+ test_mac[0x16]=1;test_mac[0x18]=0;test_mac[0x19]=2;test_mac[0x24]=0x5a;test_mac[4]=2;
+ TimerDpc(NULL,r,NULL,NULL);Work();CHECK(r->lanes[1].pio.actual==512&&r->lanes[1].job.state!=MT_JOB_DONE);
+ test_mac[0x16]=1;test_mac[0x18]=1;test_mac[0x19]=0;test_mac[0x24]=0x6b;test_mac[4]=2;
+ TimerDpc(NULL,r,NULL,NULL);Work();CHECK(!MtMusbTake(r,21,bulk,sizeof(bulk),&n,&s,&t)&&n==513&&!s);
+ CHECK(bulk[0]==0x5a&&bulk[511]==0x5a&&bulk[512]==0x6b);
+ /* Cancel an active HS OUT: no caller memory retained, next job waits for flush. */
+ e.endpoint=1;e.direction=1;
+ CHECK(!MtMusbSubmit(r,22,&e,0,&p,bulk));Work();MtMusbCancel(r,22);
+ CHECK(MtMusbSubmit(r,23,&e,0,&p,bulk));TimerDpc(NULL,r,NULL,NULL);Work();
+ CHECK(r->lanes[1].job.state==MT_JOB_IDLE&&!r->lanes[1].hardware_job);
+ e.packet=8;e.speed=1;p.bytes=3;
+ }
  /* EP0 uses shadow and completes only after the status stage. */
  e.type=1;e.endpoint=0;p.bytes=8;p.setup[0]=0x80;p.setup[1]=6;p.setup[6]=8;
- CHECK(!MtMusbSubmit(r,10,&e,0,&p,data));Work();CHECK(r->ep0.transfer.stage==EP0_SETUP);
- test_mac[0x12]=test_mac[0x13]=0;test_mac[2]=1;TimerDpc(NULL,r,NULL,NULL);Work();CHECK(r->ep0.transfer.stage==EP0_IN);
+ CHECK(!MtMusbSubmit(r,10,&e,0,&p,data));Work();CHECK(r->lanes[0].ep0.transfer.stage==EP0_SETUP);
+ test_mac[0x12]=test_mac[0x13]=0;test_mac[2]=1;TimerDpc(NULL,r,NULL,NULL);Work();CHECK(r->lanes[0].ep0.transfer.stage==EP0_IN);
  test_mac[0x12]=1;test_mac[0x18]=3;test_mac[0x20]=0x71;test_mac[2]=1;
- TimerDpc(NULL,r,NULL,NULL);Work();CHECK(r->ep0.transfer.stage==EP0_STATUS&&r->job.state!=MT_JOB_DONE);
+ TimerDpc(NULL,r,NULL,NULL);Work();CHECK(r->lanes[0].ep0.transfer.stage==EP0_STATUS&&r->lanes[0].job.state!=MT_JOB_DONE);
  test_mac[0x12]=test_mac[0x13]=0;test_mac[2]=1;TimerDpc(NULL,r,NULL,NULL);Work();
  CHECK(!MtMusbTake(r,10,data,sizeof(data),&n,&s,&t)&&n==3&&!s&&data[0]==0x71);
+ /* USBPORT HS period32 becomes MUSB logarithmic6, not raw32. */
+ e.type=3;e.endpoint=0x81;e.direction=0;e.period=32;e.speed=2;e.hub=0xffff;e.port=7;p.bytes=8;
+ CHECK(!MtMusbSubmit(r,30,&e,0,&p,data));Work();CHECK(test_mac[0x1d]==6);
+ MtMusbCancel(r,30);TimerDpc(NULL,r,NULL,NULL);Work();CHECK(r->lanes[1].job.state==MT_JOB_IDLE);
+ {ULONG writes=test_writes;e.hub=2;e.type=1;e.endpoint=0;
+ CHECK(MtMusbSubmit(r,31,&e,0,&p,data)&&test_writes==writes&&r->lanes[1].job.state==MT_JOB_IDLE);}
+ e.hub=0;e.port=0;e.speed=1;
  /* Generic interrupt IN takes its data from RX1, independently of EP0. */
  e.type=3;e.endpoint=0x81;e.direction=0;e.period=1;p.bytes=8;
  CHECK(!MtMusbSubmit(r,11,&e,0,&p,data));Work();test_mac[0x16]=1;test_mac[0x18]=3;test_mac[0x24]=0x72;test_mac[4]=2;
  TimerDpc(NULL,r,NULL,NULL);Work();CHECK(!MtMusbTake(r,11,data,sizeof(data),&n,&s,&t)&&n==3&&!s&&data[1]==0x72);
  e.type=2;e.endpoint=1;e.direction=1;p.bytes=3;
  CHECK(!MtMusbSubmit(r,2,&e,0,&p,data));MtMusbCancel(r,2);Work();
- CHECK(r->job.state==MT_JOB_IDLE&&!r->hardware_job); /* cancelled before worker */
+ CHECK(r->lanes[1].job.state==MT_JOB_IDLE&&!r->lanes[1].hardware_job); /* cancelled before worker */
  CHECK(!MtMusbSubmit(r,3,&e,0,&p,data));Work();MtMusbCancel(r,3);
  CHECK(MtMusbSubmit(r,4,&e,0,&p,data));TimerDpc(NULL,r,NULL,NULL);Work();
- CHECK(r->job.state==MT_JOB_IDLE&&!r->hardware_job);CHECK(MtMusbTake(r,3,data,sizeof(data),&n,&s,&t));
+ CHECK(r->lanes[1].job.state==MT_JOB_IDLE&&!r->lanes[1].hardware_job);CHECK(MtMusbTake(r,3,data,sizeof(data),&n,&s,&t));
  CHECK(!MtMusbSubmit(r,4,&e,0,&p,data));Work();test_now+=50000001;
  TimerDpc(NULL,r,NULL,NULL);Work();CHECK(!MtMusbTake(r,4,data,sizeof(data),&n,&s,&t)&&s!=USBD_STATUS_SUCCESS);
  /* Observe may block: cancellation there must win before Begin's first write. */
  CHECK(!MtMusbSubmit(r,12,&e,0,&p,data));test_cancel_context=r;test_cancel_cookie=12;Work();
- CHECK(r->job.state==MT_JOB_IDLE&&!r->hardware_job);
+ CHECK(r->lanes[1].job.state==MT_JOB_IDLE&&!r->lanes[1].hardware_job);
+ CHECK(!MtMusbRootQueue(r,A04_HUB_DISABLE));Work();
+ CHECK(!MtMusbObserve(r,&observation,&c,&done,&result)&&done==A04_HUB_DISABLE&&!result&&observation.endpoints_quiesced&&test_vbus);
  CHECK(!MtMusbRootQueue(r,A04_HUB_POWER_OFF));Work();
  CHECK(!MtMusbObserve(r,&observation,&c,&done,&result)&&!result&&observation.source_off_verified);
  CHECK(MtMusbClose(r)&&test_releases==1&&test_unmaps==2&&test_refs==0);

@@ -1,3 +1,4 @@
+#include "usbport_profile.h"
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "musb_physical.h"
 #include "board_host.h"
@@ -12,6 +13,11 @@
 #define MT_TAG '31UM'
 #define MT_WINDOW 0x10000u
 #define MT_FRESH 1000000ull /* 100 ms, same KeQueryInterruptTime time domain */
+struct mt_musb_lane {
+ struct mt_musb_async job;struct a04_mp_properties properties;
+ struct a04_mp_parameters parameters;UCHAR shadow[MT_MUSB_SHADOW_BYTES];
+ struct a04_pio_transfer pio;MT8167_USB20_EP0 ep0;BOOLEAN hardware_job,retired;
+};
 struct mt_musb_runtime {
  KSPIN_LOCK lock;KTIMER timer;KDPC dpc;KEVENT idle;
  PIO_WORKITEM work,cleanup;PDEVICE_OBJECT fdo;
@@ -19,9 +25,8 @@ struct mt_musb_runtime {
  volatile UCHAR *mac,*phy;
  MT_MUSB_OWNER_INTERFACE owner;MT_MUSB_OBSERVATION proof;
  MT8167_USB20_CONTROLLER controller;A04_USB_BOARD board;
- struct mt_musb_async job;struct a04_mp_properties properties;
- struct a04_mp_parameters parameters;UCHAR shadow[MT_MUSB_SHADOW_BYTES];
- struct a04_pio_transfer pio;MT8167_USB20_EP0 ep0;BOOLEAN hardware_job;
+ struct mt_musb_lane lanes[MT_MUSB_LANES];ULONG cursor;
+ struct {ULONG cookie,toggle;} recovered[32];ULONG recovery_next;
  ULONG root_pending,root_done,root_result,connected,frame;
  struct a04_hub_observation observation;
 };
@@ -104,18 +109,30 @@ static int ReleaseForces(struct mt_musb_runtime *r)
  return (Rd8(r,0x74)&4)||(PhyRead(r,0x6d)&0x3e)?-1:0;}
 static int IrqOff(struct mt_musb_runtime *r)
 {return (Rd32(r,0xa4)||Rd16(r,6)||Rd16(r,8)||Rd8(r,0xb))?-1:0;}
-static int Flush(struct mt_musb_runtime *r)
+static int FlushLane(struct mt_musb_runtime *r,unsigned n)
 {
- unsigned v;int failed=0;
- Wr8(r,0xe,0);Wr16(r,0x12,0x100);Wr16(r,0x12,0x100);
- if(Rd16(r,0x12)&0x23)failed=1;
- Wr8(r,0xe,1);v=Rd16(r,0x12);r->pio.ep.toggle=!!(v&0x100);
- Wr16(r,0x12,0x2008);Wr16(r,0x12,0x2008);if(Rd16(r,0x12)&3)failed=1;
- v=Rd16(r,0x16);if(!r->properties.direction)r->pio.ep.toggle=!!(v&0x200);
- Wr16(r,0x16,0x10);Wr16(r,0x16,0x10);if(Rd16(r,0x16)&0x21)failed=1;
- r->hardware_job=FALSE;
+ struct mt_musb_lane *l=&r->lanes[n];unsigned v;int failed=0;
+ Wr8(r,0xe,(UCHAR)n);
+ if(!n){Wr16(r,0x12,0x100);Wr16(r,0x12,0x100);if(Rd16(r,0x12)&0x23)failed=1;}
+ else {
+  Wr16(r,0x12,0x2008);Wr16(r,0x12,0x2008);v=Rd16(r,0x12);
+  if(v&3)failed=1;if(l->properties.direction)l->pio.ep.toggle=!!(v&0x100);
+  Wr16(r,0x16,0x10);Wr16(r,0x16,0x10);v=Rd16(r,0x16);
+  if(v&0x21)failed=1;if(!l->properties.direction)l->pio.ep.toggle=!!(v&0x200);
+ }
+ l->hardware_job=FALSE;
  return failed||EnginesIdle(r)||IrqOff(r)?-1:0;
 }
+static int Flush(struct mt_musb_runtime *r)
+{unsigned n;int failed=0;for(n=0;n<MT_MUSB_LANES;n++)if(FlushLane(r,n))failed=1;return failed?-1:0;}
+static int AllIdle(struct mt_musb_runtime *r)
+{unsigned n;for(n=0;n<MT_MUSB_LANES;n++)if(r->lanes[n].job.state!=MT_JOB_IDLE||r->lanes[n].hardware_job)return 0;return 1;}
+/* Under runtime lock. A canceled lane may be reused before USBPORT reopens
+ * its old endpoint, so recover toggle by cookie independently of FIFO reuse. */
+static void RecoverRecord(struct mt_musb_runtime *r,ULONG cookie,ULONG toggle)
+{unsigned i;if(!cookie)return;for(i=0;i<32;i++)if(r->recovered[i].cookie==cookie)break;
+ if(i==32){for(i=0;i<32;i++)if(!r->recovered[i].cookie)break;}
+ if(i==32)i=r->recovery_next++%32;r->recovered[i].cookie=cookie;r->recovered[i].toggle=toggle;}
 static int StopPhysical(struct mt_musb_runtime *r)
 {
  MT_MUSB_OBSERVATION proof;int local=0;
@@ -163,34 +180,35 @@ static void TimerDpc(PKDPC dpc,PVOID context,PVOID a,PVOID b)
  struct mt_musb_runtime *r=context;KIRQL irql;UNREFERENCED_PARAMETER(dpc);UNREFERENCED_PARAMETER(a);UNREFERENCED_PARAMETER(b);
  KeAcquireSpinLock(&r->lock,&irql);QueueLocked(r);KeReleaseSpinLock(&r->lock,irql);
 }
-static int Begin(struct mt_musb_runtime *r)
+static int Begin(struct mt_musb_runtime *r,unsigned n)
 {
- struct a04_mp_properties *e=&r->properties;struct a04_pio_endpoint p;
+ struct mt_musb_lane *l=&r->lanes[n];struct a04_mp_properties *e=&l->properties;struct a04_pio_endpoint p;unsigned interval;
+ if(!a04_usbport_native_route(e->hub)||a04_usbport_interval(e->speed,e->type,e->period,&interval))return -1;
  if(e->type==1){
   Wr8(r,0xe,0);Wr16(r,0x480,e->address);Wr16(r,0x482,0);
   Wr8(r,0x1a,(UCHAR)(e->speed==2?0x40:e->speed==1?0x80:0xc0));Wr8(r,0x1b,0);Wr16(r,2,1);
-  return Mt8167Ep0Start(&r->ep0,&r->controller.io,r->parameters.setup,r->shadow,r->parameters.bytes,e->packet)==EP0_SEND_SETUP?0:-1;
+  return Mt8167Ep0Start(&l->ep0,&r->controller.io,l->parameters.setup,l->shadow,l->parameters.bytes,e->packet)==EP0_SEND_SETUP?0:-1;
  }
  p.address=e->address;p.endpoint=e->endpoint&15;p.packet=e->packet;
  p.speed=e->speed==2?0x40:e->speed==1?0x80:0xc0;p.type=e->type;p.direction=e->direction;
- p.period=e->period;p.toggle=r->job.toggle;
- return a04_pio_configure(&r->controller.io,&r->pio,&p,r->shadow,r->parameters.bytes);
+ p.period=interval;p.toggle=l->job.toggle;
+ return a04_pio_configure_lane(&r->controller.io,&l->pio,&p,l->shadow,l->parameters.bytes,n);
 }
-static int DataEvent(struct mt_musb_runtime *r)
+static int DataEvent(struct mt_musb_runtime *r,unsigned n)
 {
- unsigned source;
- if(r->properties.type==1){
-  EP0_ACTION a;if(!(Rd16(r,2)&1))return 0;Wr16(r,2,1);a=Mt8167Ep0Interrupt(&r->ep0);
+ struct mt_musb_lane *l=&r->lanes[n];unsigned source;
+ if(l->properties.type==1){
+  EP0_ACTION a;if(!(Rd16(r,2)&1))return 0;Wr16(r,2,1);a=Mt8167Ep0Interrupt(&l->ep0);
   return a==EP0_COMPLETE?1:a==EP0_ABORT?-1:0;
  }
- source=r->properties.direction?2:4;if(!(Rd16(r,source)&2))return 0;
- Wr16(r,source,2);return a04_pio_event(&r->controller.io,&r->pio);
+ source=l->properties.direction?2:4;if(!(Rd16(r,source)&(1u<<n)))return 0;
+ Wr16(r,source,(USHORT)(1u<<n));return a04_pio_event(&r->controller.io,&l->pio);
 }
 static int RootAction(struct mt_musb_runtime *r,ULONG kind,struct a04_hub_observation *o)
 {
  ULONGLONG start;ULONG power;
  RtlZeroMemory(o,sizeof(*o));
- if(r->hardware_job||Flush(r))return -1;
+ if(!AllIdle(r)||Flush(r))return -1;
  if(kind==A04_HUB_POWER_OFF){
   Wr8(r,0x60,(UCHAR)(Rd8(r,0x60)&~1u));
   {MT_MUSB_OBSERVATION proof;KIRQL irql;
@@ -204,7 +222,11 @@ static int RootAction(struct mt_musb_runtime *r,ULONG kind,struct a04_hub_observ
    o->endpoints_quiesced=1;return 0;
   }
  }
- if(kind==A04_HUB_POWER_ON){if(A04UsbHostRun(&r->board)||ReleaseForces(r)||Observe(r,1))return -1;}
+ if(kind==A04_HUB_DISABLE){
+  /* MUSB has no independent ENABLE latch. Linux musb_virthub clears the
+   * logical bit. First prove FIFO/REQ idle and health; keep SESSION/VBUS. */
+  if(Observe(r,1))return -1;
+ }else if(kind==A04_HUB_POWER_ON){if(A04UsbHostRun(&r->board)||ReleaseForces(r)||Observe(r,1))return -1;}
  else if(kind==A04_HUB_RESET){
   if(Observe(r,1))return -1;
   power=Rd8(r,1);Wr8(r,1,(UCHAR)((power&~4u)|8u));if(!(Rd8(r,1)&8))return -1;
@@ -215,80 +237,96 @@ static int RootAction(struct mt_musb_runtime *r,ULONG kind,struct a04_hub_observ
  }else return -1;
  o->qualified=o->id_host=o->overcurrent_clear=o->vbus_verified=o->endpoints_quiesced=1;return 0;
 }
+/* Service one resident hardware endpoint. No wait/flush on PENDING/NAK:
+ * other hardware FIFOs can progress without losing an in-flight packet. */
+static int ServiceLane(struct mt_musb_runtime *r,unsigned n)
+{
+ struct mt_musb_lane *l=&r->lanes[n];KIRQL k;ULONG state,ticket,actual=0,toggle=0;int claim=0,result=0,proven=1;
+ if(EnginesIdle(r)||IrqOff(r)){r->io_unsafe=TRUE;return -1;}
+ KeAcquireSpinLock(&r->lock,&k);state=l->job.state;ticket=l->job.ticket;
+ if(state==MT_JOB_QUEUED){claim=!mt_musb_claim(&l->job,&ticket);if(mt_musb_expired(&l->job,KeQueryInterruptTime()))result=-1;}
+ else if(state==MT_JOB_CANCEL&&!l->hardware_job){
+  (void)mt_musb_finish(&l->job,ticket,0,USBD_STATUS_CANCELED,l->job.toggle,1);
+  if(!l->retired)RecoverRecord(r,l->job.last_cookie,l->job.last_toggle);
+ }
+ KeReleaseSpinLock(&r->lock,k);
+ if(claim&&!result){
+  KeAcquireSpinLock(&r->lock,&k);
+  if(r->closing||!r->connected||l->job.state!=MT_JOB_RUNNING||mt_musb_expired(&l->job,KeQueryInterruptTime()))result=-1;
+  else {
+   RtlZeroMemory(&l->ep0,sizeof(l->ep0));RtlZeroMemory(&l->pio,sizeof(l->pio));
+   l->hardware_job=TRUE;if(Begin(r,n)){result=-1;proven=FlushLane(r,n)==0;}
+  }
+  KeReleaseSpinLock(&r->lock,k);
+ }
+ KeAcquireSpinLock(&r->lock,&k);state=l->job.state;
+ if(mt_musb_expired(&l->job,KeQueryInterruptTime()))result=-1;
+ if(l->properties.type==3&&state==MT_JOB_RUNNING&&!result)l->job.deadline=KeQueryInterruptTime()+50000000ull;
+ KeReleaseSpinLock(&r->lock,k);
+ if(l->hardware_job){
+  if(state==MT_JOB_CANCEL||result){result=-1;proven=FlushLane(r,n)==0;}
+  else {
+   /* Cancellation and packet re-issue share the same lock. A DISPATCH
+    * Cancel published before this point cannot trigger another packet. */
+   KeAcquireSpinLock(&r->lock,&k);
+   if(r->closing||l->job.state==MT_JOB_CANCEL)result=-1;else result=DataEvent(r,n);
+   KeReleaseSpinLock(&r->lock,k);
+  }
+  actual=!n?l->ep0.transfer.actual:l->pio.actual;toggle=!n?0:l->pio.ep.toggle;
+  if(result){if(FlushLane(r,n))proven=0;else if(n)toggle=l->pio.ep.toggle;}
+ }
+ KeAcquireSpinLock(&r->lock,&k);
+ if(result&&(l->job.state==MT_JOB_RUNNING||l->job.state==MT_JOB_CANCEL)){
+  (void)mt_musb_finish(&l->job,ticket,actual,result==1?USBD_STATUS_SUCCESS:
+   result==A04_PIO_STALL?USBD_STATUS_STALL_PID:USBD_STATUS_XACT_ERROR,toggle,proven);
+  if(proven&&l->job.state==MT_JOB_IDLE&&!l->retired)RecoverRecord(r,l->job.last_cookie,l->job.last_toggle);
+ }
+ KeReleaseSpinLock(&r->lock,k);return proven?0:-1;
+}
 static void Tick(PDEVICE_OBJECT device,PVOID context)
 {
- struct mt_musb_runtime *r=context;KIRQL irql;ULONG ticket=0,root=0,state;int claim=0,result=0,proven=1;
- ULONG actual=0,toggle=0,usb,connected,cached_frame;BOOLEAN closing,fault;struct a04_hub_observation o;LARGE_INTEGER due;
+ struct mt_musb_runtime *r=context;KIRQL k;ULONG root=0,n,start,usb,connected,frame;BOOLEAN closing,fault;
+ struct a04_hub_observation o;LARGE_INTEGER due;int root_result=0,proven=1;
  UNREFERENCED_PARAMETER(device);RtlZeroMemory(&o,sizeof(o));
- KeAcquireSpinLock(&r->lock,&irql);
- if(!r->closing&&!r->fault){
-  state=r->job.state;ticket=r->job.ticket;
-  if(state==MT_JOB_QUEUED){claim=mt_musb_claim(&r->job,&ticket)==0;if(mt_musb_expired(&r->job,KeQueryInterruptTime()))result=-1;}
-  else if(state==MT_JOB_CANCEL&&!r->hardware_job){
-   /* Cancel before hardware admission: no toggle/data was consumed. */
-   (void)mt_musb_finish(&r->job,ticket,0,USBD_STATUS_CANCELED,r->job.toggle,1);
-  }
-  root=r->root_pending;r->root_pending=0;if(root)r->root_running=TRUE;
- }
- connected=r->connected;closing=r->closing;fault=r->fault;cached_frame=r->frame;KeReleaseSpinLock(&r->lock,irql);
+ KeAcquireSpinLock(&r->lock,&k);closing=r->closing;fault=r->fault;connected=r->connected;frame=r->frame;
+ if(!closing&&!fault){root=r->root_pending;r->root_pending=0;if(root)r->root_running=TRUE;}
+ start=r->cursor;r->cursor=(start+1)%MT_MUSB_LANES;KeReleaseSpinLock(&r->lock,k);
  if(!closing&&!fault){
-  if(EnginesIdle(r)||IrqOff(r)){
-   /* An unexpected engine/IRQ invalidates our PIO write authority. Only the
-    * parent's known isolation path may touch it; do not flush unknown DMA. */
-   r->io_unsafe=TRUE;result=-1;proven=0;fault=TRUE;
-  }else if(Observe(r,r->proof.gpio22?1:-1)){result=-1;proven=Flush(r)==0;fault=TRUE;}
+  if(EnginesIdle(r)||IrqOff(r)){r->io_unsafe=TRUE;fault=TRUE;}
+  else if(Observe(r,r->proof.gpio22?1:-1))fault=TRUE;
   else {
    usb=Rd8(r,0xa)&0xb0;if(usb)Wr8(r,0xa,(UCHAR)usb);
    if(usb&0x10)connected=1;if(usb&0x20)connected=0;
-   if(usb&0x80){result=-1;fault=TRUE;proven=Flush(r)==0;}
-   if(!connected&&r->hardware_job){result=-1;proven=Flush(r)==0;}
+   if(usb&0x80)fault=TRUE;
+   if(!connected){KeAcquireSpinLock(&r->lock,&k);if(!AllIdle(r))fault=TRUE;r->connected=0;KeReleaseSpinLock(&r->lock,k);}
   }
-  if(!result&&root){result=RootAction(r,root,&o);if(result)fault=TRUE;else if(root==A04_HUB_POWER_OFF)connected=0;}
-  if(!result&&claim){
-   /* Cancel/Stop may win while Observe waits at PASSIVE. Recheck immediately
-    * at the first command write, under the same lock as DISPATCH cancellation. */
-   KeAcquireSpinLock(&r->lock,&irql);
-   if(r->closing||r->job.state!=MT_JOB_RUNNING||mt_musb_expired(&r->job,KeQueryInterruptTime()))result=-1;
-   else {
-    RtlZeroMemory(&r->ep0,sizeof(r->ep0));RtlZeroMemory(&r->pio,sizeof(r->pio));
-    r->hardware_job=TRUE;if(Begin(r)){result=-1;proven=Flush(r)==0;}
+  KeAcquireSpinLock(&r->lock,&k);r->connected=connected;KeReleaseSpinLock(&r->lock,k);
+  if(!fault&&root){root_result=RootAction(r,root,&o);if(root_result)fault=TRUE;else if(root==A04_HUB_POWER_OFF)connected=0;}
+  if(!fault)for(n=0;n<MT_MUSB_LANES;n++){
+   if(KeQueryInterruptTime()-r->proof.observed_100ns>MT_FRESH/2&&Observe(r,r->proof.gpio22?1:-1)){fault=TRUE;break;}
+   if(ServiceLane(r,(start+n)%MT_MUSB_LANES)){fault=TRUE;break;}
+  }
+  frame=Rd16(r,0xc);
+  if(fault){
+   KeAcquireSpinLock(&r->lock,&k);r->fault=TRUE;KeReleaseSpinLock(&r->lock,k);
+   connected=0;proven=StopPhysical(r)==0;
+   KeAcquireSpinLock(&r->lock,&k);
+   for(n=0;n<MT_MUSB_LANES;n++){
+    struct mt_musb_lane *l=&r->lanes[n];ULONG ticket=l->job.ticket;
+    if(l->job.state==MT_JOB_QUEUED)(void)mt_musb_claim(&l->job,&ticket);
+    if(proven&&l->job.state==MT_JOB_FAULT)l->job.state=MT_JOB_RUNNING; /* independent isolation now proved */
+    if(l->job.state==MT_JOB_RUNNING||l->job.state==MT_JOB_CANCEL){
+     (void)mt_musb_finish(&l->job,ticket,l->job.actual,USBD_STATUS_XACT_ERROR,l->job.toggle,proven);
+     if(proven&&l->job.state==MT_JOB_IDLE&&!l->retired)RecoverRecord(r,l->job.last_cookie,l->job.last_toggle);
+    }
    }
-   KeReleaseSpinLock(&r->lock,irql);
-  }
-  KeAcquireSpinLock(&r->lock,&irql);state=r->job.state;
-  if(mt_musb_expired(&r->job,KeQueryInterruptTime()))result=-1;
-  KeReleaseSpinLock(&r->lock,irql);
-  if(r->hardware_job&&!r->io_unsafe){
-   if(state==MT_JOB_CANCEL||result){result=-1;proven=Flush(r)==0;}
-   else result=DataEvent(r);
-   actual=r->properties.type==1?r->ep0.transfer.actual:r->pio.actual;
-   toggle=r->properties.type==1?0:r->pio.ep.toggle;
-   if(result){if(Flush(r))proven=0;else if(r->properties.type!=1)toggle=r->pio.ep.toggle;}
-  }
-  cached_frame=Rd16(r,0xc);
-  /* Role/OC/health loss is an immediate shutdown request, not just a flag.
-   * No MMIO read is performed after a successful parent isolation/release. */
-  if(fault||!proven){
-   fault=TRUE;connected=0;
-   KeAcquireSpinLock(&r->lock,&irql);r->fault=TRUE;
-   /* Seal admission before calling the parent. A queued transfer which raced
-    * with the failing observation is completed with error, never started. */
-   if(r->job.state==MT_JOB_QUEUED)(void)mt_musb_claim(&r->job,&ticket);
-   KeReleaseSpinLock(&r->lock,irql);
-   if(StopPhysical(r))proven=0;else proven=1;
+   KeReleaseSpinLock(&r->lock,k);
   }
  }
- KeAcquireSpinLock(&r->lock,&irql);
- r->fault=fault;r->connected=connected;r->frame=cached_frame;
- if(root){r->root_running=FALSE;r->root_done=root;r->root_result=result?1:0;if(!fault)r->observation=o;}
- if(result&&(r->job.state==MT_JOB_RUNNING||r->job.state==MT_JOB_CANCEL)){
-  (void)mt_musb_finish(&r->job,ticket,actual,result==1?USBD_STATUS_SUCCESS:
-   result==A04_PIO_STALL?USBD_STATUS_STALL_PID:USBD_STATUS_XACT_ERROR,toggle,proven);
- }
- if(!proven||r->job.state==MT_JOB_FAULT)r->fault=TRUE;
- r->queued=FALSE;
- if(!r->closing&&!r->fault){due.QuadPart=-10000;KeSetTimer(&r->timer,due,&r->dpc);}
- KeSetEvent(&r->idle,IO_NO_INCREMENT,FALSE);KeReleaseSpinLock(&r->lock,irql);
+ KeAcquireSpinLock(&r->lock,&k);r->fault=fault;r->connected=connected;r->frame=frame;
+ if(root){r->root_running=FALSE;r->root_done=root;r->root_result=(root_result||fault)?1:0;if(!fault)r->observation=o;}
+ r->queued=FALSE;if(!r->closing&&!r->fault){due.QuadPart=-10000;KeSetTimer(&r->timer,due,&r->dpc);}
+ KeSetEvent(&r->idle,IO_NO_INCREMENT,FALSE);KeReleaseSpinLock(&r->lock,k);
 }
 static BOOLEAN ClosePassive(struct mt_musb_runtime *r)
 {
@@ -309,7 +347,7 @@ static void Cleanup(PDEVICE_OBJECT device,PVOID context)
 BOOLEAN MtMusbClose(struct mt_musb_runtime *r)
 {
  KIRQL irql;if(!r)return TRUE;
- KeAcquireSpinLock(&r->lock,&irql);r->closing=TRUE;mt_musb_cancel(&r->job,r->job.cookie);KeReleaseSpinLock(&r->lock,irql);
+ KeAcquireSpinLock(&r->lock,&irql);r->closing=TRUE;{unsigned n;for(n=0;n<MT_MUSB_LANES;n++)mt_musb_cancel(&r->lanes[n].job,r->lanes[n].job.cookie);}KeReleaseSpinLock(&r->lock,irql);
  if(KeGetCurrentIrql()==PASSIVE_LEVEL)return ClosePassive(r);
  IoQueueWorkItem(r->cleanup,Cleanup,DelayedWorkQueue,r);return FALSE;
 }
@@ -362,42 +400,76 @@ fail:
  }
  Destroy(r);return status;
 }
+ULONG MtMusbSubmitDeadline(struct mt_musb_runtime *r,ULONG cookie,const struct a04_mp_properties *e,ULONG toggle,
+ const struct a04_mp_parameters *p,PVOID buffer,ULONGLONG deadline)
+{
+ KIRQL k;ULONG result=1,n,first,last;ULONGLONG now=KeQueryInterruptTime(),span=50000000ull;unsigned interval;
+ if(!r||!p||!e||!cookie||!a04_usbport_native_route(e->hub)||
+  a04_usbport_interval(e->speed,e->type,e->period,&interval)||p->bytes>MT_MUSB_SHADOW_BYTES||(p->bytes&&!buffer))return 1;
+ if(deadline){if(deadline<=now)return 1;span=deadline-now;if(span>50000000ull)return 1;}
+ first=e->type==1?0:1;last=e->type==1?1:MT_MUSB_LANES;
+ KeAcquireSpinLock(&r->lock,&k);
+ if(!r->closing&&!r->fault&&!r->root_pending&&!r->root_running&&!r->root_done&&r->proof.vbus_on&&r->connected){
+  for(n=0;n<MT_MUSB_LANES;n++)if(r->lanes[n].job.state!=MT_JOB_IDLE){
+   struct mt_musb_lane *old=&r->lanes[n];
+   if(old->job.cookie==cookie||(old->properties.address==e->address&&old->properties.endpoint==e->endpoint&&
+     old->properties.type==e->type&&old->properties.direction==e->direction))goto out;
+  }
+  for(n=first;n<last;n++){
+   struct mt_musb_lane *l=&r->lanes[n];
+   if(mt_musb_admit(&l->job,cookie,now,span))continue; /* IDLE is published only after drain */
+   l->retired=FALSE;l->properties=*e;l->properties.common_va=NULL;l->properties.common_pa=0;l->properties.common_bytes=0;l->parameters=*p;l->job.toggle=toggle;RtlZeroMemory(l->shadow,p->bytes);
+   if(p->bytes&&(e->type==1?!(p->setup[0]&0x80):e->direction!=0))RtlCopyMemory(l->shadow,buffer,p->bytes);
+   QueueLocked(r);result=0;break;
+  }
+ }
+out:KeReleaseSpinLock(&r->lock,k);return result;
+}
 ULONG MtMusbSubmit(struct mt_musb_runtime *r,ULONG cookie,const struct a04_mp_properties *e,ULONG toggle,
  const struct a04_mp_parameters *p,PVOID buffer)
-{
- KIRQL irql;ULONG status=1;if(!r||!p||!e||p->bytes>MT_MUSB_SHADOW_BYTES||(p->bytes&&!buffer))return 1;
- KeAcquireSpinLock(&r->lock,&irql);
- if(!r->closing&&!r->fault&&!r->root_pending&&!r->root_running&&!r->root_done&&r->proof.vbus_on&&
-    !mt_musb_admit(&r->job,cookie,KeQueryInterruptTime(),50000000ull)){
-  r->properties=*e;r->parameters=*p;r->job.toggle=toggle;
-  RtlZeroMemory(r->shadow,p->bytes);
-  if(p->bytes&&(e->type==1?!(p->setup[0]&0x80):e->direction!=0))RtlCopyMemory(r->shadow,buffer,p->bytes);
-  QueueLocked(r);status=0;
- }
- KeReleaseSpinLock(&r->lock,irql);return status;
-}
+{return MtMusbSubmitDeadline(r,cookie,e,toggle,p,buffer,0);}
 VOID MtMusbCancel(struct mt_musb_runtime *r,ULONG cookie)
-{KIRQL irql;if(!r)return;KeAcquireSpinLock(&r->lock,&irql);mt_musb_cancel(&r->job,cookie);QueueLocked(r);KeReleaseSpinLock(&r->lock,irql);}
+{
+ KIRQL k;unsigned n;if(!r)return;KeAcquireSpinLock(&r->lock,&k);
+ for(n=0;n<MT_MUSB_LANES;n++){
+  struct mt_musb_lane *l=&r->lanes[n];
+  if(l->job.cookie!=cookie)continue;
+  if(l->job.state==MT_JOB_DONE&&!l->retired)RecoverRecord(r,l->job.cookie,l->job.toggle);
+  mt_musb_cancel(&l->job,cookie);
+ }
+ QueueLocked(r);KeReleaseSpinLock(&r->lock,k);
+}
 ULONG MtMusbTake(struct mt_musb_runtime *r,ULONG cookie,PVOID buffer,ULONG bytes,PULONG actual,PULONG status,PULONG toggle)
 {
- KIRQL irql;ULONG result=1;if(!r)return 1;KeAcquireSpinLock(&r->lock,&irql);
- if(r->job.state==MT_JOB_DONE&&r->job.cookie==cookie&&r->job.actual<=bytes&&
-   (!r->job.actual||buffer)&&!mt_musb_take(&r->job,cookie,actual,status,toggle)){
-  if(*actual&&(r->properties.type==1?(r->parameters.setup[0]&0x80):!r->properties.direction))RtlCopyMemory(buffer,r->shadow,*actual);
-  result=0;
+ KIRQL k;unsigned n;ULONG result=1;if(!r)return 1;KeAcquireSpinLock(&r->lock,&k);
+ for(n=0;n<MT_MUSB_LANES;n++){
+  struct mt_musb_lane *l=&r->lanes[n];
+  if(l->job.state==MT_JOB_DONE&&l->job.cookie==cookie&&l->job.actual<=bytes&&(!l->job.actual||buffer)&&
+    !mt_musb_take(&l->job,cookie,actual,status,toggle)){
+   if(*actual&&(l->properties.type==1?(l->parameters.setup[0]&0x80):!l->properties.direction))RtlCopyMemory(buffer,l->shadow,*actual);
+   result=0;break;
+  }
  }
- KeReleaseSpinLock(&r->lock,irql);return result;
+ KeReleaseSpinLock(&r->lock,k);return result;
 }
 ULONG MtMusbRecoverToggle(struct mt_musb_runtime *r,ULONG cookie,PULONG toggle)
 {
- KIRQL irql;ULONG result=1;if(!r)return 1;KeAcquireSpinLock(&r->lock,&irql);
- if(r->job.state==MT_JOB_IDLE&&r->job.last_cookie==cookie&&!r->fault){*toggle=r->job.last_toggle;result=0;}
- KeReleaseSpinLock(&r->lock,irql);return result;
+ KIRQL k;ULONG result=1;unsigned n;if(!r)return 1;KeAcquireSpinLock(&r->lock,&k);
+ for(n=0;n<MT_MUSB_LANES;n++)if(r->lanes[n].job.cookie==cookie&&r->lanes[n].job.state!=MT_JOB_IDLE)goto out;
+ if(!r->fault)for(n=0;n<32;n++)if(r->recovered[n].cookie==cookie){*toggle=r->recovered[n].toggle;r->recovered[n].cookie=0;result=0;break;}
+out:KeReleaseSpinLock(&r->lock,k);return result;
+}
+VOID MtMusbRetire(struct mt_musb_runtime *r,ULONG cookie)
+{
+ KIRQL k;unsigned n;if(!r)return;KeAcquireSpinLock(&r->lock,&k);
+ for(n=0;n<MT_MUSB_LANES;n++)if(r->lanes[n].job.cookie==cookie)r->lanes[n].retired=TRUE;
+ for(n=0;n<32;n++)if(r->recovered[n].cookie==cookie)r->recovered[n].cookie=0;
+ KeReleaseSpinLock(&r->lock,k);
 }
 ULONG MtMusbRootQueue(struct mt_musb_runtime *r,ULONG kind)
 {
- KIRQL irql;ULONG result=1;if(!r)return 1;KeAcquireSpinLock(&r->lock,&irql);
- if(!r->closing&&!r->fault&&!r->root_pending&&!r->root_running&&!r->root_done&&r->job.state==MT_JOB_IDLE){r->root_pending=kind;QueueLocked(r);result=0;}
+ KIRQL irql;ULONG result=1;if(!r||kind<A04_HUB_POWER_ON||kind>A04_HUB_DISABLE)return 1;KeAcquireSpinLock(&r->lock,&irql);
+ if(!r->closing&&!r->fault&&!r->root_pending&&!r->root_running&&!r->root_done&&AllIdle(r)){r->root_pending=kind;QueueLocked(r);result=0;}
  KeReleaseSpinLock(&r->lock,irql);return result;
 }
 ULONG MtMusbObserve(struct mt_musb_runtime *r,struct a04_hub_observation *o,PULONG connected,PULONG done,PULONG result)
