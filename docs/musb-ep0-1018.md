@@ -17,3 +17,9 @@ WDK: tools/ci/build-mt8167-ep0-1018.ps1 -TaskRoot <専用dir> -KitRoot <既kit81
 実USBPORT登録、hub/class列挙、実NAK/STALL復旧、BOT転送、suspend/resume、並行/長期動作、OTG ID/VBUS/OC、5V/給電改善は未確認。給電案件は未完了。PC接続device-roleをhost成功としない。run183 PC-role記録もhost実証ではない。
 
 将来mainだけが正規host条件と既親leaseを確認して、列挙→制御NAK/STALL→次class要求→転送/解除、deadline/Abortを個別に評価する。現媒体へ自動採用しない。workerは実機・role切替・物理操作依頼を行わない。
+
+## 今回の署名候補
+
+署名sourceは32444ffe760798576eb7d94e58ccd6b0a924145f。runner42729039661の専用C:\mt8167-musb-ep0-1018で、clang20.1.8＋既WDK8.1 cacheを利用し4TU再compile/6objects再利用、6WDK模型試験、SYS/CAT署名・trust/CAT所属を確認した。全importsは1017と同じで実RT8.1 exportsに存在する。ARMNT/native subsystem6.0は凍結1017と同じ。実機成功ではない。
+
+Windows cloneはgit -c core.autocrlf=false cloneで行う。INFだけは既.gitattributesのeol=crlfを維持。初回既定cloneはC source改行変換をsource hash guardが拒否しbuild-rejected-crlfへ保存、その後source-lfのclean checkoutで完了した。guard削除なし。専用toolは既Inf2Cat tool-only57filesの小closure復元、SDK setupではない。失敗を含むログと固定inputs/reuse closure/source bundle、package/evidence ZIP、verify.pyをroot内の専用artifact/log directoryへ保存した。
