@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Host-only actual submit function; mocked HIF, no firmware/driver build."""
+"""Host-only actual RESET submit primitives; mocked HIF, no driver build."""
 import argparse
 from pathlib import Path
 import subprocess
@@ -34,16 +34,16 @@ struct host {unsigned runtime;int failed;};
 struct a04_wmt_bridge {struct life *life;unsigned wlan_ready;int failed;
  struct host wlan;struct {int failed;}transport;
  struct {unsigned pending,sequence,bss,complete;int failed;}scan;};
-static unsigned calls;static int result;static uint8_t sent[4];
+static unsigned calls,last_cid;static int result;static uint8_t sent[4];
 static int a04_wlan_set(struct host *h,unsigned cid,const uint8_t *p,unsigned n,void *response)
-{assert(h&&cid==0x1b&&n==4&&!response);memcpy(sent,p,4);calls++;return result;}
-''' + function('static int alive(') + '\n' + function('int a04_wmt_bridge_scan_cancel_submit(') + r'''
+{assert(h&&(cid==0x1b||cid==0x14)&&n==4&&!response);last_cid=cid;memcpy(sent,p,4);calls++;return result;}
+''' + function('static int alive(') + '\n' + function('static int bridge_runtime(') + '\n' + function('int a04_wmt_bridge_scan_cancel_submit(') + '\n' + function('int a04_wmt_bridge_station_remove_bss_submit(') + r'''
 int main(void){
  struct owner owner={1,0,7};struct life life={1,7,&owner};
  struct a04_wmt_bridge b={.life=&life,.wlan_ready=1,.wlan={1,0},.scan={1,255,3,0,0}};
  struct a04_wmt_bridge before=b;
  assert(a04_wmt_bridge_scan_cancel_submit(&b,255,3)==0&&calls==1);
- assert(sent[0]==255&&!sent[1]&&!sent[2]&&!sent[3]);
+ assert(last_cid==0x1b&&sent[0]==255&&!sent[1]&&!sent[2]&&!sent[3]);
  assert(!memcmp(&b,&before,sizeof(b))); /* no fabricated scan done / state retirement */
  result=-11;assert(a04_wmt_bridge_scan_cancel_submit(&b,255,3)==-11&&calls==2);
  assert(!memcmp(&b,&before,sizeof(b))); /* sender error, no success conversion */
@@ -60,7 +60,23 @@ int main(void){
  b.transport.failed=1;assert(a04_wmt_bridge_scan_cancel_submit(&b,255,3)!=0);b=before;
  owner.poisoned=1;assert(a04_wmt_bridge_scan_cancel_submit(&b,255,3)!=0);owner.poisoned=0;
  life.generation=8;assert(a04_wmt_bridge_scan_cancel_submit(&b,255,3)!=0);
- assert(calls==2);return 0;
+ assert(calls==2);life.generation=7;result=0;
+ for(unsigned bss=0;bss<4;bss++){
+  assert(a04_wmt_bridge_station_remove_bss_submit(&b,bss)==0);
+  assert(last_cid==0x14&&sent[0]==1&&sent[1]==27&&sent[2]==bss&&!sent[3]);
+  assert(!memcmp(&b,&before,sizeof(b))); /* no fake STA/WTBL/key retirement */
+ }
+ result=-23;assert(a04_wmt_bridge_station_remove_bss_submit(&b,0)==-23);
+ assert(!memcmp(&b,&before,sizeof(b))&&calls==7);
+ assert(a04_wmt_bridge_station_remove_bss_submit(NULL,0)!=0);
+ assert(a04_wmt_bridge_station_remove_bss_submit(&b,4)!=0);
+ assert(a04_wmt_bridge_station_remove_bss_submit(&b,256)!=0);
+ b.wlan.runtime=0;assert(a04_wmt_bridge_station_remove_bss_submit(&b,0)!=0);b=before;
+ b.wlan.failed=1;assert(a04_wmt_bridge_station_remove_bss_submit(&b,0)!=0);b=before;
+ b.transport.failed=1;assert(a04_wmt_bridge_station_remove_bss_submit(&b,0)!=0);b=before;
+ owner.poisoned=1;assert(a04_wmt_bridge_station_remove_bss_submit(&b,0)!=0);owner.poisoned=0;
+ life.generation=8;assert(a04_wmt_bridge_station_remove_bss_submit(&b,0)!=0);
+ assert(calls==7);return 0;
 }
 '''
 args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -69,4 +85,4 @@ binary = args.output_dir / 'scan-cancel-submit-host'
 c_file.write_text(harness)
 subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', str(c_file), '-o', str(binary)], check=True)
 subprocess.run([str(binary.resolve())], check=True)
-print('PASS actual scan cancel submit: CID/body/identity/admission/error/no-completion; mocked HIF only')
+print('PASS actual scan cancel + BSS STA removal: exact CID/body, admission, errors, no state retirement; mock HIF only')

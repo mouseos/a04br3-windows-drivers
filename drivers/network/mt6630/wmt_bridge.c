@@ -154,6 +154,17 @@ static int bridge_runtime(const struct a04_wmt_bridge *b)
 { return alive(b) && b->wlan_ready && !b->failed && b->wlan.runtime; }
 static int bridge_error(struct a04_wmt_bridge *b,int e)
 { if(e && (b->wlan.failed || b->transport.failed))return fault(b,e);return e; }
+/* gen3 cnmStaFreeAllStaByNetwork/cnmStaSendRemoveCmd: CID0x14,
+ * action BSS=1, exclude-none=CFG_STA_REC_NUM=27 (gen3 wlan_def.h).
+ * Caller owns this BSS and must drain TX/keys/indications separately.
+ * No-response submission is not a firmware teardown acknowledgement. */
+int a04_wmt_bridge_station_remove_bss_submit(struct a04_wmt_bridge *b,unsigned bss)
+{
+ uint8_t payload[4];
+ if(!bridge_runtime(b)||b->wlan.failed||b->transport.failed||bss>3)return A04_WLAN_STATE;
+ payload[0]=1;payload[1]=27;payload[2]=(uint8_t)bss;payload[3]=0;
+ return a04_wlan_set(&b->wlan,0x14,payload,sizeof(payload),NULL);
+}
 int a04_wmt_bridge_station_setup(struct a04_wmt_bridge *b,struct a04_wlan_station *s,const struct a04_wlan_local *l)
 { if(!bridge_runtime(b))return -1;return bridge_error(b,a04_wlan_station_setup(s,&b->wlan,l)); }
 int a04_wmt_bridge_station_select(struct a04_wmt_bridge *b,struct a04_wlan_station *s,const struct a04_wlan_ap *ap,unsigned secured,unsigned token,unsigned interval,uint64_t now,uint64_t deadline)

@@ -57,6 +57,9 @@ int a04_wmt_bridge_scan_fail(struct a04_wmt_bridge *,int reason);
 /* Association and key calls require a real calibrated runtime and a real
  * supplicant. Callers retain state and serialize each event with SDIO. */
 int a04_wmt_bridge_station_setup(struct a04_wmt_bridge *,struct a04_wlan_station *,const struct a04_wlan_local *);
+/* Submit removal of STA records only for the caller-owned BSS (0..3).
+ * Does not free host STA/WTBL/key state, complete TX, or complete RESET. */
+int a04_wmt_bridge_station_remove_bss_submit(struct a04_wmt_bridge *,unsigned bss);
 int a04_wmt_bridge_station_select(struct a04_wmt_bridge *,struct a04_wlan_station *,const struct a04_wlan_ap *,unsigned,unsigned,unsigned,uint64_t,uint64_t);
 int a04_wmt_bridge_station_event(struct a04_wmt_bridge *,struct a04_wlan_station *,const uint8_t *,unsigned,uint64_t);
 int a04_wmt_bridge_station_auth(struct a04_wmt_bridge *,struct a04_wlan_station *,uint64_t);
