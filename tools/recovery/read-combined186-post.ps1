@@ -96,7 +96,7 @@ if(!$matches){$r.errors+=@('Post188 module identity mismatch; baseline359 identi
  . (Join-Path $PSScriptRoot 'read-ge8300-start-gap359.ps1')
  $r.startup_gap359=Read-Ge8300StartGap359 $root
  $r.unified_display_bindings=[ordered]@{}
- foreach($binding in @(@{id='ACPI\MOU0007';service='MT8167DisplayTransport';class='{4d36e97d-e325-11ce-bfc1-08002be10318}';version='0.0.3.57'},@{id='ACPI\MOU0006';service='GE8300Render';class='{4d36e968-e325-11ce-bfc1-08002be10318}';version='0.0.3.59'})){
+ foreach($binding in @(@{id='ACPI\MOU0007';service='MT8167DisplayTransport';class='{4d36e97d-e325-11ce-bfc1-08002be10318}';version='0.0.3.57'},@{id='ACPI\MOU0006';service='GE8300Render';class='{4d36e968-e325-11ce-bfc1-08002be10318}';version='0.0.3.62'})){
   $row=$r.nodes[$binding.id];$same=$row.present -and @($row.instances).Count -eq 1
   if($same){$v=$row.instances[0];$same=$v.instance -ceq '0' -and $v.values.Service.value -ieq $binding.service -and $v.values.ClassGUID.value -ieq $binding.class -and $v.selected_present -and $v.selected.DriverVersion.value -ceq $binding.version}
   $r.unified_display_bindings[$binding.id]=@{matches=$same;expected=$binding;observation=$row}
