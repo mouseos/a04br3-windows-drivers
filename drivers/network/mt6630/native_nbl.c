@@ -36,6 +36,23 @@ NDIS_STATUS a04_native_nbl_tx_event(struct a04_native_tx *tx,struct a04_wmt_brid
  const struct a04_wlan_station *station,struct a04_wlan_security *security,const uint8_t *packet,unsigned length,uint64_t now)
 {
  int e;if(!tx||!tx->adapter||!tx->pending||!b||!station||!security||!packet)return NDIS_STATUS_INVALID_DATA;
+ /* gen3 wlan_lib.h TX_RESULT_LIFE_TIMEOUT/RTS_ERROR/MPDU_ERROR/
+  * AGING_TIMEOUT (1..4), nicTxProcessTxDoneEvent: a matched completed
+  * packet may fail without losing HIF ownership or installed keys.
+  * Never classify mismatched, late, unknown or internal-handshake events
+  * this way. TX_DONE remains independent from WTQCR page returns. */
+ {struct a04_wlan_event event;
+  if(b->life&&b->life->state==A04_WIFI_LIFE_IO&&b->life->owner&&
+     b->life->owner->active&&!b->life->owner->poisoned&&b->life->generation==b->life->owner->generation&&
+     b->wlan_ready&&!b->failed&&b->wlan.runtime&&!b->wlan.failed&&!b->transport.failed&&
+     !tx->state.failed&&tx->state.pending&&!tx->state.eapol_kind&&now<tx->state.deadline_us&&
+     !a04_wlan_event_parse(packet,length,&event)&&event.id==0x0f&&event.length==16&&
+     event.payload[0]==tx->state.pid&&event.payload[4]==station->local.wlan&&
+     event.payload[1]>=1&&event.payload[1]<=4){
+   tx->state.pending=0;complete(tx,NDIS_STATUS_FAILURE);
+   return NDIS_STATUS_SUCCESS; /* event consumed; NBL explicitly FAILED */
+  }
+ }
  e=a04_wmt_bridge_tx_event(b,station,security,&tx->state,packet,length,now);
  if(e==A04_WLAN_UNSUPPORTED)return NDIS_STATUS_NOT_SUPPORTED;
  if(e){

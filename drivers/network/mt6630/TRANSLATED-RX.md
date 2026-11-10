@@ -70,3 +70,19 @@ provider1027登録やscanを接続・認証・DHCP/IP取得・実通信成功へ
 今回、VM/runner/実機操作は0。次のbaselineはmainが確定するfresh状態を使い、
 GPU更新後へfresh200/198のnative proofを改名・流用しない。
 公式PowerShell修正版 `5c39277db113faa98cd3a0f26c1072a7ce3d76c2` は変更しない。
+
+## 連続通信のsource補完
+
+Linux gen3 `include/wlan_lib.h:545` のTX_RESULT1..4（life/RTS/MPDU/aging）と
+`nic/nic_tx.c:2381` のpacket単位TX_DONE処理に合わせ、Native経路はPID/WTBL/長さ/deadline/
+生きた同世代ownerを照合した当該NBLだけをFAILURE完了する。dispatcher SUCCESSはeventを
+消費した意味で、送信成功ではない。keys/portとWTQCR会計は変更しない。unknown status、
+遅延・不一致event、internal handshake、stop/flush相当statusは従来のfault境界を維持する。
+
+`nic/nic_rx.c:3139` のbounded RXに合わせ、station pollは各port32件・計64件でyieldし、
+未処理portを次pollへ保持する。WHISR read-clear後もFIFOを取りこぼさず、毎pollで新しい
+fault/creditを確認する。未処理FIFOがある間はidleのfirmware ownership移行を禁止する。
+
+`make test-mt6630-data-continuity` は140packetの継続/fairness、read-clear後の継続、
+新faultの拒否、TX air failure後の再送信、credit不変、異常eventのfault維持をhostで検査する。
+この追加分で以前の7TU見積りは失効し、最終manifest closureから再計算する。

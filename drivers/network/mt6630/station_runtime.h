@@ -12,6 +12,8 @@ struct a04_station_runtime {
  unsigned desired_secured;
  int (*exclude_bssid)(void *,const uint8_t *);
  const uint8_t *association_ies;unsigned association_ies_length;
+ /* Deferred RX port bits after a bounded batch; WHISR is read-clear. */
+ unsigned rx_pending;
  unsigned initialized,connecting,connected,phase;int failed;
  /* Descriptor-only observations; no MAC/SSID/key material. First rejected AP retained. */
  unsigned rx_phase,rx_bytes,rx_descriptor,rx_error;

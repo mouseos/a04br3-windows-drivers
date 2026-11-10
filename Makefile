@@ -1635,3 +1635,8 @@ build/mt6630_assoc_capability_test: tests/mt6630_assoc_capability_test.c drivers
 test-mt6630-translated-rx: build/mt6630_native_hif_rx_test
 	./build/mt6630_native_hif_rx_test
 	python3 tests/mt6630_translated_security_test.py
+
+.PHONY: test-mt6630-data-continuity
+test-mt6630-data-continuity: build/mt6630_native_nbl_test
+	./build/mt6630_native_nbl_test
+	python3 -B tests/mt6630_rx_budget_test.py

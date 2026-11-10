@@ -53,6 +53,18 @@ int main(void)
  assert(a04_native_tx_to_ethernet(full,sizeof(full),sta.ap.mac,mac,converted,sizeof(converted)-1,&written)&&!written);
  assert((A04_NATIVE_ETH_MAX+28+127)/128>13&&A04_RUNTIME_MTU==2304);
  assert(hook_calls==3);
+ /* Real air rejection fails this NBL only; next submission is permitted.
+  * The callback result differs from the event dispatcher return value. */
+ for(unsigned code=1;code<=4;code++){
+  assert(!a04_wlan_credit_return(&b.wlan,1,0,0,1));
+  assert(a04_native_nbl_send(&tx,&b,&sta,&sec,&nbl,snapshot,sizeof(snapshot),eth,sizeof(eth),NULL,NULL,29,100)==NDIS_STATUS_PENDING);
+  event[8]=(uint8_t)tx.state.pid;event[9]=code;
+  unsigned credits=b.wlan.tc0_free,confirmed=tx.state.confirmed;
+  assert(!a04_native_nbl_tx_event(&tx,&b,&sta,&sec,event,sizeof(event),30));
+  assert(f.result==NDIS_STATUS_FAILURE&&!tx.pending&&!tx.state.pending&&!tx.state.failed&&!b.failed&&!b.wlan.failed&&!o.poisoned);
+  assert(tx.state.confirmed==confirmed&&b.wlan.tc0_free==credits);
+ }
+ event[9]=0;
  assert(!a04_wlan_credit_return(&b.wlan,3,0,0,3));
  assert(!a04_wifi_life_block_verified(&life,1,512));
  assert(!a04_wlan_native_be_enable(&b.wlan)&&b.wlan.tc1_free==468);
@@ -65,8 +77,27 @@ int main(void)
  assert(!a04_wlan_credit_return(&b.wlan,0,19,0,0)&&b.wlan.tc1_free==449);
  assert(!a04_wlan_credit_return(&b.wlan,0,0,0,19)&&b.wlan.tc1_free==468&&!b.wlan.tc1_used);
  assert(a04_native_nbl_send(&tx,&b,&sta,&sec,&nbl,full,sizeof(full),converted,sizeof(converted),NULL,NULL,60,100)==NDIS_STATUS_PENDING);
- assert(!a04_native_nbl_abort(&tx,&b)&&f.completed==5&&f.result==NDIS_STATUS_REQUEST_ABORTED&&o.poisoned);
- assert(hook_calls==5);
+ assert(!a04_native_nbl_abort(&tx,&b)&&f.completed==9&&f.result==NDIS_STATUS_REQUEST_ABORTED&&o.poisoned);
+ assert(hook_calls==9);
  assert(a04_wlan_credit_return(&b.wlan,0,20,0,20)==A04_WLAN_CREDIT);
+ /* A known air-status value alone is insufficient: corrupt/late/stop
+  * or mismatched completion still fails closed and poisons ownership. */
+ for(unsigned why=0;why<6;why++){
+  struct a04_wifi_owner bad_owner=o;struct a04_wifi_life bad_life=life;
+  struct a04_wmt_bridge bad_b=b;struct a04_wlan_security bad_sec={0};struct a04_native_tx bad_tx=tx;struct fake bad_f={0};
+  bad_owner.active=1;bad_owner.poisoned=0;bad_life.owner=&bad_owner;bad_life.state=A04_WIFI_LIFE_IO;
+  bad_b.life=&bad_life;bad_b.failed=bad_b.wlan.failed=bad_b.transport.failed=0;bad_b.wlan_ready=bad_b.wlan.runtime=1;
+  bad_tx.adapter=&bad_f;bad_tx.completion_context=&bad_f;bad_tx.pending=&nbl;
+  bad_tx.state.failed=0;bad_tx.state.pending=1;bad_tx.state.pid=7;bad_tx.state.deadline_us=100;bad_tx.state.eapol_kind=0;
+  event[0]=24;event[8]=7;event[9]=1;event[12]=3;
+  if(why==0)event[8]=8;
+  if(why==1)event[12]=4;
+  if(why==2)bad_tx.state.deadline_us=20;
+  if(why==3)event[9]=5;
+  if(why==4)event[0]=23;
+  if(why==5)bad_tx.state.eapol_kind=1;
+  active=&bad_f;assert(a04_native_nbl_tx_event(&bad_tx,&bad_b,&sta,&bad_sec,event,sizeof(event),20)==NDIS_STATUS_FAILURE);
+  assert(bad_f.completed==1&&bad_f.result==NDIS_STATUS_FAILURE&&!bad_tx.pending&&bad_owner.poisoned);
+ }
  puts("NDIS NBL copy, firmware completion and abort: OK");return 0;
 }

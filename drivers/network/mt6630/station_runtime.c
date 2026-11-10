@@ -78,7 +78,7 @@ static int packet(struct a04_station_runtime *r,const uint8_t *p,unsigned n)
 }
 int a04_station_runtime_poll(struct a04_station_runtime *r)
 {
- struct a04_wmt_bridge *b;uint32_t status,lengths;int e;unsigned port,packets=0;
+ struct a04_wmt_bridge *b;uint32_t status,lengths;int e;unsigned port,packets;
  if(!r||!r->initialized||r->failed)return -1;b=r->bridge;
  e=a04_wmt_bridge_poll_wlan_status(b,&status);if(e)return fail(r,e);
  /* gen3 mt6630_reg.h: bit7 is FW_OWN_BACK, a normal notification.
@@ -86,11 +86,17 @@ int a04_station_runtime_poll(struct a04_station_runtime *r)
   * host ownership; leave the WHLPCR handshake and all fault bits intact. */
  if(status&~0x87u)return fail(r,A04_WLAN_STATUS);
  if(status&1u){e=a04_wlan_resources(&b->wlan);if(e)return fail(r,e);}
+ /* Preserve unread FIFO work across WHISR read-clear, while still reading
+  * fresh fault/credit bits every poll. Each port gets 32 packets so a busy
+  * RX0 cannot starve RX1 firmware events. Budget exhaustion is not a fault.
+  * gen3 nicRxSDIOAggReceiveRFBs also uses a bounded receive loop. */
+ status|=r->rx_pending;r->rx_pending=0;b->pending_wlan_status=status;
  for(port=0;port<2;port++)if(status&(2u<<port)){
-  for(;;){const uint8_t *p;unsigned n;
+  for(packets=0;;){const uint8_t *p;unsigned n;
    e=a04_wlan_read(&b->wlan,0x90,&lengths);if(e)return fail(r,e);
    if(!((lengths>>(16*port))&0xffffu))break;
-   if(++packets>64)return fail(r,A04_WLAN_STATUS);
+   if(packets==32){r->rx_pending|=2u<<port;break;}
+   packets++;
    r->rx_phase=4;
    e=a04_wmt_bridge_receive(b,port,1,&p,&n);if(e){r->rx_error=e;return fail(r,e);}
    e=packet(r,p,n);a04_wlan_secret_clear(b->wlan.rx,sizeof(b->wlan.rx));if(e)return fail(r,e);

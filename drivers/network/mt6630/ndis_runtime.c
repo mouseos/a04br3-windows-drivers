@@ -291,7 +291,7 @@ int a04_ndis_idle_reconcile(struct a04_ndis_runtime *a)
   * RX/events until an empty WHISR observation; never manufacture credits. */
  for(unsigned i=0;i<100;i++){
   if(a04_station_runtime_poll(&a->radio))goto failed;
-  if(!h->cpu_used&&!h->tc0_used&&!h->tc1_used&&!h->ffa&&!h->status&&!b->pending_wlan_status){
+  if(!h->cpu_used&&!h->tc0_used&&!h->tc1_used&&!h->ffa&&!h->status&&!b->pending_wlan_status&&!a->radio.rx_pending){
    if(a04_wlan_firmware_own(h))goto failed;
    return 0;
   }
