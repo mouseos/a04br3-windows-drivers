@@ -14,6 +14,9 @@ MT8167 TOPRGU watchdogドライバはCPU1の復旧役をWindowsへ引き継ぐ�
 
 テスト署名したストレージドライバと機種固有UEFIを使用し、実機でWindows RT本体を起動しています。物理ボタンと電源管理は未完成です。ストレージは非サポートの仮想StorPort経路を使用しており、DMAの整合性、エラー復旧、電源管理、通常の署名などは未完成です。実用的なドライバとしては使用できません。
 
+USB親1121/HCD1019 ABI3の初回stage・PnP移行・旧keyboard退役・rollbackは、
+[専用導入手順](docs/usb1121-first-install.md)にまとめています。GPU run197とは別のtransactionです。
+
 ## ローカル検証
 
 C11コンパイラとmakeで `make test` を実行します。Clangがある場合、`make arm-coff` はARM32 Windows用COFFオブジェクトの生成を確認します。これらはWindowsドライバのビルドやロード成功を意味しません。
