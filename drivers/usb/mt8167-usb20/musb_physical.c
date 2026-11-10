@@ -199,7 +199,8 @@ static int DataEvent(struct mt_musb_runtime *r,unsigned n)
  struct mt_musb_lane *l=&r->lanes[n];unsigned source;
  if(l->properties.type==1){
   EP0_ACTION a;if(!(Rd16(r,2)&1))return 0;Wr16(r,2,1);a=Mt8167Ep0Interrupt(&l->ep0);
-  return a==EP0_COMPLETE?1:a==EP0_ABORT?-1:0;
+  return a==EP0_COMPLETE?1:a==EP0_ABORT?
+   (l->ep0.fault==MT8167_EP0_FAULT_STALL?A04_PIO_STALL:A04_PIO_ERROR):0;
  }
  source=l->properties.direction?2:4;if(!(Rd16(r,source)&(1u<<n)))return 0;
  Wr16(r,source,(USHORT)(1u<<n));return a04_pio_event(&r->controller.io,&l->pio);
