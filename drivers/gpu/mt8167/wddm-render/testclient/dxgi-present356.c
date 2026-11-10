@@ -199,12 +199,12 @@ static void live_paths(UINT phase,LUID id){
 }
 static int same_luid(LUID a,LUID b){return a.HighPart==b.HighPart&&a.LowPart==b.LowPart;}
 /* Select only the already available physical target of this hardware adapter.
- * Let CCD choose modes through the driver's advertised mode set. Do not invent
+ * Let CCD choose target timing through the advertised mode set. Do not invent
  * signal timing or alter the persistent topology database for this probe. */
 static HRESULT activate_display_path(LUID id){
  static DISPLAYCONFIG_PATH_INFO paths[16];
  static DISPLAYCONFIG_MODE_INFO modes[64];
- DISPLAYCONFIG_PATH_INFO chosen;UINT32 pc=16,mc=64;UINT matches=0,active=0;LONG status;
+ DISPLAYCONFIG_PATH_INFO chosen;DISPLAYCONFIG_MODE_INFO source={0};UINT32 pc=16,mc=64;UINT matches=0,active=0;LONG status;
  status=QueryDisplayConfig(QDC_ALL_PATHS,&pc,paths,&mc,modes,NULL);
  line("ACTIVATION_QUERY_ALL_STATUS",status);if(status!=ERROR_SUCCESS)return HRESULT_FROM_WIN32(status);
  for(UINT i=0;i<pc;i++){
@@ -216,14 +216,25 @@ static HRESULT activate_display_path(LUID id){
  if(matches!=1||active>1)return E_UNEXPECTED;
  if(!active){
   chosen.flags|=DISPLAYCONFIG_PATH_ACTIVE;
-  chosen.sourceInfo.modeInfoIdx=DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+  /* Pin the measured native source geometry. Target signal timing remains
+   * unspecified and must come from the driver's advertised target modes. */
+  source.infoType=DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE;source.id=chosen.sourceInfo.id;source.adapterId=id;
+  source.sourceMode.width=800;source.sourceMode.height=1280;
+  source.sourceMode.pixelFormat=DISPLAYCONFIG_PIXELFORMAT_32BPP;
+  source.sourceMode.position.x=source.sourceMode.position.y=0;
+  chosen.sourceInfo.modeInfoIdx=0;
   chosen.targetInfo.modeInfoIdx=DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
   if(!chosen.targetInfo.refreshRate.Numerator&&!chosen.targetInfo.refreshRate.Denominator)
    chosen.targetInfo.scanLineOrdering=DISPLAYCONFIG_SCANLINE_ORDERING_UNSPECIFIED;
   else if(!chosen.targetInfo.refreshRate.Denominator)return E_UNEXPECTED;
-  status=SetDisplayConfig(1,&chosen,0,NULL,SDC_VALIDATE|SDC_USE_SUPPLIED_DISPLAY_CONFIG);
+  line("ACTIVATION_SUPPLIED_SOURCE_WIDTH",source.sourceMode.width);line("ACTIVATION_SUPPLIED_SOURCE_HEIGHT",source.sourceMode.height);line("ACTIVATION_SUPPLIED_SOURCE_FORMAT",source.sourceMode.pixelFormat);
+  line("ACTIVATION_VALIDATE_FLAGS",SDC_VALIDATE|SDC_USE_SUPPLIED_DISPLAY_CONFIG);
+  status=SetDisplayConfig(1,&chosen,1,&source,SDC_VALIDATE|SDC_USE_SUPPLIED_DISPLAY_CONFIG);
   line("ACTIVATION_VALIDATE_STATUS",status);if(status!=ERROR_SUCCESS)return HRESULT_FROM_WIN32(status);
-  status=SetDisplayConfig(1,&chosen,0,NULL,SDC_APPLY|SDC_USE_SUPPLIED_DISPLAY_CONFIG);
+  /* Documented APPLY modifier forces the mode change down to the driver;
+   * API success in run219 did not establish an active display path. */
+  line("ACTIVATION_APPLY_FLAGS",SDC_APPLY|SDC_USE_SUPPLIED_DISPLAY_CONFIG|SDC_NO_OPTIMIZATION);
+  status=SetDisplayConfig(1,&chosen,1,&source,SDC_APPLY|SDC_USE_SUPPLIED_DISPLAY_CONFIG|SDC_NO_OPTIMIZATION);
   line("ACTIVATION_APPLY_STATUS",status);if(status!=ERROR_SUCCESS)return HRESULT_FROM_WIN32(status);
  }
  pc=16;mc=64;
@@ -234,7 +245,8 @@ static HRESULT activate_display_path(LUID id){
  UINT32 si=paths[0].sourceInfo.modeInfoIdx,ti=paths[0].targetInfo.modeInfoIdx;
  if(si>=mc||ti>=mc||modes[si].infoType!=DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE||modes[ti].infoType!=DISPLAYCONFIG_MODE_INFO_TYPE_TARGET||!same_luid(modes[si].adapterId,id)||!same_luid(modes[ti].adapterId,id)||modes[si].id||modes[ti].id)return E_UNEXPECTED;
  line("ACTIVATION_SOURCE_WIDTH",modes[si].sourceMode.width);line("ACTIVATION_SOURCE_HEIGHT",modes[si].sourceMode.height);line("ACTIVATION_TARGET_ROTATION",paths[0].targetInfo.rotation);
- if(modes[si].sourceMode.width!=800||modes[si].sourceMode.height!=1280||paths[0].targetInfo.rotation!=DISPLAYCONFIG_ROTATION_IDENTITY)return E_UNEXPECTED;
+ line("ACTIVATION_SOURCE_FORMAT",modes[si].sourceMode.pixelFormat);
+ if(modes[si].sourceMode.width!=800||modes[si].sourceMode.height!=1280||modes[si].sourceMode.pixelFormat!=DISPLAYCONFIG_PIXELFORMAT_32BPP||paths[0].targetInfo.rotation!=DISPLAYCONFIG_ROTATION_IDENTITY)return E_UNEXPECTED;
  line("ACTIVATION_TARGET_WIDTH",modes[ti].targetMode.targetVideoSignalInfo.activeSize.cx);
  line("ACTIVATION_TARGET_HEIGHT",modes[ti].targetMode.targetVideoSignalInfo.activeSize.cy);
  line("ACTIVATION_TARGET_SCALING",paths[0].targetInfo.scaling);
@@ -324,7 +336,7 @@ void mainCRTStartup(void){
  /* Keep one exact frame digit index; no command line supplies an output path. */
  logpath[base++]=L'.';logpath[base++]=L'l';logpath[base++]=L'o';logpath[base++]=L'g';logpath[base]=0;
  disk=CreateFileW(logpath,GENERIC_WRITE,FILE_SHARE_READ,NULL,CREATE_NEW,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,NULL);if(disk==INVALID_HANDLE_VALUE)ExitProcess(2);
- line("PID",pid);line("TICK",tick);line("CLIENT_VERSION",374);hr=hardware_luid(&id);if(FAILED(hr))goto done;
+ line("PID",pid);line("TICK",tick);line("CLIENT_VERSION",375);hr=hardware_luid(&id);if(FAILED(hr))goto done;
  hr=CreateDXGIFactory(&IID_IDXGIFactory,(void **)&factory);if(FAILED(hr))goto done;
  for(UINT i=0;;i++){IDXGIAdapter *a=NULL;DXGI_ADAPTER_DESC desc;
   hr=IDXGIFactory_EnumAdapters(factory,i,&a);if(hr==DXGI_ERROR_NOT_FOUND){hr=S_OK;break;}if(FAILED(hr))goto done;
