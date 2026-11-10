@@ -176,7 +176,8 @@ def main():
   subprocess.run(['git','-C',str(repo),'merge-base','--is-ancestor',signed_source,a.source_commit],check=True)
   changed=set(subprocess.check_output(['git','-C',str(repo),'diff','--name-only',signed_source,a.source_commit],text=True).splitlines())
   if a.combined200_profile:
-   require(not changed,'GPU368 service/media require identical fixed source')
+   require(changed and changed<={'tools/winpe/private_hardware_probe_input.py','tools/winpe/build-private-peripheral-batch-media.py'},'GPU368 post-sign changes are limited to the media validator and its admission gate')
+   require(sha(repo/'tools/winpe/mt8167-peripheral-update.c')==sm['source_sha256'],'Signed GPU368 SCM TU unchanged')
   elif a.combined196_profile:
    require(changed and changed<={'tools/recovery/prepare-offline-system-service.ps1','tools/winpe/build-private-peripheral-batch-media.py'},'197 exact post-sign snapshot/media-helper-only differences required')
    require(sha(repo/'tools/winpe/mt8167-peripheral-update.c')==sm['source_sha256'],'Signed197 SCM TU unchanged')

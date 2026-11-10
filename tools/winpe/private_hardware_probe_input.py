@@ -119,10 +119,10 @@ def prepared_system_check(system, manifest, expected_sha256, root, backup, selec
                 raise ValueError('GPU368 preservation proof required')
             old = json.loads(before.get('peripheral_old_services','{}'))
             observed = json.loads(before.get('peripheral_captured_values','{}'))
-            expected = {v['key']+'\\'+v['name']:v for v in p['captured_registry_values']}
-            if old != p['service_preservation'] or set(observed) != set(expected):
+            expected_captured200 = {v['key']+'\\'+v['name']:v for v in p['captured_registry_values']}
+            if old != p['service_preservation'] or set(observed) != set(expected_captured200):
                 raise ValueError('fresh200 exact service/named-value sets mismatch')
-            for k,v in expected.items():
+            for k,v in expected_captured200.items():
                 if any(observed[k][f] != v[f] for f in ('type','raw_hex')) or observed[k]['bytes'] != len(bytes.fromhex(v['raw_hex'])):
                     raise ValueError('fresh200 named value mismatch')
             if before.get('peripheral_failed149_service_absent') != 'MT8167CombinedFollowup148=absent':
