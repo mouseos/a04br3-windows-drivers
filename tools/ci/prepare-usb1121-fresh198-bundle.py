@@ -28,25 +28,29 @@ def below(root, path):
     require(result.is_relative_to(root), '作業root外の入力')
     return result
 
-def prepare(root, output):
+def prepare(root, output, *, fresh_manifest=None, fresh_sha256=None, native_receipt=None, native_sha256=None):
     root = root.resolve(strict=True)
     output = output.resolve()
     require(output.is_relative_to(root) and not output.exists(), 'root内の新規出力が必要')
-    fresh_path = below(root, 'port/xnu/out/private-windows-rt-prebackup-run198/manifest.json')
+    rebound = fresh_manifest is not None
+    require(not rebound or all((fresh_sha256, native_receipt, native_sha256)), '再結合には全実入力pinが必要')
+    fresh_path = below(root, fresh_manifest or 'port/xnu/out/private-windows-rt-prebackup-run198/manifest.json')
+    fresh_pin = fresh_sha256 if rebound else FRESH
     fresh = read(fresh_path)
-    require(sha(fresh_path) == FRESH and fresh['recovery_boot_id'] == BOOT and
+    require(sha(fresh_path) == fresh_pin and (rebound or fresh['recovery_boot_id'] == BOOT) and
             fresh['status'] == 'captured-unmounted' and fresh['read_only'] and
             fresh['unmounted'] and not fresh['errors'], 'fresh198原本不一致')
     original = {x['source_path']: x for x in fresh['files']}
     for name in ('SYSTEM', 'SYSTEM.LOG1', 'SYSTEM.LOG2'):
         f = original['Windows/System32/config/' + name]
         require(sha(below(root, fresh_path.parent / f['backup_path'])) == f['sha256'], 'SYSTEM原本変更')
-    receipt_path = below(root, 'port/xnu/out/private-windows-rt-combined-run197-registry-post/receipt.json')
+    receipt_path = below(root, native_receipt or 'port/xnu/out/private-windows-rt-combined-run197-registry-post/receipt.json')
     receipt = read(receipt_path)
-    require(sha(receipt_path) == NATIVE and receipt['source_manifest_sha256'] == FRESH and receipt['originals_unchanged'] and
+    require(sha(receipt_path) == (native_sha256 if rebound else NATIVE) and receipt['source_manifest_sha256'] == fresh_pin and receipt['originals_unchanged'] and
             receipt['full_service_preservation_equal'] and not receipt['errors'], 'native198 receipt不一致')
-    require(receipt['post_ownership_policy360']['raw'] == '00000000' and
-            receipt['nodes']['ACPI\\MOU0006']['instances'][0]['selected']['DriverVersion']['value'] == '0.0.3.67', 'actual GPU367/POST0 required')
+    require(receipt['post_ownership_policy360']['raw'] == '00000000', 'actual POST0 required')
+    if not rebound:
+        require(receipt['nodes']['ACPI\\MOU0006']['instances'][0]['selected']['DriverVersion']['value'] == '0.0.3.67', 'historical GPU367 required')
     baseline = {'packages': {'parent': {'names': {'inf': 'shared-parent-clock1120.inf', 'sys': 'mt8167-shared.sys', 'cat': 'mt8167-shared-clock1120.cat'}, 'directory': 'port/xnu/out/windows-rt-usb1121-helper42796448681/install-bundle/rollback/parent', 'hashes': {'inf': 'bc8b234e52e48f772d4e7d7adf68155a0a3ca5082e3db4b5e52daef3ee775bd1', 'sys': '903a96d777501af0e679f48fc852a313bc3cce04dfe4240f28ad0f2fc2a8c605', 'cat': 'a25ec143ab94eccc18b067a07f7bf6d637fd94fab72400c531bcfc4ec002a3c6'}}, 'usb': {'names': {'inf': 'mt8167-usb20.inf', 'sys': 'mt8167-usb20.sys', 'cat': 'mt8167-usb20.cat'}, 'directory': 'port/xnu/out/windows-rt-usb1121-helper42796448681/install-bundle/rollback/legacy', 'hashes': {'inf': '6cefb108d8becbdcfadd012c78899fb5a964166b68f10d7d1b6169cd3e2113cf', 'sys': '4d547ed45597395088c89bd52de2ffd83180322b753c9ab30842966cc50fee31', 'cat': 'cbe7e8f51122a4e47b6ad4e230c766eec30ea407cdfb0aba4b82b9794f5ba904'}}}}
     current = {}
     for role, version in [('parent', '2026.11.10.1120'), ('legacy', '2026.11.8.1010')]:
@@ -107,8 +111,8 @@ def prepare(root, output):
     for name in ('UsbAbi3Pnp.cs', 'install-usb1121-first.ps1'):
         source = repo / 'tools/usb' / name
         copies.append((source, 'recipe/' + name, sha(source)))
-    plan = dict(schema='MT8167_USB_ABI3_FIRST_INSTALL_V1', capture_sha256=FRESH,
-                recovery_boot_id=BOOT, native_receipt_sha256=sha(receipt_path), owner_ABI=3,
+    plan = dict(schema='MT8167_USB_ABI3_FIRST_INSTALL_V1', capture_sha256=fresh_pin,
+                recovery_boot_id=fresh['recovery_boot_id'], native_receipt_sha256=sha(receipt_path), owner_ABI=3,
                 signed_tuple_manifest_sha256=TUPLE, candidate=packages, baseline=current,
                 rollback=rollback, old_filter='A04Usb20Keyboard', tool_signer=manifest['signer'],
                 files={name: h for _, name, h in copies},
