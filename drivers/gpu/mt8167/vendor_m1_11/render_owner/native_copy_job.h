@@ -12,6 +12,7 @@ struct a04_native_copy_job_input {
  uint32_t width,height,pitch_pixels;
  uint32_t fragment_pds_offset,secondary_data_offset,secondary_code_offset;
  uint32_t eot_pds_offset,fragment_usc_offset;
+ uint32_t destination_width,destination_height,destination_pitch_pixels; /* zero: source layout */
 };
 struct a04_native_copy_job_image {
  uint32_t task[52],shared[12],fragment_pds[16];

@@ -85,7 +85,7 @@ static NTSTATUS release_contents(struct a04_vendor_native_cold *n)
 }
 static NTSTATUS prepare_contents(struct a04_vendor_native_cold *n,
     struct a04_vendor_render_cold *r,PDMA_ADAPTER adapter,ULONG map_registers,
-    ULONG width,ULONG height)
+    ULONG width,ULONG height,ULONG pitch)
 {
     UCHAR *shadow=NULL;uint32_t *pc;uint64_t *pd,*pt;ULONG region,tpc,tiles_x,tiles_y,side=1,at;
     unsigned i;uint64_t address;NTSTATUS status=STATUS_DEVICE_CONFIGURATION_ERROR;
@@ -94,7 +94,7 @@ static NTSTATUS prepare_contents(struct a04_vendor_native_cold *n,
        n->pt.cpu || n->prepared || n->mapped || !r->mapped || !r->firmware ||
        !r->firmware->staged || !r->firmware->uncached || r->firmware->hardware_owned ||
        r->firmware->adapter!=adapter || r->firmware->render_owner!=r || r->native_owner || r->layout.used>0x4800u ||
-       r->buffer[0].bytes<0x4c40u || width!=800u || height!=(A04_GE8300_VENDOR_NATIVE_CLEAR_JOB?A04_NATIVE_FRAME_HEIGHT:1280u))
+       r->buffer[0].bytes<0x4c40u || !geo_render_layout_valid(width,height,pitch))
         return STATUS_INVALID_PARAMETER;
     tiles_x=(width+15u)/16u;tiles_y=(height+15u)/16u;
     region=ROUND_PAGE(((tiles_x*tiles_y*5u+63u)&~63u)*2u);
@@ -117,7 +117,7 @@ static NTSTATUS prepare_contents(struct a04_vendor_native_cold *n,
     /* Each real common-buffer request covers at most 16 pages; the total
      * linear GPU window is not one DMA transfer/common-buffer request. */
     if(at>A04_NATIVE_DATA_LIMIT || map_registers<A04_NATIVE_BLOCK_BYTES/4096u)return STATUS_INSUFFICIENT_RESOURCES;
-    n->used=at;n->width=width;n->height=height;n->render=r;r->native_owner=n;
+    n->used=at;n->width=width;n->height=height;n->pitch=pitch;n->render=r;r->native_owner=n;
     status=a04_vendor_native_storage_allocate(n,0,adapter,at);
     if(!NT_SUCCESS(status))goto done;
     a04_vendor_native_diagnose(n,A04_NATIVE_PREP_PT,0,4096u);
@@ -201,8 +201,8 @@ BOOLEAN a04_vendor_native_job_staged(const struct a04_vendor_native_cold *n)
 
 ULONG a04_vendor_native_bytes(const struct a04_vendor_native_cold *n)
 { return n ? n->used : 0; }
-NTSTATUS a04_vendor_native_allocate_cold_ex(struct a04_vendor_native_cold **out,
-    struct a04_vendor_render_cold *r,PDMA_ADAPTER adapter,ULONG maps,ULONG width,ULONG height,struct a04_vendor_native_diagnostic *d)
+NTSTATUS a04_vendor_native_allocate_layout_cold_ex(struct a04_vendor_native_cold **out,
+    struct a04_vendor_render_cold *r,PDMA_ADAPTER adapter,ULONG maps,ULONG width,ULONG height,ULONG pitch,struct a04_vendor_native_diagnostic *d)
 {
     struct a04_vendor_native_cold *n;NTSTATUS status;
     _Alignas(8) struct a04_m111_hwrt_input profile[2];
@@ -210,7 +210,7 @@ NTSTATUS a04_vendor_native_allocate_cold_ex(struct a04_vendor_native_cold **out,
     if(!out || *out || KeGetCurrentIrql()!=PASSIVE_LEVEL){if(d)d->status=STATUS_INVALID_PARAMETER;return STATUS_INVALID_PARAMETER;}
     n=ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*n),TAG);
     if(!n)return STATUS_INSUFFICIENT_RESOURCES;
-    RtlZeroMemory(n,sizeof(*n));n->diagnostic=d;status=prepare_contents(n,r,adapter,maps,width,height);
+    RtlZeroMemory(n,sizeof(*n));n->diagnostic=d;status=prepare_contents(n,r,adapter,maps,width,height,pitch);
     if(NT_SUCCESS(status)) {
         if(a04_m111_build_single_rt_hwrt_profile(profile,width,height,&n->target,&n->mlists))
             status=STATUS_DEVICE_CONFIGURATION_ERROR;
@@ -240,3 +240,8 @@ NTSTATUS a04_vendor_native_release_cold(struct a04_vendor_native_cold **owner)
 NTSTATUS a04_vendor_native_allocate_cold(struct a04_vendor_native_cold **out,
     struct a04_vendor_render_cold *r,PDMA_ADAPTER a,ULONG maps,ULONG width,ULONG height)
 { return a04_vendor_native_allocate_cold_ex(out,r,a,maps,width,height,NULL); }
+
+NTSTATUS a04_vendor_native_allocate_cold_ex(struct a04_vendor_native_cold **out,
+ struct a04_vendor_render_cold *r,PDMA_ADAPTER a,ULONG maps,ULONG width,ULONG height,
+ struct a04_vendor_native_diagnostic *d)
+{ return a04_vendor_native_allocate_layout_cold_ex(out,r,a,maps,width,height,geo_render_pitch(width),d); }

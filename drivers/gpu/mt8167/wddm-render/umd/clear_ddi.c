@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "clear_ddi.h"
 #include "../texture_layout.h"
+#include "../render_layout.h"
 #include "../memory.h"
+#include "../copy_region.h"
 #include <dxgi.h>
 #include "readback_wait.h"
 #include "../testclient/durable_progress.h"
@@ -38,16 +40,15 @@ static HRESULT APIENTRY create_resource(HANDLE h,D3DDDIARG_CREATERESOURCE *p) {
     ((p->Format==D3DDDIFMT_A8R8G8B8||p->Format==D3DDDIFMT_A8B8G8R8)&&(p->Flags.VertexBuffer||p->Flags.IndexBuffer))||
     ((p->Format==D3DDDIFMT_INDEX16||p->Format==D3DDDIFMT_INDEX32)&&(!p->Flags.IndexBuffer||p->Flags.VertexBuffer||p->Flags.Texture||p->Flags.RenderTarget))) {HeapFree(GetProcessHeap(),0,r);return E_INVALIDARG;}
  if(p->Format==D3DDDIFMT_A8B8G8R8&&(!p->Flags.Texture||p->Flags.RenderTarget)){HeapFree(GetProcessHeap(),0,r);return E_NOTIMPL;}
- if(r->desc.width>1024&&p->Format==D3DDDIFMT_A8R8G8B8&&!p->Flags.Texture){HeapFree(GetProcessHeap(),0,r);return E_NOTIMPL;}
  r->desc.pitch=(p->Format==D3DDDIFMT_A8R8G8B8||p->Format==D3DDDIFMT_A8B8G8R8)?r->desc.width*4u:r->desc.width;r->desc.format=(UINT)p->Format;
  r->desc.usage=p->Format==D3DDDIFMT_VERTEXDATA?GEO_USAGE_VERTEX_BUFFER:
   ((p->Format==D3DDDIFMT_INDEX16||p->Format==D3DDDIFMT_INDEX32)?GEO_USAGE_INDEX_BUFFER:(p->Flags.RenderTarget?(p->Flags.Texture?GEO_USAGE_RT_TEXTURE2D:GEO_USAGE_RENDER_TARGET):p->Flags.Texture?GEO_USAGE_TEXTURE2D:GEO_USAGE_STAGING));
  if(r->desc.usage==GEO_USAGE_TEXTURE2D){r->desc.version=GEO_TEXTURE_STORAGE_VERSION;r->desc.pitch=geo_texture_default_pitch(r->desc.width);}
+ if(r->desc.usage==GEO_USAGE_STAGING)r->desc.pitch=geo_render_pitch(r->desc.width);
  r->logical_width=r->desc.width;r->logical_height=r->desc.height;
  if(geo_usage_renderable(r->desc.usage)){
-  if(r->desc.usage==GEO_USAGE_RT_TEXTURE2D&&(r->logical_width!=800||r->logical_height!=A04_NATIVE_FRAME_HEIGHT)){HeapFree(GetProcessHeap(),0,r);return E_NOTIMPL;}
-  if(r->logical_width>800u||r->logical_height>A04_NATIVE_FRAME_HEIGHT){HeapFree(GetProcessHeap(),0,r);return E_NOTIMPL;}
-  r->desc.width=800;r->desc.height=A04_NATIVE_FRAME_HEIGHT;r->desc.pitch=3200;
+  r->desc.pitch=geo_render_pitch(r->desc.width);
+  if(!geo_render_layout_valid(r->desc.width,r->desc.height,r->desc.pitch)){HeapFree(GetProcessHeap(),0,r);return E_NOTIMPL;}
  }
  if(!geo_desc_valid(&r->desc)){HeapFree(GetProcessHeap(),0,r);return E_INVALIDARG;}
  memset(&request,0,sizeof(request));memset(&info,0,sizeof(info));memset(&data,0,sizeof(data));data.size=sizeof(data);data.version=1;data.logical_width=r->logical_width;data.logical_height=r->logical_height;data.storage=r->desc;
@@ -186,15 +187,20 @@ static HRESULT APIENTRY blt(HANDLE h,const D3DDDIARG_BLT *p) {
  struct geo_umd_device *d=h;struct geo_umd_resource *src,*dst;D3DDDIARG_LOCK a,b;D3DDDIARG_UNLOCK u;HRESULT hr,cleanup;UINT y;
  if(!d||!p||p->SrcSubResourceIndex||p->DstSubResourceIndex||p->Flags.Value>1)return E_NOTIMPL;
  src=find(d,p->hSrcResource);dst=find(d,p->hDstResource);
- if(!src||!dst||src->offered||dst->offered||src==dst||src->logical_width!=dst->logical_width||src->logical_height!=dst->logical_height||
-    dst->desc.usage!=GEO_USAGE_STAGING)return E_NOTIMPL;
- if(p->SrcRect.left||p->SrcRect.top||p->DstRect.left||p->DstRect.top||
-    p->SrcRect.right!=(LONG)src->logical_width||p->SrcRect.bottom!=(LONG)src->logical_height||
-    p->DstRect.right!=(LONG)dst->logical_width||p->DstRect.bottom!=(LONG)dst->logical_height)return E_NOTIMPL;
+ if(!src||!dst||src->offered||dst->offered||src==dst||src->locked||dst->locked||dst->desc.usage!=GEO_USAGE_STAGING)return E_NOTIMPL;
+ if(p->SrcRect.left<0||p->SrcRect.top<0||p->DstRect.left<0||p->DstRect.top<0||
+    p->SrcRect.right<0||p->SrcRect.bottom<0||p->DstRect.right<0||p->DstRect.bottom<0||
+    (UINT)p->SrcRect.right>src->logical_width||(UINT)p->SrcRect.bottom>src->logical_height||
+    (UINT)p->DstRect.right>dst->logical_width||(UINT)p->DstRect.bottom>dst->logical_height||
+    p->SrcRect.right<=p->SrcRect.left||p->SrcRect.bottom<=p->SrcRect.top||
+    p->DstRect.right-p->DstRect.left!=p->SrcRect.right-p->SrcRect.left||
+    p->DstRect.bottom-p->DstRect.top!=p->SrcRect.bottom-p->SrcRect.top)return E_INVALIDARG;
+ struct geo_copy_region region={(UINT)p->SrcRect.left,(UINT)p->SrcRect.top,(UINT)p->DstRect.left,(UINT)p->DstRect.top,
+  (UINT)(p->SrcRect.right-p->SrcRect.left),(UINT)(p->SrcRect.bottom-p->SrcRect.top)};
+ if(!geo_copy_region_valid(&region,src->logical_width,src->logical_height,dst->logical_width,dst->logical_height))return E_INVALIDARG;
  if(geo_usage_renderable(src->desc.usage)){
-  struct geo_copy_packet packet={GEO_COPY_MAGIC,sizeof(packet),1,0,1,800,A04_NATIVE_FRAME_HEIGHT,0};D3DDDICB_RENDER q;
+  struct geo_copy_region_packet packet={GEO_COPY_MAGIC,sizeof(packet),2,0,1,0,region};D3DDDICB_RENDER q;
   if(src->desc.format!=GEO_FORMAT_A8R8G8B8||dst->desc.format!=GEO_FORMAT_A8R8G8B8||
-     src->logical_width!=800||src->logical_height!=A04_NATIVE_FRAME_HEIGHT||dst->logical_width!=800||dst->logical_height!=A04_NATIVE_FRAME_HEIGHT||
      d->command_bytes<sizeof(packet)||d->allocation_count<2||!d->commands||!d->allocations)return E_NOTIMPL;
   if(!geo_progress_write(8,0,src->desc.usage))return E_FAIL;
   memcpy(d->commands,&packet,sizeof(packet));memset(d->allocations,0,2*sizeof(*d->allocations));
@@ -216,7 +222,7 @@ static HRESULT APIENTRY blt(HANDLE h,const D3DDDIARG_BLT *p) {
   /* Normal RAM required by owner ABI. Runtime lock waits for the REAL fence;
    * this copies GPU results for readback and never synthesizes a clear. */
   geo_progress_write(13,0,src->logical_height);
-  for(y=0;y<src->logical_height;y++)memcpy((BYTE *)b.pSurfData+y*b.Pitch,(BYTE *)a.pSurfData+y*a.Pitch,src->logical_width*4u);
+  for(y=0;y<region.height;y++)memcpy((BYTE *)b.pSurfData+(y+region.destination_y)*b.Pitch+region.destination_x*4u,(BYTE *)a.pSurfData+(y+region.source_y)*a.Pitch+region.source_x*4u,region.width*4u);
   geo_progress_write(14,0,src->logical_height);
   memset(&u,0,sizeof(u));u.hResource=dst;cleanup=unlock_resource(d,&u);if(FAILED(cleanup))hr=cleanup;
  }

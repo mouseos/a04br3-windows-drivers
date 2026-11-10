@@ -54,5 +54,6 @@ NTSTATUS e_native_stop_locked(struct e_native_owner *);
 NTSTATUS e_native_retire_graph_locked(struct e_native_owner *);
 NTSTATUS e_native_build_graph_locked(struct e_native_owner *);
 NTSTATUS e_native_prepare_copy_storage_locked(struct e_native_owner *);
+NTSTATUS e_native_prepare_copy_destination_locked(struct e_native_owner *,uint64_t);
 NTSTATUS e_native_boot_locked(struct e_native_owner *);
 #endif

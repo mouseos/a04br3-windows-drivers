@@ -95,7 +95,7 @@ NTSTATUS a04_vendor_native_prepare_backing_cold(struct a04_vendor_native_cold *n
        !(r=n->render) || r->native_owner!=n || !r->firmware || r->firmware->adapter!=adapter ||
        r->firmware->hardware_owned || r->firmware->render_owner!=r || !n->prepared || !n->mapped || !n->bank_prepared ||
        n->code_mapped!=3u || n->output_mapped || n->backing_staged || maps<A04_NATIVE_BLOCK_BYTES/4096u ||
-       n->width!=A04_NATIVE_FRAME_WIDTH || n->height!=(A04_GE8300_VENDOR_NATIVE_CLEAR_JOB?A04_NATIVE_FRAME_HEIGHT:1280u) || n->suffix_offset+4096u!=n->used)
+       !geo_render_layout_valid(n->width,n->height,n->pitch) || n->suffix_offset+4096u!=n->used)
         {status=Geo357Fail(&obs,101,STATUS_INVALID_DEVICE_STATE);Geo357End(&obs,status);Geo357Store(&obs,0,0);return status;}
     obs.words[5]=n->width;obs.words[6]=n->height;obs.words[7]=n->used;obs.words[8]=n->data_blocks;
     for(i=0;i<A04_NATIVE_OUTPUT_TABLE_COUNT;i++)if(n->output[i].cpu || n->output[i].adapter){obs.words[10]=i;status=Geo357Fail(&obs,102,STATUS_INVALID_DEVICE_STATE);Geo357End(&obs,status);Geo357Store(&obs,0,0);return status;}
@@ -146,10 +146,10 @@ NTSTATUS a04_vendor_native_prepare_backing_cold(struct a04_vendor_native_cold *n
     a04_gpu_dma_barrier();entry=pc[A04_NATIVE_OUTPUT_VA>>30];
     n->output_mapped=TRUE; /* Retain ownership through any partial PC write. */
     if((api=write_verified((UCHAR *)r->buffer[1].cpu+(A04_NATIVE_OUTPUT_VA>>30)*4u,&entry,4u))){obs.words[12]=(ULONG)api;Geo357Fail(&obs,162,status);goto done;}
-    if((api=a04_m111_build_clear_surface(&surface,A04_NATIVE_OUTPUT_VA,800u,n->height,800u))){obs.words[12]=(ULONG)api;Geo357Fail(&obs,170,status);goto done;}
+    if((api=a04_m111_build_clear_surface(&surface,A04_NATIVE_OUTPUT_VA,n->width,n->height,n->pitch/4u))){obs.words[12]=(ULONG)api;Geo357Fail(&obs,170,status);goto done;}
     if((api=a04_m111_build_clear_codespace(&code,A04_NATIVE_USC_VA,A04_NATIVE_PDS_VA,0u,surface.emit[0],surface.emit[1]))){obs.words[12]=(ULONG)api;Geo357Fail(&obs,171,status);goto done;}
     if((api=a04_m111_build_clear_code_bindings(&bindings,A04_NATIVE_PDS_VA))){obs.words[12]=(ULONG)api;Geo357Fail(&obs,172,status);goto done;}
-    if((api=a04_m111_build_clear_terminate_stream(&suffix,A04_NATIVE_DATA_VA+n->suffix_offset,800u,n->height))){obs.words[12]=(ULONG)api;Geo357Fail(&obs,173,status);goto done;}
+    if((api=a04_m111_build_clear_terminate_stream(&suffix,A04_NATIVE_DATA_VA+n->suffix_offset,n->width,n->height))){obs.words[12]=(ULONG)api;Geo357Fail(&obs,173,status);goto done;}
     if((api=write_verified(n->code[0].cpu,code.usc,sizeof(code.usc)))){obs.words[12]=(ULONG)api;Geo357Fail(&obs,180,status);goto done;}
     if((api=write_verified(n->code[1].cpu,code.pds,sizeof(code.pds)))){obs.words[12]=(ULONG)api;Geo357Fail(&obs,181,status);goto done;}
     if((api=write_verified(a04_vendor_native_storage_pointer(n,0,n->suffix_offset,sizeof(suffix.data)),suffix.data,sizeof(suffix.data)))){obs.words[12]=(ULONG)api;Geo357Fail(&obs,182,status);goto done;}

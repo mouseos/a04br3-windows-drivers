@@ -46,6 +46,24 @@ int main(int argc,char**argv){
   memcpy(before,j,sizeof(*j));assert(a04_m111_build_draw_job_v5(j,&in,0x7000200000ULL,0x7000210000ULL,&r,blob,sizeof(blob),scratch,A04_M111_DRAW_SCRATCH)!=0&&!memcmp(j,before,sizeof(*j)));
   r.sampled.base.state.scissor_enable=0;
  }
+ /* Real descriptor dimensions/padding reach PBE, PPP clip and viewport.
+  * Both rotated panel-size and non-aligned window sizes use production V5. */
+ {struct geo_draw_request_v5 saved=r;
+  const unsigned dims[][2]={{1280,800},{801,600},{317,199}};
+  for(unsigned k=0;k<3;k++){
+   unsigned w=dims[k][0],h=dims[k][1],pitch=(w*4u+127u)&~127u;
+   r.sampled.base.target_desc.width=w;r.sampled.base.target_desc.height=h;r.sampled.base.target_desc.pitch=pitch;
+   float wf=(float)w,hf=(float)h;memcpy(&r.sampled.base.state.viewport[2],&wf,4);memcpy(&r.sampled.base.state.viewport[3],&hf,4);
+   in.output_pitch_pixels=pitch/4u;
+   assert(!a04_m111_build_draw_job_v5(j,&in,0x7000800000ULL,0x7000900000ULL,&r,blob,sizeof(blob),scratch,A04_M111_DRAW_SCRATCH));
+   uint32_t clipx=0,clipy=0;
+   for(unsigned b=0;b<4;b++){clipx|=(uint32_t)j->data[0x26c+b]<<(8*b);clipy|=(uint32_t)j->data[0x270+b]<<(8*b);}
+   assert(clipx==((1u<<31)|((w+15)/16-1))&&clipy==(h+15)/16-1);
+   struct a04_m111_draw_job preserved=*j;in.output_pitch_pixels--;
+   assert(a04_m111_build_draw_job_v5(j,&in,0x7000800000ULL,0x7000900000ULL,&r,blob,sizeof(blob),scratch,A04_M111_DRAW_SCRATCH)&&!memcmp(j,&preserved,sizeof(*j)));
+  }
+  r=saved;in.output_pitch_pixels=0;
+ }
  /* Same producer-selected bytes are copied; admission cannot silently change
   * code, register count, aliasing, texture format or framing. */
  for(unsigned k=0;k<88;k++){unsigned at=r.sampled.base.ps.usc.offset+k;blob[at]^=1;assert(a04_m111_texture2d_program(&r.sampled.base.ps,blob,sizeof(blob))!=0);blob[at]^=1;}

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include "typed_device.h"
+#include "typed_state.h"
 #include "../viewport_profile.h"
 #include "../frontend/shader_draw_abi.h"
 void geo_typed_device_trace(struct geo_typed_device *,const char *,UINT);
@@ -102,9 +103,8 @@ HRESULT geo_typed_submit_draw(D3D10DDI_HDEVICE h,const FLOAT vertices[3][4]) {
  if(FAILED(d->error))return d->error;
  sampled=d->bound_shader[1]->code->texture_profile;general=!sampled&&d->bound_shader[0]->code->witness&&d->bound_shader[1]->code->witness;combined=sampled&&d->bound_shader[0]->code->witness;header=combined?sizeof(struct geo_draw_packet_v5):general?sizeof(struct geo_draw_packet_v4):sampled?sizeof(struct geo_draw_packet_v3):sizeof(*p);
  if(sampled){hr=geo_typed_texture_profile(d,&sampler_profile);if(FAILED(hr))return hr;hr=geo_typed_texture_allocation(d,&texture_desc,&xa);if(FAILED(hr))return hr;}
- if(d->target->resource->width!=800||d->target->resource->height!=A04_NATIVE_FRAME_HEIGHT)return E_NOTIMPL;
  hr=geo_typed_validate_native_state(h);if(FAILED(hr))return hr;
- {uint32_t vp[6];memcpy(vp,&d->viewport,sizeof(vp));if(!d->viewport_set||!geo_viewport_profile_valid(vp))return E_NOTIMPL;}
+ {uint32_t vp[6];memcpy(vp,&d->viewport,sizeof(vp));if(!d->viewport_set||!geo_viewport_target_valid(vp,d->target->resource->width,d->target->resource->height))return E_NOTIMPL;}
  hr=geo_umd_target_info(&d->backend,&target,&ta);if(FAILED(hr))return hr;
  for(stage=0;stage<2;stage++){
   struct geo_umd_tokenized_shader *s=d->bound_shader[stage]->code;

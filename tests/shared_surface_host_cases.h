@@ -11,6 +11,7 @@ static int32_t owner_destroy(void*c,uint64_t id){(void)c;assert(id==1);destroys+
 static int32_t owner_prepare(void*c,uint64_t s,uint32_t v,uint64_t*t){(void)c;(void)s;(void)v;*t=9;return 0;}
 static int32_t owner_submit(void*c,uint64_t t,uint32_t f,uint32_t g){(void)c;(void)t;(void)f;(void)g;return 0;}
 static int32_t owner_copy(void*c,uint64_t s,uint64_t d,uint64_t*t){(void)c;(void)s;(void)d;*t=10;return 0;}
+static int32_t copy_region_owner(void*c,uint64_t s,uint64_t d,const struct geo_copy_region*r,uint64_t*j){if(!r||!r->width||!r->height)return GEO_INVALID;return owner_copy(c,s,d,j);}
 static void *lookup(DXGKARGCB_GETHANDLEDATA *q){return q->hObject==101||q->hObject==202?original:NULL;}
 static BOOLEAN synchronize(void *c,BOOLEAN (*f)(void *),void *p){(void)c;return f(p);}
 static HRESULT allocate_cb(HANDLE runtime,D3DDDICB_ALLOCATE *q){
@@ -23,7 +24,7 @@ static HRESULT allocate_cb(HANDLE runtime,D3DDDICB_ALLOCATE *q){
  q->pAllocationInfo->hAllocation=101;q->hKMResource=77;return 0;
 }
 int main(void){
- struct geo_owner_ops owner={sizeof(owner),GEO_OWNER_OPS_VERSION,GEO_OWNER_REQUIRED,0,&adapter,owner_create,owner_bind,owner_done,owner_destroy,owner_prepare,owner_done,owner_submit,owner_copy};
+ struct geo_owner_ops owner={sizeof(owner),GEO_OWNER_OPS_VERSION,GEO_OWNER_REQUIRED,0,&adapter,owner_create,owner_bind,owner_done,owner_destroy,owner_prepare,owner_done,owner_submit,owner_copy,copy_region_owner};
  struct geo_shared_surface s={0},bad;
  struct geo_umd_device exporter={0},importer={0};HANDLE er=NULL,ir=NULL;
  D3DDDI_OPENALLOCATIONINFO ui={0};DXGK_OPENALLOCATIONINFO ki={0};DXGKARG_OPENALLOCATION ko={0};DXGKARG_CLOSEALLOCATION close={0};HANDLE oh;

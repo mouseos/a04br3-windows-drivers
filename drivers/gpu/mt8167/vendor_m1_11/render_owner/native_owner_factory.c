@@ -121,8 +121,7 @@ static int32_t create(void *p,const struct geo_surface_desc *d,uint64_t *id)
     if(vertex){
         if(d->size!=sizeof(*d) || d->version!=1 || d->width<4 || d->width>65536 ||
            d->height!=1 || d->pitch!=d->width || d->reserved)return STATUS_INVALID_PARAMETER;
-    }else if(!d || d->size!=sizeof(*d) || d->version!=1 || d->width!=A04_NATIVE_FRAME_WIDTH || d->height!=A04_NATIVE_FRAME_HEIGHT ||
-       d->pitch!=3200 || d->format!=GEO_FORMAT_A8R8G8B8 || !geo_usage_renderable(d->usage) || d->reserved)return STATUS_NOT_SUPPORTED;
+    }else if(!geo_desc_valid(d) || !geo_usage_renderable(d->usage))return STATUS_NOT_SUPPORTED;
     s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
     if(c->next_id==UINT64_MAX)return leave(c,STATUS_INTEGER_OVERFLOW);
     /* Logical allocations are not current hardware bindings. In particular,
@@ -301,19 +300,27 @@ static int32_t prepare_copy_region(void *p,uint64_t source,uint64_t destination,
  GeoFactoryCheckpoint(15,STATUS_SUCCESS,2,(ULONG)source,(ULONG)destination,0);
  s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
  src=resource(c,source);dst=resource(c,destination);
+ struct geo_copy_region full={0};
+ if(!region&&src&&dst&&src->desc.width==dst->desc.width&&src->desc.height==dst->desc.height){full.width=src->desc.width;full.height=src->desc.height;region=&full;}
  if(!src||!dst||src==dst||!geo_usage_renderable(src->desc.usage)||
     dst->desc.usage!=GEO_USAGE_STAGING||!dst->linear||c->next_id==UINT64_MAX||
     !geo_copy_region_valid(region,src->desc.width,src->desc.height,dst->desc.width,dst->desc.height))return leave(c,STATUS_INVALID_PARAMETER);
  s=select_target_locked(c,source);if(!NT_SUCCESS(s))return leave(c,s);
  s=wait_boundary_locked(c);if(!NT_SUCCESS(s))return leave(c,s);
- /* Copy is an idle-to-submit transition on the current FW root. No stop,
-  * power cycle, PTE edit, resource release or bootstrap occurs here. */
+ /* A different copy destination requires a real completed boundary and
+  * hardware-off retirement. Keep allocation MDLs resident; never rewrite a
+  * live graph's PTEs or duplicate the owner's resource lease. */
+ if(c->copy_storage&&c->copy_destination!=destination){
+  s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=retire_from365(c,10,0);
+  if(NT_SUCCESS(s))s=e_native_build_graph_locked(c);
+  if(!NT_SUCCESS(s)){c->state=E_OWNER_FAILED;return leave(c,s);}
+ }
  /* First use after a real staging MAP may be a genuinely cold graph.
   * Complete its typed assets before evaluating the live-path prerequisites.
   * Never call a cold producer over a hardware-owned/attempted FW root. */
  if(!c->allocation->start.online){
   if(c->allocation->firmware.hardware_owned || c->allocation->start.attempted)return leave(c,STATUS_INVALID_DEVICE_STATE);
-  s=e_native_prepare_copy_storage_locked(c);
+  s=e_native_prepare_copy_destination_locked(c,destination);
   if(!NT_SUCCESS(s)){GeoFactoryCheckpoint(19,s,1,0,0,0);c->state=E_OWNER_FAILED;return leave(c,s);}
  }
  if(!c->copy_transfer || c->copy_destination!=destination){GeoFactoryCheckpoint(19,STATUS_NOT_SUPPORTED,2,c->copy_transfer!=NULL,c->copy_destination==destination,0);return leave(c,STATUS_NOT_SUPPORTED);}
@@ -327,8 +334,7 @@ static int32_t prepare_copy_region(void *p,uint64_t source,uint64_t destination,
  if(!NT_SUCCESS(s)){GeoFactoryCheckpoint(19,s,4,0,0,0);c->state=E_OWNER_FAILED;}return leave(c,s);
 }
 static int32_t prepare_copy(void *p,uint64_t source,uint64_t destination,uint64_t *job) {
- const struct geo_copy_region full={0,0,0,0,800,A04_NATIVE_FRAME_HEIGHT};
- return prepare_copy_region(p,source,destination,&full,job);
+ return prepare_copy_region(p,source,destination,NULL,job);
 }
 struct discard_call {struct e_native_owner *c;uint64_t job;NTSTATUS status;};
 static BOOLEAN discard_close(void *p)

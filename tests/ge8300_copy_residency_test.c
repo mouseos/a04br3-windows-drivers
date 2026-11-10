@@ -9,8 +9,9 @@ static int32_t done(void*c,uint64_t s){(void)c;(void)s;return 0;}
 static int32_t prep(void*c,uint64_t s,uint32_t color,uint64_t*t){(void)c;(void)s;(void)color;*t=++seq;return 0;}
 static int32_t submit(void*c,uint64_t t,uint32_t f,uint32_t g){(void)c;(void)t;(void)f;(void)g;return 0;}
 static int32_t copy(void*c,uint64_t s,uint64_t d,uint64_t*t){(void)c;assert(s!=d);*t=++seq;return 0;}
+static int32_t copy_region_owner(void*c,uint64_t s,uint64_t d,const struct geo_copy_region*r,uint64_t*j){if(!r||!r->width||!r->height)return GEO_INVALID;return copy(c,s,d,j);}
 int main(void){
- struct geo_engine e;struct geo_owner_ops o={sizeof(o),GEO_OWNER_OPS_VERSION,GEO_OWNER_REQUIRED,0,&e,create,bind,done,done,prep,done,submit,copy};
+ struct geo_engine e;struct geo_owner_ops o={sizeof(o),GEO_OWNER_OPS_VERSION,GEO_OWNER_REQUIRED,0,&e,create,bind,done,done,prep,done,submit,copy,copy_region_owner};
  struct geo_allocation src={0},dst={0};struct geo_surface_desc d={sizeof(d),1,800,600,3200,GEO_FORMAT_A8R8G8B8,GEO_USAGE_RENDER_TARGET,0};struct geo_dma_ticket t;uint32_t fence;
  assert(!geo_engine_init(&e,&o));assert(!geo_create(&e,&src,&d));d.usage=GEO_USAGE_STAGING;assert(!geo_create(&e,&dst,&d));
  assert(!geo_prepare_copy_begin(&e,&dst,&src,&t));assert(src.references==1&&dst.references==1&&!src.bound&&!dst.bound);

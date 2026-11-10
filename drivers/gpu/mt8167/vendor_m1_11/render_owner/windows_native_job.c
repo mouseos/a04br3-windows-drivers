@@ -63,7 +63,7 @@ static NTSTATUS prepare_job_cold(struct a04_vendor_native_cold *n,uint32_t pixel
        !(r=n->render) || r->native_owner!=n || !r->firmware || r->firmware->hardware_owned ||
        r->poisoned || r->cleanup_started || !n->mapped || !n->prepared || !n->bank_prepared ||
        !n->backing_staged || !n->output_mapped || n->code_mapped!=3u ||
-       n->width!=A04_NATIVE_FRAME_WIDTH || n->height!=A04_NATIVE_FRAME_HEIGHT || r->buffer[0].bytes!=65536u ||
+       !geo_render_layout_valid(n->width,n->height,n->pitch) || r->buffer[0].bytes!=65536u ||
        n->suffix_offset>n->used || n->used-n->suffix_offset!=4096u ||
        !n->code[0].cpu || !n->code[1].cpu || !n->data.cpu || !a04_vendor_native_output_ready(n))
         return STATUS_INVALID_DEVICE_STATE;
@@ -109,7 +109,7 @@ static NTSTATUS prepare_job_cold(struct a04_vendor_native_cold *n,uint32_t pixel
            a04_m111_build_freelist(&fl,entries,512u,&fl_input,n->pm_pages+(i?40:0),1) ||
            matches(a04_vendor_native_storage_pointer(n,0,n->list_offset[i],pages*8u),entries,pages*8u))goto fail;
     }
-    input.output_gpu=a04_vendor_native_output_gpu(n);input.data_page_gpu=A04_NATIVE_DATA_VA+n->suffix_offset;
+    input.output_pitch_pixels=n->pitch/4u;input.output_gpu=a04_vendor_native_output_gpu(n);input.data_page_gpu=A04_NATIVE_DATA_VA+n->suffix_offset;
     input.usc_page_gpu=A04_NATIVE_USC_VA;input.pds_page_gpu=A04_NATIVE_PDS_VA;
     input.dummy_region_gpu=n->auxiliary.dummy_region_gpu;input.dummy_stencil_gpu=n->auxiliary.dummy_stencil_gpu;
     input.hwrt_fw=n->addresses.hwrt[0];input.pr_fence_fw=0xc0084c00u;
@@ -178,10 +178,11 @@ static NTSTATUS prepare_draw_cold(struct a04_vendor_native_cold *n,
        r->poisoned || n->quarantined || !n->registered_target || !n->registered_vertex ||
        !(c=n->candidate) || c->attempted || c->published || c->verified ||
        KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+    if(!request || request->target_desc.width!=n->width || request->target_desc.height!=n->height || request->target_desc.pitch!=n->pitch)return STATUS_INVALID_PARAMETER;
     job=ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*job)+A04_M111_DRAW_SCRATCH+8192u,JOB_TAG);
     if(!job)return STATUS_INSUFFICIENT_RESOURCES;
     scratch=(uint8_t *)job+((sizeof(*job)+7u)&~7u);
-    in.output_gpu=a04_vendor_native_output_gpu(n);in.data_page_gpu=A04_NATIVE_DATA_VA+n->suffix_offset;
+    in.output_pitch_pixels=n->pitch/4u;in.output_gpu=a04_vendor_native_output_gpu(n);in.data_page_gpu=A04_NATIVE_DATA_VA+n->suffix_offset;
     in.usc_page_gpu=A04_NATIVE_USC_VA;in.pds_page_gpu=A04_NATIVE_PDS_VA;
     in.dummy_region_gpu=n->auxiliary.dummy_region_gpu;in.dummy_stencil_gpu=n->auxiliary.dummy_stencil_gpu;
     in.hwrt_fw=n->addresses.hwrt[0];in.pr_fence_fw=0xc0084c00u;
@@ -223,7 +224,7 @@ NTSTATUS a04_vendor_native_match_draw_live(struct a04_vendor_native_cold *n,
     job=ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*job)+A04_M111_DRAW_SCRATCH+8192u,JOB_TAG);
     if(!job)return STATUS_INSUFFICIENT_RESOURCES;
     scratch=(uint8_t *)job+((sizeof(*job)+7u)&~7u);
-    in.output_gpu=a04_vendor_native_output_gpu(n);in.data_page_gpu=A04_NATIVE_DATA_VA+n->suffix_offset;
+    in.output_pitch_pixels=n->pitch/4u;in.output_gpu=a04_vendor_native_output_gpu(n);in.data_page_gpu=A04_NATIVE_DATA_VA+n->suffix_offset;
     in.usc_page_gpu=A04_NATIVE_USC_VA;in.pds_page_gpu=A04_NATIVE_PDS_VA;
     in.dummy_region_gpu=n->auxiliary.dummy_region_gpu;in.dummy_stencil_gpu=n->auxiliary.dummy_stencil_gpu;
     in.hwrt_fw=n->addresses.hwrt[0];in.pr_fence_fw=0xc0084c00u;

@@ -30,14 +30,14 @@ int main(void){
  }
 #ifndef GEO_EXPECT_REVERSED_PPP
  for(unsigned i=0;i<4096;i++){
-  unsigned x=i*13%800,y=i*17%600,w=1+i*19%(800-x),h=1+i*23%(600-y);
+  unsigned x=i*13%4096,y=i*17%4096,w=1+i*19%(4096-x),h=1+i*23%(4096-y);
   in[0]=bits((float)x);in[1]=bits((float)y);in[2]=bits((float)w);in[3]=bits((float)h);
   assert(!a04_m111_build_d3d_viewport(out,in));
   uint32_t expected[6]={bits(x+w/2.0f),bits(w/2.0f),bits(y+h/2.0f),bits(-(float)h/2.0f),0,bits(1)};
   if(memcmp(out,expected,sizeof(out))){fprintf(stderr,"i%u x%u y%u w%u h%u\n",i,x,y,w,h);for(unsigned j=0;j<6;j++)fprintf(stderr,"%u %08x %08x\n",j,out[j],expected[j]);return 2;}
  }
  memcpy(saved,out,sizeof(out));in[0]=bits(.5f);assert(a04_m111_build_d3d_viewport(out,in)!=0&&!memcmp(saved,out,sizeof(out)));
- in[0]=bits(799);in[2]=bits(2);assert(a04_m111_build_d3d_viewport(out,in)!=0&&!memcmp(saved,out,sizeof(out)));
+ in[0]=bits(4095);in[2]=bits(2);assert(a04_m111_build_d3d_viewport(out,in)!=0&&!memcmp(saved,out,sizeof(out)));
  in[0]=0xff800000u;assert(a04_m111_build_d3d_viewport(out,in)!=0&&!memcmp(saved,out,sizeof(out)));
 #endif
  puts("PPP viewport oracle PASS; host geometry only, no GPU raster claim");return 0;

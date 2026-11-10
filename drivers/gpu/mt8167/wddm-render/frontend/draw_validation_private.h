@@ -2,6 +2,7 @@
 #ifndef GEO_DRAW_VALIDATION_PRIVATE_H
 #define GEO_DRAW_VALIDATION_PRIVATE_H
 #include "draw_abi.h"
+#include "../viewport_profile.h"
 /* TU-private framing/state validator. V1 and V2 public entrypoints live in
  * separate objects so an existing KMD V1 cannot collide with owner V2. */
 static int span(const struct geo_draw_span *s,uint32_t total,uint32_t maximum) {
@@ -65,6 +66,7 @@ static int32_t capture(const struct geo_draw_request *r,const void *blob,uint32_
     (r->state.viewport[3]&0x80000000u) || !(r->state.viewport[3]&0x7fffffffu))return GEO_INVALID;
  if((r->state.viewport[4]&0x80000000u)||(r->state.viewport[5]&0x80000000u)||
     r->state.viewport[4]>r->state.viewport[5]||r->state.viewport[5]>0x3f800000u)return GEO_INVALID;
+ if(r->vs.format==GEO_SHADER_D3D10_TOKENS&&!geo_viewport_target_valid(r->state.viewport,r->target_desc.width,r->target_desc.height))return GEO_UNSUPPORTED;
  if(!shader(&r->vs,b,bytes,0u)||!shader(&r->ps,b,bytes,1u))return GEO_INVALID;
  return GEO_OK;
 }

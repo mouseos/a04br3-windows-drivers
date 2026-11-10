@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "draw_abi.h"
+#include "../viewport_profile.h"
 static int span(const struct geo_draw_span *s,uint32_t total,uint32_t maximum) {
  return s->bytes && !(s->offset&3u) && !(s->bytes&3u) && s->bytes<=maximum && s->offset<=total && s->bytes<=total-s->offset;
 }
@@ -61,6 +62,7 @@ int32_t geo_draw_validate_capture(const struct geo_draw_request *r,const void *b
     (r->state.viewport[3]&0x80000000u) || !(r->state.viewport[3]&0x7fffffffu))return GEO_INVALID;
  if((r->state.viewport[4]&0x80000000u)||(r->state.viewport[5]&0x80000000u)||
     r->state.viewport[4]>r->state.viewport[5]||r->state.viewport[5]>0x3f800000u)return GEO_INVALID;
+ if(r->vs.format==GEO_SHADER_D3D10_TOKENS&&!geo_viewport_target_valid(r->state.viewport,r->target_desc.width,r->target_desc.height))return GEO_UNSUPPORTED;
  if(!shader(&r->vs,b,bytes,0u)||!shader(&r->ps,b,bytes,1u))return GEO_INVALID;
  return GEO_OK;
 }

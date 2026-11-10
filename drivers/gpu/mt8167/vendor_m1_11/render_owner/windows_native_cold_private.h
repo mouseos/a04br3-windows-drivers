@@ -3,6 +3,7 @@
 #define MT8167_M111_WINDOWS_NATIVE_COLD_PRIVATE_H
 #include "windows_native_cold.h"
 #include "display_geometry356.h"
+#include "../../wddm-render/render_layout.h"
 #include "windows_render_cold.h"
 #include "native_resources.h"
 #include "native_clear_surface.h"
@@ -46,7 +47,7 @@ struct a04_vendor_native_cold {
     RGXFWIF_FREELIST freelist[2];
     struct a04_m111_native_addresses addresses;
     uint64_t pm_pages[296]; /* local 40 + global 256, adapter logical addresses */
-    ULONG width,height,pm_offset[2],list_offset[2],used;
+    ULONG width,height,pitch,pm_offset[2],list_offset[2],used;
     BOOLEAN mapped,prepared,bank_prepared,bank_touched;
     struct {struct a04_native_mdl_binding *binding;uint64_t offset;} linear[8];
     ULONG linear_count;

@@ -74,13 +74,13 @@ static NTSTATUS attach_target(struct a04_vendor_native_cold *n,
     if(!n || !target || KeGetCurrentIrql()!=PASSIVE_LEVEL || !(r=n->render) || r->native_owner!=n ||
        !r->firmware || r->firmware->hardware_owned || n->quarantined || r->poisoned ||
        n->registered_target || !n->prepared || !n->backing_staged || !n->output_mapped ||
-       !n->candidate || n->width!=A04_NATIVE_FRAME_WIDTH || n->height!=A04_NATIVE_FRAME_HEIGHT || !n->pixel_blocks ||
+       !n->candidate || !geo_render_layout_valid(n->width,n->height,n->pitch) || !n->pixel_blocks ||
        a04_native_mdl_adapter(target)!=r->firmware->adapter)return STATUS_INVALID_DEVICE_STATE;
     pages=a04_native_mdl_pages(target,&count);bytes=a04_native_mdl_extent(target);cpu=a04_native_mdl_cpu(target);
-    if(!pages || !cpu || bytes!=((A04_NATIVE_FRAME_BYTES+4095u)&~4095u) || count!=bytes/4096u)return STATUS_INVALID_PARAMETER;
+    if(!pages || !cpu || bytes!=((n->pitch*n->height+4095u)&~4095u) || count!=bytes/4096u)return STATUS_INVALID_PARAMETER;
     if((aperture_offset&4095u) || aperture_offset>A04_NATIVE_APERTURE_BYTES ||
        bytes>A04_NATIVE_APERTURE_BYTES-aperture_offset ||
-       a04_m111_build_clear_surface(&surface,A04_NATIVE_OUTPUT_VA+aperture_offset,A04_NATIVE_FRAME_WIDTH,A04_NATIVE_FRAME_HEIGHT,A04_NATIVE_FRAME_WIDTH))
+       a04_m111_build_clear_surface(&surface,A04_NATIVE_OUTPUT_VA+aperture_offset,n->width,n->height,n->pitch/4u))
         return STATUS_INVALID_PARAMETER;
     first=(ULONG)(aperture_offset/4096u);
 #if A04_GE8300_VENDOR_NATIVE_TRIANGLE_SUITE
@@ -117,7 +117,7 @@ static NTSTATUS attach_target(struct a04_vendor_native_cold *n,
         ULONG start=(ULONG)(n->linear[linear].offset/4096u);
         for(i=0;i<extent;i++)pt[start+i]=linear_pages[i]|A04_GPU_MMU_SLC_BYPASS|1u;
     }
-    if(preserve_active)RtlFillMemory((UCHAR *)cpu+A04_NATIVE_FRAME_BYTES,bytes-A04_NATIVE_FRAME_BYTES,0xa5);
+    if(preserve_active)RtlFillMemory((UCHAR *)cpu+n->pitch*n->height,bytes-n->pitch*n->height,0xa5);
     else RtlFillMemory(cpu,bytes,0xa5);
     status=a04_native_mdl_sync_for_gpu(target);if(!NT_SUCCESS(status))goto poison;
     if(write_output_pt(n,pt)){status=STATUS_IO_DEVICE_ERROR;goto poison;}

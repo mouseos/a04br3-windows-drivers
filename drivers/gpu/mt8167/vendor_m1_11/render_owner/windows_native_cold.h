@@ -24,6 +24,9 @@ struct a04_vendor_native_diagnostic {
 #define A04_NATIVE_PREP_OUTPUT 9u
 #define A04_NATIVE_PREP_JOB 10u
 #define A04_NATIVE_PREP_DONE 11u
+NTSTATUS a04_vendor_native_allocate_layout_cold_ex(struct a04_vendor_native_cold **,
+    struct a04_vendor_render_cold *,PDMA_ADAPTER,ULONG,ULONG,ULONG,ULONG,
+    struct a04_vendor_native_diagnostic *);
 NTSTATUS a04_vendor_native_allocate_cold_ex(struct a04_vendor_native_cold **,
     struct a04_vendor_render_cold *,PDMA_ADAPTER,ULONG,ULONG,ULONG,
     struct a04_vendor_native_diagnostic *);

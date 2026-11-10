@@ -5,7 +5,7 @@
 #include "native_d3d_viewport.h"
 #include "../../wddm-render/clear_protocol.h"
 #include "../../wddm-render/viewport_profile.h"
-/* Exactly encode n/2, n<=1600: every result is representable in binary32. */
+/* Exactly encode n/2, n<=8192: every result is representable in binary32. */
 static uint32_t half(uint32_t n)
 {
  uint32_t top=0,v=n;if(!n)return 0;
@@ -16,9 +16,9 @@ int32_t a04_m111_build_d3d_viewport(uint32_t out[6],const uint32_t f[6])
 {
  uint32_t x,y,w,h,made[6];
  if(!out || !f)return GEO_INVALID;
- if(!geo_viewport_integral(f[0],799,&x) || !geo_viewport_integral(f[1],599,&y) ||
-    !geo_viewport_integral(f[2],800,&w) || !geo_viewport_integral(f[3],600,&h) || !w || !h ||
-    x>800-w || y>600-h || f[4] || f[5]!=0x3f800000u)return GEO_UNSUPPORTED;
+ if(!geo_viewport_profile_valid(f))return GEO_UNSUPPORTED;
+ geo_viewport_integral(f[0],GEO_RENDER_MAX_EDGE,&x);geo_viewport_integral(f[1],GEO_RENDER_MAX_EDGE,&y);
+ geo_viewport_integral(f[2],GEO_RENDER_MAX_EDGE,&w);geo_viewport_integral(f[3],GEO_RENDER_MAX_EDGE,&h);
  made[0]=half(2*x+w);made[1]=half(w);
  made[2]=half(2*y+h);made[3]=half(h)|0x80000000u;
  made[4]=0;made[5]=0x3f800000u;

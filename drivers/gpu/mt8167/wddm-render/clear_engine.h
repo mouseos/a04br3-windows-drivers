@@ -18,6 +18,7 @@ struct geo_job {
  struct geo_allocation *allocation,*vertex;
  void *context,*open_handle,*vertex_open_handle;
  uint32_t kind;
+ struct geo_copy_region copy_region;
  uint64_t owner_job;
  uint32_t generation,state,fence,retired_generation;
  struct geo_allocation *texture;void *texture_open_handle;
@@ -45,6 +46,7 @@ int32_t geo_open_reference(struct geo_engine *,struct geo_allocation *);
 int32_t geo_close_reference(struct geo_engine *,struct geo_allocation *,void *open_handle);
 int32_t geo_destroy(struct geo_engine *,struct geo_allocation *);
 int32_t geo_prepare_begin(struct geo_engine *,struct geo_allocation *,const struct geo_clear_packet *,struct geo_dma_ticket *);
+int32_t geo_prepare_copy_region_begin(struct geo_engine *,struct geo_allocation *,struct geo_allocation *,const struct geo_copy_region *,struct geo_dma_ticket *);
 int32_t geo_prepare_copy_begin(struct geo_engine *,struct geo_allocation *destination,struct geo_allocation *source,struct geo_dma_ticket *);
 int32_t geo_prepare_draw_begin(struct geo_engine *,struct geo_allocation *target,struct geo_allocation *vertex,struct geo_dma_ticket *);
 int32_t geo_prepare_texture_begin(struct geo_engine *,struct geo_allocation *,struct geo_allocation *,struct geo_allocation *,struct geo_dma_ticket *);

@@ -9,6 +9,7 @@ struct a04_m111_clear_job_input {
     uint64_t dummy_region_gpu,dummy_stencil_gpu;
     uint32_t hwrt_fw,pr_fence_fw;
     uint8_t rgba[4];
+    uint32_t output_pitch_pixels; /* zero: legacy tightly packed input */
 };
 struct a04_m111_clear_job {
     uint8_t ta[A04_M111_TA_BYTES],three[A04_M111_3D_BYTES];

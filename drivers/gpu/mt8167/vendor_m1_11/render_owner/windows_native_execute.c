@@ -94,7 +94,7 @@ static NTSTATUS finish_published(struct a04_vendor_native_cold *n,
         for(j=0;j<64u;j++){
             uint32_t index=i+j,expected=0xa5a5a5a5u;
             c->scan.scanned_words++;
-            if(index<(A04_NATIVE_FRAME_WIDTH*A04_NATIVE_FRAME_HEIGHT)){
+            if(index<n->pitch/4u*n->height && index%(n->pitch/4u)<n->width){
 #if A04_GE8300_NATIVE_OWNER_MDL_TARGET
                 if(c->draw_job){
                     /* Arbitrary triangle coverage is not a fixed-clear
@@ -122,29 +122,31 @@ static NTSTATUS finish_published(struct a04_vendor_native_cold *n,
                 unsigned sample=5;
                 switch(index){
                 case 0:sample=0;break;
-                case 799:sample=1;break;
-                case A04_NATIVE_FRAME_WIDTH*(A04_NATIVE_FRAME_HEIGHT-1u):sample=2;break;
-                case A04_NATIVE_FRAME_WIDTH*A04_NATIVE_FRAME_HEIGHT-1u:sample=3;break;
-                case A04_NATIVE_FRAME_WIDTH*(A04_NATIVE_FRAME_HEIGHT/2u)+400u:sample=4;break; /* frame center */
-                default:break;
+                default:
+                    if(index==n->width-1u)sample=1;
+                    else if(index==n->pitch/4u*(n->height-1u))sample=2;
+                    else if(index==n->pitch/4u*(n->height-1u)+n->width-1u)sample=3;
+                    else if(index==n->pitch/4u*(n->height/2u)+n->width/2u)sample=4;
+                    break;
                 }
                 if(sample<5){
                     c->scan.sample[sample]=(struct a04_vendor_native_scan_sample){index,expected,pixels[j]};
                     c->scan.sample_mask|=1u<<sample;
                 }
-            }else if(pixels[j]!=expected)out->guard_errors++;
+            }else if(index<n->pitch/4u*n->height)continue; /* allocator row padding, not rendered pixels */
+            else if(pixels[j]!=expected)out->guard_errors++;
             if(!c->scan.first_valid && pixels[j]!=expected){
                 c->scan.first_valid=1;c->scan.first_index=index;
                 c->scan.first_expected=expected;c->scan.first_observed=pixels[j];
-                c->scan.first_is_guard=index>=(A04_NATIVE_FRAME_WIDTH*A04_NATIVE_FRAME_HEIGHT);
+                c->scan.first_is_guard=index>=n->pitch/4u*n->height;
             }
         }
     }
     if(out->mismatched_pixels || out->guard_errors ||
 #if A04_GE8300_NATIVE_OWNER_MDL_TARGET
-       (c->draw_job?c->scan.scanned_pixels!=(A04_NATIVE_FRAME_WIDTH*A04_NATIVE_FRAME_HEIGHT):out->matching_pixels!=(A04_NATIVE_FRAME_WIDTH*A04_NATIVE_FRAME_HEIGHT))
+       (c->draw_job?c->scan.scanned_pixels!=(n->width*n->height):out->matching_pixels!=(n->width*n->height))
 #else
-       out->matching_pixels!=(A04_NATIVE_FRAME_WIDTH*A04_NATIVE_FRAME_HEIGHT)
+       out->matching_pixels!=(n->width*n->height)
 #endif
        )goto poison;
     c->verified=TRUE;c->completed_frames++;out->completed_frames=c->completed_frames;out->phase=4;status=STATUS_SUCCESS;goto done;
@@ -170,7 +172,7 @@ NTSTATUS a04_vendor_native_publish_candidate(struct a04_vendor_native_cold *n,
        r->native_owner!=n || !(c=n->candidate) || n->quarantined || r->poisoned ||
        r->cleanup_started || c->attempted || !n->mapped || !n->prepared || !n->bank_prepared ||
        !n->backing_staged || !n->output_mapped || n->code_mapped!=3u ||
-       n->width!=A04_NATIVE_FRAME_WIDTH || n->height!=A04_NATIVE_FRAME_HEIGHT || !a04_vendor_native_output_ready(n) ||
+       !geo_render_layout_valid(n->width,n->height,n->pitch) || !a04_vendor_native_output_ready(n) ||
        !s->online || !s->core || s->memory!=r->firmware ||
        !s->memory || !s->memory->hardware_owned || !s->memory->uncached ||
        !(f=s->memory->runtime) || !f->kctl || !f->fctl || !f->kcommands || !f->command_sync ||

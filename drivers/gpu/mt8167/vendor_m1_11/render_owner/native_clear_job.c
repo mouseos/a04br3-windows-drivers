@@ -10,6 +10,7 @@
  */
 #include "native_clear_job.h"
 #include "native_clear_surface.h"
+#include "../../wddm-render/render_layout.h"
 static int range(uint64_t va,uint64_t n,uint64_t low,uint64_t high,uint64_t align)
 { return va>=low && va<high && n<=high-va && !(va&(align-1u)); }
 static int overlap(uint64_t a,uint64_t n,uint64_t b,uint64_t m)
@@ -24,17 +25,18 @@ int a04_m111_build_clear_job_dims(struct a04_m111_clear_job *out,
     struct a04_m111_ta_fields ta={0};struct a04_m111_ta_registers regs={0};
     struct a04_m111_3d_fields three={0};uint64_t csr[8][2]={{0}};
     uint64_t va[4],len[4];uint32_t colour;unsigned i,j;
-    if(width!=800u || (height!=600u && height!=1280u))return 1;
     if(!out || !in || overlap((uintptr_t)out,sizeof(*out),(uintptr_t)in,sizeof(*in)))return 1;
+    uint32_t pitch=in->output_pitch_pixels?in->output_pitch_pixels:width;
+    if(pitch>GEO_RENDER_MAX_EDGE || !geo_render_layout_valid(width,height,pitch*4u))return 1;
     if(!range(in->data_page_gpu,4096,UINT64_C(0x65c0000000),UINT64_C(0x6600000000),4096) ||
        !range(in->usc_page_gpu,4096,UINT64_C(0xba00000000),UINT64_C(0xba40000000),4096) ||
        !range(in->pds_page_gpu,4096,UINT64_C(0xa800000000),UINT64_C(0xa840000000),4096) ||
-       !range(in->output_gpu,((uint64_t)width*height*4u),4096,UINT64_C(1)<<40,128) ||
+       !range(in->output_gpu,((uint64_t)pitch*height*4u),4096,UINT64_C(1)<<40,128) ||
        !range(in->dummy_region_gpu,128,UINT64_C(0x65c0000000),UINT64_C(0x6600000000),64) ||
        !range(in->dummy_stencil_gpu,2048,UINT64_C(0x65c0000000),UINT64_C(0x6600000000),16) ||
        !range(in->hwrt_fw,0x188,UINT64_C(0xc0000000),UINT64_C(0xc1000000),8) ||
        !range(in->pr_fence_fw,4,UINT64_C(0xc0000000),UINT64_C(0xc1000000),4))return 1;
-    va[0]=in->data_page_gpu;len[0]=4096;va[1]=in->output_gpu;len[1]=((uint64_t)width*height*4u);
+    va[0]=in->data_page_gpu;len[0]=4096;va[1]=in->output_gpu;len[1]=((uint64_t)pitch*height*4u);
     va[2]=in->dummy_region_gpu;len[2]=128;va[3]=in->dummy_stencil_gpu;len[3]=2048;
     for(i=0;i<4;i++)for(j=0;j<i;j++)if(overlap(va[i],len[i],va[j],len[j]))return 1;
     if(overlap(in->hwrt_fw,0x188,in->pr_fence_fw,4))return 1;
@@ -43,7 +45,7 @@ int a04_m111_build_clear_job_dims(struct a04_m111_clear_job *out,
        overlap(in->output_gpu,len[1],in->pds_page_gpu,4096))return 1;
     colour=(uint32_t)in->rgba[0]|((uint32_t)in->rgba[1]<<8)|
         ((uint32_t)in->rgba[2]<<16)|((uint32_t)in->rgba[3]<<24);
-    if(a04_m111_build_clear_surface(&surface,in->output_gpu,width,height,width) ||
+    if(a04_m111_build_clear_surface(&surface,in->output_gpu,width,height,pitch) ||
        a04_m111_build_clear_data(&made.data,in->data_page_gpu,width,height) ||
        a04_m111_build_clear_codespace(&made.code,in->usc_page_gpu,in->pds_page_gpu,
            colour,surface.emit[0],surface.emit[1]) ||

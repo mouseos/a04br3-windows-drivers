@@ -3,6 +3,7 @@
  * -> forced idle -> device pre-power/RGXStop -> MTK platform off -> ISR/MISR
  * rundown -> FW free. Never follow force-unload/bad-services bypasses. */
 #include "native_owner_factory_private.h"
+#include "../../wddm-render/render_layout.h"
 #include "native_factory_checkpoint.h"
 #include "windows_native_cold_private.h"
 #include "../../windows_hw.h"
@@ -130,7 +131,10 @@ NTSTATUS e_native_build_graph_locked(struct e_native_owner *c)
     status=a04_vendor_m1_11_windows_stage_uncached(&a->firmware,a->adapter,c->firmware_image,c->firmware_bytes);
     if(!NT_SUCCESS(status))return status;
     status=a04_vendor_render_prepare_cold(&a->render,&a->firmware,a->adapter,FALSE,0);if(!NT_SUCCESS(status))return status;
-    status=a04_vendor_native_allocate_cold_ex(&a->native,&a->render,a->adapter,a->map_registers,A04_NATIVE_FRAME_WIDTH,A04_NATIVE_FRAME_HEIGHT,&a->diagnostic);
+    status=a04_vendor_native_allocate_layout_cold_ex(&a->native,&a->render,a->adapter,a->map_registers,
+        a->binding?c->description.width:A04_NATIVE_FRAME_WIDTH,
+        a->binding?c->description.height:A04_NATIVE_FRAME_HEIGHT,
+        a->binding?c->description.pitch:A04_NATIVE_FRAME_WIDTH*4u,&a->diagnostic);
     if(!NT_SUCCESS(status))return status;
     if(a->binding){status=a04_vendor_native_attach_mdl_target_preserve_cold(a->native,a->binding,c->aperture_offset,c->colour);if(!NT_SUCCESS(status))return status;}
     if(a->vertex){status=a04_vendor_native_attach_vertex_cold(a->native,a->vertex,c->vertex_aperture_offset);if(!NT_SUCCESS(status))return status;}
@@ -148,7 +152,7 @@ static BOOLEAN boot_enable(void *p)
 }
 /* Map-time cold readiness. No FW start or ownership publication occurs here.
  * Last dependent MAP prepares the immutable child before any Patch call. */
-NTSTATUS e_native_prepare_copy_storage_locked(struct e_native_owner *c)
+NTSTATUS e_native_prepare_copy_destination_locked(struct e_native_owner *c,uint64_t destination)
 {
     struct a04_native_owner_allocation *a=c->allocation;NTSTATUS status;
     if(!a || !a->native || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
@@ -160,7 +164,8 @@ NTSTATUS e_native_prepare_copy_storage_locked(struct e_native_owner *c)
      * target is rejected by prepare_copy rather than live-remapping a PTE. */
     if(!c->copy_storage){
         for(struct e_native_resource *r=c->resources;r;r=r->next)
-            if(r->linear && r->desc.usage==GEO_USAGE_STAGING){
+            if(r->linear && r->desc.usage==GEO_USAGE_STAGING && (!destination||r->id==destination) &&
+               geo_render_layout_valid(r->desc.width,r->desc.height,r->desc.pitch)){
                 status=a04_native_copy_storage_create(&c->copy_storage,a->native,r->linear,&r->desc,a04_copy_usc_asset,sizeof(a04_copy_usc_asset));
                 if(!NT_SUCCESS(status))return status;
                 status=a04_native_tq_transfer_prepare(&c->copy_transfer,c->copy_storage);
@@ -198,3 +203,6 @@ NTSTATUS e_native_boot_locked(struct e_native_owner *c)
     GeoFactoryCheckpoint(37,call.status,3,(ULONG)c->hardware_epoch,a->irq.masked,a->dispatch.state);
     return call.status;
 }
+
+NTSTATUS e_native_prepare_copy_storage_locked(struct e_native_owner *c)
+{ return e_native_prepare_copy_destination_locked(c,0); }

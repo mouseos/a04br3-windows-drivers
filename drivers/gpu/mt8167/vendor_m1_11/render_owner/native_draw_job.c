@@ -11,6 +11,8 @@
 #include "native_color_usc_generated.h"
 #include "native_varying_pds.h"
 #include "native_d3d_viewport.h"
+#include "../../wddm-render/render_layout.h"
+#include "../../wddm-render/viewport_profile.h"
 #include "native_texture2d_state.h"
 #include "native_texture2d_program.h"
 static void put(uint8_t *p,unsigned at,uint64_t v,unsigned n)
@@ -85,7 +87,9 @@ static int32_t build(struct a04_m111_draw_job *out,
  if(r->vs.format==GEO_SHADER_D3D10_TOKENS) {
   status=a04_m111_build_d3d_viewport(vp_words,r->state.viewport);if(status)return status;
  } else if(!same(r->state.viewport,viewport,sizeof(viewport)))return GEO_UNSUPPORTED;
- if(r->target_desc.width!=800 || (r->target_desc.height!=600 && r->target_desc.height!=1280) || r->target_desc.pitch!=3200 ||
+ if(!geo_render_layout_valid(r->target_desc.width,r->target_desc.height,r->target_desc.pitch) ||
+    (in->output_pitch_pixels?in->output_pitch_pixels:r->target_desc.width)!=r->target_desc.pitch/4u ||
+    (r->vs.format==GEO_SHADER_D3D10_TOKENS&&!geo_viewport_target_valid(r->state.viewport,r->target_desc.width,r->target_desc.height)) ||
     r->state.vertex_count!=3 ||
     (!general&&!combined&&(r->vs.temps || r->vs.shareds || r->vs.vtxins!=(linked?8u:4u) || r->vs.vtxouts!=(linked?8u:4u) || r->vs.input_mask!=(linked?3u:1u) || r->vs.constant_mask ||
     r->ps.temps!=(sampled?A04_TEXTURE2D_SAMPLE_TEMPS:5u) || r->ps.shareds!=(sampled?12u:linked?0u:4u) || r->ps.vtxins || r->ps.vtxouts || r->ps.input_mask!=(linked?1u:0u) || r->ps.constant_mask!=(linked?0u:1u) ||
@@ -145,6 +149,10 @@ static int32_t build(struct a04_m111_draw_job *out,
   put(m->data,12*4,8,4); /* VDM_STATE4 main VS output:8 DWORD, source vdm.xml. */
   put(m->data,13*4,(16u<<25)|(2u<<10)|(1u<<6)|2u,4); /* input8 / unit4 */
  }
+ /* PPP REGION_CLIP fields use native 16px tile coordinates (ppp.xml).
+  * Match HWRT/terminate dimensions, including the general/linked PS path. */
+ put(m->data,0x26c,(1u<<31)|((r->target_desc.width+15u)/16u-1u),4);
+ put(m->data,0x270,(r->target_desc.height+15u)/16u-1u,4);
  /* Typed and old TL use distinct viewport conventions. */
  /* Typed SM4 consumes native D3D clip coordinates, unlike old SM2 TL
   * preconversion. D3D viewport: x=400*x/w+400,y=-300*y/w+300,z=z/w.

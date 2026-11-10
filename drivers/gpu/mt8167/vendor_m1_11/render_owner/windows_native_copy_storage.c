@@ -28,9 +28,9 @@ static NTSTATUS check_binding(struct a04_vendor_native_cold *n,
  struct a04_native_mdl_binding *b,uint64_t offset)
 {
  ULONG count,i;const uint64_t *pages=a04_native_mdl_pages(b,&count);uint64_t entry;
- if(!pages||count!=A04_NATIVE_FRAME_PAGES||a04_native_mdl_extent(b)!=A04_NATIVE_FRAME_PAGES*4096u||
+ if(!pages||!count||count>1024u||a04_native_mdl_extent(b)!=count*4096u||
     a04_native_mdl_adapter(b)!=n->render->firmware->adapter||(offset&4095u)||
-    offset>A04_NATIVE_APERTURE_BYTES-A04_NATIVE_FRAME_PAGES*4096u)return STATUS_INVALID_PARAMETER;
+    offset>A04_NATIVE_APERTURE_BYTES-count*4096u)return STATUS_INVALID_PARAMETER;
  for(i=0;i<count;i++){
   ULONG index=(ULONG)(offset/4096u)+i;
   if(a04_rgx_device_read_words(&entry,(UCHAR*)n->output[2+index/512].cpu+(index%512)*8u,8u)||
@@ -85,8 +85,7 @@ NTSTATUS a04_native_copy_storage_create(struct a04_native_copy_storage **out,
  uint32_t pc;NTSTATUS status=STATUS_INVALID_DEVICE_STATE;
  _Alignas(8) struct a04_vendor_clear_image eot;
  if(!out||*out||!n||!destination||!description||description->size!=sizeof(*description)||
-    description->version!=1u||description->width!=800u||description->height!=A04_NATIVE_FRAME_HEIGHT||
-    description->pitch!=3200u||description->format!=GEO_FORMAT_A8R8G8B8||
+    !geo_desc_valid(description)||!geo_render_layout_valid(description->width,description->height,description->pitch)||description->format!=GEO_FORMAT_A8R8G8B8||
     description->usage!=GEO_USAGE_STAGING||description->reserved||!usc||KeGetCurrentIrql()!=PASSIVE_LEVEL||
     !(r=n->render)||r->native_owner!=n||!r->firmware||r->firmware->hardware_owned||
     n->quarantined||r->poisoned||!n->registered_target||!n->output_mapped||n->code_mapped!=3u||
@@ -94,8 +93,9 @@ NTSTATUS a04_native_copy_storage_create(struct a04_native_copy_storage **out,
     !a04_vendor_copy_usc_match(usc,usc_bytes))return STATUS_INVALID_PARAMETER;
  for(i=0;i<n->linear_count;i++)if(n->linear[i].binding==destination){offset=n->linear[i].offset;break;}
  if(i==n->linear_count||destination==n->registered_target||
-    intersects(n->target_offset,A04_NATIVE_FRAME_PAGES*4096u,offset,A04_NATIVE_FRAME_PAGES*4096u))return STATUS_INVALID_PARAMETER;
+    intersects(n->target_offset,a04_native_mdl_extent(n->registered_target),offset,a04_native_mdl_extent(destination)))return STATUS_INVALID_PARAMETER;
  status=check_binding(n,n->registered_target,n->target_offset);if(!NT_SUCCESS(status))return status;
+ if(a04_native_mdl_extent(destination)!=((description->pitch*description->height+4095u)&~4095u))return STATUS_INVALID_PARAMETER;
  status=check_binding(n,destination,offset);if(!NT_SUCCESS(status))return status;
  c=ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*c),TAG);if(!c)return STATUS_INSUFFICIENT_RESOURCES;
  RtlZeroMemory(c,sizeof(*c));c->native=n;c->source=n->registered_target;c->destination=destination;*out=c;
@@ -104,11 +104,12 @@ NTSTATUS a04_native_copy_storage_create(struct a04_native_copy_storage **out,
   * integration must retain the graph and retire this child before unbind. */
  in.aperture_base=A04_NATIVE_OUTPUT_VA;in.aperture_bytes=A04_NATIVE_APERTURE_BYTES;
  in.source_va=in.aperture_base+n->target_offset;in.destination_va=in.aperture_base+offset;
- in.source_bytes=in.destination_bytes=A04_NATIVE_FRAME_PAGES*4096u;in.shared_va=va[1]+512u;
- in.width=A04_NATIVE_FRAME_WIDTH;in.height=A04_NATIVE_FRAME_HEIGHT;in.pitch_pixels=800;
+ in.source_bytes=a04_native_mdl_extent(n->registered_target);in.destination_bytes=a04_native_mdl_extent(destination);in.shared_va=va[1]+512u;
+ in.width=n->width;in.height=n->height;in.pitch_pixels=n->pitch/4u;
+ in.destination_width=description->width;in.destination_height=description->height;in.destination_pitch_pixels=description->pitch/4u;
  in.fragment_pds_offset=192;in.secondary_data_offset=256;in.secondary_code_offset=272;
  in.eot_pds_offset=64;in.fragment_usc_offset=128;
- struct geo_copy_region full={0,0,0,0,in.width,in.height};c->input=in;
+ struct geo_copy_region full={0,0,0,0,in.width<in.destination_width?in.width:in.destination_width,in.height<in.destination_height?in.height:in.destination_height};c->input=in;
  if(a04_native_copy_region_job_build(&c->image,&in,&full)||a04_vendor_clear_image_build(&eot,A04_VENDOR_RENDER_SCRATCH_VA,0)){
   status=STATUS_INVALID_PARAMETER;goto fail;
  }

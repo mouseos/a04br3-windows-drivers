@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include "typed_device.h"
+#include "typed_state.h"
 #include "../viewport_profile.h"
 void geo_typed_device_trace(struct geo_typed_device *,const char *,UINT);
 #include "../compiler/pair_compiler.h"
@@ -18,9 +19,9 @@ HRESULT geo_typed_submit_pair(D3D10DDI_HDEVICE h,const FLOAT vertices[3][8]) {
  if(!d||!d->target||!d->bound_shader[0]||!d->bound_shader[1])return E_INVALIDARG;
  if(d&&FAILED(d->error))return d->error;
  vs=d->bound_shader[0]->code;ps=d->bound_shader[1]->code;
- if(vs->pair_stage!=1||ps->pair_stage!=2||d->target->resource->width!=800||d->target->resource->height!=A04_NATIVE_FRAME_HEIGHT)return E_NOTIMPL;
+ if(vs->pair_stage!=1||ps->pair_stage!=2)return E_NOTIMPL;
  hr=geo_typed_validate_native_state(h);if(FAILED(hr))return hr;
- {uint32_t vp[6];memcpy(vp,&d->viewport,sizeof(vp));if(!d->viewport_set||!geo_viewport_profile_valid(vp))return E_NOTIMPL;}
+ {uint32_t vp[6];memcpy(vp,&d->viewport,sizeof(vp));if(!d->viewport_set||!geo_viewport_target_valid(vp,d->target->resource->width,d->target->resource->height))return E_NOTIMPL;}
  for(i=0;i<24;i++){UINT v;memcpy(&v,(const BYTE *)vertices+4*i,4);if((v&0x7f800000u)==0x7f800000u)return E_INVALIDARG;}
  status=geo_pco_compile_pair(d->compiler.context,vs->tokens,vs->token_bytes,&vs->signatures,ps->tokens,ps->token_bytes,&ps->signatures,&pair);
  if(status!=GEO_OK)return status==GEO_BUSY?E_OUTOFMEMORY:(status==GEO_UNSUPPORTED?E_NOTIMPL:E_INVALIDARG);
@@ -32,6 +33,11 @@ HRESULT geo_typed_submit_pair(D3D10DDI_HDEVICE h,const FLOAT vertices[3][8]) {
  p->magic=GEO_DRAW_MAGIC;p->size=sizeof(*p)+total;p->version=2;p->vertex_index=1;
  p->request.base.size=sizeof(p->request);p->request.base.version=2;p->request.base.blob_bytes=total;p->request.base.target_desc=target;
  p->request.base.state.topology=GEO_DRAW_TRIANGLE_LIST;p->request.base.state.vertex_count=3;p->request.base.state.vertex_stride=32;p->request.base.state.color_write_mask=15;
+ p->request.base.state.scissor_enable=geo_typed_scissor_enabled(d->state)?1u:0u;
+ if(p->request.base.state.scissor_enable&&d->scissor_set){
+  p->request.base.state.scissor[0]=d->scissor.left;p->request.base.state.scissor[1]=d->scissor.top;
+  p->request.base.state.scissor[2]=d->scissor.right;p->request.base.state.scissor[3]=d->scissor.bottom;
+ }
  memcpy(p->request.base.state.viewport,&d->viewport,sizeof(d->viewport));p->request.link=pair.link;
  pair_shader(blob,&at,&p->request.base.vs,vs,&pair.vs);pair_shader(blob,&at,&p->request.base.ps,ps,&pair.ps);
  p->request.base.target=1;p->request.base.vertex=2;
