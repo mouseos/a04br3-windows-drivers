@@ -1682,9 +1682,17 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/texture_layout.h",
-      "source_commit": "ae6c1508e7fea7a95efca0db960827bcd6f2827f",
-      "role": "UI359 NPOT/pitch/BGRA-RGBA allocation-to-GPU sampling; original shader constraints retained",
-      "sha256": "7f0a0ade41fc8b10be627be4d3256cc89a42c04a3cbdfa86fe8414214418fbd7"
+      "source_commit": "71f33ab47d4fdca4198797e3a30d68ebc9855884",
+      "role": "UI texture row layout and one-row standard upload",
+      "sha256": "b5d18207d8014fcb68ba37381e42d9fa76793d4e22f59fb5ca2aa21346c8073c",
+      "previous_origins": [
+        {
+          "path": "drivers/gpu/mt8167/wddm-render/texture_layout.h",
+          "source_commit": "ae6c1508e7fea7a95efca0db960827bcd6f2827f",
+          "role": "UI359 NPOT/pitch/BGRA-RGBA allocation-to-GPU sampling; original shader constraints retained",
+          "sha256": "7f0a0ade41fc8b10be627be4d3256cc89a42c04a3cbdfa86fe8414214418fbd7"
+        }
+      ]
     }
   ],
   "legacy_files_preserved": [
