@@ -1,4 +1,4 @@
-# mainのみ実行。既存SDK/import libs、service 1TUのみ。署名済DLL/driver再build0。
+﻿# mainのみ実行。既存SDK/import libs、service 1TUのみ。署名済DLL/driver再build0。
 param([Parameter(Mandatory=$true)][string]$Inputs,[Parameter(Mandatory=$true)][string]$ExpectedInputClosureSha256,
  [Parameter(Mandatory=$true)][string]$OutputDirectory,[Parameter(Mandatory=$true)][string]$KitHeaderRoot,
  [Parameter(Mandatory=$true)][string]$LibraryRoot,[Parameter(Mandatory=$true)][string]$SignTool,[Parameter(Mandatory=$true)][string]$ReadyPackage)
