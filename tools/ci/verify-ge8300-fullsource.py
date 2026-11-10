@@ -104,4 +104,11 @@ for entry in ['build-ge8300-native-owner-core.ps1','build-wdk81.ps1','build-nati
  if len(calls)!=1 or any(flag in calls[0] for flag in ['-ReuseDirectory','-ReuseVerifiedDirectory']):raise ValueError('Shared internal-header rebuild contract changed: '+entry)
 for marker in ['native_KMD_UMD_objects_reused=0','SDK_rebuilt=0','RT_SRV_implemented=$true','blend_implemented=$false','DWM_verified=$false','ge8300_compiler_cache.py']:
  if marker not in full_recipe:raise ValueError('Fullsource bundle/cache manifest contract missing: '+marker)
+# Independent kernel/PCO tool inputs; archive compiler outputs before driver work.
+for marker in ['[string]$KernelVcToolsDirectory,[switch]$ArchiveCompilerCache','$scKernelVc=$scVc','-MicrosoftArmCompiler $scKernelCl','-MicrosoftCrtInclude "$scKernelVc\\include"','697a8f41ff7fcb71e7c6625f5517ef6e2f8ea146d1e351e078317ff92da0839c','f8b2e9c5341419525f915b61b87d1bc8aa307adca6e1e022071175912e965938']:
+ if marker not in full_recipe:raise ValueError('Kernel/PCO tool separation missing: '+marker)
+if full_recipe.count('-MicrosoftLinker $scKernelLink')!=2:raise ValueError('Both SYS links must use selected kernel VC')
+compiler_calls=[line for line in full_recipe.splitlines() if '& python -B "$PSScriptRoot\\build-ge8300-compiler-source.py"' in line]
+if len(compiler_calls)!=1 or '$scKernelVc' in compiler_calls[0] or '"$scVc\\lib\\arm"' not in compiler_calls[0]:raise ValueError('PCO must retain its independent VC/API inputs')
+if not full_recipe.index('build-ge8300-compiler-source.py')<full_recipe.index('archive-ge8300-compiler-cache.py')<full_recipe.index('& "$PSScriptRoot\\build-ge8300-native-owner-core.ps1"'):raise ValueError('Compiler recovery archive must precede dependent driver builds')
 print(json.dumps({'schema':'ge8300-fullsource327-source-verification-v1','reviewed_native_overlays':len(reviewed),'viewport_source_commit':reviewed['drivers/gpu/mt8167/vendor_m1_11/render_owner/native_d3d_viewport.c']['source_commit'],'initial_viewport_source_commit':origins['viewport_source_commit'],'origin_files':len(origins['files']),'legacy_files':len(origins['legacy_files_preserved']),'native_scoped_files':len(native['files']),'native_units':len(units),'compiler_snapshot_files':len(plan['files']),'compiler_units':len(plan['units']),'old_git_history_used':False,'driver_cache_used':False,'hardware_verified':False}))

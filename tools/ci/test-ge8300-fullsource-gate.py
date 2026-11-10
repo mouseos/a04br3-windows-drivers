@@ -99,6 +99,12 @@ changed=json.loads(json.dumps(native));changed['rt_srv_native_integration']['old
 mapfile.write_text(json.dumps(changed));run('claim stale aa661 UMD compatible with new RT/SRV contract',False)
 mapfile.write_text(json.dumps(native))
 
+fullrecipefile.write_text(original_full.replace('-MicrosoftArmCompiler $scKernelCl','-MicrosoftArmCompiler $scCl'))
+run('route display/MDL compile back to PCO VC',False)
+fullrecipefile.write_text(original_full.replace('-MicrosoftLinker $scKernelLink','-MicrosoftLinker $scCl'))
+run('route SYS links away from independent kernel VC',False)
+fullrecipefile.write_text(original_full)
+
 receipt={'schema':'ge8300-fullsource-map-regression-v1','production_source_modified':False,'driver_cache_used':False,'hardware_operations':False,'cases':records}
 (out/'receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
 print(json.dumps(receipt))

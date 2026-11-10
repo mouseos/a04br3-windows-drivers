@@ -47,8 +47,8 @@ for path in [cache/'0.obj',cache/'pco_pair.obj',tools['clang'],tools['llvm-lib']
 old=rows[0]['command'][1];rows[0]['command'][1]='--target=other';persist();run(False);rows[0]['command'][1]=old
 old=rows[0]['source_sha256'];rows[0]['source_sha256']='0'*64;persist();run(False);rows[0]['source_sha256']=old
 link['source_commit']='0'*40;persist();run(False);link['source_commit']=spec['compiled_source_commit'];persist();run(True)
-# Canonical cold entry pin; RT/SRV candidate manifest fields change, source/strict defaults do not.
-cold_default_pins={'tools/ci/build-ge8300-from-source.ps1': '89df3b9e43b01795288c5d291e3733fd43b6269b9cc983075c13820d94679e12', 'tools/ci/ge8300_compiler_cache.py': 'aa87d445072e3d35f37aaa3f7ea5ad0831f7d2cedba8cccf9ea9babfd22a44cb'}
+# Canonical fullsource entry pin; omitted kernel selection and strict/cold CLI defaults are retained.
+cold_default_pins={'tools/ci/build-ge8300-from-source.ps1': '5fdcb5ba1833c1d506430044c4524a81bc7945823d6073266b15a3ff1e251457', 'tools/ci/ge8300_compiler_cache.py': 'aa87d445072e3d35f37aaa3f7ea5ad0831f7d2cedba8cccf9ea9babfd22a44cb'}
 for name,pin in cold_default_pins.items():assert m.sha(root/name)==pin,name
 warm=(root/'tools/ci/build-ge8300-shared-surface-warm.ps1').read_text()
 assert 'if(!$EnableCandidate -or !$EnablePinnedPrebuiltCompiler)' in warm
