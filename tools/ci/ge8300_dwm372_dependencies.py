@@ -40,7 +40,7 @@ def present_compatibility(root,baseline,out,spec,sha,jobs,cl):
     known_external={key(re.sub(r'\\+',r'\\',r['path'])):r['sha256'].lower() for r in native['wdk_inputs']}
     recorded_native=0
     def probe(u):
-        start=time.monotonic();trace=u['original_trace'];command=None
+        start=time.monotonic();trace=u['original_trace'];command=None;err=None
         if trace:
             raw=trace;historical=True
         else:
@@ -49,11 +49,13 @@ def present_compatibility(root,baseline,out,spec,sha,jobs,cl):
             with raw.open('wb') as so,err.open('wb') as se:p=subprocess.run(command,stdout=so,stderr=se,cwd=root,env=dict(os.environ,VSLANG="1033",TEMP=str(out),TMP=str(out)))
             if p.returncode:raise ValueError('Current compatibility probe failed: '+u['identity']+'; '+str(err))
             historical=False
-        deps=([str(rebind(u['source'])),*re.findall(r'^Note: including file:\s*(.+)$',raw.read_text(errors='replace'),re.M)] if u.get('tool')=='msvc' else dependencies(raw))
+        deps=([str(rebind(u['source'])),*re.findall(r'^Note: including file:\s*(.+)$',raw.read_text(errors='replace')+'\n'+err.read_text(errors='replace'),re.M)] if u.get('tool')=='msvc' else dependencies(raw))
         if u.get('tool')=='msvc' and len(deps)<2:raise ValueError('MSVC current include probe is empty')
         source_rows=[];external=[];changed=[]
         for token in deps:
-            old=Path(token);p=rebind(old);rel=relative_old(old)
+            old=Path(token)
+            if not old.is_absolute():old=(oldroot if historical else root)/old
+            p=rebind(old);rel=relative_old(old)
             # A current-probe path points at the new source root instead.
             if p.resolve().is_relative_to(root):
                 rel=p.resolve().relative_to(root).as_posix();digest=sha(p);before=spec['baseline_repository_files'].get(rel)
@@ -69,7 +71,7 @@ def present_compatibility(root,baseline,out,spec,sha,jobs,cl):
                 external.append({'path':str(p.resolve()),'current_sha256':digest,'historical_hash_recorded':pin is not None,'recorded_hash':pin})
         if not source_rows:raise ValueError('Missing owned include graph '+u['identity'])
         if changed:raise ValueError('Additional dependent TU requires a new rebuild plan: '+u['identity']+' '+','.join(changed))
-        return {'identity':u['identity'],'scope':u['scope'],'original_compile_time_trace':historical,'trace_sha256':sha(raw),'current_probe_command':command,'object':str(u['object']),'object_sha256':sha(u['object']),'source_dependencies':source_rows,'external_dependencies':external,'elapsed_seconds':time.monotonic()-start,'strict_historical_include_closure_claimed':False}
+        return {'identity':u['identity'],'scope':u['scope'],'original_compile_time_trace':historical,'trace_sha256':sha(raw),'current_probe_stderr_sha256':sha(err) if err else None,'current_probe_command':command,'object':str(u['object']),'object_sha256':sha(u['object']),'source_dependencies':source_rows,'external_dependencies':external,'elapsed_seconds':time.monotonic()-start,'strict_historical_include_closure_claimed':False}
     with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:rows=list(pool.map(probe,units))
     result={'schema':'dwm372-present-compatibility-v1','native_objects':67,'native_compile_time_traces':38,'native_historical_trace_absent':29,'historical_external_include_completeness_claimed':False,'probes_are_current_compatibility_only':True,'compiled_objects':0,'jobs':jobs,'units':rows,'success':True}
     if len([r for r in rows if r['scope']=='native'])!=67 or sum(r['original_compile_time_trace'] for r in rows if r['scope']=='native')!=38:raise ValueError('Native67/trace38 provenance changed')
