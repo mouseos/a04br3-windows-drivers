@@ -71,4 +71,9 @@ if __name__=='__main__':
  try:result=verify(a.root,a.fixed,a.manifest,a.receipt,a.policy,a.fragment)
  except (ValueError,KeyError,TypeError,OSError) as e:
   (a.out/'rejected.json').write_text(json.dumps({'rejected':True,'reason':str(e),'hardware_verified':False},indent=2)+'\n');ap.exit(1,str(e)+'\n')
+ rawpath=a.root.resolve()/result['raw_capture_path']
+ collected={}
+ for name,source in [('raw128.bin',rawpath),('clock_snapshot1120.stdout.txt',rawpath.parent/'logs/clock_snapshot1120.stdout.txt'),('clock_snapshot1120.stderr.txt',rawpath.parent/'logs/clock_snapshot1120.stderr.txt'),('service.log',rawpath.parent/'logs/service.log')]:
+  target=a.out/name;target.write_bytes(source.read_bytes());collected[name]=sha(target)
+ result['collected_files']=collected
  (a.out/'checked.json').write_text(json.dumps(result,indent=2)+'\n')

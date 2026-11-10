@@ -40,6 +40,6 @@ mainが新185へ合わせた既native hive readerを使用し、Diagnosticのtyp
 
 stdoutはCLOCK_SNAPSHOT_RC=0、flags/valid_first/valid_second/countとrawの一致、CPU/DDR known=0を厳密確認。128B/ABI1/count11、unknown markers8/16/32、mask0x7ff両方、単調100ns bracket、all-ones拒否、UNSTABLEと実sweep差分の整合を確認する。default decoderだけを呼びreferenceは渡さない。configured PLL・selected mux親Hz、effective CPU/DDR Hzはnull。sweep不一致はrawの観測として保持しHz成功にはしない。
 
-ObservedResultがGPU不調21でもclockの個別照合を止めない。GPU結果を0へ変更せず、clockが成立してもbatch全体を成功と呼ばない。checked.jsonは証跡の整合性のみ。rawにはRunId/PIDが内包されないため、mainはUARTの同診断起動、唯一のservice directoryと出力事前不在、actual tuple、ClockPid、snapshotのuptime bracketを追加joinしてから今回rawと分類する。helper単独ではsameboot/物理周波数実測を証明しない。
+ObservedResultがGPU不調21でもclockの個別照合を止めない。GPU結果を0へ変更せず、clockが成立してもbatch全体を成功と呼ばない。照合通過時は新outへraw128.bin・stdout・stderr・service.logを非上書き複製し、checked.jsonのcollected_filesへhashを固定する。checked.jsonは証跡の整合性のみ。rawにはRunId/PIDが内包されないため、mainはUARTの同診断起動、唯一のservice directoryと出力事前不在、actual tuple、ClockPid、snapshotのuptime bracketを追加joinしてから今回rawと分類する。helper単独ではsameboot/物理周波数実測を証明しない。
 
 回収前は`raw未取得`のまま。新mapping、clock/rail/PLL/DDR書込み、昇周波はない。連続thermal保護の完成も主張しない。
