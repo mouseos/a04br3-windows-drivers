@@ -21,6 +21,20 @@ def stage_script(template,prepare,token,fresh):
  require('/ForceUnsigned' not in cmd and 'RESTORE_FROM' not in cmd,'fallback/rollback禁止')
  return cmd
 
+def reboot_committed_stage(cmd):
+ # Preserve the existing CRC stream; reboot only after all three success gates.
+ marker='exit /b %A04_RC%\n'
+ require(cmd.count(marker)==1 and cmd.count('set "A04_RC=0"')==1,'One existing success and terminal exit required')
+ require(cmd.index('UPDATE_STATUS=COMMITTED')<cmd.index('set "A04_RC=0"'),'Commit precedes success code')
+ require('set "A04_RELEASE_RC=%errorlevel%"' in cmd and 'X:\\a04br3\\uart-audit-stream.exe ' in cmd,'Existing release and UART protocol required')
+ suffix=('set "A04_STREAM_RC=%errorlevel%"\n'
+         'if not "%A04_RC%"=="0" exit /b %A04_RC%\n'
+         'if not "%A04_RELEASE_RC%"=="0" exit /b 7\n'
+         'if not "%A04_STREAM_RC%"=="0" exit /b 8\n'
+         'X:\\Windows\\System32\\wpeutil.exe reboot\n'
+         'exit /b 9\n')
+ return cmd.replace(marker,suffix)
+
 def baseline_failure_reports(prepare):
  # Keep comparator bytes/order/exit handling. Emit metadata only in its failure arm.
  result=[];ordinal=0;prefix='X:\\a04br3\\'
@@ -62,6 +76,7 @@ def bt_payload_prepare(directory,bt):
 
 def main():
  ap=argparse.ArgumentParser()
+ ap.add_argument('--reboot-after-commit',action='store_true',help='Reboot WinPE after committed update, volume release and UART stream success')
  for n in ('workspace','map','service-package','prepared-system','prepared-result','comparator','base','tools','out'):ap.add_argument('--'+n,type=Path,required=True)
  for n in ('prepared-sha256','comparator-manifest-sha256','source-commit'):ap.add_argument('--'+n,required=True)
  ap.add_argument('--combined186-profile',action='store_true');ap.add_argument('--combined184-profile',action='store_true');ap.add_argument('--combined182-profile',action='store_true');ap.add_argument('--combined180-profile',action='store_true');ap.add_argument('--combined178-profile',action='store_true');ap.add_argument('--combined176-profile',action='store_true');ap.add_argument('--combined174-profile',action='store_true');ap.add_argument('--combined172-profile',action='store_true');ap.add_argument('--combined170-profile',action='store_true');ap.add_argument('--combined168-profile',action='store_true');ap.add_argument('--combined166-profile',action='store_true');ap.add_argument('--combined164-profile',action='store_true');ap.add_argument('--combined162-profile',action='store_true');ap.add_argument('--combined160-profile',action='store_true');ap.add_argument('--combined158-profile',action='store_true');ap.add_argument('--combined156-profile',action='store_true');ap.add_argument('--combined154-profile',action='store_true');ap.add_argument('--combined152-profile',action='store_true');ap.add_argument('--combined150-profile',action='store_true');ap.add_argument('--combined148-profile',action='store_true');ap.add_argument('--combined146-profile',action='store_true');ap.add_argument('--combined144-profile',action='store_true');ap.add_argument('--combined142-profile',action='store_true');ap.add_argument('--combined140-profile',action='store_true');ap.add_argument('--combined138-profile',action='store_true');ap.add_argument('--combined136-profile',action='store_true');ap.add_argument('--next-profile',action='store_true');ap.add_argument('--service-source-commit');ap.add_argument('--enable-peripheral-batch',action='store_true');a=ap.parse_args();root=a.workspace.resolve(strict=True);here=Path(__file__).resolve().parent;repo=here.parents[1]
@@ -273,7 +288,7 @@ def main():
  # Last mutation only: main-selected capture-derived clean SYSTEM containing the one new service.
  prepare+=['copy /b /y X:\\a04br3\\payload\\SYSTEM.patched C:\\Windows\\System32\\config\\SYSTEM >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail','X:\\a04br3\\compare-files.exe X:\\a04br3\\payload\\SYSTEM.patched C:\\Windows\\System32\\config\\SYSTEM >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
  prepare=baseline_failure_reports(prepare)
- cmd=stage_script((here/'run-mt8167-shared-io-update.cmd.in').read_text(),prepare,token[:16],p['backup_manifest_sha256']);(stage/'run-update-once.cmd').write_bytes(cmd.replace('\r','').replace('\n','\r\n').encode());files['run-update-once.cmd']=sha(stage/'run-update-once.cmd')
+ cmd=stage_script((here/'run-mt8167-shared-io-update.cmd.in').read_text(),prepare,token[:16],p['backup_manifest_sha256']);cmd=reboot_committed_stage(cmd) if a.reboot_after_commit else cmd;(stage/'run-update-once.cmd').write_bytes(cmd.replace('\r','').replace('\n','\r\n').encode());files['run-update-once.cmd']=sha(stage/'run-update-once.cmd')
  (stage/'startnet.cmd').write_bytes(b'@echo off\r\nmountvol /N\r\nwpeinit\r\nif errorlevel 1 exit /b 2\r\nmountvol /N\r\nif errorlevel 1 exit /b 2\r\ncall X:\\a04br3\\run-update-once.cmd\r\n');files['startnet.cmd']=sha(stage/'startnet.cmd')
  image=out/'update.wim';shutil.copyfile(base/'maintenance-staged.wim',image);env=os.environ.copy();env.update(TMPDIR=str(stage),LD_LIBRARY_PATH=str(tools/'wimtools'),PYTHONPATH=str(tools/'python-fat'),PYTHONDONTWRITEBYTECODE='1')
  commands='add "'+str(stage/'startnet.cmd')+'" /Windows/System32/startnet.cmd\n'
@@ -281,6 +296,6 @@ def main():
   if f.is_file() and f.name!='startnet.cmd':commands+='add "'+str(f)+'" /a04br3/'+str(f.relative_to(stage))+'\n'
  subprocess.run([str(tools/'wimtools/wimlib-imagex'),'update',str(image),'1'],input=commands,text=True,env=env,check=True);subprocess.run([str(tools/'wimtools/wimlib-imagex'),'verify',str(image)],env=env,check=True)
  subprocess.run(['python3','-B',str(here/'replace-esp-wim.py'),'--template',str(base/'maintenance-staged-esp.img'),'--wim',str(image),'--output',str(out/'update-esp.img'),'--template-bcd-sha256','65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d','--template-wim-sha256','0df19de6c783068b24c466a1d7afaa900cd99a0aef24841a319bbd566cbbedf4'],env=env,check=True)
- manifest={'profile':PROFILE,'source_commit':a.source_commit,'service_source_commit':signed_source,'tooling_only_changes_since_signed_service':signed_source!=a.source_commit,'service':SERVICE,'policy':p,'native_prepared':native,'files':files,'esp_sha256':sha(out/'update-esp.img'),'wim_sha256':sha(image),'required_main_boot_transition':p['boot_transition'],'planned_windows_reboots':p['planned_reboots'],'no_gpu_or_engine_client':not any(c['phase']==1 for c in p['diagnostic_clients']),'engine_client_execute':False,'old_gpu_client_execute':False,'new_gpu_client_count':sum(c['phase']==1 for c in p['diagnostic_clients']),'software_or_userfs_rollback':False,'device_verified':False}
+ manifest={'reboot_after_commit':a.reboot_after_commit,'profile':PROFILE,'source_commit':a.source_commit,'service_source_commit':signed_source,'tooling_only_changes_since_signed_service':signed_source!=a.source_commit,'service':SERVICE,'policy':p,'native_prepared':native,'files':files,'esp_sha256':sha(out/'update-esp.img'),'wim_sha256':sha(image),'required_main_boot_transition':p['boot_transition'],'planned_windows_reboots':p['planned_reboots'],'no_gpu_or_engine_client':not any(c['phase']==1 for c in p['diagnostic_clients']),'engine_client_execute':False,'old_gpu_client_execute':False,'new_gpu_client_count':sum(c['phase']==1 for c in p['diagnostic_clients']),'software_or_userfs_rollback':False,'device_verified':False}
  (out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 if __name__=='__main__':main()
