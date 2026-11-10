@@ -1742,9 +1742,23 @@
     },
     {
       "path": "drivers/gpu/mt8167/display-transport/interface356.h",
-      "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
-      "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8",
-      "sha256": "9f315889b3ac62ca0e12b37acaa9eb6ffd9ff40829f824ce0574f2a919d03977"
+      "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+      "role": "LK panel timing only over actual fixed198; RT/SRV baseline preserved",
+      "sha256": "a9f91a3a3ee6a6423d2401e616b9da2f97ea5af19421db02009d2cf3199f9ea3",
+      "timing_prior_origin": {
+        "path": "drivers/gpu/mt8167/display-transport/interface356.h",
+        "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+        "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8",
+        "sha256": "9f315889b3ac62ca0e12b37acaa9eb6ffd9ff40829f824ce0574f2a919d03977"
+      },
+      "previous_origins": [
+        {
+          "path": "drivers/gpu/mt8167/display-transport/interface356.h",
+          "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+          "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8",
+          "sha256": "9f315889b3ac62ca0e12b37acaa9eb6ffd9ff40829f824ce0574f2a919d03977"
+        }
+      ]
     },
     {
       "path": "drivers/gpu/mt8167/display-transport/mt8167-display-transport.inf",
@@ -1776,9 +1790,9 @@
     },
     {
       "path": "drivers/gpu/mt8167/display-transport/transport356.c",
-      "source_commit": "14ac163b9e579d91f72a99e321da292412bf1f4c",
-      "role": "357 bounded startup predicates; existing functional return/control unchanged",
-      "sha256": "bae0cd2f6c3c03cdbea3ddbdfe44d4c8f6e9a25818b9fb17b97b40bd41094d8f",
+      "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+      "role": "LK panel timing only over actual fixed198; RT/SRV baseline preserved",
+      "sha256": "a568a8439c6d0d8022f767e0235a40e443fd3dc07461dbfa908feab6f65814d8",
       "previous_origins": [
         {
           "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
@@ -1810,8 +1824,53 @@
           "source_commit": "7e3efc033523b21c742687eba8b8c656b4e93792",
           "role": "Unified356r2 actual DIRQL serial-only ISR; bounded PASSIVE poll",
           "sha256": "c936afab1fc4b802d755fb8b6113a87610df1d4a10648cdb87f12173b51534ab"
+        },
+        {
+          "path": "drivers/gpu/mt8167/display-transport/transport356.c",
+          "source_commit": "14ac163b9e579d91f72a99e321da292412bf1f4c",
+          "role": "357 bounded startup predicates; existing functional return/control unchanged",
+          "sha256": "bae0cd2f6c3c03cdbea3ddbdfe44d4c8f6e9a25818b9fb17b97b40bd41094d8f"
         }
-      ]
+      ],
+      "timing_prior_origin": {
+        "path": "drivers/gpu/mt8167/display-transport/transport356.c",
+        "source_commit": "14ac163b9e579d91f72a99e321da292412bf1f4c",
+        "role": "357 bounded startup predicates; existing functional return/control unchanged",
+        "sha256": "bae0cd2f6c3c03cdbea3ddbdfe44d4c8f6e9a25818b9fb17b97b40bd41094d8f",
+        "previous_origins": [
+          {
+            "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+            "sha256": "0fd06205cade46fdd04bd9fb2147aabbc7b40ca2a755535178068aefd337e63a",
+            "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8"
+          },
+          {
+            "source_commit": "4f3ae862b406ec14623199711596c6112ceea203",
+            "sha256": "da21ba6bf2af55f0ceb6865f36461c3267c5c0c6e7fc9910ae80d6241571cce3",
+            "role": "Unified356 reviewed driver support link closure"
+          },
+          {
+            "source_commit": "4576e10a0c69b86f510c58ce87a3d8b8583d1c83",
+            "sha256": "4cc1be69e99a9b8b72116c6b2b78418136fcb883e11747ecbaaed0a4f4687ef5",
+            "role": "Unified356 exact firmware POST profile and reset configuration preservation"
+          },
+          {
+            "source_commit": "149631411fa08812a79d332bee62d4317d5c6499",
+            "sha256": "779d46099e22dcefa4d77f268f1d7b981b0358b803455793d6d8ea9209f5bf10",
+            "role": "Unified356 POST restore address/config readback before exposure release"
+          },
+          {
+            "source_commit": "369439d63e5da69ce1560a01e14cc0ffe6c57b0e",
+            "sha256": "779d46099e22dcefa4d77f268f1d7b981b0358b803455793d6d8ea9209f5bf10",
+            "role": "Unified356r2 DIRQL-safe real IRQ serial; bounded PASSIVE observation"
+          },
+          {
+            "path": "drivers/gpu/mt8167/display-transport/transport356.c",
+            "source_commit": "7e3efc033523b21c742687eba8b8c656b4e93792",
+            "role": "Unified356r2 actual DIRQL serial-only ISR; bounded PASSIVE poll",
+            "sha256": "c936afab1fc4b802d755fb8b6113a87610df1d4a10648cdb87f12173b51534ab"
+          }
+        ]
+      }
     },
     {
       "path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/display_geometry356.h",
@@ -2006,9 +2065,9 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/unified_display.cxx",
-      "source_commit": "0d1bc0a7c9ca68f49fd0449ee9116a8c75c9d58d",
-      "role": "Required SetPalette rejection for unified32-bit true-colour display; no palette hardware claimed",
-      "sha256": "8a79ff258e8fad2f779403b9576cc3d2a90417f01ca117f98f047857e1ef8ef2",
+      "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+      "role": "LK panel timing only over actual fixed198; RT/SRV baseline preserved",
+      "sha256": "db155911853f804c9c15f89f7fc4b43aa49e1ee49adebec95fa0339b7f105544",
       "previous_origins": [
         {
           "path": "drivers/gpu/mt8167/wddm-display/unified_display.cxx",
@@ -2027,28 +2086,80 @@
           "source_commit": "465679f24402ff822b2c2a815b02379595aeaad5",
           "role": "Required SetPalette rejection for unified32-bit true-colour display; no palette hardware claimed",
           "sha256": "b479edd77688abad3338f63f002393b443ed30b63549b59cb537bd7fc0d682ec"
+        },
+        {
+          "path": "drivers/gpu/mt8167/wddm-display/unified_display.cxx",
+          "source_commit": "0d1bc0a7c9ca68f49fd0449ee9116a8c75c9d58d",
+          "role": "Required SetPalette rejection for unified32-bit true-colour display; no palette hardware claimed",
+          "sha256": "8a79ff258e8fad2f779403b9576cc3d2a90417f01ca117f98f047857e1ef8ef2"
         }
-      ]
+      ],
+      "timing_prior_origin": {
+        "path": "drivers/gpu/mt8167/wddm-display/unified_display.cxx",
+        "source_commit": "0d1bc0a7c9ca68f49fd0449ee9116a8c75c9d58d",
+        "role": "Required SetPalette rejection for unified32-bit true-colour display; no palette hardware claimed",
+        "sha256": "8a79ff258e8fad2f779403b9576cc3d2a90417f01ca117f98f047857e1ef8ef2",
+        "previous_origins": [
+          {
+            "path": "drivers/gpu/mt8167/wddm-display/unified_display.cxx",
+            "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+            "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8",
+            "sha256": "6d14eaf35578c42cea5f7e0365ab8dd76057946eea0d288f1e1dfa6badc2c31c"
+          },
+          {
+            "path": "drivers/gpu/mt8167/wddm-display/unified_display.cxx",
+            "source_commit": "523584213f3624551c86100a18039216a683b736",
+            "role": "Required SetPalette rejection for unified32-bit true-colour display; no palette hardware claimed",
+            "sha256": "2fd6b2d574474f1f1dbbc06bb0417b5b73e8de4c1ac89c207f46377251affdb2"
+          },
+          {
+            "path": "drivers/gpu/mt8167/wddm-display/unified_display.cxx",
+            "source_commit": "465679f24402ff822b2c2a815b02379595aeaad5",
+            "role": "Required SetPalette rejection for unified32-bit true-colour display; no palette hardware claimed",
+            "sha256": "b479edd77688abad3338f63f002393b443ed30b63549b59cb537bd7fc0d682ec"
+          }
+        ]
+      }
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/unified_display.h",
-      "source_commit": "465679f24402ff822b2c2a815b02379595aeaad5",
-      "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8",
-      "sha256": "7c355a9526fb0309ceae4a10f8e6549f0d1f12ccb26a8bda4d901fc8771d6409",
+      "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+      "role": "LK panel timing only over actual fixed198; RT/SRV baseline preserved",
+      "sha256": "846cdfe8ab70193c2c9a9eea2f4d156d126c8963dcee9e4926b2bc9cc7437c77",
       "previous_origins": [
         {
           "path": "drivers/gpu/mt8167/wddm-display/unified_display.h",
           "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
           "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8",
           "sha256": "f843401338c9cec25e9f7901807231b629dae0a90dba8f29cafe137ddf6d09e8"
+        },
+        {
+          "path": "drivers/gpu/mt8167/wddm-display/unified_display.h",
+          "source_commit": "465679f24402ff822b2c2a815b02379595aeaad5",
+          "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8",
+          "sha256": "7c355a9526fb0309ceae4a10f8e6549f0d1f12ccb26a8bda4d901fc8771d6409"
         }
-      ]
+      ],
+      "timing_prior_origin": {
+        "path": "drivers/gpu/mt8167/wddm-display/unified_display.h",
+        "source_commit": "465679f24402ff822b2c2a815b02379595aeaad5",
+        "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8",
+        "sha256": "7c355a9526fb0309ceae4a10f8e6549f0d1f12ccb26a8bda4d901fc8771d6409",
+        "previous_origins": [
+          {
+            "path": "drivers/gpu/mt8167/wddm-display/unified_display.h",
+            "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+            "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8",
+            "sha256": "f843401338c9cec25e9f7901807231b629dae0a90dba8f29cafe137ddf6d09e8"
+          }
+        ]
+      }
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/display_adapter356.c",
-      "source_commit": "4ec0e0937226caecf7b0110fd00e2cf028363ece",
-      "role": "359 bounded startup return observation; controls/status acceptance unchanged",
-      "sha256": "ee0bc306c41b640a53137a63f58c35214a50dda1f003fdd13ec3fec36a1abb95",
+      "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+      "role": "LK panel timing only over actual fixed198; RT/SRV baseline preserved",
+      "sha256": "d1bc3a7be66b4292da43a5e053c233bc4849b440c8b41963beaea4047e7b1edf",
       "previous_origins": [
         {
           "path": "drivers/gpu/mt8167/wddm-render/display_adapter356.c",
@@ -2072,8 +2183,45 @@
           "source_commit": "43753e0d6e06a6a7ed24a6c1bab731a477b52b0e",
           "sha256": "0c9bf8a0939167e2ad6e09434f3ca19e7c7e29b2fce544e72958232806636817",
           "role": "359 bounded startup return observation; controls/status acceptance unchanged"
+        },
+        {
+          "path": "drivers/gpu/mt8167/wddm-render/display_adapter356.c",
+          "source_commit": "4ec0e0937226caecf7b0110fd00e2cf028363ece",
+          "role": "359 bounded startup return observation; controls/status acceptance unchanged",
+          "sha256": "ee0bc306c41b640a53137a63f58c35214a50dda1f003fdd13ec3fec36a1abb95"
         }
-      ]
+      ],
+      "timing_prior_origin": {
+        "path": "drivers/gpu/mt8167/wddm-render/display_adapter356.c",
+        "source_commit": "4ec0e0937226caecf7b0110fd00e2cf028363ece",
+        "role": "359 bounded startup return observation; controls/status acceptance unchanged",
+        "sha256": "ee0bc306c41b640a53137a63f58c35214a50dda1f003fdd13ec3fec36a1abb95",
+        "previous_origins": [
+          {
+            "path": "drivers/gpu/mt8167/wddm-render/display_adapter356.c",
+            "source_commit": "4576e10a0c69b86f510c58ce87a3d8b8583d1c83",
+            "role": "Unified356 exact firmware POST profile and reset configuration preservation",
+            "sha256": "38db4d71c0f5a1c23837793c6be4cd97f93881618515eae691a0abc130111c6a",
+            "previous_origins": [
+              {
+                "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+                "sha256": "1ca805978dde12898a3b4438dce6488988d2ddb52d2a56d043534b69ef382609",
+                "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8"
+              },
+              {
+                "source_commit": "4f3ae862b406ec14623199711596c6112ceea203",
+                "sha256": "4f659977f4652b8728c940a0a89f3fefb7ad88281b4641ec47864ef65c74c97f",
+                "role": "Unified356 reviewed driver support link closure"
+              }
+            ]
+          },
+          {
+            "source_commit": "43753e0d6e06a6a7ed24a6c1bab731a477b52b0e",
+            "sha256": "0c9bf8a0939167e2ad6e09434f3ca19e7c7e29b2fce544e72958232806636817",
+            "role": "359 bounded startup return observation; controls/status acceptance unchanged"
+          }
+        ]
+      }
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/display_adapter356.h",
@@ -2230,6 +2378,12 @@
       "source_commit": "cd2aacb60434c55a93fa517638ef82277792d131",
       "sha256": "fdc3a181f9b5085cec35c04765bb4503a124f01b0bb401e3546fe08d67de066b",
       "role": "Native RT/SRV same-backing role transition and bounded viewport; no caps/completion relaxation"
+    },
+    {
+      "path": "drivers/gpu/mt8167/display-transport/panel_timing.h",
+      "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+      "sha256": "e3a241a3cdba745cc627bdeacddc3d68f4f96753d26def14aad41e68d4e731eb",
+      "role": "LK immutable panel timing ABI and exact rational validation"
     }
   ],
   "legacy_files_preserved": [
@@ -2633,7 +2787,7 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/bdd.cxx",
-      "sha256": "d388f3065411be142cd397b20e242ac33aedf7d5d8d36236457cd974100168d5",
+      "sha256": "1bc21cd774e95164dc54bf422070f18d2e0af5e2275c185f51ebae3e125e2d70",
       "previous_origins": [
         {
           "path": "drivers/gpu/mt8167/wddm-display/bdd.cxx",
@@ -2653,21 +2807,71 @@
           ],
           "source_commit": "43753e0d6e06a6a7ed24a6c1bab731a477b52b0e",
           "role": "359 startup observation only; preserve control policy"
+        },
+        {
+          "path": "drivers/gpu/mt8167/wddm-display/bdd.cxx",
+          "sha256": "d388f3065411be142cd397b20e242ac33aedf7d5d8d36236457cd974100168d5",
+          "source_commit": "113a0d3dd02ee029aaea1b1046b4969d777090a4",
+          "role": "Herschel VidPn capability output zero-initialization; Code43 causality unproven"
         }
       ],
-      "source_commit": "113a0d3dd02ee029aaea1b1046b4969d777090a4",
-      "role": "Herschel VidPn capability output zero-initialization; Code43 causality unproven"
+      "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+      "role": "LK panel timing only over actual fixed198; RT/SRV baseline preserved",
+      "timing_prior_origin": {
+        "path": "drivers/gpu/mt8167/wddm-display/bdd.cxx",
+        "sha256": "d388f3065411be142cd397b20e242ac33aedf7d5d8d36236457cd974100168d5",
+        "previous_origins": [
+          {
+            "path": "drivers/gpu/mt8167/wddm-display/bdd.cxx",
+            "sha256": "32ebe22c0d01956951b07fc4aed52ed012b037ccfb9def6b8afce9cb2ffec1a4",
+            "previous_origins": [
+              {
+                "path": "drivers/gpu/mt8167/wddm-display/bdd.cxx",
+                "sha256": "0d122dca6c64498d30e6bc9e51e67cff5286adca1b43b6e2a1c15c9253c49c10",
+                "previous_origins": [
+                  {
+                    "sha256": "68f919b9af09c708e8bb3ae7e3e41d16141dcf50b3233bec75a14942a2723684"
+                  }
+                ],
+                "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+                "role": "Unified356 source overlay; prior origin retained"
+              }
+            ],
+            "source_commit": "43753e0d6e06a6a7ed24a6c1bab731a477b52b0e",
+            "role": "359 startup observation only; preserve control policy"
+          }
+        ],
+        "source_commit": "113a0d3dd02ee029aaea1b1046b4969d777090a4",
+        "role": "Herschel VidPn capability output zero-initialization; Code43 causality unproven"
+      }
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/bdd.hxx",
-      "sha256": "4cbb8abde0679b0021b4ff4730c0d25475df1d43f6981753278636445156e50b",
+      "sha256": "aca041c279b9d122dfaa741649974eee2659052807ce1eaa04c5a07387ab6f3a",
       "previous_origins": [
         {
           "sha256": "526107b6424f4c46768416393af34d427b167bf6b817f1c146dae7bd74b2b73a"
+        },
+        {
+          "path": "drivers/gpu/mt8167/wddm-display/bdd.hxx",
+          "sha256": "4cbb8abde0679b0021b4ff4730c0d25475df1d43f6981753278636445156e50b",
+          "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+          "role": "Unified356 source overlay; prior origin retained"
         }
       ],
-      "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
-      "role": "Unified356 source overlay; prior origin retained"
+      "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+      "role": "LK panel timing only over actual fixed198; RT/SRV baseline preserved",
+      "timing_prior_origin": {
+        "path": "drivers/gpu/mt8167/wddm-display/bdd.hxx",
+        "sha256": "4cbb8abde0679b0021b4ff4730c0d25475df1d43f6981753278636445156e50b",
+        "previous_origins": [
+          {
+            "sha256": "526107b6424f4c46768416393af34d427b167bf6b817f1c146dae7bd74b2b73a"
+          }
+        ],
+        "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+        "role": "Unified356 source overlay; prior origin retained"
+      }
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/bdd_ddi.cxx",
@@ -2675,14 +2879,31 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/bdd_dmm.cxx",
-      "sha256": "c05a0e861440acd2bb39d07bf77e45d0d67c99fe0256232b9f5f1d9fafa66974",
+      "sha256": "cf62a324e3234750d1319437c9d7e88c56342c8216ed1f44d7bf5c08cb1aeaa8",
       "previous_origins": [
         {
           "sha256": "e515c1849314b5eeff2a525c945d8cecc56963a30ce21294e2f01f480cf28517"
+        },
+        {
+          "path": "drivers/gpu/mt8167/wddm-display/bdd_dmm.cxx",
+          "sha256": "c05a0e861440acd2bb39d07bf77e45d0d67c99fe0256232b9f5f1d9fafa66974",
+          "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+          "role": "Unified356 source overlay; prior origin retained"
         }
       ],
-      "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
-      "role": "Unified356 source overlay; prior origin retained"
+      "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+      "role": "LK panel timing only over actual fixed198; RT/SRV baseline preserved",
+      "timing_prior_origin": {
+        "path": "drivers/gpu/mt8167/wddm-display/bdd_dmm.cxx",
+        "sha256": "c05a0e861440acd2bb39d07bf77e45d0d67c99fe0256232b9f5f1d9fafa66974",
+        "previous_origins": [
+          {
+            "sha256": "e515c1849314b5eeff2a525c945d8cecc56963a30ce21294e2f01f480cf28517"
+          }
+        ],
+        "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+        "role": "Unified356 source overlay; prior origin retained"
+      }
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/bdd_errorlog.hxx",
@@ -4075,5 +4296,72 @@
     "partial_copy_implemented": false,
     "hardware_verified": false,
     "DWM_verified": false
+  },
+  "panel_timing_handoff": {
+    "schema": "ge8300-panel-timing-handoff-v1",
+    "base_source_commit": "a04e22489709db79d7c5a4355419bc7aaf95b057",
+    "implementation_source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+    "acpi_method": "DTM0",
+    "record_bytes": 64,
+    "files": [
+      {
+        "path": "drivers/gpu/mt8167/display-transport/interface356.h",
+        "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+        "sha256": "a9f91a3a3ee6a6423d2401e616b9da2f97ea5af19421db02009d2cf3199f9ea3",
+        "prior_origin_sha256": "b5c15ff6309f1a821e57631ab8ec094d06de43c38548f98373525d24a387f27f"
+      },
+      {
+        "path": "drivers/gpu/mt8167/display-transport/panel_timing.h",
+        "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+        "sha256": "e3a241a3cdba745cc627bdeacddc3d68f4f96753d26def14aad41e68d4e731eb",
+        "role": "LK immutable panel timing ABI and exact rational validation",
+        "prior_origin_sha256": null
+      },
+      {
+        "path": "drivers/gpu/mt8167/display-transport/transport356.c",
+        "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+        "sha256": "a568a8439c6d0d8022f767e0235a40e443fd3dc07461dbfa908feab6f65814d8",
+        "prior_origin_sha256": "3edae6f8cf54d8dcab2cf24ded56569cff2f0e27aede50c3d37c0182d5275496"
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-display/bdd.cxx",
+        "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+        "sha256": "1bc21cd774e95164dc54bf422070f18d2e0af5e2275c185f51ebae3e125e2d70",
+        "prior_origin_sha256": "c9b4a439637f965145a4e0f0fe04e5ef39e428db84332f3b92ba22d0cdb2c349"
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-display/bdd.hxx",
+        "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+        "sha256": "aca041c279b9d122dfaa741649974eee2659052807ce1eaa04c5a07387ab6f3a",
+        "prior_origin_sha256": "0158b78e707f1b7a4916368b02fdb538ed8e231df313480e495496a0ff735847"
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-display/bdd_dmm.cxx",
+        "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+        "sha256": "cf62a324e3234750d1319437c9d7e88c56342c8216ed1f44d7bf5c08cb1aeaa8",
+        "prior_origin_sha256": "d4afdea2dc00b4ee9729037de6f540e9d831033e6b7ec925e3866ab549a7a187"
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-display/unified_display.cxx",
+        "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+        "sha256": "db155911853f804c9c15f89f7fc4b43aa49e1ee49adebec95fa0339b7f105544",
+        "prior_origin_sha256": "f1655429dc2dc4aba7967e6c1d9875afb1235e5043cd9146d7ee7929d19c3a91"
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-display/unified_display.h",
+        "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+        "sha256": "846cdfe8ab70193c2c9a9eea2f4d156d126c8963dcee9e4926b2bc9cc7437c77",
+        "prior_origin_sha256": "a1c7cb9f1e2cd2431849f419e6bebbfe9980eac0ef5ba5c279824ab82cca6440"
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-render/display_adapter356.c",
+        "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+        "sha256": "d1bc3a7be66b4292da43a5e053c233bc4849b440c8b41963beaea4047e7b1edf",
+        "prior_origin_sha256": "6268d7d6cb8e4597dd9415429123dd94b40cc5d7a1ad603c412d0277ba547885"
+      }
+    ],
+    "native_units_changed": [],
+    "compiler_units_changed": [],
+    "umd_units_changed": []
   }
 }

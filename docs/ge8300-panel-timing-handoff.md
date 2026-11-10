@@ -68,3 +68,21 @@ Windows toolchainによるdriver buildとUEFI統合buildは未実行。host算�
 
 最初の公開2044c55fはf566基準だったため、a04のRT/SRV native/UMDと差があった。
 本branchはf566→7eade42cのtiming差分だけをa04へ適用し、その履歴を保持する。
+
+## 再割当て後のWindows入口（準備のみ、未実行）
+
+C++10TUは既fullsourceと同じcl14.29、C2TUは既clang/no-FP flagsを維持する。
+両SYSリンクはLINK14.29。成功した新compileの実showIncludes/.dのみを記録し、
+旧native/UMDの歴史的include traceを再構成したとは主張しない。
+固定baseline実manifest、archive26membersと15署名成果物をlive SHA照合してから進む。
+時系列source不一致は拒否する。INFは両方0.0.3.69、SYS2本/CAT2本のみ新署名。
+旧署名UMD/FW/client/launcherのbyteは保持する。runtime内native build IDは既368のまま。
+既profile/schemaへ自動投入しない。失敗時も個別stdout/log/receiptとZIPを残す。
+
+```powershell
+python -B tools/ci/build-ge8300-panel-timing-incremental.py --enable-candidate --baseline-directory C:/mt8167-rt-srv-cold198-lf/build/rt-srv-fixed198 --baseline-package C:/mt8167-gpu368-source/build/gpu368-signed/package368 --output build/panel-timing-fixed198
+python -B tools/ci/sign-ge8300-panel-timing.py --enable-candidate --baseline-package C:/mt8167-gpu368-source/build/gpu368-signed/package368 --linked-directory build/panel-timing-fixed198 --output build/panel-timing369-signed --sign-tool C:/mt8167-minimal-service-host/cache/kit81/bin/x86/signtool.exe --inf2cat C:/mt8167-hp1033/inputs/signing/bin/Inf2Cat.exe
+```
+
+各入口は成功／失敗ともoutput同名ZIPを作る。署名入口は成功した同HEADの12TU receiptが必要。
+追加helperは旧cold/fullsource/cache既定を変更しない。

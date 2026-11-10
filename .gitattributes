@@ -46,3 +46,9 @@ tools/ci/build-ge8300-from-source.ps1 text eol=lf
 drivers/gpu/mt8167/display-transport/panel_timing.h text eol=lf
 tests/ge8300_panel_timing_test.c text eol=lf
 docs/ge8300-panel-timing-handoff.md text eol=lf
+
+tools/ci/build-ge8300-panel-timing-incremental.py text eol=lf
+tools/ci/ge8300-panel-timing-incremental-pins.json text eol=lf
+tools/ci/sign-ge8300-panel-timing.py text eol=lf
+tools/ci/ge8300_panel_signing_common.py text eol=lf
+tools/ci/verify-panel-timing-certificates.ps1 text eol=lf

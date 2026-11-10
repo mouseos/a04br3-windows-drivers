@@ -3451,5 +3451,72 @@
     "partial_copy_implemented": false,
     "hardware_verified": false,
     "DWM_verified": false
+  },
+  "panel_timing_handoff": {
+    "schema": "ge8300-panel-timing-handoff-v1",
+    "base_source_commit": "a04e22489709db79d7c5a4355419bc7aaf95b057",
+    "implementation_source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+    "acpi_method": "DTM0",
+    "record_bytes": 64,
+    "files": [
+      {
+        "path": "drivers/gpu/mt8167/display-transport/interface356.h",
+        "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+        "sha256": "a9f91a3a3ee6a6423d2401e616b9da2f97ea5af19421db02009d2cf3199f9ea3",
+        "prior_origin_sha256": "b5c15ff6309f1a821e57631ab8ec094d06de43c38548f98373525d24a387f27f"
+      },
+      {
+        "path": "drivers/gpu/mt8167/display-transport/panel_timing.h",
+        "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+        "sha256": "e3a241a3cdba745cc627bdeacddc3d68f4f96753d26def14aad41e68d4e731eb",
+        "role": "LK immutable panel timing ABI and exact rational validation",
+        "prior_origin_sha256": null
+      },
+      {
+        "path": "drivers/gpu/mt8167/display-transport/transport356.c",
+        "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+        "sha256": "a568a8439c6d0d8022f767e0235a40e443fd3dc07461dbfa908feab6f65814d8",
+        "prior_origin_sha256": "3edae6f8cf54d8dcab2cf24ded56569cff2f0e27aede50c3d37c0182d5275496"
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-display/bdd.cxx",
+        "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+        "sha256": "1bc21cd774e95164dc54bf422070f18d2e0af5e2275c185f51ebae3e125e2d70",
+        "prior_origin_sha256": "c9b4a439637f965145a4e0f0fe04e5ef39e428db84332f3b92ba22d0cdb2c349"
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-display/bdd.hxx",
+        "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+        "sha256": "aca041c279b9d122dfaa741649974eee2659052807ce1eaa04c5a07387ab6f3a",
+        "prior_origin_sha256": "0158b78e707f1b7a4916368b02fdb538ed8e231df313480e495496a0ff735847"
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-display/bdd_dmm.cxx",
+        "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+        "sha256": "cf62a324e3234750d1319437c9d7e88c56342c8216ed1f44d7bf5c08cb1aeaa8",
+        "prior_origin_sha256": "d4afdea2dc00b4ee9729037de6f540e9d831033e6b7ec925e3866ab549a7a187"
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-display/unified_display.cxx",
+        "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+        "sha256": "db155911853f804c9c15f89f7fc4b43aa49e1ee49adebec95fa0339b7f105544",
+        "prior_origin_sha256": "f1655429dc2dc4aba7967e6c1d9875afb1235e5043cd9146d7ee7929d19c3a91"
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-display/unified_display.h",
+        "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+        "sha256": "846cdfe8ab70193c2c9a9eea2f4d156d126c8963dcee9e4926b2bc9cc7437c77",
+        "prior_origin_sha256": "a1c7cb9f1e2cd2431849f419e6bebbfe9980eac0ef5ba5c279824ab82cca6440"
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-render/display_adapter356.c",
+        "source_commit": "42d8dd5fcc9b3f0dabc2dd1821900b61945218ef",
+        "sha256": "d1bc3a7be66b4292da43a5e053c233bc4849b440c8b41963beaea4047e7b1edf",
+        "prior_origin_sha256": "6268d7d6cb8e4597dd9415429123dd94b40cc5d7a1ad603c412d0277ba547885"
+      }
+    ],
+    "native_units_changed": [],
+    "compiler_units_changed": [],
+    "umd_units_changed": []
   }
 }
