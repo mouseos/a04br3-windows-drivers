@@ -1,0 +1,28 @@
+{
+  "schema": "RT81_DXG_GLOBAL_DIAG198_V1",
+  "API_enum": "D3DKMT_ESCAPE_DIAGNOSTICS",
+  "API_Type": 9,
+  "disassembly_case_selector": "Type - 1",
+  "raw_case": 8,
+  "DRT_TEST_Type8_forbidden": true,
+  "actual_gdi32_sha256": "b2a60825e2616e3091125a8c6fc546b2b5124e3fa99a237f5781658aac1c6035",
+  "required_dynamic_exports": [
+    "D3DKMTEnumAdapters",
+    "D3DKMTCloseAdapter",
+    "D3DKMTEscape"
+  ],
+  "dxgkrnl_sha256": "2f0fe1db882ba83862a6ece3c2de0cf08c2b20767e6640dc4de5b97255b6d941",
+  "hAdapter_zero_allowed": false,
+  "Flags": 0,
+  "hDevice": 0,
+  "hContext": 0,
+  "raw_capacity": 262144,
+  "request_bytes": 262148,
+  "record_tag23_status_offset": 60,
+  "GPU_success_inferred": false,
+  "read_cursor_updated": false,
+  "OS_appends_type10_packet_before_read": true,
+  "rea-global-diag198.json_sha256": "95214cb1cee9c9b72a8cac6618cd8e872c0c54b9e4be703e1759b335ce9a77f0",
+  "rea-global-escape198.json_sha256": "c3ed7286dbadd70faddd1b6432c046ccb9087cf5f3a2f58cf0c84c62e7e20032",
+  "wdk81_d3dkmthk_sha256": "de33d6d8af3c723351cc33d05b2ef28d5e4336467d086cab5c3e12badf601aa2"
+}
