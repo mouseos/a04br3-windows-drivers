@@ -115,8 +115,9 @@ int32_t geo_prepare_draw_begin(struct geo_engine *e,struct geo_allocation *a,str
 }
 int32_t geo_prepare_copy_region_begin(struct geo_engine *e,struct geo_allocation *d,struct geo_allocation *s,const struct geo_copy_region *region,struct geo_dma_ticket *t) {
  uint32_t i;struct geo_job *j;
- if(!e||!d||!s||d==s||!t||(!e->owner.prepare_copy||!e->owner.prepare_copy_region)||d->desc.usage!=GEO_USAGE_STAGING||!geo_usage_renderable(s->desc.usage)||
-    d->desc.format!=GEO_FORMAT_A8R8G8B8||s->desc.format!=GEO_FORMAT_A8R8G8B8||
+ if(!e||!d||!s||d==s||!t||(!e->owner.prepare_copy||!e->owner.prepare_copy_region)||(d->desc.usage!=GEO_USAGE_STAGING&&!geo_usage_renderable(d->desc.usage))||
+    (s->desc.usage!=GEO_USAGE_STAGING&&!geo_usage_renderable(s->desc.usage))||
+    d->desc.format!=s->desc.format||(s->desc.format!=GEO_FORMAT_A8R8G8B8&&s->desc.format!=GEO_FORMAT_X8R8G8B8)||
     !geo_copy_region_valid(region,s->logical_width,s->logical_height,d->logical_width,d->logical_height))return GEO_INVALID;
  if(e->poisoned||d->poisoned||s->poisoned)return GEO_POISONED;
  if(!d->surface||!s->surface)return GEO_NOT_READY;

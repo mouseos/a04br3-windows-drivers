@@ -12,6 +12,9 @@ prefix=r'''
 #include <string.h>
 #include "clear_engine.h"
 typedef void *HANDLE;typedef int32_t NTSTATUS;typedef uint32_t UINT;
+#define A04_GE8300_UNIFIED_DISPLAY356 0
+#define D3DKMDT_STANDARDALLOCATION_SHAREDPRIMARYSURFACE 1
+#define D3DDDIFMT_X8R8G8B8 22
 #define APIENTRY
 #define STATUS_SUCCESS 0
 #define STATUS_NOT_SUPPORTED ((NTSTATUS)0xc00000bb)
@@ -23,8 +26,9 @@ typedef void *HANDLE;typedef int32_t NTSTATUS;typedef uint32_t UINT;
 /* Fields mirror WDK8.1; the independent real-WDK compile checks actual ABI. */
 typedef struct {UINT Width,Height,Format,Pitch;} D3DKMDT_SHADOWSURFACEDATA;
 typedef struct {UINT Width,Height,Pitch;} D3DKMDT_STAGINGSURFACEDATA;
-typedef struct {UINT StandardAllocationType;union {D3DKMDT_SHADOWSURFACEDATA*pCreateShadowSurfaceData;D3DKMDT_STAGINGSURFACEDATA*pCreateStagingSurfaceData;};void*pAllocationPrivateDriverData;UINT AllocationPrivateDriverDataSize;void*pResourcePrivateDriverData;UINT ResourcePrivateDriverDataSize;} DXGKARG_GETSTANDARDALLOCATIONDRIVERDATA;
-struct geo_kmd_adapter {int live;};static unsigned enter,leave,owner_calls;
+typedef struct {UINT StandardAllocationType;union {D3DKMDT_SHADOWSURFACEDATA*pCreateShadowSurfaceData;D3DKMDT_STAGINGSURFACEDATA*pCreateStagingSurfaceData;};void*pCreateSharedPrimarySurfaceData;void*pAllocationPrivateDriverData;UINT AllocationPrivateDriverDataSize;void*pResourcePrivateDriverData;UINT ResourcePrivateDriverDataSize;} DXGKARG_GETSTANDARDALLOCATIONDRIVERDATA;
+struct geo_kmd_adapter {int live;};
+static NTSTATUS GeoDisplay356PrimaryLayout(void*a,void*b,void*c){return STATUS_NOT_SUPPORTED;}static unsigned enter,leave,owner_calls;
 static int GeoSessionEnter(struct geo_kmd_adapter*a,int reason){enter++;return a&&a->live;}
 static void GeoSessionLeave(struct geo_kmd_adapter*a,int reason){(void)a;(void)reason;leave++;}
 #define RtlZeroMemory(p,n) memset((p),0,(n))
@@ -64,7 +68,7 @@ int main(void){
  p.pCreateStagingSurfaceData=0;assert(GeoGetStandardAllocationDriverData(&adapter,&p)==STATUS_INVALID_PARAMETER);
  p.StandardAllocationType=1;assert(GeoGetStandardAllocationDriverData(&adapter,&p)==STATUS_NOT_SUPPORTED);
  p.StandardAllocationType=4;assert(GeoGetStandardAllocationDriverData(&adapter,&p)==STATUS_NOT_SUPPORTED);
- {D3DKMDT_SHADOWSURFACEDATA shadow={800,600,21,0};p.StandardAllocationType=2;p.pCreateShadowSurfaceData=&shadow;assert(GeoGetStandardAllocationDriverData(&adapter,&p)==0&&shadow.Pitch==3200);assert(guarded.data.storage.format==21);shadow.Format=22;assert(GeoGetStandardAllocationDriverData(&adapter,&p)==STATUS_NOT_SUPPORTED);}
+ {D3DKMDT_SHADOWSURFACEDATA shadow={800,600,21,0};p.StandardAllocationType=2;p.pCreateShadowSurfaceData=&shadow;assert(GeoGetStandardAllocationDriverData(&adapter,&p)==0&&shadow.Pitch==3200);assert(guarded.data.storage.format==21);shadow.Format=22;assert(GeoGetStandardAllocationDriverData(&adapter,&p)==0&&guarded.data.storage.format==22&&shadow.Pitch==3200);shadow.Format=24;assert(GeoGetStandardAllocationDriverData(&adapter,&p)==STATUS_NOT_SUPPORTED);}
  p.StandardAllocationType=3;p.pCreateStagingSurfaceData=&stage;stage.Width=800;adapter.live=0;assert(GeoGetStandardAllocationDriverData(&adapter,&p)==STATUS_DEVICE_NOT_READY);
  assert(GeoGetStandardAllocationDriverData(&adapter,0)==STATUS_INVALID_PARAMETER);
  return 0;
@@ -73,5 +77,5 @@ int main(void){
 c=out/'callback.c';c.write_text(prefix+callback+suffix)
 cmd=['cc','-std=c11','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer','-I'+str(d),str(c),str(d/'clear_protocol.c'),str(d/'clear_engine.c'),'-o',str(out/'standard-staging')]
 subprocess.run(cmd,check=True);subprocess.run([str(out/'standard-staging')],check=True)
-(out/'result.json').write_text(json.dumps({'actual_callback_executed':True,'actual_cpu_only_engine_executed':True,'two_call_size_fill_and_canaries':True,'x8_staging_only':True,'gpu_owner_create_and_destroy_calls':2,'bounds_and_legacy_shadow_checked':True,'asan_ubsan':True,'real_gpu_tested':False},indent=2)+'\n')
+(out/'result.json').write_text(json.dumps({'actual_callback_executed':True,'actual_cpu_only_engine_executed':True,'two_call_size_fill_and_canaries':True,'x8_staging_and_shadow':True,'gpu_owner_create_and_destroy_calls':2,'bounds_and_legacy_shadow_checked':True,'asan_ubsan':True,'real_gpu_tested':False},indent=2)+'\n')
 print('ACTUAL_STANDARD_STAGING_CALLBACK_AND_CPU_ONLY_ENGINE_PASS')

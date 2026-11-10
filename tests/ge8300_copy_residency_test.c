@@ -22,7 +22,13 @@ int main(void){
  assert(geo_unbind(&e,&src)==GEO_BUSY&&geo_unbind(&e,&dst)==GEO_BUSY);
  assert(!geo_complete(&e,99,t.generation,0,GEO_COMPLETION_GPU_DONE|GEO_COMPLETION_CPU_VISIBLE,&fence)&&fence==1);
  assert(!src.references&&!dst.references);assert(!geo_unbind(&e,&src));assert(!geo_unbind(&e,&dst));
- assert(geo_prepare_copy_begin(&e,&src,&dst,&t)==GEO_INVALID);
+ assert(!geo_prepare_copy_begin(&e,&src,&dst,&t));
+ assert(geo_destroy(&e,&src)==GEO_BUSY&&geo_destroy(&e,&dst)==GEO_BUSY);
+ assert(!geo_bind(&e,&src,(void*)1,0,1920000,0));assert(!geo_bind(&e,&dst,(void*)2,0,1920000,1921024));
+ assert(!geo_prepare_finish(&e,&t,0,100));assert(!geo_submit(&e,&t,2));
+ assert(geo_unbind(&e,&src)==GEO_BUSY&&geo_unbind(&e,&dst)==GEO_BUSY);
+ assert(!geo_complete(&e,100,t.generation,0,GEO_COMPLETION_GPU_DONE|GEO_COMPLETION_CPU_VISIBLE,&fence)&&fence==2);
+ assert(!geo_unbind(&e,&src));assert(!geo_unbind(&e,&dst));
  assert(!geo_destroy(&e,&src)&&!geo_destroy(&e,&dst));
  o.version=2;assert(geo_engine_init(&e,&o)==GEO_UNSUPPORTED);return 0;
 }

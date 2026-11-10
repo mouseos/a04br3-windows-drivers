@@ -85,8 +85,8 @@ NTSTATUS a04_native_copy_storage_create(struct a04_native_copy_storage **out,
  uint32_t pc;NTSTATUS status=STATUS_INVALID_DEVICE_STATE;
  _Alignas(8) struct a04_vendor_clear_image eot;
  if(!out||*out||!n||!destination||!description||description->size!=sizeof(*description)||
-    !geo_desc_valid(description)||!geo_render_layout_valid(description->width,description->height,description->pitch)||description->format!=GEO_FORMAT_A8R8G8B8||
-    description->usage!=GEO_USAGE_STAGING||description->reserved||!usc||KeGetCurrentIrql()!=PASSIVE_LEVEL||
+    !geo_desc_valid(description)||!geo_render_layout_valid(description->width,description->height,description->pitch)||(description->format!=GEO_FORMAT_A8R8G8B8&&description->format!=GEO_FORMAT_X8R8G8B8)||
+    (description->usage!=GEO_USAGE_STAGING&&!geo_usage_renderable(description->usage))||description->reserved||!usc||KeGetCurrentIrql()!=PASSIVE_LEVEL||
     !(r=n->render)||r->native_owner!=n||!r->firmware||r->firmware->hardware_owned||
     n->quarantined||r->poisoned||!n->registered_target||!n->output_mapped||n->code_mapped!=3u||
     !r->buffer[1].cpu||!n->output[2].cpu||!n->output[3].cpu||

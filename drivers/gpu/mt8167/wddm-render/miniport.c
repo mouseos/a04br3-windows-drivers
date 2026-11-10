@@ -249,8 +249,8 @@ struct geo_module_identity_v1 {
 C_ASSERT(sizeof(struct geo_module_identity_v1)==144);
 static void module_identity(PDRIVER_OBJECT driver)
 {
- static const CHAR source[]="e0727eb0d840883a31d3c501b0ee17652ebdcad4";
- static const CHAR build[]="GPU359-start-gap-v1";
+ static const CHAR source[]="4a952787f1befccd5c580e826b109fb9decc9c80";
+ static const CHAR build[]="GPU376-gdi-shadow-v1";
  struct geo_module_identity_v1 r={0};HANDLE key=NULL;UNICODE_STRING path,name;
  OBJECT_ATTRIBUTES oa;ULONG disposition;NTSTATUS status;
  if(!driver||KeGetCurrentIrql()!=PASSIVE_LEVEL||!driver->DriverStart||!driver->DriverSize)return;

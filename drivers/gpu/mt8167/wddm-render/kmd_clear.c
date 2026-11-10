@@ -422,34 +422,68 @@ static NTSTATUS GeoRenderImpl(HANDLE context,DXGKARG_RENDER *r) {
  r->pPatchLocationListOut->AllocationIndex=0;r->pPatchLocationListOut->DriverId=GEO_CLEAR_MAGIC;
  r->pPatchLocationListOut++;return STATUS_SUCCESS;
 }
-/* WDK8.1 Present lists have reserved entry0, source1, destination2.
- * pAllocationInfo is a reserved alternative, not a replacement for this list.
- * Capture only; use the same queued real Copy as ordinary Render. */
+/* WDK8.1 supplies preclipped destination rectangles. Equal source/destination
+ * extents mean translation only; never stretch or reinterpret pixel formats.
+ * Validate the complete list before capturing the first scheduler reference. */
+static int present_region(const RECT *src,const RECT *dst,const RECT *dirty,
+ struct geo_allocation *source,struct geo_allocation *destination,struct geo_copy_region *out) {
+ int64_t sw=(int64_t)src->right-src->left,sh=(int64_t)src->bottom-src->top;
+ int64_t dw=(int64_t)dst->right-dst->left,dh=(int64_t)dst->bottom-dst->top;
+ int64_t sx=(int64_t)src->left+dirty->left-dst->left,sy=(int64_t)src->top+dirty->top-dst->top;
+ if(sw<=0||sh<=0||sw!=dw||sh!=dh||src->left<0||src->top<0||dst->left<0||dst->top<0||
+    src->right>source->logical_width||src->bottom>source->logical_height||
+    dst->right>destination->logical_width||dst->bottom>destination->logical_height||
+    dirty->left<dst->left||dirty->top<dst->top||dirty->right>dst->right||dirty->bottom>dst->bottom||
+    dirty->right<=dirty->left||dirty->bottom<=dirty->top||sx<0||sy<0||sx>UINT32_MAX||sy>UINT32_MAX)return 0;
+ *out=(struct geo_copy_region){(UINT)sx,(UINT)sy,(UINT)dirty->left,(UINT)dirty->top,
+  (UINT)(dirty->right-dirty->left),(UINT)(dirty->bottom-dirty->top)};
+ return geo_copy_region_valid(out,source->logical_width,source->logical_height,destination->logical_width,destination->logical_height);
+}
 NTSTATUS APIENTRY GeoPresent(HANDLE context,DXGKARG_PRESENT *p) {
- struct geo_kmd_context *c=context;DXGK_ALLOCATIONLIST list[2];
- struct geo_copy_packet copy={GEO_COPY_MAGIC,sizeof(copy),1,0,1,800,A04_NATIVE_FRAME_HEIGHT,0};
- DXGKARG_RENDER r={.pCommand=&copy,.CommandLength=sizeof(copy)};NTSTATUS status;UINT i;
- if(!c||!p)return STATUS_INVALID_PARAMETER;
- if(KeGetCurrentIrql()!=PASSIVE_LEVEL||p->Flags.Value!=1u||p->FlipInterval||p->DmaBufferSegmentId||p->MultipassOffset||p->SubRectCnt||
-    p->SrcRect.left||p->SrcRect.top||p->SrcRect.right!=800||p->SrcRect.bottom!=A04_NATIVE_FRAME_HEIGHT||
-    p->DstRect.left||p->DstRect.top||p->DstRect.right!=800||p->DstRect.bottom!=A04_NATIVE_FRAME_HEIGHT||
-    !p->pAllocationList||!p->pPatchLocationListOut||p->PatchLocationListOutSize<2||
-    !p->pDmaBuffer||((ULONG_PTR)p->pDmaBuffer&3)||p->DmaSize<sizeof(struct geo_dma_ticket)||
-    !p->pDmaBufferPrivateData||((ULONG_PTR)p->pDmaBufferPrivateData&3)||p->DmaBufferPrivateDataSize<sizeof(struct geo_dma_ticket))return STATUS_NOT_SUPPORTED;
+ struct geo_kmd_context *c=context;struct copy_begin x;struct geo_copy_region region;
+ NTSTATUS status;UINT i,count;
+ if(!c||!c->adapter||!p)return STATUS_INVALID_PARAMETER;
+ if(KeGetCurrentIrql()!=PASSIVE_LEVEL||p->Flags.Value!=1u||p->FlipInterval||p->DmaBufferSegmentId||
+    !p->pAllocationList||(p->SubRectCnt&&!p->pDstSubRects))return STATUS_NOT_SUPPORTED;
+ count=p->SubRectCnt?p->SubRectCnt:1u;
+ if(p->MultipassOffset>=count)return STATUS_INVALID_PARAMETER;
+ if(!c->adapter->synchronize||!c->adapter->engine.owner.prepare_copy_region)return STATUS_DEVICE_NOT_READY;
  if(!GeoSessionEnter(c->adapter,1))return STATUS_DEVICE_NOT_READY;
- list[0]=p->pAllocationList[DXGK_PRESENT_DESTINATION_INDEX];
- list[1]=p->pAllocationList[DXGK_PRESENT_SOURCE_INDEX];
- /* A NULL destination means scanout/flip. No primary backing exists yet. */
- if(p->pAllocationList[0].hDeviceSpecificAllocation||!list[0].hDeviceSpecificAllocation||!list[1].hDeviceSpecificAllocation||
-    list[0].hDeviceSpecificAllocation==list[1].hDeviceSpecificAllocation||!list[0].WriteOperation||list[1].WriteOperation){status=STATUS_NOT_SUPPORTED;goto done;}
- r.pAllocationList=list;r.AllocationListSize=2;r.pDmaBuffer=p->pDmaBuffer;r.DmaSize=p->DmaSize;
- r.pDmaBufferPrivateData=p->pDmaBufferPrivateData;r.DmaBufferPrivateDataSize=p->DmaBufferPrivateDataSize;
- r.pPatchLocationListOut=p->pPatchLocationListOut;r.PatchLocationListOutSize=p->PatchLocationListOutSize;
- GeoCollectPendingPayloads(c->adapter);status=GeoRenderImpl(c,&r);
- if(status==STATUS_SUCCESS){
-  for(i=0;i<2;i++)p->pPatchLocationListOut[i].AllocationIndex=i?DXGK_PRESENT_SOURCE_INDEX:DXGK_PRESENT_DESTINATION_INDEX;
-  p->pDmaBuffer=r.pDmaBuffer;p->pDmaBufferPrivateData=r.pDmaBufferPrivateData;p->pPatchLocationListOut=r.pPatchLocationListOut;
+ RtlZeroMemory(&x,sizeof(x));x.context=c;
+ x.dh=p->pAllocationList[DXGK_PRESENT_DESTINATION_INDEX].hDeviceSpecificAllocation;
+ x.sh=p->pAllocationList[DXGK_PRESENT_SOURCE_INDEX].hDeviceSpecificAllocation;
+ x.destination=GeoResolveWriteAllocation(c,x.dh);x.source=GeoResolveReadAllocation(c,x.sh);
+ if(p->pAllocationList[0].hDeviceSpecificAllocation||!x.destination||!x.source||x.destination==x.source||
+    !p->pAllocationList[DXGK_PRESENT_DESTINATION_INDEX].WriteOperation||p->pAllocationList[DXGK_PRESENT_SOURCE_INDEX].WriteOperation||
+    x.destination->desc.format!=x.source->desc.format||
+    x.destination->logical_width!=x.source->logical_width||x.destination->logical_height!=x.source->logical_height){status=STATUS_NOT_SUPPORTED;goto done;}
+ for(i=0;i<count;i++)if(!present_region(&p->SrcRect,&p->DstRect,p->SubRectCnt?&p->pDstSubRects[i]:&p->DstRect,x.source,x.destination,&region)){
+  status=STATUS_INVALID_PARAMETER;goto done;
  }
+ if(!p->pPatchLocationListOut||p->PatchLocationListOutSize<2||!p->pDmaBuffer||((ULONG_PTR)p->pDmaBuffer&3)||
+    p->DmaSize<sizeof(x.ticket)||!p->pDmaBufferPrivateData||((ULONG_PTR)p->pDmaBufferPrivateData&3)||p->DmaBufferPrivateDataSize<sizeof(x.ticket)){
+  status=STATUS_GRAPHICS_INSUFFICIENT_DMA_BUFFER;goto done;
+ }
+ (void)present_region(&p->SrcRect,&p->DstRect,p->SubRectCnt?&p->pDstSubRects[p->MultipassOffset]:&p->DstRect,x.source,x.destination,&x.region);
+ GeoCollectPendingPayloads(c->adapter);
+ if(!c->adapter->synchronize(c->adapter->sync_context,begin_copy,&x)){status=fail_copy_render(c->adapter,STATUS_DEVICE_NOT_READY);goto done;}
+ status=x.status;if(status!=STATUS_SUCCESS)goto done;
+ c->adapter->pending[x.ticket.slot].generation=x.ticket.generation;
+ if(GeoWriteTicket(p->pDmaBuffer,&x.ticket)!=STATUS_SUCCESS||GeoWriteTicket(p->pDmaBufferPrivateData,&x.ticket)!=STATUS_SUCCESS){
+  status=fail_copy_render(c->adapter,STATUS_INVALID_PARAMETER);goto done;
+ }
+ p->pDmaBuffer=(UCHAR*)p->pDmaBuffer+sizeof(x.ticket);
+ p->pDmaBufferPrivateData=(UCHAR*)p->pDmaBufferPrivateData+sizeof(x.ticket);
+ for(i=0;i<2;i++){
+  RtlZeroMemory(p->pPatchLocationListOut,sizeof(*p->pPatchLocationListOut));
+  p->pPatchLocationListOut->AllocationIndex=i?DXGK_PRESENT_SOURCE_INDEX:DXGK_PRESENT_DESTINATION_INDEX;
+  p->pPatchLocationListOut->DriverId=GEO_COPY_MAGIC;p->pPatchLocationListOut++;
+ }
+ /* One private ticket is one atomic scheduler transaction (Patch/Submit
+  * consume exactly one). Each subsequent rectangle needs a fresh private
+  * DMA transaction; never batch tickets that those callbacks cannot retain. */
+ p->MultipassOffset++;
+ status=p->MultipassOffset<count?STATUS_GRAPHICS_INSUFFICIENT_DMA_BUFFER:STATUS_SUCCESS;
  done:GeoSessionLeave(c->adapter,1);return status;
 }
 /* The two legal semantic lists: normal Render 0/1, Present Blt 2/1.

@@ -4,7 +4,9 @@
 #include "../vendor_m1_11/native_factory_checkpoint.h"
 static NTSTATUS APIENTRY create_device365(HANDLE handle,DXGKARG_CREATEDEVICE *p) {
  struct geo_kmd_adapter *a=handle;struct geo_kmd_device *d;NTSTATUS status=STATUS_SUCCESS;
- if(!p||(p->Flags.Value&~1u))return STATUS_NOT_SUPPORTED;
+ /* WDK8.1 SystemDevice and GdiDevice share tracked device ownership.
+  * GDI is software shadow + Present; this does not advertise RenderKm. */
+ if(!p||(p->Flags.Value&~3u))return STATUS_NOT_SUPPORTED;
  if(!GeoSessionEnter(a,1))return STATUS_DEVICE_NOT_READY;
  if(a->device_count==UINT32_MAX){status=STATUS_INSUFFICIENT_RESOURCES;goto done;}
  d=ExAllocatePoolWithTag(NonPagedPool,sizeof(*d),'dOeG');if(!d){status=STATUS_INSUFFICIENT_RESOURCES;goto done;}
@@ -29,7 +31,7 @@ NTSTATUS APIENTRY GeoDestroyDevice(HANDLE handle) {
 }
 static NTSTATUS APIENTRY create_context365(HANDLE handle,DXGKARG_CREATECONTEXT *p) {
  struct geo_kmd_device *d=handle;struct geo_kmd_adapter *a;struct geo_kmd_context *c;NTSTATUS status=STATUS_SUCCESS;
- if(!d||!p||p->NodeOrdinal||p->EngineAffinity!=1||(p->Flags.Value&~1u)||p->PrivateDriverDataSize)return STATUS_NOT_SUPPORTED;
+ if(!d||!p||p->NodeOrdinal||p->EngineAffinity!=1||(p->Flags.Value&~3u)||p->PrivateDriverDataSize)return STATUS_NOT_SUPPORTED;
  a=d->adapter;if(!GeoSessionEnter(a,1))return STATUS_DEVICE_NOT_READY;
  c=ExAllocatePoolWithTag(NonPagedPool,sizeof(*c),'xOeG');if(!c){status=STATUS_INSUFFICIENT_RESOURCES;goto done;}
  RtlZeroMemory(c,sizeof(*c));c->adapter=a;c->device=d;c->runtime=p->hContext;c->next=d->contexts;d->contexts=c;
@@ -142,8 +144,8 @@ NTSTATUS APIENTRY GeoGetStandardAllocationDriverData(HANDLE handle,DXGKARG_GETST
   if(p->pAllocationPrivateDriverData)RtlCopyMemory(p->pAllocationPrivateDriverData,&primary,sizeof(primary));return STATUS_SUCCESS;
  }
  if(p->StandardAllocationType==D3DKMDT_STANDARDALLOCATION_SHADOWSURFACE) {
-  if(!p->pCreateShadowSurfaceData||p->pCreateShadowSurfaceData->Format!=D3DDDIFMT_A8R8G8B8)return STATUS_NOT_SUPPORTED;
-  d.width=p->pCreateShadowSurfaceData->Width;d.height=p->pCreateShadowSurfaceData->Height;d.format=GEO_FORMAT_A8R8G8B8;
+  if(!p->pCreateShadowSurfaceData||(p->pCreateShadowSurfaceData->Format!=D3DDDIFMT_A8R8G8B8&&p->pCreateShadowSurfaceData->Format!=D3DDDIFMT_X8R8G8B8))return STATUS_NOT_SUPPORTED;
+  d.width=p->pCreateShadowSurfaceData->Width;d.height=p->pCreateShadowSurfaceData->Height;d.format=(UINT)p->pCreateShadowSurfaceData->Format;
  } else if(p->StandardAllocationType==D3DKMDT_STANDARDALLOCATION_STAGINGSURFACE) {
   if(!p->pCreateStagingSurfaceData)return STATUS_INVALID_PARAMETER;
   d.width=p->pCreateStagingSurfaceData->Width;d.height=p->pCreateStagingSurfaceData->Height;d.format=GEO_FORMAT_X8R8G8B8;

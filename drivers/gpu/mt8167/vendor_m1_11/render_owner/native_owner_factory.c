@@ -236,10 +236,10 @@ static int32_t destroy(void *p,uint64_t surface)
     if((surface==c->vertex && c->allocation->vertex) || (surface==c->surface && c->allocation->binding))return leave(c,STATUS_DEVICE_BUSY);
     *link=r->next;ExFreePoolWithTag(r,E_FACTORY_TAG);return leave(c,STATUS_SUCCESS);
 }
-static NTSTATUS select_target_locked(struct e_native_owner *c,uint64_t surface)
+static NTSTATUS select_target_locked(struct e_native_owner *c,uint64_t surface,BOOLEAN copy)
 {
     struct e_native_resource *r=resource(c,surface);NTSTATUS s;
-    if(!r||!r->linear||!geo_usage_renderable(r->desc.usage))return STATUS_INVALID_PARAMETER;
+    if(!r||!r->linear||(!geo_usage_renderable(r->desc.usage)&&!(copy&&r->desc.usage==GEO_USAGE_STAGING)))return STATUS_INVALID_PARAMETER;
     s=wait_boundary_locked(c);if(!NT_SUCCESS(s))return s;
     if(c->surface==surface&&c->allocation->binding==r->linear)return STATUS_SUCCESS;
     s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=retire_from365(c,10,0);
@@ -259,7 +259,7 @@ static int32_t prepare(void *p,uint64_t surface,uint32_t colour,uint64_t *job)
     GeoFactoryCheckpoint(15,STATUS_SUCCESS,1,(ULONG)surface,colour,0);
     s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
     if(!surface||c->next_id==UINT64_MAX)return leave(c,STATUS_DEVICE_BUSY);
-    s=select_target_locked(c,surface);if(!NT_SUCCESS(s))return leave(c,s);
+    s=select_target_locked(c,surface,FALSE);if(!NT_SUCCESS(s))return leave(c,s);
     s=wait_boundary_locked(c);native_progress(c,34,s);if(!NT_SUCCESS(s))return leave(c,s);
     /* A completed Copy leaves a live TQ context and both resident MDLs.
      * Fast clear uses its cold-installed RT EOT, with colour in CCB data.
@@ -302,10 +302,11 @@ static int32_t prepare_copy_region(void *p,uint64_t source,uint64_t destination,
  src=resource(c,source);dst=resource(c,destination);
  struct geo_copy_region full={0};
  if(!region&&src&&dst&&src->desc.width==dst->desc.width&&src->desc.height==dst->desc.height){full.width=src->desc.width;full.height=src->desc.height;region=&full;}
- if(!src||!dst||src==dst||!geo_usage_renderable(src->desc.usage)||
-    dst->desc.usage!=GEO_USAGE_STAGING||!dst->linear||c->next_id==UINT64_MAX||
+ if(!src||!dst||src==dst||(!geo_usage_renderable(src->desc.usage)&&src->desc.usage!=GEO_USAGE_STAGING)||
+    (!geo_usage_renderable(dst->desc.usage)&&dst->desc.usage!=GEO_USAGE_STAGING)||
+    src->desc.format!=dst->desc.format||!src->linear||!dst->linear||c->next_id==UINT64_MAX||
     !geo_copy_region_valid(region,src->desc.width,src->desc.height,dst->desc.width,dst->desc.height))return leave(c,STATUS_INVALID_PARAMETER);
- s=select_target_locked(c,source);if(!NT_SUCCESS(s))return leave(c,s);
+ s=select_target_locked(c,source,TRUE);if(!NT_SUCCESS(s))return leave(c,s);
  s=wait_boundary_locked(c);if(!NT_SUCCESS(s))return leave(c,s);
  /* A different copy destination requires a real completed boundary and
   * hardware-off retirement. Keep allocation MDLs resident; never rewrite a
@@ -513,7 +514,7 @@ static int32_t prepare_draw_impl(void *p,const struct geo_draw_request *request,
     s=combined?geo_draw_validate_capture_v5(combined,blob,bytes):general?geo_draw_validate_capture_v4(general,blob,bytes):sampled?geo_draw_validate_capture_v3(sampled,blob,bytes):linked?geo_draw_validate_capture_v2(linked,blob,bytes):geo_draw_validate_capture(request,blob,bytes);if(!NT_SUCCESS(s))return s;
     ULONG trace_cookie=GeoDrawTraceCookie(request,blob,bytes);
     s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
-    s=select_target_locked(c,request->target);if(!NT_SUCCESS(s))return leave(c,s);
+    s=select_target_locked(c,request->target,FALSE);if(!NT_SUCCESS(s))return leave(c,s);
     vertex=resource(c,request->vertex);
     if(request->target!=c->surface || !vertex || !vertex->linear || vertex->desc.usage!=GEO_USAGE_VERTEX_BUFFER ||
        !c->allocation->binding || c->next_id==UINT64_MAX ||

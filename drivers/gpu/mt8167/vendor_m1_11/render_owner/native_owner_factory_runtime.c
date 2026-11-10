@@ -164,7 +164,8 @@ NTSTATUS e_native_prepare_copy_destination_locked(struct e_native_owner *c,uint6
      * target is rejected by prepare_copy rather than live-remapping a PTE. */
     if(!c->copy_storage){
         for(struct e_native_resource *r=c->resources;r;r=r->next)
-            if(r->linear && r->desc.usage==GEO_USAGE_STAGING && (!destination||r->id==destination) &&
+            if(r->linear && r->linear!=a->binding &&
+               (r->desc.usage==GEO_USAGE_STAGING||geo_usage_renderable(r->desc.usage)) && (!destination||r->id==destination) &&
                geo_render_layout_valid(r->desc.width,r->desc.height,r->desc.pitch)){
                 status=a04_native_copy_storage_create(&c->copy_storage,a->native,r->linear,&r->desc,a04_copy_usc_asset,sizeof(a04_copy_usc_asset));
                 if(!NT_SUCCESS(status))return status;
