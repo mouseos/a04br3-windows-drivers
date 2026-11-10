@@ -30,3 +30,47 @@ PnP登録、サンプルの更新・失効と通知は試験版へ接続済み�
 BQ24160との共有所有者の試作は `../bq24160/README.md` を参照。
 `A04_BQ24160_EXPERIMENTAL=1` ビルドは引継ぎの安全ゲートにより
 D0開始を拒否する。既定の燃料計単独構成はBQへアクセスしない。
+
+## 初回起動失敗checkpoint（1.7 source64cからの独立変更）
+
+この変更はCode10の原因修正ではなく、次の一括試験用の観測である。
+型番・INF・driver version・I2C転送/reset/retry/成功判定は変更しない。
+ビルド・署名・実機確認は別途必要。現時点では未実施。
+
+DriverEntryで1回だけload epoch、最初の負NTSTATUSで1回だけ失敗recordを
+サービスの `Parameters\NativeCheckpoint` にREG_BINARYで保存する。
+サービスpathはDriverEntryのRegistryPathを使う。通常のサービス名は
+`LC709203F`。正常pollや成功callbackでは書かない。
+記録書込み失敗は既DDIの戻り値を変えず、DbgPrintExで失敗だけ通知する。
+registry flushは行わないため急停止での永続化保証はない。
+最初の失敗claim後は書込み失敗時も再試行しない。
+
+- `LoadEpochV1`: 16B、LE ULONG4個 = magic `0x3146474c`、version1、
+  load FILETIME low/high。ロードを跨いだ古い失敗値を消す代わりに区別する。
+- `FirstFailureV1`: 96B、LE ULONG24個。index0..2=magic/version/96、
+  3=callback、4=NTSTATUS、5..6=load FILETIME、7..8=failure FILETIME、
+  9=gauge faulted、10=adapter faulted、11..14=fault reason/command/status/fifo、
+  15=admission valid bitmask、16..20=START24/TIMING20/DMA48/IO_CONFIG40/HS60、
+  21=previous WDF power state（D0Entry時）、22..23=reserved0。
+- callback: 1 DriverEntry、2 DeviceAdd、3 PrepareHardware、4 D0Entry、
+  5 SelfManagedIoInit（BatteryClassInitializeDevice）。ReleaseHardware/D0Exitは
+  現sourceでは常に成功のため対象外。通常IOCTLの拒否は起動失敗として記録しない。
+- fault値は既contextをbus lock下でコピーする。admission値は既判定のread結果を
+  保存するだけで、short-circuitで未読のbitは0。追加MMIO/転送/待機はない。
+  callbackと独立した既fault値を、そのcallbackの原因と自動的に断定しない。
+
+### 既collectorと同一loadで必要な最少読取り
+
+既fresh collectorのSYSTEM/SYSTEM.LOG1/SYSTEM.LOG2回収で原値は保存される。
+追加の端末collectorや別hiveloadは不要。次のsingle-load native inventory側で
+`ControlSet001\Services\LC709203F\Parameters\NativeCheckpoint` の固定2値だけを
+read-onlyで読む（現readerのOpenPath whitelistにはこのexact pathの追加が必要）。
+kind=Binary、長さ16/96Bを厳密に検証してraw hexを保持する。全Parameters再帰は不要。
+既selected INF/version/SYS hash、Select.Current、boot/driver epochと同じreceiptへ結合する。
+本branchの古いinventory入口を現在のGPU試験へ置換しない。
+
+`tools/recovery/decode-lc709203f-first-failure.py --epoch-hex <16Bhex>
+--failure-hex <96Bhex>` で保存値をdecodeできる。failure値欠落時は引数を省略する。
+load epoch不一致はstale、欠落はunknownであり成功ではない。
+FILETIMEは時計補正され得るため、数値の前後関係だけで因果・bootを断定しない。
+SYS/hashとload epochを結合し、最初の失敗callbackとstatusから次の修正を決める。

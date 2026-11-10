@@ -144,6 +144,7 @@ typedef struct {
     struct a04_battery_class battery;
     volatile LONG online;
     BOOLEAN faulted;
+    ULONG admission_valid, admission[5], previous_power_state;
 #if A04_LC709203F_TRACE
     volatile ULONG *uart;
 #endif
@@ -158,6 +159,90 @@ EVT_WDF_DEVICE_SELF_MANAGED_IO_INIT GaugeClassInit;
 EVT_WDF_DEVICE_SELF_MANAGED_IO_CLEANUP GaugeClassCleanup;
 EVT_WDF_TIMER GaugePoll;
 EVT_WDFDEVICE_WDM_IRP_PREPROCESS GaugeIrp;
+
+/* Same service Parameters checkpoint convention as the other native drivers.
+ * Best effort, PASSIVE_LEVEL only. Registry failure never replaces DDI status.
+ * One atomic first-failure claim per driver load; no periodic writes or flush. */
+static WCHAR failure_service_path[512];
+static UNICODE_STRING failure_service;
+static LARGE_INTEGER failure_load_epoch;
+static volatile LONG failure_claimed;
+
+static NTSTATUS failure_value(PCWSTR value_name, const ULONG *data, ULONG bytes)
+{
+    OBJECT_ATTRIBUTES oa;
+    UNICODE_STRING name;
+    HANDLE service=NULL, parameters=NULL, checkpoint=NULL;
+    NTSTATUS status;
+    if (!failure_service.Length || KeGetCurrentIrql()!=PASSIVE_LEVEL)
+        return STATUS_INVALID_DEVICE_STATE;
+    InitializeObjectAttributes(&oa,&failure_service,OBJ_CASE_INSENSITIVE|OBJ_KERNEL_HANDLE,NULL,NULL);
+    status=ZwOpenKey(&service,KEY_CREATE_SUB_KEY,&oa);
+    if (!NT_SUCCESS(status)) return status;
+    RtlInitUnicodeString(&name,L"Parameters");
+    InitializeObjectAttributes(&oa,&name,OBJ_CASE_INSENSITIVE|OBJ_KERNEL_HANDLE,service,NULL);
+    status=ZwCreateKey(&parameters,KEY_CREATE_SUB_KEY,&oa,0,NULL,REG_OPTION_NON_VOLATILE,NULL);
+    if (NT_SUCCESS(status)) {
+        RtlInitUnicodeString(&name,L"NativeCheckpoint");
+        InitializeObjectAttributes(&oa,&name,OBJ_CASE_INSENSITIVE|OBJ_KERNEL_HANDLE,parameters,NULL);
+        status=ZwCreateKey(&checkpoint,KEY_SET_VALUE,&oa,0,NULL,REG_OPTION_NON_VOLATILE,NULL);
+        if (NT_SUCCESS(status)) {
+            RtlInitUnicodeString(&name,value_name);
+            status=ZwSetValueKey(checkpoint,&name,0,REG_BINARY,(PVOID)data,bytes);
+            ZwClose(checkpoint);
+        }
+        ZwClose(parameters);
+    }
+    ZwClose(service);
+    return status;
+}
+static void failure_begin(PUNICODE_STRING registry)
+{
+    ULONG epoch[4];
+    NTSTATUS status;
+    KeQuerySystemTime(&failure_load_epoch);
+    if (!registry || !registry->Buffer || (registry->Length & 1u) ||
+        registry->Length>sizeof(failure_service_path)-sizeof(WCHAR)) return;
+    RtlCopyMemory(failure_service_path,registry->Buffer,registry->Length);
+    failure_service_path[registry->Length/sizeof(WCHAR)]=0;
+    RtlInitUnicodeString(&failure_service,failure_service_path);
+    epoch[0]=0x3146474cu; epoch[1]=1;
+    epoch[2]=failure_load_epoch.LowPart; epoch[3]=(ULONG)failure_load_epoch.HighPart;
+    status=failure_value(L"LoadEpochV1",epoch,sizeof(epoch));
+    if (!NT_SUCCESS(status))
+        DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,"LC709203F checkpoint epoch write failed %08lx\n",(ULONG)status);
+}
+/* Stages: 1 DriverEntry, 2 DeviceAdd, 3 PrepareHardware, 4 D0Entry,
+ * 5 SelfManagedIoInit. Record is 24 little-endian ULONGs (96 bytes). */
+static NTSTATUS failure_result(ULONG stage, NTSTATUS result, GAUGE_CONTEXT *c)
+{
+    ULONG record[24]={0};
+    LARGE_INTEGER now;
+    NTSTATUS stored;
+    unsigned i;
+    if (NT_SUCCESS(result) || InterlockedCompareExchange(&failure_claimed,1,0)!=0) return result;
+    KeQuerySystemTime(&now);
+    record[0]=0x3146474cu;record[1]=1;record[2]=sizeof(record);
+    record[3]=stage;record[4]=(ULONG)result;
+    record[5]=failure_load_epoch.LowPart;record[6]=(ULONG)failure_load_epoch.HighPart;
+    record[7]=now.LowPart;record[8]=(ULONG)now.HighPart;
+    if (c) {
+        WdfWaitLockAcquire(c->bus_lock,NULL);
+        record[9]=c->faulted;record[10]=(ULONG)c->adapter.faulted;
+        record[11]=c->adapter.fault_reason;record[12]=c->adapter.fault_command;
+        record[13]=c->adapter.fault_status;record[14]=c->adapter.fault_fifo;
+        record[15]=c->admission_valid;
+        for(i=0;i<5;++i) record[16+i]=c->admission[i];
+        record[21]=c->previous_power_state;
+        WdfWaitLockRelease(c->bus_lock);
+    }
+    stored=failure_value(L"FirstFailureV1",record,sizeof(record));
+    if (!NT_SUCCESS(stored))
+        DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,"LC709203F checkpoint failure write failed %08lx\n",(ULONG)stored);
+    return result;
+}
+/* Capture only reads already performed by the short-circuit admission check. */
+static USHORT admission_read(GAUGE_CONTEXT *c, unsigned index, ULONG offset);
 
 #if A04_LC709203F_TRACE
 static void trace(GAUGE_CONTEXT *c, const char *message)
@@ -575,7 +660,7 @@ static NTSTATUS GaugeTemperature(PVOID context, PULONG kelvin10)
 }
 #endif
 
-NTSTATUS GaugePrepare(WDFDEVICE device, WDFCMRESLIST raw, WDFCMRESLIST translated)
+static NTSTATUS GaugePrepareImpl(WDFDEVICE device, WDFCMRESLIST raw, WDFCMRESLIST translated)
 {
     GAUGE_CONTEXT *c = GaugeContext(device);
     ULONG i, found = 0;
@@ -621,7 +706,7 @@ NTSTATUS GaugeRelease(WDFDEVICE device, WDFCMRESLIST translated)
 #endif
     return STATUS_SUCCESS;
 }
-NTSTATUS GaugeD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
+static NTSTATUS GaugeD0EntryImpl(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
 {
     GAUGE_CONTEXT *c = GaugeContext(device);
     UNREFERENCED_PARAMETER(previous);
@@ -673,8 +758,9 @@ NTSTATUS GaugeD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
     c->adapter.io = &c->io; c->adapter.monotonic_ns = now_ns; c->adapter.faulted = 0;
     c->bus.context = &c->adapter; c->bus.read_word_pec = a04_gauge_mt8167_read;
     /* Only accept pre-initialized, idle polling-mode controller state. */
-    if ((rd(c, 0x24) & 1u) || !rd(c, 0x20) || (rd(c, 0x48) & 1u) ||
-        rd(c, 0x40) != 3u || rd(c, 0x60) != 0u) {
+    if ((admission_read(c,0,0x24) & 1u) || !admission_read(c,1,0x20) ||
+        (admission_read(c,2,0x48) & 1u) || admission_read(c,3,0x40) != 3u ||
+        admission_read(c,4,0x60) != 0u) {
 #if A04_BROKER_OWNER_EXPERIMENTAL
         c->charger.stopped=1;c->faulted=TRUE;
 #endif
@@ -864,7 +950,7 @@ VOID GaugePoll(WDFTIMER timer)
     if (c->online) WdfTimerStart(timer, WDF_REL_TIMEOUT_IN_MS(30000));
 #endif
 }
-NTSTATUS GaugeClassInit(WDFDEVICE device)
+static NTSTATUS GaugeClassInitImpl(WDFDEVICE device)
 {
     GAUGE_CONTEXT *c = GaugeContext(device);
     BATTERY_MINIPORT_INFO_V1_1 info;
@@ -907,7 +993,7 @@ NTSTATUS GaugeIrp(WDFDEVICE device, PIRP irp)
     }
     return status;
 }
-NTSTATUS GaugeAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
+static NTSTATUS GaugeAddImpl(WDFDRIVER driver, PWDFDEVICE_INIT init)
 {
     WDF_PNPPOWER_EVENT_CALLBACKS pnp;
     WDF_OBJECT_ATTRIBUTES attributes, child;
@@ -964,6 +1050,39 @@ NTSTATUS GaugeAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
 NTSTATUS DriverEntry(PDRIVER_OBJECT driver, PUNICODE_STRING registry)
 {
     WDF_DRIVER_CONFIG config;
+    NTSTATUS status;
+    failure_begin(registry);
     WDF_DRIVER_CONFIG_INIT(&config, GaugeAdd);
-    return WdfDriverCreate(driver, registry, WDF_NO_OBJECT_ATTRIBUTES, &config, WDF_NO_HANDLE);
+    status=WdfDriverCreate(driver, registry, WDF_NO_OBJECT_ATTRIBUTES, &config, WDF_NO_HANDLE);
+    return failure_result(1,status,NULL);
+}
+
+static USHORT admission_read(GAUGE_CONTEXT *c, unsigned index, ULONG offset)
+{
+    USHORT value=rd(c,offset);
+    c->admission[index]=value;c->admission_valid|=1u<<index;
+    return value;
+}
+NTSTATUS GaugeAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
+{
+    return failure_result(2,GaugeAddImpl(driver,init),NULL);
+}
+NTSTATUS GaugePrepare(WDFDEVICE device, WDFCMRESLIST raw, WDFCMRESLIST translated)
+{
+    NTSTATUS status=GaugePrepareImpl(device,raw,translated);
+    return failure_result(3,status,GaugeContext(device));
+}
+NTSTATUS GaugeD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
+{
+    GAUGE_CONTEXT *c=GaugeContext(device);
+    NTSTATUS status;
+    c->admission_valid=0;RtlZeroMemory(c->admission,sizeof(c->admission));
+    c->previous_power_state=(ULONG)previous;
+    status=GaugeD0EntryImpl(device,previous);
+    return failure_result(4,status,c);
+}
+NTSTATUS GaugeClassInit(WDFDEVICE device)
+{
+    NTSTATUS status=GaugeClassInitImpl(device);
+    return failure_result(5,status,GaugeContext(device));
 }
