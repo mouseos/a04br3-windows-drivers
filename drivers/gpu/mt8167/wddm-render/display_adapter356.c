@@ -4,6 +4,7 @@
 #include "../wddm-display/unified_display.h"
 #include "../display-transport/interface356.h"
 #include "../display-transport/barrier356.h"
+#include "../start_gap359.h"
 #define TAG '6PvG'
 struct display_map356 {struct display_map356 *next;struct geo_allocation *allocation;void *cookie;};
 struct display_adapter356 {
@@ -15,23 +16,25 @@ static struct display_adapter356 *display(struct geo_kmd_adapter *a){return a?a-
 void *GeoUnifiedDisplayContext(HANDLE a){struct display_adapter356 *d=display(a);return d?d->bdd:NULL;}
 static NTSTATUS query_completed(PDEVICE_OBJECT device,PIRP irp,void *event){UNREFERENCED_PARAMETER(device);UNREFERENCED_PARAMETER(irp);KeSetEvent(event,IO_NO_INCREMENT,FALSE);return STATUS_MORE_PROCESSING_REQUIRED;}
 static NTSTATUS find_transport(struct display_adapter356 *d){
- PWSTR links=NULL;PDEVICE_OBJECT target=NULL;PIRP irp;PIO_STACK_LOCATION sp;KEVENT event;NTSTATUS status;
- status=IoGetDeviceInterfaces(&A04DisplayTransport356Guid,NULL,0,&links);if(!NT_SUCCESS(status))return status;
- if(!links||!links[0]){if(links)ExFreePool(links);return STATUS_DEVICE_NOT_READY;}
+ PWSTR links=NULL;PDEVICE_OBJECT target=NULL;PIRP irp;PIO_STACK_LOCATION sp;KEVENT event;NTSTATUS status;struct geo_gap359_record gap;Geo359Begin(&gap,4);
+ Geo359Enter(&gap,0);status=IoGetDeviceInterfaces(&A04DisplayTransport356Guid,NULL,0,&links);Geo359Result(&gap,0,status);if(!NT_SUCCESS(status))return Geo359End(&gap,status);
+ gap.value[0]=links&&links[0];if(!links||!links[0]){if(links)ExFreePool(links);return Geo359End(&gap,STATUS_DEVICE_NOT_READY);}
  /* Multiple owners would make the standard display route ambiguous. */
- if(links[wcslen(links)+1]){ExFreePool(links);return STATUS_OBJECT_NAME_COLLISION;}
- UNICODE_STRING name;RtlInitUnicodeString(&name,links);status=IoGetDeviceObjectPointer(&name,FILE_READ_DATA,&d->provider_file,&target);ExFreePool(links);if(!NT_SUCCESS(status))return status;
- irp=IoAllocateIrp(target->StackSize,FALSE);if(!irp)return STATUS_INSUFFICIENT_RESOURCES;
- KeInitializeEvent(&event,NotificationEvent,FALSE);irp->RequestorMode=KernelMode;irp->IoStatus.Status=STATUS_NOT_SUPPORTED;
+ gap.value[1]=!!links[wcslen(links)+1];if(links[wcslen(links)+1]){ExFreePool(links);return Geo359End(&gap,STATUS_OBJECT_NAME_COLLISION);}
+ Geo359Result(&gap,1,STATUS_SUCCESS);UNICODE_STRING name;RtlInitUnicodeString(&name,links);Geo359Enter(&gap,2);status=IoGetDeviceObjectPointer(&name,FILE_READ_DATA,&d->provider_file,&target);ExFreePool(links);Geo359Result(&gap,2,status);if(!NT_SUCCESS(status))return Geo359End(&gap,status);
+ Geo359Enter(&gap,3);irp=IoAllocateIrp(target->StackSize,FALSE);if(!irp)return Geo359End(&gap,STATUS_INSUFFICIENT_RESOURCES);
+ Geo359Result(&gap,3,STATUS_SUCCESS);KeInitializeEvent(&event,NotificationEvent,FALSE);irp->RequestorMode=KernelMode;irp->IoStatus.Status=STATUS_NOT_SUPPORTED;
  sp=IoGetNextIrpStackLocation(irp);sp->MajorFunction=IRP_MJ_PNP;sp->MinorFunction=IRP_MN_QUERY_INTERFACE;
  sp->Parameters.QueryInterface.InterfaceType=&A04DisplayTransport356Guid;sp->Parameters.QueryInterface.Size=sizeof(d->transport);sp->Parameters.QueryInterface.Version=1;
  sp->Parameters.QueryInterface.Interface=(PINTERFACE)&d->transport;sp->Parameters.QueryInterface.InterfaceSpecificData=NULL;
- IoSetCompletionRoutine(irp,query_completed,&event,TRUE,TRUE,TRUE);status=IoCallDriver(target,irp);if(status==STATUS_PENDING)KeWaitForSingleObject(&event,Executive,KernelMode,FALSE,NULL);
- status=irp->IoStatus.Status;IoFreeIrp(irp);
- if(!NT_SUCCESS(status))return status;
- if(d->transport.Header.Size!=sizeof(d->transport)||d->transport.Header.Version!=1||!d->transport.Header.Context||!d->transport.Header.InterfaceDereference||
-    !d->transport.Map||!d->transport.Unmap||!d->transport.Select||!d->transport.Restore||!d->transport.Subscribe||!d->transport.Unsubscribe||!d->transport.BrightnessResources||!d->transport.Snapshot||!d->transport.Raster||!d->transport.EmergencyRestore)return STATUS_NOINTERFACE;
- return STATUS_SUCCESS;
+ IoSetCompletionRoutine(irp,query_completed,&event,TRUE,TRUE,TRUE);Geo359Enter(&gap,4);status=IoCallDriver(target,irp);if(status==STATUS_PENDING)KeWaitForSingleObject(&event,Executive,KernelMode,FALSE,NULL);
+ status=irp->IoStatus.Status;IoFreeIrp(irp);Geo359Result(&gap,4,status);
+ if(!NT_SUCCESS(status))return Geo359End(&gap,status);
+ gap.value[2]=d->transport.Header.Size;gap.value[3]=d->transport.Header.Version;
+ gap.value[4]=(!!d->transport.Header.Context)|((!!d->transport.Header.InterfaceDereference)<<1)|((!!d->transport.Map)<<2)|((!!d->transport.Unmap)<<3)|((!!d->transport.Select)<<4)|((!!d->transport.Restore)<<5)|((!!d->transport.Subscribe)<<6)|((!!d->transport.Unsubscribe)<<7)|((!!d->transport.BrightnessResources)<<8)|((!!d->transport.Snapshot)<<9)|((!!d->transport.Raster)<<10)|((!!d->transport.EmergencyRestore)<<11);
+ Geo359Enter(&gap,5);if(d->transport.Header.Size!=sizeof(d->transport)||d->transport.Header.Version!=1||!d->transport.Header.Context||!d->transport.Header.InterfaceDereference||
+    !d->transport.Map||!d->transport.Unmap||!d->transport.Select||!d->transport.Restore||!d->transport.Subscribe||!d->transport.Unsubscribe||!d->transport.BrightnessResources||!d->transport.Snapshot||!d->transport.Raster||!d->transport.EmergencyRestore)return Geo359End(&gap,STATUS_NOINTERFACE);
+ Geo359Result(&gap,5,STATUS_SUCCESS);return Geo359End(&gap,STATUS_SUCCESS);
 }
 static void vsync(void *context,ULONGLONG serial){
  struct display_adapter356 *d=context;DXGKARGCB_NOTIFY_INTERRUPT_DATA n;UNREFERENCED_PARAMETER(serial);
@@ -44,21 +47,24 @@ static void vsync(void *context,ULONGLONG serial){
  if(!InterlockedCompareExchange(&d->adapter->dpc_pending,1,0))d->dxgk.DxgkCbQueueDpc(d->dxgk.DeviceHandle);
 }
 NTSTATUS GeoDisplay356Start(struct geo_kmd_adapter *a,PDEVICE_OBJECT pdo,DXGK_START_INFO *start,DXGKRNL_INTERFACE *dxgk,ULONG *sources,ULONG *children){
- struct display_adapter356 *d;struct a04_display_transport_snapshot snap;DXGK_DISPLAY_INFORMATION info;NTSTATUS status;ULONG v=0,c=0;PCM_RESOURCE_LIST brightness=NULL;
- if(!a||a->display||!pdo||!start||!dxgk||!sources||!children||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
- *sources=*children=0;d=ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*d),TAG);if(!d)return STATUS_INSUFFICIENT_RESOURCES;
- RtlZeroMemory(d,sizeof(*d));d->adapter=a;d->dxgk=*dxgk;a->display=d; /* Retain partial ownership for a real failure cleanup. */
- status=find_transport(d);if(!NT_SUCCESS(status))return status;
- RtlZeroMemory(&snap,sizeof(snap));snap.size=sizeof(snap);status=d->transport.Snapshot(d->transport.Header.Context,&snap);
- if(!NT_SUCCESS(status)||!snap.ready||snap.width!=800||snap.height!=1280||snap.pitch!=3200||snap.format!=21)return STATUS_DEVICE_CONFIGURATION_ERROR;
- status=GeoDisplayCreate(pdo,&d->bdd);if(!NT_SUCCESS(status))return status;
- status=d->transport.BrightnessResources(d->transport.Header.Context,&brightness);if(status!=STATUS_SUCCESS)return status;
- status=GeoDisplaySetBrightnessResources(d->bdd,brightness);if(status!=STATUS_SUCCESS)return status;
- status=GeoDisplayStart(d->bdd,start,dxgk,&v,&c);if(!NT_SUCCESS(status))return status;
- d->started=1;status=GeoDisplayPostInfo(d->bdd,&info);
- if(!NT_SUCCESS(status)||v!=1||c!=1||info.Width!=800||info.Height!=1280||info.Pitch!=3200||(info.ColorFormat!=D3DDDIFMT_A8R8G8B8&&info.ColorFormat!=D3DDDIFMT_X8R8G8B8)||info.PhysicAddress.QuadPart!=(LONGLONG)snap.post_address)return STATUS_DEVICE_CONFIGURATION_ERROR;
- status=d->transport.Subscribe(d->transport.Header.Context,vsync,d);if(!NT_SUCCESS(status))return status;
- d->subscribed=1;*sources=v;*children=c;return STATUS_SUCCESS;
+ struct display_adapter356 *d;struct a04_display_transport_snapshot snap;DXGK_DISPLAY_INFORMATION info;NTSTATUS status;ULONG v=0,c=0;PCM_RESOURCE_LIST brightness=NULL;struct geo_gap359_record gap;Geo359Begin(&gap,2);
+ if(!a||a->display||!pdo||!start||!dxgk||!sources||!children||KeGetCurrentIrql()!=PASSIVE_LEVEL)return Geo359End(&gap,STATUS_INVALID_PARAMETER);
+ Geo359Result(&gap,0,STATUS_SUCCESS);*sources=*children=0;Geo359Enter(&gap,1);d=ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*d),TAG);if(!d)return Geo359End(&gap,STATUS_INSUFFICIENT_RESOURCES);
+ Geo359Result(&gap,1,STATUS_SUCCESS);RtlZeroMemory(d,sizeof(*d));d->adapter=a;d->dxgk=*dxgk;a->display=d; /* Retain partial ownership for a real failure cleanup. */
+ Geo359Enter(&gap,2);status=find_transport(d);Geo359Result(&gap,2,status);if(!NT_SUCCESS(status))return Geo359End(&gap,status);
+ RtlZeroMemory(&snap,sizeof(snap));snap.size=sizeof(snap);Geo359Enter(&gap,3);status=d->transport.Snapshot(d->transport.Header.Context,&snap);Geo359Result(&gap,3,status);
+ gap.value[0]=snap.ready;gap.value[1]=snap.width;gap.value[2]=snap.height;gap.value[3]=snap.pitch;gap.value[4]=snap.format;gap.value[5]=(ULONG)snap.post_address;gap.value[6]=(ULONG)(snap.post_address>>32);
+ Geo359Enter(&gap,4);if(!NT_SUCCESS(status)||!snap.ready||snap.width!=800||snap.height!=1280||snap.pitch!=3200||snap.format!=21)return Geo359End(&gap,STATUS_DEVICE_CONFIGURATION_ERROR);
+ Geo359Result(&gap,4,STATUS_SUCCESS);Geo359Enter(&gap,5);status=GeoDisplayCreate(pdo,&d->bdd);Geo359Result(&gap,5,status);if(!NT_SUCCESS(status))return Geo359End(&gap,status);
+ Geo359Enter(&gap,6);status=d->transport.BrightnessResources(d->transport.Header.Context,&brightness);Geo359Result(&gap,6,status);if(status!=STATUS_SUCCESS)return Geo359End(&gap,status);
+ Geo359Enter(&gap,7);status=GeoDisplaySetBrightnessResources(d->bdd,brightness);Geo359Result(&gap,7,status);if(status!=STATUS_SUCCESS)return Geo359End(&gap,status);
+ Geo359Enter(&gap,8);status=GeoDisplayStart(d->bdd,start,dxgk,&v,&c);Geo359Result(&gap,8,status);if(!NT_SUCCESS(status))return Geo359End(&gap,status);
+ d->started=1;Geo359Enter(&gap,9);status=GeoDisplayPostInfo(d->bdd,&info);Geo359Result(&gap,9,status);
+ gap.value[7]=v;gap.value[8]=c;
+ if(NT_SUCCESS(status)){gap.value[9]=info.Width;gap.value[10]=info.Height;gap.value[11]=info.Pitch;gap.value[12]=(ULONG)info.ColorFormat;gap.value[13]=info.PhysicAddress.LowPart;gap.value[14]=(ULONG)info.PhysicAddress.HighPart;gap.value[15]=info.TargetId;gap.value[16]=info.AcpiId;}
+ Geo359Enter(&gap,10);if(!NT_SUCCESS(status)||v!=1||c!=1||info.Width!=800||info.Height!=1280||info.Pitch!=3200||(info.ColorFormat!=D3DDDIFMT_A8R8G8B8&&info.ColorFormat!=D3DDDIFMT_X8R8G8B8)||info.PhysicAddress.QuadPart!=(LONGLONG)snap.post_address)return Geo359End(&gap,STATUS_DEVICE_CONFIGURATION_ERROR);
+ Geo359Result(&gap,10,STATUS_SUCCESS);Geo359Enter(&gap,11);status=d->transport.Subscribe(d->transport.Header.Context,vsync,d);Geo359Result(&gap,11,status);if(!NT_SUCCESS(status))return Geo359End(&gap,status);
+ d->subscribed=1;*sources=v;*children=c;return Geo359End(&gap,STATUS_SUCCESS);
 }
 NTSTATUS GeoDisplay356PrimaryLayout(struct geo_kmd_adapter *a,const D3DKMDT_SHAREDPRIMARYSURFACEDATA *p,struct geo_allocation_data_v2 *out){
  struct display_adapter356 *d=display(a);struct geo_post_primary_layout_v1 layout;NTSTATUS status;
