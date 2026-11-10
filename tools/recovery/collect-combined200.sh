@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root=$(pwd)
+[ "$#" -eq 3 ] || { [ "$#" -eq 4 ] && [ "$4" = --gpu-runtime-assets ]; }
+gpu_runtime_assets=0
+if [ "${4:-}" = --gpu-runtime-assets ]; then gpu_runtime_assets=1; fi
 source "$root/port/gsi/logs/ios-feasibility/windows-rt-target-tools.sh"
 mapfile -t cfg < <(python3 - "$1" "$2" <<'CONFIG'
 from pathlib import Path
@@ -10,6 +13,7 @@ c=json.loads(Path(sys.argv[1]).read_text());s=json.loads(Path(sys.argv[2]).read_
 known={
  'GPU368_RUN201_MAIN_SEAL_V1':('combined-run201','MT8167CombinedFollowup200'),
  'GPU368_RUN203_MAIN_SEAL_V1':('combined-run203','MT8167CombinedFollowup202'),
+ 'GPU375_RUN222_MAIN_SEAL_V1':('combined-run222','MT8167CombinedFollowup221'),
  'GPU374_RUN219_MAIN_SEAL_V1':('combined-run219','MT8167CombinedFollowup218'),
  'GPU373_RUN216_MAIN_SEAL_V1':('combined-run216','MT8167CombinedFollowup215'),
  'GPU371_RUN213_MAIN_SEAL_V1':('combined-run213','MT8167CombinedFollowup212'),
@@ -25,10 +29,11 @@ else:
  assert s['status'] in ['diagnostic-terminal-await-disk-verification','install-failed-await-disk-verification','runtime-exception-await-collection','unexpected-second-runtime-restart','runtime-restarted-requires-install-disk-proof','diagnostic-timeout-await-file-proof','install-timeout-await-file-proof']
 for k in ['service_name','data_directory','gpu_log_directory']:
  assert re.fullmatch(r'[A-Za-z0-9_-]{1,100}',c[k]);print(c[k])
+print('port/xnu/out/private-windows-rt-prebackup-run'+str(int(transaction[len('combined-run'):])+1)+'/manifest.json')
 CONFIG
 )
-[ "${#cfg[@]}" = 3 ]
-service_name=${cfg[0]}; data_directory=${cfg[1]}; gpu_log_directory=${cfg[2]}
+[ "${#cfg[@]}" = 4 ]
+service_name=${cfg[0]}; data_directory=${cfg[1]}; gpu_log_directory=${cfg[2]}; gpu_runtime_capture=${cfg[3]}
 out=$(realpath -m "$3")
 [[ "$out" == "$root/port/xnu/out/"* && ! -e "$out" ]]
 # Recoveryへの遷移/リセットはmain担当。collectorは既Recoveryのread-only回収だけ。
@@ -88,6 +93,9 @@ here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 present_helper="$here/collect-present356.py"
 [ "$(sha256sum "$present_helper" | cut -d' ' -f1)" = '08ee8ee84428356f2b9c954e8edf1f362a50445ab771afb2b5fb107df2832734' ]
 python3 -B "$present_helper" --serial "$rt_target_serial" --out "$out/present356" > "$out/present356-collection.log" 2>&1 || printf '%s\n' 'PRESENT_COLLECTION_NEGATIVE_PRESERVED' >> "$out/present356-collection.log"
+if [ "$gpu_runtime_assets" = 1 ]; then
+ python3 -B "$here/collect-gpu-runtime-assets.py" --workspace "$root" --serial "$rt_target_serial" --capture-manifest "$root/$gpu_runtime_capture" --out "$out" > "$out/gpu-runtime-assets.log" 2>&1 || printf '%s\n' 'GPU_RUNTIME_ASSETS_NEGATIVE_PRESERVED' >> "$out/gpu-runtime-assets.log"
+fi
 adb shell umount /tmp/rt125-diag
 trap - EXIT
 adb shell rmdir /tmp/rt125-diag
