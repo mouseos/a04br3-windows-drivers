@@ -160,7 +160,7 @@ void a04_cp_connection_end(struct a04_connection_checkpoint *c,ULONG kind,ULONG 
 }
 void a04_cp_connection_emit(struct a04_connection_checkpoint *c,ULONG stage,ULONG phase,ULONG kind,ULONG raw,ULONG detail)
 {
- if(KeGetCurrentIrql()!=PASSIVE_LEVEL||!c||!c->cp.record||stage<100||stage>127)return;
+ if(KeGetCurrentIrql()!=PASSIVE_LEVEL||!c||!c->cp.record||stage<A04_CT_CONTEXT||stage>A04_CT_RESET_BOUNDARY)return;
  /* RX/data traffic cannot turn logging into a per-packet registry writer.
   * OID failures and control boundaries always retain the latest outcome. */
  if(stage==A04_CT_RX_DECODE||stage==A04_CT_EAPOL_RX||stage==A04_CT_EAPOL_TX||stage==A04_CT_TX_DONE){

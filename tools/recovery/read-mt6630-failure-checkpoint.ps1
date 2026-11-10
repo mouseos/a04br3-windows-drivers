@@ -44,7 +44,7 @@ function Validate-Record([byte[]]$b,[uint32]$channel){
  $gen=[BitConverter]::ToUInt64($b,16);$count=[BitConverter]::ToUInt32($b,48)
  if(!$gen -or $count -gt 64 -or [BitConverter]::ToUInt32($b,64) -gt 10 -or [BitConverter]::ToUInt32($b,76) -ne 0){throw 'Checkpoint bounds mismatch'}
  foreach($offset in @(52,56,68,80)){if([BitConverter]::ToUInt32($b,$offset) -gt 1){throw 'Checkpoint boolean mismatch'}}
- $stages=@(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,59,65,66,67,68,69,80,81,82,83,84,85,86,87,88,89,90,91,92,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127)
+ $stages=@(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,59,65,66,67,68,69,80,81,82,83,84,85,86,87,88,89,90,91,92,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128)
  for($i=0;$i -lt $count;$i++){
   $off=88+24*$i;$stage=[BitConverter]::ToUInt32($b,$off);$phase=[BitConverter]::ToUInt32($b,$off+4);$kind=[BitConverter]::ToUInt32($b,$off+8);$observed=[BitConverter]::ToUInt32($b,$off+12)
   if($stage -notin $stages -or $phase -notin @(1,2,3) -or $kind -gt 4 -or $observed -gt 1 -or ($phase -eq 1 -and $observed)){throw 'Checkpoint event schema mismatch'}

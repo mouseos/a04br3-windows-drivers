@@ -35,7 +35,13 @@ enum {A04_CT_CONTEXT=100,A04_CT_OID=101,A04_CT_PRIOR_REJECTION=102,A04_CT_GATE=1
  A04_CT_ASSOC_RX=112,A04_CT_STA=113,A04_CT_WAIT=114,A04_CT_OID_COMPLETE=115,
  A04_CT_ASSOC_COMPLETE=116,A04_CT_CONNECT_COMPLETE=117,A04_CT_RX_DECODE=118,
  A04_CT_EARLY_RX=119,A04_CT_EAPOL_RX=120,A04_CT_EAPOL_TX=121,A04_CT_TX_DONE=122,
- A04_CT_KEY_OID=123,A04_CT_KEY_CID7=124,A04_CT_KEY_EVENT=125,A04_CT_PORT=126,A04_CT_END=127};
+ A04_CT_KEY_OID=123,A04_CT_KEY_CID7=124,A04_CT_KEY_EVENT=125,A04_CT_PORT=126,A04_CT_END=127,
+ A04_CT_RESET_BOUNDARY=128};
+/* RESET_BOUNDARY: BACKEND_INT raw is the actual signed return value.
+ * detail low8: 1=radio_reset, 2=default-MIB profile, 3=final idle.
+ * Bits8..12 are RESET-entry snapshots: defaultMIB, power, HCI-open,
+ * SCO-held, broker-compiled. Without bit12 HCI/SCO are unavailable.
+ * A missing phase is unobserved/skipped, never an implied success. */
 struct a04_cp_event {uint32_t stage,phase,kind,observed,raw,detail;};
 struct a04_cp_record {
  uint32_t magic,version,bytes,channel;

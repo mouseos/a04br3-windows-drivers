@@ -197,8 +197,13 @@ static NDIS_STATUS reset_request(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
  if(input.dot11ResetType!=dot11_reset_type_phy_and_mac)return NDIS_STATUS_NOT_SUPPORTED;
  for(unsigned i=0;i<6;i++)any|=input.dot11MacAddress[i];
  if(any&&!a04_wlan_equal(input.dot11MacAddress,a->radio.bridge->regulatory.mac,6))return NDIS_STATUS_NOT_SUPPORTED;
+ unsigned reset_flags=((!!input.bSetDefaultMIB)<<8)|((!!a->power)<<9);
+#if A04_WIFI_BT_BROKER
+ reset_flags|=((a->combo.file!=NULL)<<10)|((!!a->combo.sco_holds)<<11)|(1u<<12);
+#endif
  unsigned activity=a->ps_activity;a->ps_activity=1;
  e=a04_ndis_radio_reset(a);
+ a04_ndis_connection_trace(a,A04_CT_RESET_BOUNDARY,A04_CP_RESULT,A04_CP_BACKEND,e,reset_flags|1u);
  /* ExtSTA RESET clears privacy exemptions even when bSetDefaultMIB is
   * FALSE. The generic radio reset preserves policy for non-OID callers. */
  if(!e){a->os_security.exemption_count=0;RtlSecureZeroMemory(a->os_security.exemptions,sizeof(a->os_security.exemptions));}
@@ -206,10 +211,16 @@ static NDIS_STATUS reset_request(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
   NdisZeroMemory(&a->desired,sizeof(a->desired));a->desired_bssid_set=FALSE;
   a->excluded_count=a->multicast_count=a->assoc_ies_length=0;a->hidden_network=a->media_streaming=a->safe_mode=FALSE;
   RtlSecureZeroMemory(a->assoc_ies,sizeof(a->assoc_ies));NdisZeroMemory(a->assoc_bssid,sizeof(a->assoc_bssid));a->filter=0;a->lookahead=A04_RUNTIME_MTU;a->peer_loss.threshold_ms=A04_UNREACHABLE_DEFAULT_MS;
-  if(a04_ndis_power_profile(a,0,FALSE,0))e=-1;
+  int profile_result=a04_ndis_power_profile(a,0,FALSE,0);
+  a04_ndis_connection_trace(a,A04_CT_RESET_BOUNDARY,A04_CP_RESULT,A04_CP_BACKEND,profile_result,reset_flags|2u);
+  if(profile_result)e=-1;
   a04_os_security_clear(a);a->os_security.auth=DOT11_AUTH_ALGO_80211_OPEN;
  }
- a->ps_activity=activity;if(!e&&a04_ndis_idle_reconcile(a))e=-1;
+ a->ps_activity=activity;if(!e){
+  int idle_result=a04_ndis_idle_reconcile(a);
+  a04_ndis_connection_trace(a,A04_CT_RESET_BOUNDARY,A04_CP_RESULT,A04_CP_BACKEND,idle_result,reset_flags|3u);
+  if(idle_result)e=-1;
+ }
  output.uStatusType=DOT11_STATUS_RESET_CONFIRM;output.ndisStatus=e?NDIS_STATUS_FAILURE:NDIS_STATUS_SUCCESS;
  NdisMoveMemory(q->DATA.METHOD_INFORMATION.InformationBuffer,&output,sizeof(output));
  q->DATA.METHOD_INFORMATION.BytesRead=sizeof(input);q->DATA.METHOD_INFORMATION.BytesNeeded=0;
