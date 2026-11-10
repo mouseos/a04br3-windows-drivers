@@ -90,6 +90,15 @@ fullrecipefile.write_text(original_full.replace('-WithMdlTarget -WithOwnerAlloca
 run('reuse old internal-layout native objects in fullsource recipe',False)
 fullrecipefile.write_text(original_full);run('restored fresh shared layout recipe and old history',True)
 
+changed_orig=json.loads(json.dumps(origins))
+for row in changed_orig['files']:
+ if row['path'].endswith('/clear_protocol.h'):row['previous_origins'][0]['role']='RT/SRV prior history silently relabelled'
+origfile.write_text(json.dumps(changed_orig));run('alter RT/SRV preserved prior descriptor source',False)
+origfile.write_text(json.dumps(origins))
+changed=json.loads(json.dumps(native));changed['rt_srv_native_integration']['old_fixed_UMD_compatible']=True
+mapfile.write_text(json.dumps(changed));run('claim stale aa661 UMD compatible with new RT/SRV contract',False)
+mapfile.write_text(json.dumps(native))
+
 receipt={'schema':'ge8300-fullsource-map-regression-v1','production_source_modified':False,'driver_cache_used':False,'hardware_operations':False,'cases':records}
 (out/'receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
 print(json.dumps(receipt))
