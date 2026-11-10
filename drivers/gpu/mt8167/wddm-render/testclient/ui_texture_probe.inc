@@ -24,13 +24,13 @@ static HRESULT ui_texture_case(ID3D11Device *device,ID3D11DeviceContext *ctx,
  for(y=0;y<h;y++)for(x=0;x<w;x++)ui_store(ui_upload+16+y*pitch+x*4,ui_color(x,y),rgba);
  td.Width=w;td.Height=h;td.MipLevels=td.ArraySize=td.SampleDesc.Count=1;
  td.Format=rgba?DXGI_FORMAT_R8G8B8A8_UNORM:DXGI_FORMAT_B8G8R8A8_UNORM;
- td.Usage=D3D11_USAGE_IMMUTABLE;td.BindFlags=D3D11_BIND_SHADER_RESOURCE;
+ td.Usage=D3D11_USAGE_DEFAULT;td.BindFlags=D3D11_BIND_SHADER_RESOURCE;
  hr=ID3D11Device_CheckFormatSupport(device,td.Format,&support);line("UI_SUPPORT_HRESULT",hr);line("UI_SUPPORT",support);
  if(FAILED(hr))goto done;
  if((support&(D3D11_FORMAT_SUPPORT_TEXTURE2D|D3D11_FORMAT_SUPPORT_SHADER_SAMPLE))!=(D3D11_FORMAT_SUPPORT_TEXTURE2D|D3D11_FORMAT_SUPPORT_SHADER_SAMPLE)){hr=DXGI_ERROR_UNSUPPORTED;goto done;}
  init.pSysMem=ui_upload+16;init.SysMemPitch=pitch;
  GEO_BOUNDARY("UI_CREATE_BEFORE",40,0);
- hr=ID3D11Device_CreateTexture2D(device,&td,&init,&texture);GEO_BOUNDARY("UI_CREATE_AFTER",41,hr);if(FAILED(hr))goto done;
+ hr=ID3D11Device_CreateTexture2D(device,&td,NULL,&texture);GEO_BOUNDARY("UI_CREATE_AFTER",41,hr);if(FAILED(hr))goto done;
  /* Different live resources; never bind the sampled texture as RT or staging. */
  if(texture==target||texture==staging||target==staging){hr=E_UNEXPECTED;goto done;}
  line("UI_DISTINCT_RESOURCES",1);
@@ -50,11 +50,20 @@ static HRESULT ui_texture_case(ID3D11Device *device,ID3D11DeviceContext *ctx,
  ID3D11DeviceContext_IASetInputLayout(ctx,layout);ID3D11DeviceContext_IASetPrimitiveTopology(ctx,D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
  ID3D11DeviceContext_IASetVertexBuffers(ctx,0,1,&vb,&stride,&offset);ID3D11DeviceContext_VSSetShader(ctx,vs,NULL,0);
  ID3D11DeviceContext_PSSetShader(ctx,ps,NULL,0);ID3D11DeviceContext_PSSetShaderResources(ctx,0,1,&srv);ID3D11DeviceContext_PSSetSamplers(ctx,0,1,&sampler);
- for(pass=0;pass<2;pass++) {
-  UINT sx=pass?w-1:0,sy=pass?h-1:0,want=ui_color(sx,sy),inside=0,outside=0,edge=0,bad=0,hash=2166136261u;
+ for(pass=0;pass<3;pass++) {
+  UINT sx=pass==1?w-1:0,sy=pass==1?h-1:0,want=pass==1?(ui_color(0,0)^0x00ffffffu):ui_color(0,0),inside=0,outside=0,edge=0,bad=0,hash=2166136261u;
   FLOAT uv[4]={((FLOAT)sx+.5f)/(FLOAT)w,((FLOAT)sy+.5f)/(FLOAT)h,0,0};
   ui_detail=(case_id<<16)|pass;line("UI_PASS",pass);line("UI_SAMPLE_X",sx);line("UI_SAMPLE_Y",sy);line("UI_EXPECTED_BGRA",want);
   if(!log_ok){hr=E_FAIL;goto done;}
+  if(pass<2){
+   D3D11_BOX box={w-1,h-1,0,w,h,1};
+   /* The partial upload starts at source (0,0), not destination (w-1,h-1).
+    * The third sample checks that this did not change source texel (0,0). */
+   if(pass==1)ui_store(ui_upload+16,ui_color(0,0)^0x00ffffffu,rgba);
+   GEO_BOUNDARY("UI_UPDATE_BEFORE",52,pass);
+   ID3D11DeviceContext_UpdateSubresource(ctx,(ID3D11Resource *)texture,0,pass?&box:NULL,ui_upload+16,pitch,0);
+   GEO_BOUNDARY("UI_UPDATE_AFTER",53,pass);
+  }
   bd.ByteWidth=16;bd.BindFlags=D3D11_BIND_CONSTANT_BUFFER;init.pSysMem=uv;
   hr=ID3D11Device_CreateBuffer(device,&bd,&init,&cb);line("UI_CB_HRESULT",hr);if(FAILED(hr))goto done;
   ID3D11DeviceContext_PSSetConstantBuffers(ctx,0,1,&cb);
@@ -82,11 +91,11 @@ static HRESULT ui_texture_case(ID3D11Device *device,ID3D11DeviceContext *ctx,
   hr=ID3D11Device_GetDeviceRemovedReason(device);line("UI_REMOVED_REASON",hr);if(FAILED(hr))goto done;
   GEO_BOUNDARY("UI_PASS_COMPLETE",51,pass);
  }
- /* Keep immutable source and all COM refs alive through both completed Maps.
+ /* Keep DEFAULT texture and upload source alive through all completed Maps.
   * Inspect source bytes and canaries: this is not a GPU output oracle. */
  for(i=0;i<16;i++)if(ui_upload[i]!=0xa7||ui_upload[16+n+i]!=0xa7){hr=E_FAIL;goto done;}
  for(y=0;y<h;y++){
-  for(x=0;x<w;x++){BYTE pixel[4];ui_store(pixel,ui_color(x,y),rgba);for(i=0;i<4;i++)if(ui_upload[16+y*pitch+x*4+i]!=pixel[i]){hr=E_FAIL;goto done;}}
+  for(x=0;x<w;x++){BYTE pixel[4];ui_store(pixel,ui_color(x,y)^((x==0&&y==0)?0x00ffffffu:0),rgba);for(i=0;i<4;i++)if(ui_upload[16+y*pitch+x*4+i]!=pixel[i]){hr=E_FAIL;goto done;}}
   for(x=w*4;x<pitch;x++)if(ui_upload[16+y*pitch+x]!=0xa7){hr=E_FAIL;goto done;}
  }
  line("UI_UPLOAD_GUARDS_UNCHANGED",1);hr=S_OK;

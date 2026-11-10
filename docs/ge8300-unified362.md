@@ -1,0 +1,7 @@
+# GE8300 統合候補362
+
+運用source 28663c7eを基点に、署名候補70a11387のDEFAULT texture UpdateSubresourceUPを限定統合した。対象はumd/typed_resource.c、umd/clear_ddi.c、umd/update_subresource.hの3ファイルで、署名候補とbyte同一。UI textureの寸法・pitch・BGRA/RGBA対応を保持する。EDK2・ACPI・既存ドライバの版は変更していない。
+
+標準D3D11評価clientは4ケース（3x5/257x129 × BGRA/RGBA）について、DEFAULT textureの全面更新、先頭texelの描画、末尾1texelの部分更新、末尾と先頭の再描画を実行する。全12DrawのMap READ結果を既存の画素oracleで比較する。部分更新の入力はsource先頭から取り、destination boxの座標をsourceへ加算しない。先頭を再描画して、部分更新で他のtexelが変わらないことを確認する。upload padding/canaryも保持する。
+
+このsource統合だけでは、実機GPUのCode 43解消、通常Present、DWM描画の成功を意味しない。既存run185はPOST取得とStartDevice成功の後にCode 43で停止している。保存済みREAと回収イベントから原因を調べ、必要な修正を含めて最終SYS/UMD/INF/CATを再生成する。新DLLを旧CATと混載しない。clientは変更した2TUのみ増分ビルドし、旧12/8Draw契約と混同せず同一bootの実byte/選択版/実行PID/結果を照合する。

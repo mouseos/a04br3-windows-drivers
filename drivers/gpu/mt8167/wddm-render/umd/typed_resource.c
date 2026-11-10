@@ -3,6 +3,7 @@
 #include "../texture_layout.h"
 void geo_typed_device_trace(struct geo_typed_device *,const char *,UINT);
 #include "../memory.h"
+#include "update_subresource.h"
 /* Internal development trace only; no resource/handle ABI change. Log the
  * real runtime descriptor before validation so the staging failure is not
  * confused with KMD allocation failure or a rejected Map operation. */
@@ -164,6 +165,50 @@ HRESULT geo_typed_read_resource(struct geo_typed_resource *r,UINT offset,UINT by
  hr=map_backend(r,D3D10_DDI_MAP_READ,0,&map);if(FAILED(hr))return hr;
  memcpy(data,(BYTE *)map.pData+offset,bytes);return unmap_backend(r);
 }
+/* Synchronous CPU upload through the real VidMm allocation lock. Draw submits
+ * each allocation's GPU reads immediately; LockCb without IgnoreSync/Discard
+ * waits for those reads before exposing storage, retaining the existing lease.
+ * Unlock failure deliberately leaves mapped=1 and poisons the typed device;
+ * no subsequent draw/destruction can reuse an ambiguous CPU-owned allocation.
+ * Every native publication re-cleans the retained MDL after its real fence,
+ * so no shadow upload cache / uploaded=true flag may bypass this update. */
+static void APIENTRY update_subresource(D3D10DDI_HDEVICE h,D3D10DDI_HRESOURCE handle,UINT sub,
+ const D3D10_DDI_BOX *box,const void *source,UINT src_pitch,UINT src_depth_pitch,UINT flags) {
+ struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_resource *r=geo_typed_resource(h,handle);
+ struct geo_update_region region;struct geo_update_plan plan;struct geo_surface_desc storage;
+ D3DKMT_HANDLE allocation;D3D10DDI_MAPPED_SUBRESOURCE map;HRESULT hr,cleanup;int result;
+ (void)src_depth_pitch; /* 2D single slice: unused by the standard API. */
+ if(!d||!r||sub||r->mapped){geo_typed_error(h,E_INVALIDARG);return;}
+ if(FAILED(d->error)){geo_typed_error(h,d->error);return;}
+ /* COPY_NO_OVERWRITE/DISCARD/TILEABLE have separate optional contracts.
+  * Neither flags nor corresponding capabilities are advertised here. */
+ if(flags||r->usage!=D3D10_DDI_USAGE_DEFAULT||r->dimension!=D3D10DDIRESOURCE_TEXTURE2D||
+    r->bind!=D3D10_DDI_BIND_SHADER_RESOURCE||r->primary||r->map_flags||
+    (r->format!=DXGI_FORMAT_B8G8R8A8_UNORM&&r->format!=DXGI_FORMAT_R8G8B8A8_UNORM)){
+  geo_typed_error(h,E_NOTIMPL);return;
+ }
+ if(box){region.left=box->left;region.top=box->top;region.right=box->right;region.bottom=box->bottom;region.front=box->front;region.back=box->back;}
+ result=geo_update_plan_2d(r->width,r->height,box?&region:NULL,src_pitch,&plan);
+ if(result==1)return;
+ if(result||!source||plan.src_bytes>UINTPTR_MAX-(uintptr_t)source){geo_typed_error(h,E_INVALIDARG);return;}
+ hr=geo_umd_resource_info(&d->backend,r->backend,GEO_USAGE_TEXTURE2D,&storage,&allocation);
+ if(SUCCEEDED(hr)&&(storage.width!=r->width||storage.height!=r->height||
+    storage.format!=(r->format==DXGI_FORMAT_R8G8B8A8_UNORM?GEO_FORMAT_A8B8G8R8:GEO_FORMAT_A8R8G8B8)||
+    !geo_texture_layout_valid(storage.width,storage.height,storage.pitch)))hr=E_INVALIDARG;
+ if(FAILED(hr)){geo_typed_error(h,hr);return;}
+ /* Submit any queued frontend work first, without inventing GPU completion.
+  * The actual wait belongs to LockCb/previous allocation fence. */
+ if(!d->backend.frontend_flush){geo_typed_error(h,E_UNEXPECTED);return;}
+ hr=d->backend.frontend_flush(&d->backend);
+ if(SUCCEEDED(hr))hr=map_backend(r,D3D10_DDI_MAP_WRITE,0,&map);
+ if(FAILED(hr)){geo_typed_error(h,hr);return;}
+ hr=(map.RowPitch!=storage.pitch||map.DepthPitch!=(uint64_t)storage.pitch*storage.height||
+     geo_update_storage_2d(&plan,r->width,r->height,map.RowPitch,map.DepthPitch,map.pData,source))?E_INVALIDARG:S_OK;
+ if(SUCCEEDED(hr))geo_update_copy_2d(&plan,map.pData,map.RowPitch,source);
+ cleanup=unmap_backend(r);if(FAILED(cleanup))hr=cleanup;
+ geo_typed_resource_trace(h,"RESOURCE_UPDATE_HRESULT",(UINT)hr);
+ if(FAILED(hr))geo_typed_error(h,hr);
+}
 static void APIENTRY copy_resource(D3D10DDI_HDEVICE h,D3D10DDI_HRESOURCE dst,D3D10DDI_HRESOURCE src) {
  struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_resource *a=geo_typed_resource(h,src),*b=geo_typed_resource(h,dst);D3DDDIARG_BLT q;HRESULT hr;
  if(!d||!a||!b||a==b||a->format!=b->format||a->width!=b->width||a->height!=b->height||b->dimension!=D3D10DDIRESOURCE_TEXTURE2D||b->usage!=D3D10_DDI_USAGE_STAGING){geo_typed_error(h,E_NOTIMPL);return;}
@@ -198,6 +243,7 @@ static void APIENTRY open_resource(D3D10DDI_HDEVICE h,const D3D10DDIARG_OPENRESO
 void geo_typed_resources_install(D3D11_1DDI_DEVICEFUNCS *f) {
  if(A04_GE8300_UNIFIED_DISPLAY356){f->pfnCalcPrivateOpenedResourceSize=opened_size;f->pfnOpenResource=open_resource;}
  f->pfnCalcPrivateResourceSize=resource_size;f->pfnCreateResource=create_resource;f->pfnDestroyResource=destroy_resource;
+ f->pfnResourceUpdateSubresourceUP=update_subresource;
  f->pfnResourceIsStagingBusy=staging_busy;f->pfnResourceMap=map_resource;f->pfnResourceUnmap=unmap_resource;f->pfnStagingResourceMap=map_resource;f->pfnStagingResourceUnmap=unmap_resource;
  f->pfnDynamicIABufferMapDiscard=map_resource;f->pfnDynamicIABufferMapNoOverwrite=map_resource;f->pfnDynamicIABufferUnmap=unmap_resource;
  f->pfnDynamicConstantBufferMapDiscard=map_resource;f->pfnDynamicConstantBufferUnmap=unmap_resource;f->pfnDynamicConstantBufferMapNoOverwrite=map_resource;

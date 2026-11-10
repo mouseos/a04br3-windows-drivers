@@ -137,7 +137,12 @@ static HRESULT APIENTRY lock_resource(HANDLE h,D3DDDIARG_LOCK *p) {
   }
  }
  if(FAILED(hr))return hr;
- if(!q.pData)return E_UNEXPECTED;
+ if(!q.pData){
+  D3DDDICB_UNLOCK undo={0};HRESULT cleanup;undo.NumAllocations=1;undo.phAllocations=&q.hAllocation;
+  cleanup=d->cb.pfnUnlockCb(d->runtime,&undo);
+  if(FAILED(cleanup)){r->allocation=q.hAllocation;r->locked=1;return cleanup;}
+  return E_UNEXPECTED;
+ }
  r->allocation=q.hAllocation;r->locked=1;p->pSurfData=q.pData;p->Pitch=r->desc.pitch;p->SlicePitch=r->desc.pitch*r->logical_height;return S_OK;
 }
 static HRESULT APIENTRY unlock_resource(HANDLE h,const D3DDDIARG_UNLOCK *p) {
