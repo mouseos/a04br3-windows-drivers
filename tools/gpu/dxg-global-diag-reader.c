@@ -27,6 +27,9 @@ static WCHAR prefix[MAX_PATH],path[MAX_PATH];
 static D3DKMT_ENUMADAPTERS adapters;
 static HANDLE summary=INVALID_HANDLE_VALUE,response=INVALID_HANDLE_VALUE,rawfile=INVALID_HANDLE_VALUE;
 static int io_ok=1;
+#if defined(_MSC_VER)
+#pragma function(memset, memcpy)
+#endif
 /* freestanding、CRTを追加しない。volatileにしてcompilerの自己再呼出しを防ぐ。 */
 void * __cdecl memset(void *p,int value,size_t n){volatile unsigned char *d=p;while(n--)*d++=(unsigned char)value;return p;}
 void * __cdecl memcpy(void *p,const void *q,size_t n){volatile unsigned char *d=p;const volatile unsigned char *s=q;while(n--)*d++=*s++;return p;}
