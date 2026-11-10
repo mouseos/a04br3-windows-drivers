@@ -55,7 +55,7 @@ try {
  }
  & $LinkPath /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib @objects @libs "/out:$out\package\lc709203f.sys"
  if($LASTEXITCODE){throw 'Temperature SYS link failed'}
- if([IO.File]::ReadAllText("$src\lc709203f.inf") -notmatch '(?m)^DriverVer=11/11/2026,0\.0\.1\.8\r?$'){throw 'Formal1.8 INF required'}
+ if([IO.File]::ReadAllText("$src\lc709203f.inf") -notmatch '(?m)^DriverVer=11/10/2026,0\.0\.1\.8\r?$'){throw 'Formal1.8 INF required'}
  Copy-Item "$src\lc709203f.inf" "$out\package"
  & git -C $root diff --exit-code 64cce0738845cce5c8d90066137383cc968f4c47 HEAD -- tools/winpe/lc709203f-temperature.c
  if($LASTEXITCODE){throw 'Temperature consumer source changed'}
@@ -81,7 +81,7 @@ try {
   if($LASTEXITCODE){throw 'CAT membership failed'}
  }
  [ordered]@{schema='lc709203f-first-failure-observe-v1';source_commit=$commit;baseline_source='64cce0738845cce5c8d90066137383cc968f4c47';
- profile='FirstFailureStatusNotifyTemperatureReadOnly';driver_version='11/11/2026,0.0.1.8';effective_flags=$flags;
+ profile='FirstFailureStatusNotifyTemperatureReadOnly';driver_version='11/10/2026,0.0.1.8';effective_flags=$flags;
  charger_register_write=$false;gauge_register_write=$false;new_resource_owner=$false;hardware_tested=$false;
  standard_interface='BatteryMiniSetStatusNotify/DisableStatusNotify plus unchanged BatteryTemperature';compiled_driver_TUs=1;reused_driver_objects=3;temperature_consumer_reused=$true;
  certificate_thumbprint=$thumb;signature_status='Valid';catalog_membership_verified=$true;unsigned=$unsigned;
