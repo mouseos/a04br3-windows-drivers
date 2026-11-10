@@ -162,8 +162,32 @@ static HRESULT scanout(LUID id,UINT pass){
  hr=S_OK;
  done:if(f!=INVALID_HANDLE_VALUE)CloseHandle(f);if(o)HeapFree(GetProcessHeap(),0,o);FreeLibrary(gdi);return hr;
 }
+static void factory_current(IDXGIFactory *factory,const char *key){
+ IDXGIFactory1 *version1=NULL;HRESULT hr;
+ hr=IDXGIFactory_QueryInterface(factory,&IID_IDXGIFactory1,(void **)&version1);
+ line("FACTORY1_QUERY_HRESULT",hr);
+ if(SUCCEEDED(hr)){line(key,IDXGIFactory1_IsCurrent(version1));IDXGIFactory1_Release(version1);}
+}
+/* A factory owns a topology snapshot. Creating a new factory alone does not
+ * refresh adapters retained from the old one; join the same hardware LUID. */
+static HRESULT refreshed_adapter(LUID id,IDXGIFactory **factory,IDXGIAdapter **chosen){
+ HRESULT hr;UINT matches=0;*factory=NULL;*chosen=NULL;
+ hr=CreateDXGIFactory(&IID_IDXGIFactory,(void **)factory);
+ line("REFRESH_FACTORY_HRESULT",hr);if(FAILED(hr))return hr;
+ for(UINT i=0;;i++){IDXGIAdapter *a=NULL;DXGI_ADAPTER_DESC desc;
+  hr=IDXGIFactory_EnumAdapters(*factory,i,&a);
+  if(hr==DXGI_ERROR_NOT_FOUND){hr=S_OK;break;}if(FAILED(hr))return hr;
+  hr=IDXGIAdapter_GetDesc(a,&desc);if(FAILED(hr)){IDXGIAdapter_Release(a);return hr;}
+  if(desc.AdapterLuid.HighPart==id.HighPart&&desc.AdapterLuid.LowPart==id.LowPart){
+   matches++;if(!*chosen)*chosen=a;else IDXGIAdapter_Release(a);
+  }else IDXGIAdapter_Release(a);
+ }
+ line("REFRESH_SAME_LUID_MATCH_COUNT",matches);
+ return matches==1?S_OK:E_UNEXPECTED;
+}
 static HRESULT run_swapchain(IDXGIFactory *factory,IDXGIAdapter *adapter,LUID id){
- ID3D11Device *dev=NULL;ID3D11DeviceContext *ctx=NULL;IDXGISwapChain *swap=NULL;IDXGIOutput *output=NULL;
+ IDXGIFactory *fresh_factory=NULL;IDXGIAdapter *fresh_adapter=NULL;
+ ID3D11Device *dev=NULL,*warm_dev=NULL;ID3D11DeviceContext *ctx=NULL,*warm_ctx=NULL;IDXGISwapChain *swap=NULL;IDXGIOutput *output=NULL;
  ID3D11Texture2D *back=NULL;ID3D11RenderTargetView *view=NULL;D3D_FEATURE_LEVEL fl,wanted=D3D_FEATURE_LEVEL_10_0;
  WNDCLASSW wc={0};HWND window=NULL;DXGI_SWAP_CHAIN_DESC q={0};HRESULT hr;MSG msg;UINT pass;
  const FLOAT colors[2][4]={{1,0,1,1},{0,1,0,1}};
@@ -172,26 +196,43 @@ static HRESULT run_swapchain(IDXGIFactory *factory,IDXGIAdapter *adapter,LUID id
  window=CreateWindowExW(0,wc.lpszClassName,L"MT8167 GPU Present356",WS_POPUP,0,0,800,1280,NULL,NULL,wc.hInstance,NULL);
  if(!window){hr=HRESULT_FROM_WIN32(GetLastError());goto done;}
  ShowWindow(window,SW_SHOW);UpdateWindow(window);
+ factory_current(factory,"FACTORY_CURRENT_BEFORE_DEVICE");
  hr=D3D11CreateDevice(adapter,D3D_DRIVER_TYPE_UNKNOWN,NULL,D3D11_CREATE_DEVICE_BGRA_SUPPORT,&wanted,1,D3D11_SDK_VERSION,&dev,&fl,&ctx);
- line("CREATE_DEVICE_HRESULT",hr);if(FAILED(hr)||fl!=wanted)goto done;
- hr=IDXGIAdapter_EnumOutputs(adapter,0,&output);line("ENUM_SAME_ADAPTER_OUTPUT_HRESULT",hr);if(FAILED(hr))goto done;
+ line("CREATE_DEVICE_HRESULT",hr);if(FAILED(hr))goto done;
+ line("DEVICE_FEATURE_LEVEL",fl);if(fl!=wanted){hr=E_UNEXPECTED;goto done;}
+ factory_current(factory,"FACTORY_CURRENT_AFTER_DEVICE");
+ hr=IDXGIAdapter_EnumOutputs(adapter,0,&output);line("ENUM_SAME_ADAPTER_OUTPUT_HRESULT",hr);
+ if(FAILED(hr)&&hr!=DXGI_ERROR_NOT_FOUND)goto done;
+ if(output){IDXGIOutput_Release(output);output=NULL;}
+ /* Keep the real hardware device alive while taking the new snapshot. No
+  * software fallback and no private command changes topology for this probe. */
+ hr=refreshed_adapter(id,&fresh_factory,&fresh_adapter);if(FAILED(hr))goto done;
+ factory_current(fresh_factory,"REFRESH_FACTORY_CURRENT");
+ hr=IDXGIAdapter_EnumOutputs(fresh_adapter,0,&output);line("ENUM_REFRESHED_ADAPTER_OUTPUT_HRESULT",hr);if(FAILED(hr))goto done;
+ /* Keep the warm device alive, but present with one coherent fresh factory. */
+ warm_dev=dev;warm_ctx=ctx;dev=NULL;ctx=NULL;
+ hr=D3D11CreateDevice(fresh_adapter,D3D_DRIVER_TYPE_UNKNOWN,NULL,D3D11_CREATE_DEVICE_BGRA_SUPPORT,&wanted,1,D3D11_SDK_VERSION,&dev,&fl,&ctx);
+ line("REFRESH_CREATE_DEVICE_HRESULT",hr);if(FAILED(hr))goto done;
+ line("REFRESH_DEVICE_FEATURE_LEVEL",fl);if(fl!=wanted){hr=E_UNEXPECTED;goto done;}
  q.BufferDesc.Width=800;q.BufferDesc.Height=1280;q.BufferDesc.Format=DXGI_FORMAT_B8G8R8A8_UNORM;
  q.SampleDesc.Count=1;q.BufferUsage=DXGI_USAGE_RENDER_TARGET_OUTPUT;q.BufferCount=1;q.OutputWindow=window;q.Windowed=TRUE;
  q.SwapEffect=DXGI_SWAP_EFFECT_DISCARD; /* no unimplemented flip-model cap */
- hr=IDXGIFactory_CreateSwapChain(factory,(IUnknown *)dev,&q,&swap);line("CREATE_SWAPCHAIN_HRESULT",hr);if(FAILED(hr))goto done;
+ hr=IDXGIFactory_CreateSwapChain(fresh_factory,(IUnknown *)dev,&q,&swap);line("CREATE_SWAPCHAIN_HRESULT",hr);if(FAILED(hr))goto done;
  hr=IDXGISwapChain_SetFullscreenState(swap,TRUE,output);line("FULLSCREEN_HRESULT",hr);if(FAILED(hr))goto done;
  hr=IDXGISwapChain_GetBuffer(swap,0,&IID_ID3D11Texture2D,(void **)&back);line("SWAPCHAIN_BUFFER_HRESULT",hr);if(FAILED(hr))goto done;
  hr=ID3D11Device_CreateRenderTargetView(dev,(ID3D11Resource *)back,NULL,&view);line("SWAPCHAIN_VIEW_HRESULT",hr);if(FAILED(hr))goto done;
  for(pass=0;pass<2;pass++){
   while(PeekMessageW(&msg,NULL,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}
   line("FRAME_BEGIN",pass);ID3D11DeviceContext_ClearRenderTargetView(ctx,view,colors[pass]);
-  line("STANDARD_PRESENT_BEFORE",pass);hr=IDXGISwapChain_Present(swap,0,0);line("STANDARD_PRESENT_HRESULT",hr);if(hr!=S_OK)goto done;
+  line("STANDARD_PRESENT_BEFORE",pass);hr=IDXGISwapChain_Present(swap,0,0);line("STANDARD_PRESENT_HRESULT",hr);if(hr!=S_OK){if(SUCCEEDED(hr))hr=E_FAIL;goto done;}
   hr=scanout(id,pass);line("REAL_SCANOUT_OBSERVATION_HRESULT",hr);if(FAILED(hr))goto done;
  }
  hr=ID3D11Device_GetDeviceRemovedReason(dev);line("DEVICE_REMOVED_REASON",hr);
  done:if(view)ID3D11RenderTargetView_Release(view);if(back)ID3D11Texture2D_Release(back);
  if(swap){HRESULT restored=IDXGISwapChain_SetFullscreenState(swap,FALSE,NULL);line("LEAVE_FULLSCREEN_HRESULT",restored);if(SUCCEEDED(hr)&&FAILED(restored))hr=restored;IDXGISwapChain_Release(swap);}
  if(output)IDXGIOutput_Release(output);if(ctx)ID3D11DeviceContext_Release(ctx);if(dev)ID3D11Device_Release(dev);
+ if(warm_ctx)ID3D11DeviceContext_Release(warm_ctx);if(warm_dev)ID3D11Device_Release(warm_dev);
+ if(fresh_adapter)IDXGIAdapter_Release(fresh_adapter);if(fresh_factory)IDXGIFactory_Release(fresh_factory);
  if(window)DestroyWindow(window);UnregisterClassW(wc.lpszClassName,wc.hInstance);return hr;
 }
 void mainCRTStartup(void){
@@ -205,7 +246,7 @@ void mainCRTStartup(void){
  /* Keep one exact frame digit index; no command line supplies an output path. */
  logpath[base++]=L'.';logpath[base++]=L'l';logpath[base++]=L'o';logpath[base++]=L'g';logpath[base]=0;
  disk=CreateFileW(logpath,GENERIC_WRITE,FILE_SHARE_READ,NULL,CREATE_NEW,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,NULL);if(disk==INVALID_HANDLE_VALUE)ExitProcess(2);
- line("PID",pid);line("TICK",tick);line("CLIENT_VERSION",356);hr=hardware_luid(&id);if(FAILED(hr))goto done;
+ line("PID",pid);line("TICK",tick);line("CLIENT_VERSION",373);hr=hardware_luid(&id);if(FAILED(hr))goto done;
  hr=CreateDXGIFactory(&IID_IDXGIFactory,(void **)&factory);if(FAILED(hr))goto done;
  for(UINT i=0;;i++){IDXGIAdapter *a=NULL;DXGI_ADAPTER_DESC desc;
   hr=IDXGIFactory_EnumAdapters(factory,i,&a);if(hr==DXGI_ERROR_NOT_FOUND){hr=S_OK;break;}if(FAILED(hr))goto done;
