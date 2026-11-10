@@ -406,98 +406,106 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
-      "source_commit": "e0727eb0d840883a31d3c501b0ee17652ebdcad4",
-      "sha256": "f1eb516c503160687cbf38a21dd0dab020b45c4386c6a866c5fdee0d700f1102",
-      "role": "358 segmented cold validation / identity",
+      "source_commit": "43753e0d6e06a6a7ed24a6c1bab731a477b52b0e",
+      "sha256": "82fa1f88307015cc70cfa8b25af0e36dd6239bc91c8cd10e19a7ecd16fd58e12",
+      "role": "359 bounded startup return observation; controls/status acceptance unchanged",
       "previous_origins": [
         {
           "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
-          "source_commit": "14ac163b9e579d91f72a99e321da292412bf1f4c",
-          "sha256": "20b36b7fca17bad5cba699acf28d0efdb89c550afc5d482c9b4c1640743db031",
-          "role": "357 bounded startup predicates; existing functional return/control unchanged",
+          "source_commit": "e0727eb0d840883a31d3c501b0ee17652ebdcad4",
+          "sha256": "f1eb516c503160687cbf38a21dd0dab020b45c4386c6a866c5fdee0d700f1102",
+          "role": "358 segmented cold validation / identity",
           "previous_origins": [
             {
               "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
-              "source_commit": "0fa9e534ccddb239e5432803ea45c44893ced765",
-              "role": "Documented VidMm paging busy status350; previous origins retained",
-              "sha256": "6e2f4ca97924a904b31ebb5151aceba9b5f4dde6cfc238e9350a3932c6ae8ec0",
+              "source_commit": "14ac163b9e579d91f72a99e321da292412bf1f4c",
+              "sha256": "20b36b7fca17bad5cba699acf28d0efdb89c550afc5d482c9b4c1640743db031",
+              "role": "357 bounded startup predicates; existing functional return/control unchanged",
               "previous_origins": [
                 {
-                  "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
-                  "sha256": "b81169bc819abeebb34a7a119091d91e164c2073cab3489eac16fa7b74ebc68e",
-                  "role": "Texture326/327 explicit source overlay"
+                  "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
+                  "source_commit": "0fa9e534ccddb239e5432803ea45c44893ced765",
+                  "role": "Documented VidMm paging busy status350; previous origins retained",
+                  "sha256": "6e2f4ca97924a904b31ebb5151aceba9b5f4dde6cfc238e9350a3932c6ae8ec0",
+                  "previous_origins": [
+                    {
+                      "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
+                      "sha256": "b81169bc819abeebb34a7a119091d91e164c2073cab3489eac16fa7b74ebc68e",
+                      "role": "Texture326/327 explicit source overlay"
+                    },
+                    {
+                      "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
+                      "sha256": "8324f91b5b5edfa8db9ccd021b6d02c3d2194f73cae28f446958184033c34612",
+                      "role": "Reviewed ABI4 shader/native runtime source329"
+                    },
+                    {
+                      "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
+                      "role": "Matrix VS + sampled PS331 / explicit owned ABI5 composition",
+                      "sha256": "448fcb2cf92f946dab1119b04f5bfbe595d742c692df76b1bfa6d8b8d078b5d3"
+                    },
+                    {
+                      "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
+                      "source_commit": "fbabbedde025052337a5659f21882d3ff4ca28b2",
+                      "role": "Moduleidentity339 evidence-only DriverObject load record, initialization PASSIVE only",
+                      "sha256": "effc326bb21e2b18388776a9f74fe5c9dc0217cb243f809c3e9adc745022f4ca"
+                    },
+                    {
+                      "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
+                      "source_commit": "46aebff390b169a36bc72dae3ddfeb005fbc8b2c",
+                      "role": "Resident Copy341 and TQ Clear342 runtime; preserved previous origin",
+                      "sha256": "380538ac66d72291e1b5f6f92b663dee91b1ee3cda88082a0ccb8027733209a5"
+                    },
+                    {
+                      "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
+                      "source_commit": "5b5649e0",
+                      "role": "Durable PASSIVE existing progress344; previous origins preserved",
+                      "sha256": "8f46d7210cfbfea70baa47a30c7df343309ee5cfc28d6522df4f45cb27c991af"
+                    },
+                    {
+                      "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
+                      "source_commit": "e4108dafe82745ba58af20245bf891b9feebd32f",
+                      "role": "Windows PASSIVE firmware acknowledgement/drain waits345; previous origins preserved",
+                      "sha256": "d84e0edc5a413a96cfec87e2e6af0c0bd136fbf0631b5b05ae2e3ec534d767fd"
+                    },
+                    {
+                      "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
+                      "source_commit": "eb0b870c9be6f824703d0c62e41de5488994f942",
+                      "role": "MASKED startup346 runtime identity; previous origins preserved",
+                      "sha256": "ae343db6ba440f4be53e7af871356fdb15d50fd27052073ba835f1aee49cf2ea"
+                    },
+                    {
+                      "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
+                      "source_commit": "960243225c2b3fb75be43894967ff6445ff5a5d2",
+                      "role": "Render capture only / validated Patch native preparation347; prior origins preserved",
+                      "sha256": "b155597f0dccef0dd257f62e1157b41948e3ca4a6a98b21b472ec5e4f38b4142"
+                    },
+                    {
+                      "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
+                      "source_commit": "a52476c0612b77c3457c9ebb53c393bf30000673",
+                      "role": "submitted FIFO and PASSIVE preparation348; old origins preserved",
+                      "sha256": "9c640245ef1f7186b26e2c9db9dbb5ef347588f4313179205916bbf9dc44887c"
+                    },
+                    {
+                      "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
+                      "source_commit": "0d4d197ae03b70bc86c6dcaf4af024b775299098",
+                      "role": "Real claimed startup IRQ service before submitted DMA349; previous origins retained",
+                      "sha256": "5ab76f43ea625b262741eec8bbbe1438a613247e66be17398fa7b6ecc96ce79b"
+                    }
+                  ],
+                  "previous_sha256": "96c7312d10fc2d60c1b590a145a5d0e292064806de3002033e461cb8b3d8f4db"
                 },
                 {
-                  "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
-                  "sha256": "8324f91b5b5edfa8db9ccd021b6d02c3d2194f73cae28f446958184033c34612",
-                  "role": "Reviewed ABI4 shader/native runtime source329"
-                },
-                {
-                  "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
-                  "role": "Matrix VS + sampled PS331 / explicit owned ABI5 composition",
-                  "sha256": "448fcb2cf92f946dab1119b04f5bfbe595d742c692df76b1bfa6d8b8d078b5d3"
+                  "source_commit": "84bf96a22b4d7c64879f99a92c82d728c1d00147",
+                  "sha256": "a963e262121daf6caca337d58e27bb3cf2f391d3e5cbfee374eeca9d7edcceed",
+                  "role": "Present355 bounded real Copy FIFO with OS index/rights and actual IRQ completion"
                 },
                 {
                   "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
-                  "source_commit": "fbabbedde025052337a5659f21882d3ff4ca28b2",
-                  "role": "Moduleidentity339 evidence-only DriverObject load record, initialization PASSIVE only",
-                  "sha256": "effc326bb21e2b18388776a9f74fe5c9dc0217cb243f809c3e9adc745022f4ca"
-                },
-                {
-                  "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
-                  "source_commit": "46aebff390b169a36bc72dae3ddfeb005fbc8b2c",
-                  "role": "Resident Copy341 and TQ Clear342 runtime; preserved previous origin",
-                  "sha256": "380538ac66d72291e1b5f6f92b663dee91b1ee3cda88082a0ccb8027733209a5"
-                },
-                {
-                  "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
-                  "source_commit": "5b5649e0",
-                  "role": "Durable PASSIVE existing progress344; previous origins preserved",
-                  "sha256": "8f46d7210cfbfea70baa47a30c7df343309ee5cfc28d6522df4f45cb27c991af"
-                },
-                {
-                  "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
-                  "source_commit": "e4108dafe82745ba58af20245bf891b9feebd32f",
-                  "role": "Windows PASSIVE firmware acknowledgement/drain waits345; previous origins preserved",
-                  "sha256": "d84e0edc5a413a96cfec87e2e6af0c0bd136fbf0631b5b05ae2e3ec534d767fd"
-                },
-                {
-                  "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
-                  "source_commit": "eb0b870c9be6f824703d0c62e41de5488994f942",
-                  "role": "MASKED startup346 runtime identity; previous origins preserved",
-                  "sha256": "ae343db6ba440f4be53e7af871356fdb15d50fd27052073ba835f1aee49cf2ea"
-                },
-                {
-                  "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
-                  "source_commit": "960243225c2b3fb75be43894967ff6445ff5a5d2",
-                  "role": "Render capture only / validated Patch native preparation347; prior origins preserved",
-                  "sha256": "b155597f0dccef0dd257f62e1157b41948e3ca4a6a98b21b472ec5e4f38b4142"
-                },
-                {
-                  "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
-                  "source_commit": "a52476c0612b77c3457c9ebb53c393bf30000673",
-                  "role": "submitted FIFO and PASSIVE preparation348; old origins preserved",
-                  "sha256": "9c640245ef1f7186b26e2c9db9dbb5ef347588f4313179205916bbf9dc44887c"
-                },
-                {
-                  "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
-                  "source_commit": "0d4d197ae03b70bc86c6dcaf4af024b775299098",
-                  "role": "Real claimed startup IRQ service before submitted DMA349; previous origins retained",
-                  "sha256": "5ab76f43ea625b262741eec8bbbe1438a613247e66be17398fa7b6ecc96ce79b"
+                  "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+                  "sha256": "66d9dd4cab4abdf8272f5df0fb5be5c3e9bb1443ed8ec0b45a5d1dc377277fef",
+                  "role": "Unified356 source overlay; prior origin retained"
                 }
-              ],
-              "previous_sha256": "96c7312d10fc2d60c1b590a145a5d0e292064806de3002033e461cb8b3d8f4db"
-            },
-            {
-              "source_commit": "84bf96a22b4d7c64879f99a92c82d728c1d00147",
-              "sha256": "a963e262121daf6caca337d58e27bb3cf2f391d3e5cbfee374eeca9d7edcceed",
-              "role": "Present355 bounded real Copy FIFO with OS index/rights and actual IRQ completion"
-            },
-            {
-              "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
-              "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
-              "sha256": "66d9dd4cab4abdf8272f5df0fb5be5c3e9bb1443ed8ec0b45a5d1dc377277fef",
-              "role": "Unified356 source overlay; prior origin retained"
+              ]
             }
           ]
         }
@@ -1534,19 +1542,27 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/display_adapter356.c",
-      "source_commit": "4576e10a0c69b86f510c58ce87a3d8b8583d1c83",
-      "role": "Unified356 exact firmware POST profile and reset configuration preservation",
-      "sha256": "38db4d71c0f5a1c23837793c6be4cd97f93881618515eae691a0abc130111c6a",
+      "source_commit": "43753e0d6e06a6a7ed24a6c1bab731a477b52b0e",
+      "role": "359 bounded startup return observation; controls/status acceptance unchanged",
+      "sha256": "0c9bf8a0939167e2ad6e09434f3ca19e7c7e29b2fce544e72958232806636817",
       "previous_origins": [
         {
-          "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
-          "sha256": "1ca805978dde12898a3b4438dce6488988d2ddb52d2a56d043534b69ef382609",
-          "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8"
-        },
-        {
-          "source_commit": "4f3ae862b406ec14623199711596c6112ceea203",
-          "sha256": "4f659977f4652b8728c940a0a89f3fefb7ad88281b4641ec47864ef65c74c97f",
-          "role": "Unified356 reviewed driver support link closure"
+          "path": "drivers/gpu/mt8167/wddm-render/display_adapter356.c",
+          "source_commit": "4576e10a0c69b86f510c58ce87a3d8b8583d1c83",
+          "role": "Unified356 exact firmware POST profile and reset configuration preservation",
+          "sha256": "38db4d71c0f5a1c23837793c6be4cd97f93881618515eae691a0abc130111c6a",
+          "previous_origins": [
+            {
+              "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+              "sha256": "1ca805978dde12898a3b4438dce6488988d2ddb52d2a56d043534b69ef382609",
+              "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8"
+            },
+            {
+              "source_commit": "4f3ae862b406ec14623199711596c6112ceea203",
+              "sha256": "4f659977f4652b8728c940a0a89f3fefb7ad88281b4641ec47864ef65c74c97f",
+              "role": "Unified356 reviewed driver support link closure"
+            }
+          ]
         }
       ]
     },
@@ -1597,6 +1613,12 @@
       "source_commit": "14ac163b9e579d91f72a99e321da292412bf1f4c",
       "sha256": "0a072282cb8bca1841811dd5f3834f6a7ea48353bc06c902846fd2faf6ce9006",
       "role": "357 pointer-free bounded optional startup registry record; PASSIVE only; no flush"
+    },
+    {
+      "path": "drivers/gpu/mt8167/start_gap359.h",
+      "source_commit": "43753e0d6e06a6a7ed24a6c1bab731a477b52b0e",
+      "sha256": "007d83c2aa66bdfe1fa862b71075a7de79de34ec5531842827dec2648e4fd63d",
+      "role": "359 fixed384B optional startup evidence writer"
     }
   ],
   "legacy_files_preserved": [
@@ -1993,14 +2015,22 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/bdd.cxx",
-      "sha256": "0d122dca6c64498d30e6bc9e51e67cff5286adca1b43b6e2a1c15c9253c49c10",
+      "sha256": "32ebe22c0d01956951b07fc4aed52ed012b037ccfb9def6b8afce9cb2ffec1a4",
       "previous_origins": [
         {
-          "sha256": "68f919b9af09c708e8bb3ae7e3e41d16141dcf50b3233bec75a14942a2723684"
+          "path": "drivers/gpu/mt8167/wddm-display/bdd.cxx",
+          "sha256": "0d122dca6c64498d30e6bc9e51e67cff5286adca1b43b6e2a1c15c9253c49c10",
+          "previous_origins": [
+            {
+              "sha256": "68f919b9af09c708e8bb3ae7e3e41d16141dcf50b3233bec75a14942a2723684"
+            }
+          ],
+          "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+          "role": "Unified356 source overlay; prior origin retained"
         }
       ],
-      "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
-      "role": "Unified356 source overlay; prior origin retained"
+      "source_commit": "43753e0d6e06a6a7ed24a6c1bab731a477b52b0e",
+      "role": "359 startup observation only; preserve control policy"
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/bdd.hxx",
