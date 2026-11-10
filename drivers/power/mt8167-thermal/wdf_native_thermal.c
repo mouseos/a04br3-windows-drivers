@@ -6,9 +6,12 @@
 #include "boot_record.h"
 #include "readout.h"
 #include "readout_ioctl.h"
+#include "first_read.h"
+#include "ioctl_status.h"
+C_ASSERT(sizeof(struct mt8167_thermal_ioctl_status_v1)==64);
 #include "../../bus/mt8167-shared/thermal_parent_pio_interface.h"
 #include "../../system/mt8167-toprgu/uart_screen.h"
-typedef struct {WDFSPINLOCK lock;WDFIOTARGET uart;struct a04_thermal_readout_state reading;} PIO_THERMAL;
+typedef struct {WDFSPINLOCK lock;WDFIOTARGET uart;struct a04_thermal_readout_state reading;struct a04_thermal_first_read first;struct mt8167_thermal_ioctl_status_v1 diagnostic;} PIO_THERMAL;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(PIO_THERMAL,Pio)
 EVT_WDF_DRIVER_DEVICE_ADD PioAdd;
 EVT_WDF_DEVICE_PREPARE_HARDWARE PioPrepare;
@@ -22,7 +25,8 @@ static void mark(PIO_THERMAL *c,const char *s,ULONG n) {
  DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,"%.*s",(int)n,s);
  WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(&input,(PVOID)s,n);WDF_REQUEST_SEND_OPTIONS_INIT(&options,WDF_REQUEST_SEND_OPTION_TIMEOUT);
  WDF_REQUEST_SEND_OPTIONS_SET_TIMEOUT(&options,WDF_REL_TIMEOUT_IN_SEC(1));
- (VOID)WdfIoTargetSendIoctlSynchronously(c->uart,NULL,A04_UART_SCREEN_SEND,&input,NULL,&options,NULL);
+ NTSTATUS sent=WdfIoTargetSendIoctlSynchronously(c->uart,NULL,A04_UART_SCREEN_SEND,&input,NULL,&options,NULL);
+ WdfSpinLockAcquire(c->lock);c->diagnostic.uart_status=sent;WdfSpinLockRelease(c->lock);
 }
 #define MARK(c,s) mark(c,s,sizeof(s)-1)
 static void number(char *s,ULONG *n,LONG value) {
@@ -37,51 +41,95 @@ NTSTATUS PioRelease(WDFDEVICE device,WDFCMRESLIST translated) {
  UNREFERENCED_PARAMETER(device);UNREFERENCED_PARAMETER(translated);return STATUS_SUCCESS;
 }
 
-NTSTATUS PioD0(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous) {
+static void observe(PIO_THERMAL *c,ULONG phase,NTSTATUS status) {
+ WdfSpinLockAcquire(c->lock);c->diagnostic.phase=phase;c->diagnostic.completion=status;
+ WdfSpinLockRelease(c->lock);
+}
+static int32_t PioCollect(void *opaque) {
+ WDFDEVICE device=(WDFDEVICE)opaque;
  PIO_THERMAL *c=Pio(device);struct a04_thermal_boot_cal v;struct a04_thermal_cal cal;struct a04_thermal_sample sample;
- MT8167_THERMAL_PARENT_PIO_INTERFACE iface;ULONG raw[3],adopted=0,stage=0,bytes=sizeof(v),attrs=0;GUID guid=calGuid;NTSTATUS status;
- UNICODE_STRING name=RTL_CONSTANT_STRING(L"A04BR3ThermalCalibration");UNREFERENCED_PARAMETER(previous);
+ MT8167_THERMAL_PARENT_PIO_INTERFACE iface;ULONG raw[3],adopted=0,stage=0,bytes=sizeof(v),attrs=0;GUID guid=calGuid;NTSTATUS status;ULONG phase=1;BOOLEAN valid_sample=FALSE;
+ UNICODE_STRING name=RTL_CONSTANT_STRING(L"A04BR3ThermalCalibration");
  WdfSpinLockAcquire(c->lock);a04_readout_invalidate(&c->reading);WdfSpinLockRelease(c->lock);
  {DECLARE_CONST_UNICODE_STRING(path,A04_UART_SCREEN_DEVICE);WDF_IO_TARGET_OPEN_PARAMS open;
   WDF_IO_TARGET_OPEN_PARAMS_INIT_OPEN_BY_NAME(&open,&path,GENERIC_READ|GENERIC_WRITE);(VOID)WdfIoTargetOpen(c->uart,&open);}
- MARK(c,"A04THM PIO START parent1104\n");
+ /* The UART endpoint queues at most one 96-byte packet. Emit one terminal
+  * record, not a burst of best-effort markers that masks the failing phase. */
+ WdfSpinLockAcquire(c->lock);c->diagnostic.attempted=1;WdfSpinLockRelease(c->lock);
+ observe(c,1,STATUS_PENDING);
  RtlZeroMemory(&v,sizeof(v));status=ExGetFirmwareEnvironmentVariable(&name,&guid,&v,&bytes,&attrs);
- if(!NT_SUCCESS(status)||a04_thermal_boot_calibration(&cal,&v,bytes,attrs)){MARK(c,"A04THM PIO CAL REJECT\n");status=STATUS_DEVICE_NOT_READY;goto done;}
+ WdfSpinLockAcquire(c->lock);c->diagnostic.cal_status=status;c->diagnostic.cal_bytes=bytes;c->diagnostic.cal_attributes=attrs;WdfSpinLockRelease(c->lock);
+ if(!NT_SUCCESS(status))goto done;
+ phase=2;observe(c,phase,STATUS_PENDING);if(a04_thermal_boot_calibration(&cal,&v,bytes,attrs)){status=STATUS_DEVICE_NOT_READY;goto done;}
+ phase=3;observe(c,phase,STATUS_PENDING);
  RtlZeroMemory(&iface,sizeof(iface));status=WdfFdoQueryForInterface(device,&Mt8167ThermalParentPioGuid,(PINTERFACE)&iface,sizeof(iface),MT8167_THERMAL_PARENT_PIO_VERSION,NULL);
- if(!NT_SUCCESS(status)){MARK(c,"A04THM PIO TUPLE REJECT\n");goto done;}
+ WdfSpinLockAcquire(c->lock);c->diagnostic.query_status=status;WdfSpinLockRelease(c->lock);
+ if(!NT_SUCCESS(status))goto done;
+ phase=4;observe(c,phase,STATUS_PENDING);
  if(iface.Header.Size!=sizeof(iface)||iface.Header.Version!=MT8167_THERMAL_PARENT_PIO_VERSION||iface.ParentBuild!=MT8167_THERMAL_PARENT_PIO_BUILD||!iface.Header.Context||!iface.Measure||!iface.Header.InterfaceReference||!iface.Header.InterfaceDereference) {
   if(iface.Header.InterfaceDereference)iface.Header.InterfaceDereference(iface.Header.Context);status=STATUS_REVISION_MISMATCH;goto done;}
+ phase=5;observe(c,phase,STATUS_PENDING);
  status=iface.Measure(iface.Header.Context,&adopted,raw,&stage);
+ WdfSpinLockAcquire(c->lock);c->diagnostic.measure_status=status;c->diagnostic.parent_stage=stage;c->diagnostic.owner_active=adopted;WdfSpinLockRelease(c->lock);
  iface.Header.InterfaceDereference(iface.Header.Context);
- if(!NT_SUCCESS(status)){
-  static const char hex[]="0123456789ABCDEF";char line[80]="A04THM PIO FAILED status=";ULONG n=sizeof("A04THM PIO FAILED status=")-1;unsigned i;
-  for(i=0;i<8;i++)line[n++]=hex[((ULONG)status>>(28-4*i))&15];
-  line[n++]=' ';number(line,&n,(LONG)stage);line[n++]='/';number(line,&n,(LONG)adopted);line[n++]='\n';mark(c,line,n);goto done;}
+ if(!NT_SUCCESS(status))goto done;
+ phase=6;
  if(adopted!=1||a04_thermal_sample(&cal,raw,KeQueryInterruptTime()/10000u,1,&sample)){status=STATUS_DEVICE_HARDWARE_ERROR;goto done;}
  WdfSpinLockAcquire(c->lock);int publish=a04_readout_publish(&c->reading,&sample);WdfSpinLockRelease(c->lock);
  if(publish){status=STATUS_DEVICE_HARDWARE_ERROR;goto done;}
- {char line[96]="A04THM PIO mc=";ULONG n=sizeof("A04THM PIO mc=")-1;unsigned i;
-  for(i=0;i<3;i++){number(line,&n,sample.mc[i]);line[n++]=i==2?'\n':'/';}mark(c,line,n);}
- MARK(c,"A04THM PIO IDLE restored parent1104\n");
+ valid_sample=TRUE;phase=7;
 done:
+ observe(c,phase,status);
+ {static const char hex[]="0123456789ABCDEF";char line[96]="MT8167 THERMAL END p=";ULONG n=sizeof("MT8167 THERMAL END p=")-1;
+  number(line,&n,phase);RtlCopyMemory(line+n," rc=",4);n+=4;
+  for(unsigned i=0;i<8;i++)line[n++]=hex[((ULONG)status>>(28-4*i))&15];
+  RtlCopyMemory(line+n," st=",4);n+=4;number(line,&n,stage);
+  RtlCopyMemory(line+n," own=",5);n+=5;number(line,&n,adopted);
+  if(valid_sample){RtlCopyMemory(line+n," mc=",4);n+=4;for(unsigned i=0;i<3;i++){number(line,&n,sample.mc[i]);if(i!=2)line[n++]='/';}}
+  line[n++]='\n';mark(c,line,n);}
  WdfIoTargetClose(c->uart);return status;
+}
+NTSTATUS PioD0(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous) {
+ PIO_THERMAL *c=Pio(device);UNREFERENCED_PARAMETER(previous);
+ WdfSpinLockAcquire(c->lock);a04_readout_invalidate(&c->reading);WdfSpinLockRelease(c->lock);
+ /* A resource-less endpoint is ready to accept READ, not yet a temperature.
+  * The power-managed sequential queue runs collection in D0/PASSIVE_LEVEL.
+  * Never reset first.attempted on D0/restart: parent remains boot one-shot. */
+ {DECLARE_CONST_UNICODE_STRING(path,A04_UART_SCREEN_DEVICE);WDF_IO_TARGET_OPEN_PARAMS open;
+  WDF_IO_TARGET_OPEN_PARAMS_INIT_OPEN_BY_NAME(&open,&path,GENERIC_READ|GENERIC_WRITE);(VOID)WdfIoTargetOpen(c->uart,&open);}
+ MARK(c,"MT8167 THERMAL INTERFACE D0 READY; FIRST READ PENDING\n");WdfIoTargetClose(c->uart);
+ return STATUS_SUCCESS;
 }
 NTSTATUS PioExit(WDFDEVICE device,WDF_POWER_DEVICE_STATE next) {
  PIO_THERMAL *c=Pio(device);UNREFERENCED_PARAMETER(next);WdfSpinLockAcquire(c->lock);a04_readout_invalidate(&c->reading);WdfSpinLockRelease(c->lock);return STATUS_SUCCESS;
 }
 VOID PioIoctl(WDFQUEUE queue,WDFREQUEST request,size_t outputSize,size_t inputSize,ULONG code) {
- PIO_THERMAL *c=Pio(WdfIoQueueGetDevice(queue));struct a04_thermal_readout_v1 v,*out;NTSTATUS status;UNREFERENCED_PARAMETER(inputSize);
+ PIO_THERMAL *c=Pio(WdfIoQueueGetDevice(queue));struct a04_thermal_readout_v1 v,*out;NTSTATUS status;
+ if(code==MT8167_THERMAL_GET_IOCTL_STATUS){
+  struct mt8167_thermal_ioctl_status_v1 snapshot,*buffer;
+  if(inputSize){WdfRequestComplete(request,STATUS_INVALID_PARAMETER);return;}
+  status=WdfRequestRetrieveOutputBuffer(request,sizeof(snapshot),(PVOID *)&buffer,NULL);
+  if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
+  WdfSpinLockAcquire(c->lock);snapshot=c->diagnostic;WdfSpinLockRelease(c->lock);
+  *buffer=snapshot;WdfRequestCompleteWithInformation(request,STATUS_SUCCESS,sizeof(snapshot));return;
+ }
  if(code!=A04_THERMAL_GET_READING){WdfRequestComplete(request,STATUS_INVALID_DEVICE_REQUEST);return;}
- if(outputSize<sizeof(v)){WdfRequestComplete(request,STATUS_BUFFER_TOO_SMALL);return;}
- status=WdfRequestRetrieveOutputBuffer(request,sizeof(v),(PVOID *)&out,NULL);if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
+ WdfSpinLockAcquire(c->lock);c->diagnostic.request_code=code;c->diagnostic.input_bytes=(ULONG)inputSize;c->diagnostic.output_bytes=(ULONG)outputSize;WdfSpinLockRelease(c->lock);
+ if(inputSize){observe(c,0,STATUS_INVALID_PARAMETER);WdfRequestComplete(request,STATUS_INVALID_PARAMETER);return;}
+ if(outputSize<sizeof(v)){observe(c,0,STATUS_BUFFER_TOO_SMALL);WdfRequestComplete(request,STATUS_BUFFER_TOO_SMALL);return;}
+ status=WdfRequestRetrieveOutputBuffer(request,sizeof(v),(PVOID *)&out,NULL);if(!NT_SUCCESS(status)){observe(c,0,status);WdfRequestComplete(request,status);return;}
+ status=(NTSTATUS)a04_thermal_collect_once(&c->first,WdfIoQueueGetDevice(queue),PioCollect);
+ if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
  WdfSpinLockAcquire(c->lock);status=a04_readout_get(&c->reading,KeQueryInterruptTime()/10000u,1000,&v)?STATUS_DEVICE_NOT_READY:STATUS_SUCCESS;
- if(NT_SUCCESS(status))*out=v;WdfSpinLockRelease(c->lock);WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?sizeof(v):0);
+ c->diagnostic.completion=status;if(NT_SUCCESS(status))*out=v;WdfSpinLockRelease(c->lock);WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?sizeof(v):0);
 }
 NTSTATUS PioAdd(WDFDRIVER driver,PWDFDEVICE_INIT init) {
  WDFDEVICE dev;WDF_OBJECT_ATTRIBUTES a;WDF_PNPPOWER_EVENT_CALLBACKS p;WDF_IO_QUEUE_CONFIG q;NTSTATUS status;PIO_THERMAL *c;UNREFERENCED_PARAMETER(driver);
  WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&p);p.EvtDevicePrepareHardware=PioPrepare;p.EvtDeviceReleaseHardware=PioRelease;p.EvtDeviceD0Entry=PioD0;p.EvtDeviceD0Exit=PioExit;WdfDeviceInitSetPnpPowerEventCallbacks(init,&p);
  WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&a,PIO_THERMAL);a.ExecutionLevel=WdfExecutionLevelPassive;status=WdfDeviceCreate(&init,&a,&dev);if(!NT_SUCCESS(status))return status;c=Pio(dev);
  WDF_OBJECT_ATTRIBUTES_INIT(&a);a.ParentObject=dev;status=WdfSpinLockCreate(&a,&c->lock);if(!NT_SUCCESS(status))return status;
+ c->diagnostic.version=1;c->diagnostic.bytes=sizeof(c->diagnostic);
+ c->diagnostic.completion=c->diagnostic.cal_status=c->diagnostic.query_status=c->diagnostic.measure_status=c->diagnostic.uart_status=STATUS_PENDING;
  status=WdfIoTargetCreate(dev,&a,&c->uart);if(!NT_SUCCESS(status))return status;
  WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchSequential);q.EvtIoDeviceControl=PioIoctl;status=WdfIoQueueCreate(dev,&q,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE);if(!NT_SUCCESS(status))return status;
  return WdfDeviceCreateDeviceInterface(dev,&A04ThermalReadoutInterfaceGuid,NULL);
