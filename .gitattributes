@@ -49,3 +49,5 @@ tools/recovery/read-fresh200-native-inventory.ps1 text eol=lf
 tests/test-fresh200-native-reader-source.py text eol=lf
 docs/fresh200-readonly-native-inventory.md text eol=lf
 tests/test-fresh200-bt-root-values.py text eol=lf
+
+tools/recovery/read-fresh202-native-inventory.ps1 text eol=lf
