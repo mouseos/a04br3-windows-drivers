@@ -74,19 +74,26 @@ def bt_payload_prepare(directory,bt):
   commands+=['copy /b '+src+' '+target+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail',sep.join(('X:','a04br3','compare-files.exe'))+' '+src+' '+target+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
  return commands
 
-def gpu368_media_contract(p,header,exe):
+def gpu368_media_contract(p,header,exe,root=None):
+ combined375=p['profile']=='combined-features-fresh221-gpu376-battery18-wifi1031-client375-v1'
+ if combined375:
+  import importlib.util
+  ts=importlib.util.spec_from_file_location("combined375",Path(__file__).resolve().parents[1]/"recovery/prepare-gpu375-combined-inputs.py");tm=importlib.util.module_from_spec(ts);ts.loader.exec_module(tm)
+  require(root is not None,"Actual combined workspace required");tm.validate_runtime_policy(root,p)
  client373=p['profile'] in ('combined-features-fresh215-gpu373-clients-v1','combined-features-fresh218-gpu374-clients-v1','combined-features-fresh221-gpu375-clients-v1')
  if client373:
   import sys
   sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'recovery'))
   from gpu373_client_admission import validate_runtime_policy
   validate_runtime_policy(p,p['gpu373_client_contract'])
- require(client373 or p['profile'] in ('combined-features-fresh200-gpu368-v1','combined-features-fresh202-gpu368-v1') or (p['profile']=='combined-features-fresh212-gpu371-output-v1' and p['GPU371_manifest']['sha256']=='649612e1b5facd4b0992fea6b2c7c2a37cd2ea47d0570bcbf97b28c871b8655b' and p['install_targets']==['render'] and p['boot_transition']['boot_write_required'] is False) or (re.fullmatch(r'combined-features-fresh[0-9]{3}-gpu369-timing-v1',p['profile']) and p.get('gpu369_timing_contract',{}).get('manifest_sha256')=='cdfb0064c25f49dceac669aaba0b7050c2d82f8d10b43c417f8ce6d2180cd08e'),'Exact GPU368 fresh200 profile')
+ require(combined375 or client373 or p['profile'] in ('combined-features-fresh200-gpu368-v1','combined-features-fresh202-gpu368-v1') or (p['profile']=='combined-features-fresh212-gpu371-output-v1' and p['GPU371_manifest']['sha256']=='649612e1b5facd4b0992fea6b2c7c2a37cd2ea47d0570bcbf97b28c871b8655b' and p['install_targets']==['render'] and p['boot_transition']['boot_write_required'] is False) or (re.fullmatch(r'combined-features-fresh[0-9]{3}-gpu369-timing-v1',p['profile']) and p.get('gpu369_timing_contract',{}).get('manifest_sha256')=='cdfb0064c25f49dceac669aaba0b7050c2d82f8d10b43c417f8ce6d2180cd08e'),'Exact GPU368 fresh200 profile')
  clients=p['diagnostic_clients']
  require(len(clients)==2 and all(c['relative_directory']=='.' and c['phase']==1 for c in clients),'GPU368 exact two System32 clients')
  launcher,presenter='mt8167-dxgi-console-launch363.exe','mt8167-dxgi-present356.exe'
  lh='ab17ed4cf69e6407fa5b017375d39318a89cf544a193ba89fb8a104173eff423';ph='eaa30760ebc38a1955ccb3bbd834ee5c3972ce8842b90e6a58bc5084109ef8d5'
- if client373:
+ if combined375:
+  cc=p['baseline221_client_transition_reference_only'];lh=cc['client_replacements']['Windows/System32/'+launcher]['candidate']['sha256'];ph=cc['client_replacements']['Windows/System32/'+presenter]['candidate']['sha256']
+ elif client373:
   lh=p['gpu373_client_contract']['client_replacements']['Windows/System32/'+launcher]['candidate']['sha256'];ph=p['gpu373_client_contract']['client_replacements']['Windows/System32/'+presenter]['candidate']['sha256']
  require(clients[0]['name']=='gpu_present' and clients[0]['exe']==launcher and clients[0]['sha256']==lh and clients[0]['dependencies']==[{'exe':presenter,'sha256':ph}],'GPU368 exact signed console363/present356 pair')
  for name,h in [(launcher,lh),(presenter,ph)]:
@@ -106,7 +113,9 @@ def main():
  ap.add_argument('--stage-only',action='store_true',help='GPU368 only: run every staging assertion and stop before WIM/ESP; not deployable');ap.add_argument('--reboot-after-commit',action='store_true',help='Reboot WinPE after committed update, volume release and UART stream success')
  for n in ('workspace','map','service-package','prepared-system','prepared-result','comparator','base','tools','out'):ap.add_argument('--'+n,type=Path,required=True)
  for n in ('prepared-sha256','comparator-manifest-sha256','source-commit'):ap.add_argument('--'+n,required=True)
- ap.add_argument('--gpu373-client-profile','--gpu374-client-profile','--gpu375-client-profile',dest='gpu373_client_profile',action='store_true');ap.add_argument('--gpu371-output-profile',action='store_true');ap.add_argument('--gpu369-timing-profile',action='store_true');ap.add_argument('--combined202-profile',action='store_true');ap.add_argument('--combined200-profile',action='store_true');ap.add_argument('--combined196-profile',action='store_true');ap.add_argument('--combined194-profile',action='store_true');ap.add_argument('--combined192-profile',action='store_true');ap.add_argument('--combined190-profile',action='store_true');ap.add_argument('--combined188-profile',action='store_true');ap.add_argument('--combined186-profile',action='store_true');ap.add_argument('--combined184-profile',action='store_true');ap.add_argument('--combined182-profile',action='store_true');ap.add_argument('--combined180-profile',action='store_true');ap.add_argument('--combined178-profile',action='store_true');ap.add_argument('--combined176-profile',action='store_true');ap.add_argument('--combined174-profile',action='store_true');ap.add_argument('--combined172-profile',action='store_true');ap.add_argument('--combined170-profile',action='store_true');ap.add_argument('--combined168-profile',action='store_true');ap.add_argument('--combined166-profile',action='store_true');ap.add_argument('--combined164-profile',action='store_true');ap.add_argument('--combined162-profile',action='store_true');ap.add_argument('--combined160-profile',action='store_true');ap.add_argument('--combined158-profile',action='store_true');ap.add_argument('--combined156-profile',action='store_true');ap.add_argument('--combined154-profile',action='store_true');ap.add_argument('--combined152-profile',action='store_true');ap.add_argument('--combined150-profile',action='store_true');ap.add_argument('--combined148-profile',action='store_true');ap.add_argument('--combined146-profile',action='store_true');ap.add_argument('--combined144-profile',action='store_true');ap.add_argument('--combined142-profile',action='store_true');ap.add_argument('--combined140-profile',action='store_true');ap.add_argument('--combined138-profile',action='store_true');ap.add_argument('--combined136-profile',action='store_true');ap.add_argument('--next-profile',action='store_true');ap.add_argument('--service-source-commit');ap.add_argument('--enable-peripheral-batch',action='store_true');a=ap.parse_args();root=a.workspace.resolve(strict=True);here=Path(__file__).resolve().parent;repo=here.parents[1]
+ ap.add_argument('--gpu375-combined-profile',action='store_true');ap.add_argument('--gpu373-client-profile','--gpu374-client-profile','--gpu375-client-profile',dest='gpu373_client_profile',action='store_true');ap.add_argument('--gpu371-output-profile',action='store_true');ap.add_argument('--gpu369-timing-profile',action='store_true');ap.add_argument('--combined202-profile',action='store_true');ap.add_argument('--combined200-profile',action='store_true');ap.add_argument('--combined196-profile',action='store_true');ap.add_argument('--combined194-profile',action='store_true');ap.add_argument('--combined192-profile',action='store_true');ap.add_argument('--combined190-profile',action='store_true');ap.add_argument('--combined188-profile',action='store_true');ap.add_argument('--combined186-profile',action='store_true');ap.add_argument('--combined184-profile',action='store_true');ap.add_argument('--combined182-profile',action='store_true');ap.add_argument('--combined180-profile',action='store_true');ap.add_argument('--combined178-profile',action='store_true');ap.add_argument('--combined176-profile',action='store_true');ap.add_argument('--combined174-profile',action='store_true');ap.add_argument('--combined172-profile',action='store_true');ap.add_argument('--combined170-profile',action='store_true');ap.add_argument('--combined168-profile',action='store_true');ap.add_argument('--combined166-profile',action='store_true');ap.add_argument('--combined164-profile',action='store_true');ap.add_argument('--combined162-profile',action='store_true');ap.add_argument('--combined160-profile',action='store_true');ap.add_argument('--combined158-profile',action='store_true');ap.add_argument('--combined156-profile',action='store_true');ap.add_argument('--combined154-profile',action='store_true');ap.add_argument('--combined152-profile',action='store_true');ap.add_argument('--combined150-profile',action='store_true');ap.add_argument('--combined148-profile',action='store_true');ap.add_argument('--combined146-profile',action='store_true');ap.add_argument('--combined144-profile',action='store_true');ap.add_argument('--combined142-profile',action='store_true');ap.add_argument('--combined140-profile',action='store_true');ap.add_argument('--combined138-profile',action='store_true');ap.add_argument('--combined136-profile',action='store_true');ap.add_argument('--next-profile',action='store_true');ap.add_argument('--service-source-commit');ap.add_argument('--enable-peripheral-batch',action='store_true');a=ap.parse_args();root=a.workspace.resolve(strict=True);here=Path(__file__).resolve().parent;repo=here.parents[1]
+ if a.gpu375_combined_profile:
+  require(not any((a.gpu373_client_profile,a.gpu371_output_profile,a.gpu369_timing_profile,a.combined202_profile,a.combined200_profile)),'Explicit combined375 only');a.combined200_profile=True
  if a.gpu373_client_profile:
   require(not a.gpu371_output_profile and not a.gpu369_timing_profile and not a.combined202_profile and not a.combined200_profile,'Select one client373 profile');a.combined200_profile=True
  if a.gpu371_output_profile:
@@ -117,8 +126,12 @@ def main():
   require(not a.combined200_profile,'Select exactly one capture profile');a.combined200_profile=True
  require(not a.stage_only or a.combined200_profile,'Stage-only is limited to GPU368')
  if a.combined200_profile:
-  require(sum(bool(v) for k,v in vars(a).items() if k.endswith('_profile'))==1+int(a.combined202_profile)+int(a.gpu369_timing_profile)+int(a.gpu371_output_profile)+int(a.gpu373_client_profile),'Profiles mutually exclusive')
-  if a.gpu373_client_profile:
+  require(sum(bool(v) for k,v in vars(a).items() if k.endswith('_profile'))==1+int(a.combined202_profile)+int(a.gpu369_timing_profile)+int(a.gpu371_output_profile)+int(a.gpu373_client_profile)+int(a.gpu375_combined_profile),'Profiles mutually exclusive')
+  if a.gpu375_combined_profile:
+   import importlib.util
+   ts=importlib.util.spec_from_file_location('combined375',here.parents[0]/'recovery/prepare-gpu375-combined-inputs.py');tm=importlib.util.module_from_spec(ts);ts.loader.exec_module(tm)
+   load_map,generate,PROFILE,SERVICE,DIRECTORY,generate_paths,assert_paths=tm.load_map,tm.generate,tm.PROFILE,tm.SERVICE,tm.DIRECTORY,tm.paths,tm.assert_paths
+  elif a.gpu373_client_profile:
    import importlib.util
    capture=json.loads(a.map.read_text(encoding='utf-8-sig'))['capture_number'];require(capture in (215,218,221),'Known actual client capture only');version={215:373,218:374,221:375}[capture]
    ts=importlib.util.spec_from_file_location('client373',here.parents[0]/f'recovery/prepare-gpu{version}-client-inputs.py');tm=importlib.util.module_from_spec(ts);ts.loader.exec_module(tm)
@@ -290,7 +303,7 @@ def main():
   copy(root/client['directory']/client['exe'],'payload/clients/'+client['exe'])
   for dep in client['dependencies']:copy(root/client['directory']/dep['exe'],'payload/clients/'+dep['exe'])
  token=hashlib.sha256(json.dumps(p,sort_keys=True,separators=(',',':')).encode()).hexdigest()
- runtime_policy_token=gpu368_media_contract(p,(service/'peripheral-batch-policy.h').read_text(),(service/(SERVICE+'.exe')).read_bytes()) if a.combined200_profile else token
+ runtime_policy_token=gpu368_media_contract(p,(service/'peripheral-batch-policy.h').read_text(),(service/(SERVICE+'.exe')).read_bytes(),root) if a.combined200_profile else token
  (stage/'payload/boot-transition-authorized.bin').write_bytes(runtime_policy_token.encode()+b'\0');files['payload/boot-transition-authorized.bin']=sha(stage/'payload/boot-transition-authorized.bin')
  prepare=[]
  for i,e in enumerate(x for x in b['files'] if x['source_path'] in {'Windows/System32/config/'+n+s for n in ('SYSTEM','DRIVERS') for s in ('','.LOG1','.LOG2')}):

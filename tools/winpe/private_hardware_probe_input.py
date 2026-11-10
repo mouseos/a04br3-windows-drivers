@@ -46,6 +46,13 @@ def prepared_system_check(system, manifest, expected_sha256, root, backup, selec
     timing = bool(expected_peripheral_policy and re.fullmatch(r'combined-features-fresh([0-9]{3})-gpu369-timing-v1',expected_peripheral_policy.get('profile','')))
     output371=bool(expected_peripheral_policy and expected_peripheral_policy.get('profile')=='combined-features-fresh212-gpu371-output-v1')
     client373=bool(expected_peripheral_policy and expected_peripheral_policy.get('profile') in ('combined-features-fresh215-gpu373-clients-v1','combined-features-fresh218-gpu374-clients-v1','combined-features-fresh221-gpu375-clients-v1'))
+    combined375=bool(expected_peripheral_policy and expected_peripheral_policy.get('profile')=='combined-features-fresh221-gpu376-battery18-wifi1031-client375-v1')
+    if combined375:
+        import importlib.util
+        ts=importlib.util.spec_from_file_location('combined375',Path(__file__).resolve().parents[1]/'recovery/prepare-gpu375-combined-inputs.py');tm=importlib.util.module_from_spec(ts);ts.loader.exec_module(tm)
+        tm.validate_runtime_policy(root,expected_peripheral_policy)
+        if selected_service!=tm.SERVICE:raise ValueError('Only new221 combined service')
+        names[selected_service]='MediaTek PowerVR GE8300 verification'
     if client373:
         import sys
         sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'recovery'))
@@ -133,9 +140,9 @@ def prepared_system_check(system, manifest, expected_sha256, root, backup, selec
             if report.get('single_gpu_rearm'):
                 if not re.fullmatch('[0-9a-f]{64}',before.get('single_gpu_ledger','')) or services[0].get('diagnostic_fingerprint')!=before['single_gpu_ledger']:raise ValueError('single GPU ledger preservation missing')
                 related_names.add('single_gpu_ledger')
-        if selected_service in ('MT8167CombinedFollowup200','MT8167CombinedFollowup202') or timing or output371 or client373:
+        if selected_service in ('MT8167CombinedFollowup200','MT8167CombinedFollowup202') or timing or output371 or client373 or combined375:
             p = expected_peripheral_policy
-            if not p or p['profile'] != (policy_variant(p)['profile'] if client373 else 'combined-features-fresh212-gpu371-output-v1' if output371 else 'combined-features-fresh'+selected_service[-3:]+('-gpu369-timing-v1' if timing else '-gpu368-v1')) or not re.fullmatch('[0-9a-f]{64}',report.get('peripheral_preservation_plan_sha256','')):
+            if not p or p['profile'] != ('combined-features-fresh221-gpu376-battery18-wifi1031-client375-v1' if combined375 else policy_variant(p)['profile'] if client373 else 'combined-features-fresh212-gpu371-output-v1' if output371 else 'combined-features-fresh'+selected_service[-3:]+('-gpu369-timing-v1' if timing else '-gpu368-v1')) or not re.fullmatch('[0-9a-f]{64}',report.get('peripheral_preservation_plan_sha256','')):
                 raise ValueError('GPU368 exact fresh200 policy binding required')
             if report.get('peripheral_old_services_preserved') is not True or report.get('engine_rearm_plan_sha256'):
                 raise ValueError('GPU368 preservation proof required')

@@ -1,8 +1,60 @@
 {
   "schema": "GPU375_COMBINED_ACCEPTED_MANIFESTS_V1",
   "status": "awaiting-actual-signed-manifests-and-main-review",
-  "gpu376": null,
-  "battery18": null,
+  "gpu376": {
+    "manifest": {
+      "path": "port/xnu/out/windows-rt-gdi376-signed/package376/signed-manifest.json",
+      "sha256": "7813356ceea205e536bccaa3b82fb077ac2e20a8712302468637aa074052644b"
+    },
+    "schema": "ge8300-gdi376-render-sign-only-v1",
+    "source_field": "recipe_source_commit",
+    "source_commit": "48b3fd2a001022e1fcd34d17593548875799361d",
+    "runtime_source_commit": "2f63b0e6b7e4466c89dbc9c48d0f005d91f9069d",
+    "versions": {
+      "render": "0.0.3.76"
+    },
+    "dates": {
+      "render": "11/10/2026"
+    },
+    "main_review": {
+      "path": "port/xnu/out/windows-rt-gdi376-signed/main-signed-review.json",
+      "sha256": "99734258da97369f779d219b53d13726f9c8cddfbccef71264a6b27017b1b6a5"
+    }
+  },
+  "battery18": {
+    "manifest": {
+      "path": "port/xnu/out/lc709203f-firstfailure18/recovered/package/signed-manifest.json",
+      "sha256": "7adc56c789b7b49c3391b090cd60b258f1b5e970987bba0a7cb2ed355f53f3a7"
+    },
+    "schema": "lc709203f-first-failure-observe-v1",
+    "source_field": "source_commit",
+    "source_commit": "049e8937d05b5fe747c64bd85f6b0585286fdd90",
+    "versions": {
+      "battery": "0.0.1.8"
+    },
+    "dates": {
+      "battery": "11/10/2026"
+    },
+    "main_review": {
+      "path": "port/xnu/out/lc709203f-firstfailure18/main-independent-review.json",
+      "sha256": "359559cd86cbbbc724d11f9e3ad48898fc180d7f49840324ddd00fadc110a768"
+    }
+  },
   "wifi1031": null,
-  "display_update": null
+  "display_update": true,
+  "retained372": {
+    "manifest": {
+      "path": "port/xnu/out/windows-rt-dwm372-signed/dwm372-signed-r2/package372/signed-manifest.json",
+      "sha256": "e987826bdc5a9a8085c31ebeccf6c0680e96cd8bb7ef5ad56748869bc41bccfc"
+    },
+    "schema": "dwm372-source30cb-sign-only-v1",
+    "source_field": "recipe_source_commit",
+    "source_commit": "4a952787f1befccd5c580e826b109fb9decc9c80",
+    "versions": {
+      "display": "0.0.3.72"
+    },
+    "dates": {
+      "display": "11/10/2026"
+    }
+  }
 }

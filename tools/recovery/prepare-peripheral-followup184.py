@@ -47,6 +47,15 @@ def package(root,e,role):
  if pm.get('schema')=='GE8300_VIDPN371_RELINK_SIGN_V1':
   require(role=='render' and sha(mp)=='649612e1b5facd4b0992fea6b2c7c2a37cd2ea47d0570bcbf97b28c871b8655b' and pm['recipe_source_commit']=='9d941f9873c1e7d8c166aa04e743a31eb99218dd' and pm['runtime_source_commit']=='b63827d7c45e099d5844e2c694804a1df047ed10' and pm['driver_version']=='0.0.3.71','既知371 render schemaのみ')
   package_source=pm['recipe_source_commit']
+ if pm.get('schema')=='dwm372-source30cb-sign-only-v1':
+  require(role=='display' and sha(mp)=='e987826bdc5a9a8085c31ebeccf6c0680e96cd8bb7ef5ad56748869bc41bccfc' and pm['recipe_source_commit']=='4a952787f1befccd5c580e826b109fb9decc9c80' and pm['native_owner_source_commit']==pm['umd_source_commit']=='30cb20f79ec3c5f71c056d5783fe6743e92bf2ce' and pm['signed'] is True and pm['success'] is True and pm['signer_thumbprint']=='BCBF6C456C6F0DD0818434763B189488FBF13570','実372 transportの狭いnative schemaだけ')
+  package_source=pm['recipe_source_commit']
+ if pm.get('schema')=='ge8300-gdi376-render-sign-only-v1':
+  lock=read(Path(__file__).with_name('gpu375-combined-accepted.json'));accepted=lock.get('gpu376')
+  require(role=='render' and isinstance(accepted,dict) and accepted['manifest']==dict(path=e['manifest'],sha256=sha(mp)) and lock.get('status')=='actual-signed-manifests-reviewed','実376 pin未確定/別manifest拒否')
+  require(pm['recipe_source_commit']=='48b3fd2a001022e1fcd34d17593548875799361d' and pm['runtime_source_commit']==pm['kernel_binary_source_commit']=='2f63b0e6b7e4466c89dbc9c48d0f005d91f9069d' and pm['baseline372_manifest_sha256']=='e987826bdc5a9a8085c31ebeccf6c0680e96cd8bb7ef5ad56748869bc41bccfc' and pm['success'] is True and pm['signed'] is True and pm['signer_thumbprint']=='BCBF6C456C6F0DD0818434763B189488FBF13570','正式376/372 source tupleのみ')
+  require(pm['retained_transport372_UMD_FW_clients'] is True and pm['inf_driverver']=='11/10/2026,0.0.3.76' and pm['hardware_verified'] is False,'実376署名を実機成功へ読み替えない')
+  package_source=pm['recipe_source_commit']
  require(package_source==e['source_commit'],'Package source mismatch')
  require(set(e['names'])=={'inf','sys','cat'} and e['names']['sys']==TARGETS[role][3],'Exact role trio required')
  hashes={}
