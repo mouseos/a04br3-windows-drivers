@@ -89,7 +89,7 @@ namespace MT8167OfflineHive {
             if(!PrivateRoots.Contains(root.Handle.DangerousGetHandle())) throw new ArgumentException("Only our private clone root is allowed");
             if(writable) throw new InvalidOperationException("Inventory does not allow writable paths");
             bool allowed=path=="Select" || path=="ControlSet001";
-            foreach(string prefix in new string[]{"ControlSet001\\Services","ControlSet001\\Enum","ControlSet001\\Control\\Class","ControlSet001\\Control\\GraphicsDrivers"})
+            foreach(string prefix in new string[]{"ControlSet001\\Services","ControlSet001\\Enum","ControlSet001\\Control\\Class","ControlSet001\\Control\\GraphicsDrivers","ControlSet001\\Control\\Video"})
                 if(path==prefix || path.StartsWith(prefix+"\\",StringComparison.Ordinal)) allowed=true;
             if(!allowed) throw new ArgumentException("Bounded inventory path required");
             RegistryKey current=null;
