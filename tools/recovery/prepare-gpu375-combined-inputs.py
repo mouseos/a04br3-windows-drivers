@@ -117,10 +117,10 @@ def prepare(root, spec, policy=None):
     for member in policy['packages']['render'].get('extra_members', []):
         new = next((x for x in rows['render'].get('extra_members', []) if x['name'] == member['name']), None)
         require(new is not None and installed_path(new['installed']) == installed_path(member['installed']) and new['sha256'] == hashes372[member['name']], 'UMD/FWは実372由来: ' + member['name'])
-        a.pinned(root, {'path': str(Path(lock['retained372']['manifest']['path']).parent / new['name']), 'sha256': new['sha256']})
-        require(a.pinned(root, {'path': str(Path(rows['render']['directory']) / new['name']), 'sha256': new['sha256']}).is_file(), '実UMD/FW leaf')
+        a.pinned(root, {'path': (Path(lock['retained372']['manifest']['path']).parent / new['name']).as_posix(), 'sha256': new['sha256']})
+        require(a.pinned(root, {'path': (Path(rows['render']['directory']) / new['name']).as_posix(), 'sha256': new['sha256']}).is_file(), '実UMD/FW leaf')
         installed = installed_path(new['installed'])
-        extra_updates[installed] = dict(candidate=dict(path=str(Path(rows['render']['directory']) / new['name']), sha256=new['sha256']),
+        extra_updates[installed] = dict(candidate=dict(path=(Path(rows['render']['directory']) / new['name']).as_posix(), sha256=new['sha256']),
                                         baseline=dict(path=policy['preserved_sources'][installed], sha256=policy['preserved_files'][installed]))
     for kind, name in rows['display']['names'].items():
         require(rows['display']['hashes'][kind] == hashes372['display-transport/' + name], 'transport372の実trio保持')
@@ -183,9 +183,9 @@ def load_map(path, root):
     for row in delta['candidate_packages'].values():
         pins[row['manifest']] = row['manifest_sha256']
         for kind, name in row['names'].items():
-            pins[str(Path(row['directory']) / name)] = row['hashes'][kind]
+            pins[(Path(row['directory']) / name).as_posix()] = row['hashes'][kind]
         for leaf in row.get('extra_members', []):
-            pins[str(Path(row['directory']) / leaf['name'])] = leaf['sha256']
+            pins[(Path(row['directory']) / leaf['name']).as_posix()] = leaf['sha256']
     for ref in (spec['client_map'], lock['retained372']['manifest'], lock['main_review_bundle'], *delta['main_package_reviews'].values()):
         a.pinned(root, ref)
         pins[ref['path']] = ref['sha256']
