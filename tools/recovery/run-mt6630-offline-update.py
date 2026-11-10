@@ -73,9 +73,15 @@ def main():
                    'test "$(readlink -f /dev/block/by-name/EFI)" = /dev/block/mmcblk0p18; '
                    'test "$(cat /sys/class/block/mmcblk0p18/start)" = 360448; '
                    'test "$(cat /sys/class/block/mmcblk0p18/size)" = 524288; '
-                   'awk \'NF < 6 {exit 2} $3 ~ /ntfs|fuseblk/ {exit 1} '
-                   '$1 == "/dev/block/mmcblk0p18" || $1 == "/dev/block/by-name/EFI" {exit 1}\' /proc/mounts; '
-                   'awk \'NF < 6 {exit 2} $3 == "179:18" || $3 == "179:20" {exit 1}\' /proc/self/mountinfo; '
+                   'rows=0; while read -r dev mp fs opts dump pass; do '
+                   'rows=$((rows+1)); test -n "$pass"; '
+                   'case "$fs" in *ntfs*|*fuseblk*) exit 1;; esac; '
+                   'case "$dev" in /dev/block/mmcblk0p18|/dev/block/by-name/EFI) exit 1;; esac; '
+                   'done < /proc/mounts; test "$rows" -gt 0; '
+                   'rows=0; while read -r mid parent major rest; do '
+                   'rows=$((rows+1)); test -n "$rest"; '
+                   'case "$major" in 179:18|179:20) exit 1;; esac; '
+                   'done < /proc/self/mountinfo; test "$rows" -gt 0; '
                    'test "$(sha256sum /tmp/mt6630-verified-esp.img | cut -d " " -f 1)" = ' + digest + '; '
                    'dd if=/tmp/mt6630-verified-esp.img of=/dev/block/by-name/EFI bs=1048576 conv=fsync; sync')
         run(adb('shell', command), label + '-write.log', flash=True)
@@ -109,7 +115,7 @@ def main():
         save('servicing-result-missing-do-not-reset')
         raise SystemExit('更新結果不明。処理中の可能性があるためresetしません')
     (out / 'maintenance-report.txt').write_bytes(report)
-    lines = report.decode('ascii').splitlines()
+    lines = report.decode('utf-8', errors='replace').splitlines()
     if any(lines.count(x) != 1 for x in ('UPDATE_STATUS=COMMITTED', 'UPDATE_RELEASE_EXIT=0', 'UPDATE_EXIT=0')):
         save('servicing-failed-no-normal-boot')
         raise SystemExit('更新またはvolume release失敗。通常Windowsへ進めません')
