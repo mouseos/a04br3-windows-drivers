@@ -42,7 +42,11 @@ def audit_baseline(root,spec):
  previous=n['new_service'];require(previous['present'] and previous['values']['Start']['value']==4 and previous['values']['ImagePath']['value']=='"C:\\Windows\\System32\\MT8167CombinedFollowup194.exe"','Previous service disabled')
  values+=_b.value_contract('SYSTEM\\CurrentControlSet\\Services\\MT8167CombinedFollowup194',previous['values']);require(len(values)==125,'Exact125 named values')
  baselines={}
- for role in ROLES:_b.package(root,prior['packages'][role],role)
+ for role in ROLES:
+  historical=_b.package(root,prior['packages'][role],role)
+  historical_manifest=rooted(root,historical['manifest']);pins[historical_manifest.relative_to(root).as_posix()]=sha(historical_manifest)
+  for name in list(historical['names'].values())+[x['name'] for x in historical.get('extra_members',[])]:
+   q=rooted(root,Path(historical['directory'])/name);pins[q.relative_to(root).as_posix()]=sha(q)
  for r in ROLES:
   row=n['nodes'][TARGETS[r][0]];require(row['present'] and len(row['instances'])==1,'One baseline node '+r);v=row['instances'][0];sel=n['bt_start']['selection'] if r=='bt' else v['selected'];require(v['values']['Service']['value'].lower()==TARGETS[r][1].lower(),'Exact service '+r)
   b={'mode':'selected' if r in INSTALL else 'retained','version_u64':version(sel['DriverVersion']['value']),'date_filetime':datevalue(sel['DriverDate']['value'].replace('-','/')),'sys_sha256':originals['Windows/System32/Drivers/'+TARGETS[r][3]]['sha256'],'inf':sel['InfPath']['value']}
