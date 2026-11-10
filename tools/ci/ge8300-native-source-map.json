@@ -746,33 +746,40 @@
       "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_factory_checkpoint.h",
       "source_commit": "f96948533601f9fdcdcc22b9700aacd96dbf7204",
       "source_sha256": "4a984233ab61c0fb3038b73f9b07c93b819ffff2461d86b38e6c36d1e37db119",
-      "sha256": "90ec04b02298dc104c934b4b16055d697bf1dd265c34f33add49a4434c309faf",
+      "sha256": "0c9e79541b5a54fbcb721fe670578072608f3192020a051f16219e71e9fe526b",
       "include_rewrites": [],
-      "rewrite_includes_only": true,
+      "rewrite_includes_only": false,
       "reviewed_delta": {
-        "source_commit": "39ac9ac930910b5dcb301fbbb9cb20eba54c7a6c",
+        "source_commit": "da55f300b9b0b8ff41aced084b582bb618b1b5a9",
         "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_factory_checkpoint.h",
-        "sha256": "90ec04b02298dc104c934b4b16055d697bf1dd265c34f33add49a4434c309faf",
+        "sha256": "0c9e79541b5a54fbcb721fe670578072608f3192020a051f16219e71e9fe526b",
         "baseline_destination_sha256": "b7fe5e5d78ed595e8412b6bf48e5d69b525f2744bc63a76358870cc15b0e17d3",
-        "role": "Texture352 diagnostic boundaries only; no shader/control change",
+        "role": "Shared bounded checkpoint stage contract; eliminate shadow stage69 header",
         "previous_reviewed_delta": {
-          "source_commit": "144a488bac2c1dec791c7122a97c1faf70e3ec4c",
+          "source_commit": "39ac9ac930910b5dcb301fbbb9cb20eba54c7a6c",
           "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_factory_checkpoint.h",
-          "sha256": "b7fe5e5d78ed595e8412b6bf48e5d69b525f2744bc63a76358870cc15b0e17d3",
-          "baseline_destination_sha256": "4767d6f3a912cf2d46cf7853b11a2ca90fad762de5a4165c988247389bcc0e77",
-          "role": "Durable existing PASSIVE progress344",
+          "sha256": "90ec04b02298dc104c934b4b16055d697bf1dd265c34f33add49a4434c309faf",
+          "baseline_destination_sha256": "b7fe5e5d78ed595e8412b6bf48e5d69b525f2744bc63a76358870cc15b0e17d3",
+          "role": "Texture352 diagnostic boundaries only; no shader/control change",
           "previous_reviewed_delta": {
-            "source_commit": "17af96fe642c0dc672b172a322f0f0ab67fdb374",
+            "source_commit": "144a488bac2c1dec791c7122a97c1faf70e3ec4c",
             "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_factory_checkpoint.h",
-            "sha256": "4767d6f3a912cf2d46cf7853b11a2ca90fad762de5a4165c988247389bcc0e77",
-            "baseline_destination_sha256": "72a0bcea901bc26046623cb524f2c6dff97082da2d55d1602408d2da46f6030f",
+            "sha256": "b7fe5e5d78ed595e8412b6bf48e5d69b525f2744bc63a76358870cc15b0e17d3",
+            "baseline_destination_sha256": "4767d6f3a912cf2d46cf7853b11a2ca90fad762de5a4165c988247389bcc0e77",
             "role": "Durable existing PASSIVE progress344",
             "previous_reviewed_delta": {
-              "source_commit": "5b5649e0",
+              "source_commit": "17af96fe642c0dc672b172a322f0f0ab67fdb374",
               "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_factory_checkpoint.h",
-              "sha256": "72a0bcea901bc26046623cb524f2c6dff97082da2d55d1602408d2da46f6030f",
-              "baseline_destination_sha256": "4a984233ab61c0fb3038b73f9b07c93b819ffff2461d86b38e6c36d1e37db119",
-              "role": "Durable existing PASSIVE progress344"
+              "sha256": "4767d6f3a912cf2d46cf7853b11a2ca90fad762de5a4165c988247389bcc0e77",
+              "baseline_destination_sha256": "72a0bcea901bc26046623cb524f2c6dff97082da2d55d1602408d2da46f6030f",
+              "role": "Durable existing PASSIVE progress344",
+              "previous_reviewed_delta": {
+                "source_commit": "5b5649e0",
+                "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_factory_checkpoint.h",
+                "sha256": "72a0bcea901bc26046623cb524f2c6dff97082da2d55d1602408d2da46f6030f",
+                "baseline_destination_sha256": "4a984233ab61c0fb3038b73f9b07c93b819ffff2461d86b38e6c36d1e37db119",
+                "role": "Durable existing PASSIVE progress344"
+              }
             }
           }
         }
