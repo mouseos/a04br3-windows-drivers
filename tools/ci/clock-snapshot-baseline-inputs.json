@@ -1,0 +1,24 @@
+{
+  "parent_source": "b2c1a3136a5b8eadf1900f71a8d330a6b0a31ac8",
+  "thermal_source": "740800733fe9741023038026a717fd54d43cd7c3",
+  "inputs": {
+    "parent": {
+      "path": "port/xnu/out/windows-rt-thermal-acpi-consume1117/package/signed-manifest.json",
+      "sha256": "8e9b0db043b653c3aa746d570ebb3f2646b653c7e9d79da3d74ff39ee43799b2"
+    },
+    "thermal": {
+      "path": "port/xnu/out/mt8167-thermal-run145-rootfix/leaf110-main/package/signed-manifest.json",
+      "sha256": "a5467e4af4b29b7478951a093b5cd3bc97caf568bea3c38cf4c5f21c7a451ec1"
+    }
+  },
+  "existing_helper_objects": 13,
+  "new_parent_object": "wdf_parent_probe",
+  "new_sampler_object": "clock_snapshot",
+  "new_child_objects": [
+    "wdf_native_thermal",
+    "parent_snapshot_client"
+  ],
+  "new_user_object": "mt8167-clock-snapshot",
+  "ARM_build_performed": false,
+  "runner_used": false
+}

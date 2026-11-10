@@ -273,6 +273,15 @@
 #include "codec_headphone.h"
 #include "codec_adc_probe.h"
 #endif
+#ifndef MT8167_CLOCK_SNAPSHOT_QUERY
+#define MT8167_CLOCK_SNAPSHOT_QUERY 0
+#endif
+#if MT8167_CLOCK_SNAPSHOT_QUERY
+#if !A04_SHARED_QUERY_EXPERIMENTAL || !A04_SHARED_THERMAL_DIAGNOSTIC || !A04_SHARED_THERMAL_NATIVE_EXPERIMENT || !A04_SHARED_APMIXED_RESOURCE
+#error Clock snapshot requires the existing query, thermal rundown/topology and APMIXED resource
+#endif
+#include "clock_snapshot_interface.h"
+#endif
 typedef struct {
 #if A04_SHARED_USBPORT_CHILD
  struct mt_musb_parent musb;WDFDEVICE musbChild;WDFTIMER musbRoleTimer;WDFWORKITEM musbRoleWork;ULONG musbChildCreated;
@@ -1003,6 +1012,9 @@ static int ParentWifiWrite(PVOID c,ULONG g,unsigned b,unsigned o,ULONG v)
 {return ParentWifiOperation(c,g,b,o,0,v,0);}
 static VOID ParentInterfaceReference(PVOID context) { WdfObjectReference((WDFDEVICE)context); }
 static VOID ParentInterfaceDereference(PVOID context) { WdfObjectDereference((WDFDEVICE)context); }
+#if MT8167_CLOCK_SNAPSHOT_QUERY
+#include "clock_snapshot_parent.inc"
+#endif
 #if A04_SHARED_GPU_PLATFORM
 #include "gpu_parent_service.inc"
 #endif
@@ -1785,6 +1797,11 @@ static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance
 #endif
 #if A04_SHARED_THERMAL_NATIVE_EXPERIMENT
     if(base==0xfffffffeu) {
+#if MT8167_CLOCK_SNAPSHOT_QUERY
+        WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&Mt8167ClockSnapshotInterfaceGuid,NULL);
+        query.SendQueryToParentStack=TRUE;status=WdfDeviceAddQueryInterface(child,&query);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+#endif
         WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&Mt8167ThermalParentPioGuid,NULL);
         query.SendQueryToParentStack=TRUE;status=WdfDeviceAddQueryInterface(child,&query);
         if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
@@ -1865,6 +1882,9 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
     A04_LEGACY_SHARED_INTERFACE iface;WDF_QUERY_INTERFACE_CONFIG query;
     A04_SHARED_INTERFACE inputIface;
+#if MT8167_CLOCK_SNAPSHOT_QUERY
+    MT8167_CLOCK_SNAPSHOT_INTERFACE clockIface;
+#endif
 #if MT6392_RTC_CALENDAR
     MT6392_RTC_INTERFACE rtcIface;
 #endif
@@ -1939,6 +1959,16 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     inputIface.Size=sizeof(inputIface);inputIface.Version=A04_SHARED_INTERFACE_VERSION;
 #if A04_SHARED_GPU_PLATFORM
     status=ParentGpuRegister(dev);if(!NT_SUCCESS(status))return status;
+#endif
+#if MT8167_CLOCK_SNAPSHOT_QUERY
+    RtlZeroMemory(&clockIface,sizeof(clockIface));
+    clockIface.Header.Size=sizeof(clockIface);clockIface.Header.Version=MT8167_CLOCK_INTERFACE_VERSION;
+    clockIface.Header.Context=dev;clockIface.Header.InterfaceReference=ParentInterfaceReference;
+    clockIface.Header.InterfaceDereference=ParentInterfaceDereference;
+    clockIface.ParentResourceContract=MT8167_CLOCK_PARENT_RESOURCE_CONTRACT;
+    clockIface.Snapshot=ParentClockSnapshot;
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&clockIface,&Mt8167ClockSnapshotInterfaceGuid,NULL);
+    status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
 #endif
     inputIface.Context=dev;inputIface.InterfaceReference=ParentInterfaceReference;
     inputIface.InterfaceDereference=ParentInterfaceDereference;

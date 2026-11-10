@@ -3,6 +3,14 @@
  * Resource-less child never maps, owns or frees thermal/ADC register ranges. */
 #include <ntddk.h>
 #include <wdf.h>
+#ifndef MT8167_CLOCK_SNAPSHOT_QUERY
+#define MT8167_CLOCK_SNAPSHOT_QUERY 0
+#endif
+#if MT8167_CLOCK_SNAPSHOT_QUERY
+#include "../../system/mt8167-clock/parent_snapshot_client.h"
+#include "../../system/mt8167-clock/clock_snapshot_ioctl.h"
+#include "../../system/mt8167-clock/clock_snapshot_ioctl.inc"
+#endif
 #include "boot_record.h"
 #include "readout.h"
 #include "readout_ioctl.h"
@@ -105,6 +113,9 @@ NTSTATUS PioExit(WDFDEVICE device,WDF_POWER_DEVICE_STATE next) {
 }
 VOID PioIoctl(WDFQUEUE queue,WDFREQUEST request,size_t outputSize,size_t inputSize,ULONG code) {
  PIO_THERMAL *c=Pio(WdfIoQueueGetDevice(queue));struct a04_thermal_readout_v1 v,*out;NTSTATUS status;
+#if MT8167_CLOCK_SNAPSHOT_QUERY
+ if(code==MT8167_CLOCK_GET_SNAPSHOT){Mt8167ClockSnapshotIoctl(queue,request,outputSize,inputSize);return;}
+#endif
  if(code==MT8167_THERMAL_GET_IOCTL_STATUS){
   struct mt8167_thermal_ioctl_status_v1 snapshot,*buffer;
   if(inputSize){WdfRequestComplete(request,STATUS_INVALID_PARAMETER);return;}
