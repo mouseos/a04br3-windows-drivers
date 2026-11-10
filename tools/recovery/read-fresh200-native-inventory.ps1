@@ -3,8 +3,8 @@ param([Parameter(Mandatory=$true)][string]$WorkspaceRoot,
  [Parameter(Mandatory=$true)][string]$Manifest,[Parameter(Mandatory=$true)][string]$ExpectedManifestSha256,
  [Parameter(Mandatory=$true)][string]$SourceDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,
  [Parameter(Mandatory=$true)][string]$PolicyPath,[Parameter(Mandatory=$true)][string]$ExpectedPolicyFileSha256,
- [string]$ExpectedPolicySha256,[ValidateSet('MT8167CombinedFollowup200')][string]$NewServiceName='MT8167CombinedFollowup200',
- [string[]]$AdditionalServiceNames=@())
+ [string]$ExpectedPolicySha256,[ValidatePattern('^MT8167CombinedFollowup[0-9]{3}$')][string]$NewServiceName='MT8167CombinedFollowup200',
+ [string[]]$AdditionalServiceNames=@(),[int]$TimingCaptureNumber=0)
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 function Hash($p){(Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant()}
 $w=[IO.Path]::GetFullPath($WorkspaceRoot).TrimEnd('\')
@@ -13,11 +13,24 @@ foreach($item in @($Manifest,$SourceDirectory,$OutputDirectory,$PolicyPath)){
 }
 if(!$ExpectedPolicySha256){$ExpectedPolicySha256=$ExpectedPolicyFileSha256}
 foreach($h in @($ExpectedManifestSha256,$ExpectedPolicyFileSha256,$ExpectedPolicySha256)){if($h -cnotmatch '^[0-9a-f]{64}$'){throw 'Explicit SHA256 required'}}
+if($TimingCaptureNumber){
+ if($TimingCaptureNumber -lt 204 -or $TimingCaptureNumber -gt 999){throw 'Bounded timing capture204..999 required'}
+ if($PSBoundParameters.ContainsKey('NewServiceName') -and $NewServiceName -cne "MT8167CombinedFollowup$TimingCaptureNumber"){throw 'New service/capture mismatch'}
+ $NewServiceName="MT8167CombinedFollowup$TimingCaptureNumber"
+ if((Hash $Manifest) -cne $ExpectedManifestSha256 -or (Hash $PolicyPath) -cne $ExpectedPolicyFileSha256){throw 'Explicit actual fresh/template SHA mismatch'}
+ $m=Get-Content -LiteralPath $Manifest -Raw|ConvertFrom-Json
+ $p=Get-Content -LiteralPath $PolicyPath -Raw|ConvertFrom-Json
+ if($Manifest.Replace('\','/') -cnotmatch ("/private-windows-rt-prebackup-run"+$TimingCaptureNumber+"/manifest.json$")){throw 'Actual capture path mismatch'}
+ if($m.status -cne 'captured-unmounted' -or $m.read_only -ne $true -or $m.unmounted -ne $true -or $m.errors.Count -or !$m.recovery_boot_id){throw 'Completed real fresh capture required'}
+ if(!$p.service_preservation -or !$p.captured_registry_values -or @($p.service_preservation.PSObject.Properties).Count -gt 128 -or @($p.captured_registry_values).Count -gt 2048){throw 'Bounded actual template names required'}
+}else{
+ if($NewServiceName -cne 'MT8167CombinedFollowup200'){throw 'Legacy200 service identity required'}
 if($ExpectedManifestSha256 -cne 'fbba59d9561ca61f9ff1b41e6bbe0a451330b91741abf487a5caaeeb420b2ed9' -or (Hash $Manifest) -cne $ExpectedManifestSha256 -or (Hash $PolicyPath) -cne $ExpectedPolicyFileSha256){throw 'Actual immutable fresh200/template pin mismatch'}
 $m=Get-Content -LiteralPath $Manifest -Raw|ConvertFrom-Json
 $p=Get-Content -LiteralPath $PolicyPath -Raw|ConvertFrom-Json
 if($m.recovery_boot_id -cne '64657ae7-390c-431b-ae4d-ae5de209793b' -or $m.status -cne 'captured-unmounted' -or $m.read_only -ne $true -or $m.unmounted -ne $true -or $m.errors.Count){throw 'Completed real fresh200 required'}
 if($p.profile -cne 'combined-features-fresh196-v1' -or !$p.service_preservation -or !$p.captured_registry_values){throw 'Canonical196 template supplies names only; not new snapshot'}
+}
 if(Test-Path -LiteralPath $OutputDirectory){throw 'New private output only'}
 if('MT8167OfflineHive.Native' -as [type]){throw 'Use a fresh Windows PowerShell process for the isolated clone reader'}
 foreach($name in $AdditionalServiceNames){if($name -cnotmatch '^[A-Za-z0-9_-]{1,100}$' -or $name -ceq $NewServiceName){throw 'Bounded additional retained service name required'}}
@@ -60,7 +73,7 @@ function Keypad-WdfRuntimeObservation($Root) {
   return [ordered]@{present=$true;path='ControlSet001\Services\Mt6392Keys\Parameters\Wdf';timestamp=$v;strict_full_fingerprint_check_retained=$true}
  }finally{$k.Dispose()}
 }
-$r=[ordered]@{schema='GPU368_FRESH200_READONLY_NATIVE_RECEIPT_V1';scope='Actual private clone inventory; no previous snapshot comparison and no hardware execution';capture_number=200;source_manifest_sha256=$ExpectedManifestSha256;recovery_boot_id=$m.recovery_boot_id;template_policy_sha256=$ExpectedPolicyFileSha256;policy_sha256=$ExpectedPolicySha256;policy_sha256_is_reference_only=$true;source_files=$pins;new_service_name=$NewServiceName;nodes=[ordered]@{};old_services=[ordered]@{};captured_named_values=[ordered]@{};missing_named_values=@();actual_driver_services=[ordered]@{};full_service_preservation_equal=$null;preservation_comparison_performed=$false;full_service_capture_complete=$false;combined=[ordered]@{};errors=@();load_rc=-1;unload_rc=-1;privilege_restore_error=-1;originals_unchanged=$false;physical_boot_read_performed=$false;registry_write_requested=$false;clone_replay_may_modify_clone=$true;hardware_verified=$false}
+$r=[ordered]@{schema=$(if($TimingCaptureNumber){"GPU369_FRESH$($TimingCaptureNumber)_READONLY_NATIVE_RECEIPT_V1"}else{'GPU368_FRESH200_READONLY_NATIVE_RECEIPT_V1'});scope='Actual private clone inventory; no previous snapshot comparison and no hardware execution';capture_number=$(if($TimingCaptureNumber){$TimingCaptureNumber}else{200});source_manifest_sha256=$ExpectedManifestSha256;recovery_boot_id=$m.recovery_boot_id;template_policy_sha256=$ExpectedPolicyFileSha256;policy_sha256=$ExpectedPolicySha256;policy_sha256_is_reference_only=$true;source_files=$pins;new_service_name=$NewServiceName;nodes=[ordered]@{};old_services=[ordered]@{};captured_named_values=[ordered]@{};missing_named_values=@();actual_driver_services=[ordered]@{};full_service_preservation_equal=$null;preservation_comparison_performed=$false;full_service_capture_complete=$false;combined=[ordered]@{};errors=@();load_rc=-1;unload_rc=-1;privilege_restore_error=-1;originals_unchanged=$false;physical_boot_read_performed=$false;registry_write_requested=$false;clone_replay_may_modify_clone=$true;hardware_verified=$false}
 $r.source_recipe_files=[ordered]@{}
 foreach($file in @('read-fresh200-native-inventory.ps1','ReadonlyInventory200HiveNative.cs','prepare-offline-system-service.ps1','read-post-ownership-policy360.ps1','read-gpu-native-checkpoint.ps1')){$r.source_recipe_files[$file]=Hash (Join-Path $PSScriptRoot $file)}
 $mount='MT8167OfflineSYSTEM_'+[Guid]::NewGuid().ToString('N');$root=$null;$priv=$null;$loaded=$false
@@ -93,7 +106,7 @@ try{
  # Discover actual root values for newer retained SCM services, including 196/USB198.
  foreach($name in $names){
   if($name -cnotmatch '^MT8167(CombinedFollowup[0-9]{3}|Usb1121[A-Za-z0-9_-]{0,80})$' -or !$r.old_services[$name].present){continue}
-  foreach($vn in @('Start','ImagePath','Type','ObjectName','DependOnService')){
+  foreach($vn in $(if($TimingCaptureNumber){@('Start','ImagePath','Type','ObjectName','DependOnService','ErrorControl','DisplayName')}else{@('Start','ImagePath','Type','ObjectName','DependOnService')})){
    $key='SYSTEM\CurrentControlSet\Services\'+$name;$id=$key+'\'+$vn
    if(!$requests.Contains($id)){$requests[$id]=@{key=$key;name=$vn;required=$false}}
   }

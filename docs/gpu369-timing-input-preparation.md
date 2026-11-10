@@ -38,10 +38,46 @@ viewのsourceは包装出自であり、UMD/nativeの実compile出自a04は別fi
 18services/125valuesも固定しない。旧taskを再armせず、markerを削除しない。
 新service名・capture番号・実件数は未確定のまま入力に残す。
 
-後段は既200/202の生成器を共用し、369 manifest adapter／display更新対象／matched98deを
-新入力設定へ渡す。媒体・private checkerも新profile識別へ結合する必要がある。
-旧schemaを369として読み替えたり、368/旧boot保持assertを無効化して流用しない。
-実counts、expected変数shadow回避、363/356 pin、canonical/runtime token分離を維持する。
-この準備branchでは既200/202 profile・媒体CLIを変更していない。
+後段も既200生成器を共用する。369だけcandidate/transport/boot hookを追加し、
+旧200/202の既定は変更しない。capture204..999の実contractから番号とserviceを導出する。
+新しいcapture番号ごとのsourceファイル追加は不要。
+SCM1TU、native7値のみ準備、media validatorも同じ実policyへ結合する入口を用意した。
+VM/実機での新Windows実行確認は行っていない。
+
+## 実入力取得後のコマンド
+
+`finalize-map.pending.json`を新しいroot内mapへコピーし、実fresh/native/capture-contract/
+supplement/mutable-baseline/actual-package-rows/boot-witnessのpathとSHAを入力する。
+capture_numberとprofileは実capture-contractから導出でき、nullのままでよい。
+boot witnessは現在の旧0943の保持証拠であり、新98deを適用済と偽らない。
+
+```sh
+python3 -B tools/recovery/prepare-gpu369-timing-inputs.py --finalize --workspace "$ROOT" --inputs "$ACTUAL_MAP" --out "$FRESH_POLICY_OUT"
+```
+
+native inventoryは既入口に`-TimingCaptureNumber $Capture`を追加する。
+旧templateから名前だけを供給し、新service不在、全root fingerprint、全named実値を取得する。
+sealは既入口`seal-gpu368-capture200.py --gpu369-timing --capture-number $Capture ...`を使用する。
+
+承認後の既SCM1TU入口は`build-combined200-service.ps1 -Gpu369Timing -CaptureNumber $Capture ...`。
+既native準備入口は`prepare-offline-system-service.ps1 -ServiceName MT8167CombinedFollowup$Capture ...`。
+媒体CLIは`build-private-peripheral-batch-media.py --gpu369-timing-profile ...`。
+媒体入口だけはmapのmain_execution_approved=trueも必要で、今回それを設定・実行しない。
+
+WiFi1029を実freshが選択している場合だけ、mapへ
+`retained_package_overrides.wifi={path,sha256}`を指定できる。
+最終c119/source・d974/manifestの1029 rowだけを受け付ける。
+その後、実配置SYS・実selected version/dateとの通常の照合を必須にする。
+1027選択に1029 rowを指定した場合は失敗し、無視も自動fallbackもしない。
+install mask1056にはWiFiを加えず、named値とrawSYSは新freshを保持基点にする。
 
 main承認まで媒体生成・VM占有・端末操作なし。SDK/GPU/PCOの再buildもなし。
+
+## USB後段interface
+
+現候補のphase0/mask1056/実fresh fingerprintはUSB先行処理で変更しない。
+既run_clientsの後にはpreserved()があるため、USB操作を単純に第3clientへ入れない。
+Singerのactualfresh/GPU369へ再結合されたcomponentは、GPU診断＋最後の保持検査後の
+有限phase1 tailとして次段で結合する。必要入力は署名EXE/manifestのpathとSHA、
+固定argv、timeout、許可変更集合、独立result/receipt path。未取得値を合成しない。
+このsource差分にUSB実行・新diagnostic clientは追加していない。

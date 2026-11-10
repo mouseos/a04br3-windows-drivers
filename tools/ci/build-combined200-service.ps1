@@ -1,14 +1,19 @@
 # One SCM TU and (separately) the corrected capture client TU; no driver rebuild.
-param([ValidateSet(200,202)][int]$CaptureNumber=200,[Parameter(Mandatory=$true)][ValidateSet('CaptureClient','Service')][string]$Mode,
+param([int]$CaptureNumber=200,[switch]$Gpu369Timing,[Parameter(Mandatory=$true)][ValidateSet('CaptureClient','Service')][string]$Mode,
  [Parameter(Mandatory=$true)][string]$Workspace,[string]$PackageMap,[Parameter(Mandatory=$true)][string]$OutputDirectory,
  [Parameter(Mandatory=$true)][string]$KitHeaderRoot,[Parameter(Mandatory=$true)][string]$LibraryRoot,[Parameter(Mandatory=$true)][string]$SigntoolPath)
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
+if($Gpu369Timing){if($CaptureNumber -lt 204 -or $CaptureNumber -gt 999){throw 'Actual timing capture204..999 required'}}elseif($CaptureNumber -notin @(200,202)){throw 'Legacy200/202 only without Gpu369Timing'}
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'));$out=[IO.Path]::GetFullPath($OutputDirectory);$thumb='BCBF6C456C6F0DD0818434763B189488FBF13570'
 if(@(& git -C $root status --porcelain).Count -or (Test-Path $out) -or !$out.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Clean checkout/new checkout-local output required'}
 $inc=[IO.Path]::GetFullPath($KitHeaderRoot);$lib=[IO.Path]::GetFullPath($LibraryRoot);$sign=[IO.Path]::GetFullPath($SigntoolPath)
 $cert=Get-Item "Cert:\CurrentUser\My\$thumb";if(!$cert.HasPrivateKey){throw 'Existing BCBF private identity required'}
 if($Mode -ne 'Service' -or !$PackageMap){throw 'Combined service-only final map required'}
-& python -B "$root\tools\recovery\prepare-peripheral-followup$CaptureNumber.py" --workspace $Workspace --map $PackageMap --out $out --finalize
+if($Gpu369Timing){
+ & python -B "$root\tools\recovery\prepare-gpu369-timing-inputs.py" --workspace $Workspace --inputs $PackageMap --out $out --finalize
+}else{
+ & python -B "$root\tools\recovery\prepare-peripheral-followup$CaptureNumber.py" --workspace $Workspace --map $PackageMap --out $out --finalize
+}
 if($LASTEXITCODE){throw 'Final combined contract rejected'}
 $name="MT8167CombinedFollowup$CaptureNumber";$source="$root\tools\winpe\mt8167-peripheral-update.c"
 $oldTmp=$env:TMP;$oldTemp=$env:TEMP
@@ -23,7 +28,11 @@ try{
  & $sign sign /fd SHA256 /s My /sha1 $thumb "$out\$name.exe";if($LASTEXITCODE){throw 'BCBF signing failed'}
  $sig=Get-AuthenticodeSignature "$out\$name.exe";if($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Thumbprint -cne $thumb){throw 'Signed EXE identity/trust mismatch'}
  $isCapture=if($Mode -eq 'CaptureClient'){'True'}else{'False'}
+ if($Gpu369Timing){
+  & python -B -c "import importlib.util,sys;from pathlib import Path;s=importlib.util.spec_from_file_location('timing',Path(sys.argv[1]));m=importlib.util.module_from_spec(s);s.loader.exec_module(m);m.configure_capture(int(sys.argv[3]));m.assert_paths(Path(sys.argv[2]))" "$root\tools\recovery\prepare-gpu369-timing-inputs.py" "$out\$name.exe" $CaptureNumber
+ }else{
  & python -B -c "import sys;from pathlib import Path;sys.path.insert(0,sys.argv[1]);from combined$($CaptureNumber)_policy import assert_paths;assert_paths(Path(sys.argv[2]),sys.argv[3]=='True')" "$root\tools\winpe" "$out\$name.exe" $isCapture
+ }
  if($LASTEXITCODE){throw 'Signed EXE UTF16 path mismatch'}
  Export-Certificate -Cert $cert -FilePath "$out\development.cer"|Out-Null
  $toolchain=@{headers=$inc;arm_libraries=$lib;import_libraries=$pins;signtool=$sign;signtool_sha256=(Get-FileHash $sign -Algorithm SHA256).Hash.ToLowerInvariant();ntddi='0x06030000';win32_winnt='0x0603'}

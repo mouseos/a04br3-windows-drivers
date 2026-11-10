@@ -10,11 +10,12 @@ PROFILE='combined-features-fresh200-gpu368-v1';SERVICE=DIRECTORY='MT8167Combined
 base.PROFILE=PROFILE;base.SERVICE=base.DIRECTORY=SERVICE;base.INSTALL=INSTALL
 SOURCE='a04e22489709db79d7c5a4355419bc7aaf95b057';MANIFEST='eef81706cf51711e375ddd7f6b46b6ef05fe7ed73c0ebd97dd64d484565fc32e'
 CAPTURE=200
+TIMING=None
 THUMB='BCBF6C456C6F0DD0818434763B189488FBF13570'
 PRESENT='ab17ed4cf69e6407fa5b017375d39318a89cf544a193ba89fb8a104173eff423';PRESENTER='eaa30760ebc38a1955ccb3bbd834ee5c3972ce8842b90e6a58bc5084109ef8d5'
 def paths():return base.paths()
 def inventory_contract(c,n,prior):
- require(c['capture_number']==CAPTURE and c['schema']==f'GPU368_FRESH{CAPTURE}_CAPTURE_CONTRACT_V1','実fresh200専用capture contract')
+ require(c['capture_number']==CAPTURE and c['schema']==(f'GPU369_FRESH{CAPTURE}_CAPTURE_CONTRACT_V1' if TIMING else f'GPU368_FRESH{CAPTURE}_CAPTURE_CONTRACT_V1'),'実fresh200専用capture contract')
  names=c['service_names'];ids=c['named_value_ids']
  require(len(names)==len(set(names)) and names and len(names)<=128 and SERVICE not in names,'service集合の重複/範囲')
  require(len(ids)==len(set(ids)) and ids and len(ids)<=2048,'named値集合の重複/範囲')
@@ -100,13 +101,17 @@ def build_policy(root,spec):
  values=inventory_contract(c,n,prior)
  post=n['post_ownership_policy360'];require(post['controlset']=='ControlSet001' and post['name']=='DisableAutoAcpiPostDeivce' and post['raw']=='00000000','POST0実値保持')
  gm=pin(spec['GPU368_manifest']);hand=pin(spec['GPU368_handoff'])
- require(spec['GPU368_manifest']['sha256']==MANIFEST,'署名済368 manifest pin');validate_gpu368_manifest(gm)
- require(hand['status']=='signed-artifact-verified-not-hardware' and hand['manifest_sha256']==MANIFEST and hand['compiled_source']==SOURCE and hand['hardware_verified'] is False,'main独立署名review')
+ if TIMING:TIMING.validate_manifest(gm,hand,spec)
+ else:
+  require(spec['GPU368_manifest']['sha256']==MANIFEST,'署名済368 manifest pin');validate_gpu368_manifest(gm)
+  require(hand['status']=='signed-artifact-verified-not-hardware' and hand['manifest_sha256']==MANIFEST and hand['compiled_source']==SOURCE and hand['hardware_verified'] is False,'main独立署名review')
  gp=Path(spec['GPU368_manifest']['path']).parent;hashes={x['name']:x['sha256'] for x in gm['outputs']}
  for name,h in hashes.items():
   q=rooted(root,gp/name);require(sha(q)==h,'署名済368出力');pins[q.relative_to(root).as_posix()]=h
- require(hashes['ge8300-render.sys']==hand['SYS_sha256'] and hashes['ge8300-umd.dll']==hand['UMD_sha256'],'SYS/UMD同manifest')
+ if TIMING:require(hand['outputs']==hashes,'実369全出力とreviewの一致')
+ else:require(hashes['ge8300-render.sys']==hand['SYS_sha256'] and hashes['ge8300-umd.dll']==hand['UMD_sha256'],'SYS/UMD同manifest')
  rows=pin(spec['actual_package_rows']);require(set(rows)==set(ROLES),'全13実package行必須')
+ if TIMING:rows=TIMING.package_rows(rows,pin)
  baselines={};packages={};preserved={};sources={};witnesses={}
  for role in ROLES:
   old=base.package(root,rows[role],role)
@@ -123,8 +128,10 @@ def build_policy(root,spec):
    require(row['present'] and len(row['instances'])==1,'実nodeの単一選択 '+role)
    inst=row['instances'][0];sel=n['bt_start']['selection'] if role=='bt' else inst['selected'];require(inst['values']['Service']['value'].lower()==TARGETS[role][1].lower(),'実service binding '+role)
    require(version(sel['DriverVersion']['value'])==old['version_u64'] and datevalue(sel['DriverDate']['value'].replace('-','/'))==old['date_filetime'],'実選択tupleとpackage行一致 '+role)
-   baselines[role]=dict(mode='selected' if role=='render' else 'retained',version_u64=old['version_u64'],date_filetime=old['date_filetime'],sys_sha256=sysfile['sha256'],inf=sel['InfPath']['value'])
-  if role=='render':
+   baselines[role]=dict(mode='selected' if (role in INSTALL if TIMING else role=='render') else 'retained',version_u64=old['version_u64'],date_filetime=old['date_filetime'],sys_sha256=sysfile['sha256'],inf=sel['InfPath']['value'])
+  if TIMING and role in INSTALL:
+   old=TIMING.adopt(role,old,originals,hashes)
+  elif role=='render':
    old.update(directory=gp.as_posix(),manifest=spec['GPU368_manifest']['path'],manifest_sha256=MANIFEST,source_commit=SOURCE,driver_version='0.0.3.68',driver_date='11/10/2026')
    for x in old['extra_members']:
     name='Windows/System32/'+x['installed'].replace('\\','/');f=originals.get(name)
@@ -133,10 +140,12 @@ def build_policy(root,spec):
     if x['name']!='ge8300-umd.dll':require(x['sha256']==x['baseline_sha256'],'FW byte保持')
     if x['sha256']!=x['baseline_sha256']:witnesses[name]=dict(path=origin_sources[name],sha256=f['sha256'])
   packages[role]=base.package(root,old,role)
- require(packages['display']['driver_version']=='0.0.3.57' and packages['display']['hashes']['sys']==hashes['display-transport/mt8167-display-transport.sys'],'transport357 byte保持')
- require(packages['display']['hashes']['inf']==hashes['display-transport/mt8167-display-transport.inf'] and packages['display']['hashes']['cat']==hashes['display-transport/mt8167-display-transport.cat'],'transport357 INF/CAT保持')
+ if TIMING:TIMING.validate_transport(packages,hashes)
+ else:
+  require(packages['display']['driver_version']=='0.0.3.57' and packages['display']['hashes']['sys']==hashes['display-transport/mt8167-display-transport.sys'],'transport357 byte保持')
+  require(packages['display']['hashes']['inf']==hashes['display-transport/mt8167-display-transport.inf'] and packages['display']['hashes']['cat']==hashes['display-transport/mt8167-display-transport.cat'],'transport357 INF/CAT保持')
  for name,f in originals.items():
-  if name.startswith('Windows/System32/') and name not in witnesses and name!='Windows/System32/Drivers/ge8300-render.sys':
+  if name.startswith('Windows/System32/') and name not in witnesses and name not in ({'Windows/System32/Drivers/'+TARGETS[r][3] for r in INSTALL} if TIMING else {'Windows/System32/Drivers/ge8300-render.sys'}):
    if name.startswith('Windows/System32/Drivers/') or name.endswith(('.exe','.dll','.fw')):
     preserved[name]=f['sha256'];sources[name]=origin_sources[name]
  client=copy.deepcopy(prior['diagnostic_clients'][0]);require(client['name']=='gpu_present' and client['exe']=='mt8167-dxgi-console-launch363.exe' and client['sha256']==PRESENT and client['dependencies']==[dict(exe='mt8167-dxgi-present356.exe',sha256=PRESENTER)],'Present363/356固定')
@@ -153,7 +162,7 @@ def build_policy(root,spec):
  boot=pin(spec['boot_witness']);transition=copy.deepcopy(prior['boot_transition'])
  def pin_file(ref):
   q=rooted(root,ref['path']);require(sha(q)==ref['sha256'],'保持host artifact SHA不一致');pins[q.relative_to(root).as_posix()]=ref['sha256']
- boot_evidence=validate_boot_witness(boot,transition,spec['fresh']['sha256'],fm['recovery_boot_id'],pin,pin_file)
+ boot_evidence=(TIMING.boot(boot,transition,spec['fresh']['sha256'],fm['recovery_boot_id'],pin,pin_file) if TIMING else validate_boot_witness(boot,transition,spec['fresh']['sha256'],fm['recovery_boot_id'],pin,pin_file))
  mutable=pin(spec['mutable_baseline']);require(mutable['source_manifest_sha256']==spec['fresh']['sha256'] and mutable['recovery_boot_id']==fm['recovery_boot_id'],'同capture log baseline')
  ml=[]
  for name,ref in mutable['files'].items():
@@ -173,6 +182,7 @@ def build_policy(root,spec):
   p['service_baseline_generation']['all_retained_full_hashes_strict']=True
   p['service_baseline_generation']['retained_service_count']=len(n['old_services'])
   p[f'baseline{CAPTURE}_module_identity_reference_only']=p.pop('baseline200_module_identity_reference_only')
+ if TIMING:TIMING.finish(p,spec,n,pin,pin_file)
  p['input_pins']=[dict(path=k,sha256=v) for k,v in sorted(pins.items())];return p
 
 def generate(p):
