@@ -12,7 +12,9 @@ def dependencies(depfile):
  if not text.startswith('ge8300-unit:'):raise ValueError('Unknown compiler dependency target')
  return shlex.split(text[len('ge8300-unit:'):].replace('$$','$'),posix=True)
 def canonical(path,roots):
- p=Path(path).resolve(strict=True)
+ p=Path(path).resolve()
+ if p==(roots['VC_INCLUDE']/'arm_neon.h').resolve():return '${VC_INCLUDE}/arm_neon.h'
+ p=p.resolve(strict=True)
  for key,base in sorted(roots.items(),key=lambda kv:len(str(kv[1])),reverse=True):
   try:return '${'+key+'}/'+p.relative_to(base).as_posix()
   except ValueError:pass
@@ -21,10 +23,9 @@ def resolve(token,roots):
  for key,base in roots.items():
   prefix='${'+key+'}/'
   if token.startswith(prefix):
+   if token=='${VC_INCLUDE}/arm_neon.h':return roots['CLANG_RESOURCE']/'include/arm_neon.h'
    p=(base/token[len(prefix):]).resolve(strict=True)
    if not p.is_relative_to(base):raise ValueError('Dependency escaped root')
-   # The actual build overlays MSVC arm_neon.h with the matching Clang header.
-   if token=='${VC_INCLUDE}/arm_neon.h':return roots['CLANG_RESOURCE']/'include/arm_neon.h'
    return p
  raise ValueError('Unknown dependency root: '+token)
 def dependency_rows(depfile,roots):

@@ -50,4 +50,8 @@ run(False,lambda u:[])
 bad=copy.deepcopy(evidence);bad['units'][0]['arguments']=['-O0'];write(cache/'cache-evidence.json',bad);link['cache_evidence_sha256']=m.sha(cache/'cache-evidence.json');write(cache/'link-manifest.json',link);pin=m.sha(cache/'link-manifest.json');run(False)
 write(cache/'cache-evidence.json',evidence);link['cache_evidence_sha256']=m.sha(cache/'cache-evidence.json');write(cache/'link-manifest.json',link);pin=m.sha(cache/'link-manifest.json');run(True)
 dep=out/'paths.d';dep.write_text('ge8300-unit: C:/source/a.c C:/Program\\ Files/sdk/api.h \\\n C:/sdk/header.h\n');assert m.dependencies(dep)==['C:/source/a.c','C:/Program Files/sdk/api.h','C:/sdk/header.h']
+# VFS can provide arm_neon.h even when the physical VC include file is absent.
+(roots['CLANG_RESOURCE']/'include').mkdir();neon=roots['CLANG_RESOURCE']/'include/arm_neon.h';neon.write_text('actual clang neon')
+assert m.canonical(roots['VC_INCLUDE']/'arm_neon.h',roots)=='${VC_INCLUDE}/arm_neon.h'
+assert m.resolve('${VC_INCLUDE}/arm_neon.h',roots)==neon
 print('PASS synthetic375 cache: full proof accepted; source/include/shadow-resolution/flags/compiler/API/object/pair/missing-evidence mutations rejected; escaped dependency paths parsed')

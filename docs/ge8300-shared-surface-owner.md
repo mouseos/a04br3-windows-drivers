@@ -77,3 +77,13 @@ cacheを別commitから利用しても、compiled_source_commitは旧commitの�
 `source-build-manifest.json`が同じHEADのnative owner library・KMD library/SYS・UMD DLLと各子manifestのhashをまとめる。PCOの元compile commit/cache receipt、native/KMD/UMD旧object再利用0、SDK再構築0も記録する。SHARED DEFAULT single mip/slice/sample、既存storage範囲、RT-onlyまたはSRV-onlyという制約を維持し、RT/SRV・blend・DWMはfalseのまま。
 
 Windowsでのリンク/署名/配置・実機/DWM成功は未確認。manifest生成は実際のbuild成功後だけ行う。Linuxのhost/clone verifier通過をWindows build成功と扱わない。
+
+### 公開cloneでの検証結果
+
+GitHub公開branchをdepth1でcloneし、fullsource verifierが通過した。native67TU、compiler375TU、origin147、legacy114、native scoped127、reviewed overlay47。old_git_history_used=false、driver_cache_used=false。
+
+source gateの16ケースも通過した。native TUをlegacy sourceへ転送する改変、TU欠落/alias、旧originの再ラベル、Copy asset改変、共有source旧履歴の改変、内部header変更後の旧native object再利用を拒否した。
+
+compiler cacheのhost検証は合成375TU fixture。source/include/新しいshadow headerによる解決先変更/flags/compiler/API library/object/pair/証拠欠落を拒否することと、VFSで提供するarm_neon.hを実Clang headerへ対応させることを確認した。実在のPCO375 cacheを合格認定した結果ではない。
+
+PowerShell/Windows toolchainのrecipe実行は行っていない。runner禁止を維持し、Windows buildの成否、署名、実機/DWM成功はmain側の後続確認事項として残す。
