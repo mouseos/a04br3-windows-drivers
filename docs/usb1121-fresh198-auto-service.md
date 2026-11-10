@@ -76,3 +76,39 @@ terminalまたは失敗時は新serviceだけをdisableする。host PDO待ち�
 Windows parser、新SCM TUのcompile/link/sign、native SYSTEM patch、生成媒体実行、
 ARM PowerShell/CLR loader、PnP、host列挙、給電改善はmainの実行待ち。
 helper既署名と新SCM実行可能性・実機成果を混同しない。
+
+## 署名後のnative失敗からの単独再開
+
+mainの初回Windows実行ではservice compile/sign、DLL trust、candidate/rollback CAT membershipは成功。
+その後OpenPath(3 args)でAccess denied。旧helperはwritable時に各祖先へKEY_READ|KEY_WRITE、
+read時もREAD_CONTROLを含むKEY_READをRegOpenKeyExへ渡す。
+SeBackup/SeRestorePrivilegeを有効にするだけではRegOpenKeyExのDACL検査を回避できない。
+従来の限定service snapshotより広い全Services再帰に保護キーが含まれる可能性があり、
+旧logだけでは失敗した具体的キーは未特定。BTHPORTと断定しない。
+
+新`Usb1121OfflineHiveNative.cs`は専用namespaceとprivate clone root handle・path allowlistを使い、
+親で列挙済みの既存の直下キーだけをREG_OPTION_BACKUP_RESTOREで開く。
+OPEN_LINKとSymbolicLinkValue検査を維持し、missing key作成を成功と扱わない。
+ACL/owner変更・保護キー省略はしない。失敗時は`native/failure-receipt.json`に
+phase/key_path/messageを記録する。cleanup失敗も別の小receiptへ残して停止する。
+新service以外の全旧Services/GraphicsDrivers fingerprint比較を維持する。
+
+同じ専用checkoutを新recipe HEADへ更新したmainが以下だけを実行する。
+`$out`は既存署名出力、`$ExpectedExeHash`は実行前の保持EXEの実SHAをmainが固定した値。
+
+```powershell
+$out='C:\mt8167-usb1121-fresh198\source\out\usb1121-service198'
+$ExpectedExeHash=(Get-FileHash "$out\payload\MT8167Usb1121Install198.exe" -Algorithm SHA256).Hash.ToLowerInvariant()
+& "$src\tools\ci\resume-usb1121-service198-native.ps1" -Inputs 'C:\mt8167-usb1121-fresh198\inputs' -OutputDirectory $out -ExpectedSignedExeSha256 $ExpectedExeHash -SignTool $ExistingSignTool
+```
+
+途中`native`は`native-failed-<GUID>`へ退避して保持し、immutable fresh198 trioからcloneを再生成。
+保持EXE/objectとruntime sourceを元9b3fa5d4に結合し、再開前後のbyteを照合する。
+compile/link/sign呼出し0。新しいnative helperのAdd-Typeはhost専用で、実機用署名DLL再buildではない。
+manifestのsource_commitは元署名binaryの9b3fa5d4、recipe_source_commitは修正recipe HEAD。
+初回失敗で保存されなかった未署名EXE hashはnullと明記し、再構築した値を実測に見せない。
+旧sourceとの同一性と署名trustを再確認してからnative、manifest、ZIP作成を進める。
+media builderもこのbinary/native recipe出自の分離を受け付ける。
+
+修正recipeのWindows実行・Access denied解消・保全照合はmainの再実行待ち。
+実機適用・host列挙・給電改善は引き続き未検証。

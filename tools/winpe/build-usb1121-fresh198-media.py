@@ -14,7 +14,7 @@ def main():
  inp,sign,base,tools=[b.below(root,getattr(a,k)) for k in ('inputs','signed_package','base','tools')]
  out=a.out.resolve();b.require(out.is_relative_to(root) and not out.exists(),'new root-local private output required')
  source=subprocess.check_output(['git','-C',str(Path(__file__).resolve().parents[2]),'rev-parse','HEAD'],text=True).strip()
- sm=b.read(sign/'service-manifest.json');b.require(sm['source_commit']==source,'same committed service/media recipe required');b.require(b.sha(sign/'service-manifest.json')==a.expected_service_manifest_sha256,'signed manifest pin')
+ sm=b.read(sign/'service-manifest.json');b.require(sm.get('recipe_source_commit',sm['source_commit'])==source,'same committed native/media recipe required');b.require(b.sha(sign/'service-manifest.json')==a.expected_service_manifest_sha256,'signed manifest pin')
  cl=b.read(inp/'input-closure.json');profile=b.read(inp/'payload/profile.json')
  b.require(sm['schema']=='MT8167_USB1121_SIGNED_SERVICE198_V1' and sm['signature_status']=='Valid' and sm['signer']=='BCBF6C456C6F0DD0818434763B189488FBF13570' and sm['input_closure_sha256']==b.sha(inp/'input-closure.json') and sm['profile_sha256']==b.sha(inp/'payload/profile.json')==cl['profile_sha256'] and sm['fresh_sha256']==b.FRESH and sm['native_receipt_sha256']==b.NATIVE,'same fresh198 signed contract')
  for n,h in cl['files'].items():b.require(b.sha(b.below(root,inp/n))==h,'input drift')
