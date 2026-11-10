@@ -13,10 +13,10 @@ try {
  $r.load_rc=[MT8167OfflineHive.Native]::Load($mount,"$OutputDirectory\clone\SYSTEM");if($r.load_rc){throw 'Load failed'};$loaded=$true
  $root=[MT8167OfflineHive.Native]::OpenRoot($mount)
  $r.before=[MT8167PostPolicy360.Policy]::Read($root)
- $r.preserved_system_except_policy_sha256=[MT8167PostPolicy360.Policy]::Apply($mount)
+ $r.preserved_graphics_subtree_sha256=[MT8167PostPolicy360.Policy]::Apply($mount)
  $r.after=[MT8167PostPolicy360.Policy]::Read($root)
  try{[MT8167PostPolicy360.Policy]::Apply($mount)|Out-Null;throw 'Reapply incorrectly accepted'}catch{if($_.Exception.ToString() -notmatch 'One-shot DWORD1 baseline required'){throw};$r.negative_reapply_rejected=$true}
- $r.negative_unchanged=([MT8167PostPolicy360.Policy]::Read($root) -ceq '00000000' -and [MT8167PostPolicy360.Policy]::WholeSnapshot($root,$false) -ceq $r.preserved_system_except_policy_sha256)
+ $r.negative_unchanged=([MT8167PostPolicy360.Policy]::Read($root) -ceq '00000000' -and [MT8167PostPolicy360.Policy]::Snapshot($root) -ceq $r.preserved_graphics_subtree_sha256)
 } catch {$r.errors+=@($_.Exception.ToString())} finally {
  if($root){$root.Dispose()};if($loaded){$r.unload_rc=[MT8167OfflineHive.Native]::Unload($mount)}
  if($priv){$priv.Dispose();$r.privilege_restore_error=$priv.RestoreError}

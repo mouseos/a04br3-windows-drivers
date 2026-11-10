@@ -1,0 +1,11 @@
+# run185: 標準ACPI POST policy復元とclock1120
+
+fresh184 ce675a15・Recovery7e0680c8のみ。GPU359/DIS0 357/FW0943/BT2018/provider1027を保持し、GPU/FW再buildなし。DIFはparent1120→thermal1.11だけ0x42。新service184/post186、旧service182五値を加え18full/95namedを保持。
+
+旧offscreen専用DisableAutoAcpiPostDeivce=DWORD1を実Select Current/Default1・実GPU3.59/DIS0 3.57確認後、native clone内で一度だけ0へ復元。OS標準auto ACPI POST選択を有効にするが、AcquirePost結果や画面/DMA成功は次実機まで未確認。綴り違い別key・ValidateWDDMCaps・他controlset・兄弟値・子keyを変えない。GraphicsDrivers兄弟値/全子key、Select、他controlsetの同subtreeを前後比較し、既サービス/95namedは別の厳密照合も保持。全SYSTEM監査は行わない。ACL/所有権/backup intentを変更しない。バイナリpatch/偽POST代入/ownership guard緩和なし。
+
+clock追加はeb359335 branch全体をmergeせずhelper/docs4pathと、verify helperが実importする既decoder1pathのみ。署名parent/thermal/UMはmain seal済みexact bytesを再利用。phase0 idx0/10秒、Presentはphase1 idx1/900秒。GPUreadyguardは既TUのまま。service全体1080秒上限と各client期限を区別する。現run185 controller/nativecollectはmain所有でworkerから変更しない。
+
+collectorは新service184のraw128B/stdout+stderr各4096B/service.log1MiB、actualUM、fresh186 actualSYS/hivesを固定取得。clock用verify helperと既reader8deps・policy reader追加を同ZIP用pinへ載せる。collectorは契約のexact pathから一意選択しbasename推測しない。
+
+main-independent-seal前arm禁止。このsourceには実機実行の許可や成功証拠を含めない。旧183/359署名物・元DWORD1・native negativeを保持する。
