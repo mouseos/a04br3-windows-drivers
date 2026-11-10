@@ -1,16 +1,33 @@
 #!/usr/bin/env python3
 """Conservative PCO375 cache evidence. No compile/install/network fallback."""
-import argparse,hashlib,json,shlex,subprocess,sys
+import argparse,hashlib,json,re,subprocess,sys
 from pathlib import Path
 
 def sha(path):
  with Path(path).open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
 def read(path):return json.loads(Path(path).read_text(encoding='utf-8-sig'))
-def dependencies(depfile):
- # -MT gives a fixed make target, independent of drive letters in Windows paths.
- text=Path(depfile).read_text().replace('\\\n','')
+def parse_make_dependencies(text):
+ # Clang's Windows make output preserves path separators (C:\dir\file)
+ # and escapes spaces as \ . POSIX shlex destroys those separators.
+ text=re.sub(r'\\\r?\n',' ',text.lstrip('\ufeff'))
  if not text.startswith('ge8300-unit:'):raise ValueError('Unknown compiler dependency target')
- return shlex.split(text[len('ge8300-unit:'):].replace('$$','$'),posix=True)
+ text=text[len('ge8300-unit:'):];result=[];token=[];i=0
+ while i<len(text):
+  c=text[i]
+  if c.isspace():
+   if token:result.append(''.join(token));token=[]
+   i+=1;continue
+  if c=='#':
+   end=text.find('\n',i);i=len(text) if end<0 else end;continue
+  if c=='\\' and i+1<len(text) and (text[i+1] in ' \t#'):
+   token.append(text[i+1]);i+=2;continue
+  if c=='$' and i+1<len(text) and text[i+1]=='$':token.append('$');i+=2;continue
+  token.append(c);i+=1
+ if token:result.append(''.join(token))
+ return result
+
+def dependencies(depfile):
+ return parse_make_dependencies(Path(depfile).read_text(encoding='utf-8-sig'))
 def canonical(path,roots):
  p=Path(path).resolve()
  if p==(roots['VC_INCLUDE']/'arm_neon.h').resolve():return '${VC_INCLUDE}/arm_neon.h'
