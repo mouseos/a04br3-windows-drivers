@@ -1,10 +1,10 @@
-# 実fresh200専用・private clone read-only inventory。profile/native/capture-contractは事前不要。
+﻿# 実fresh200専用・private clone read-only inventory。profile/native/capture-contractは事前不要。
 param([Parameter(Mandatory=$true)][string]$WorkspaceRoot,
  [Parameter(Mandatory=$true)][string]$Manifest,[Parameter(Mandatory=$true)][string]$ExpectedManifestSha256,
  [Parameter(Mandatory=$true)][string]$SourceDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,
  [Parameter(Mandatory=$true)][string]$PolicyPath,[Parameter(Mandatory=$true)][string]$ExpectedPolicyFileSha256,
  [string]$ExpectedPolicySha256,[ValidatePattern('^MT8167CombinedFollowup[0-9]{3}$')][string]$NewServiceName='MT8167CombinedFollowup200',
- [string[]]$AdditionalServiceNames=@(),[int]$TimingCaptureNumber=0,[switch]$IncludeWifiCheckpoint,[switch]$IncludeGraphicsTopologyCache,[switch]$IncludeDisplayDeviceBindings)
+ [string[]]$AdditionalServiceNames=@(),[int]$TimingCaptureNumber=0,[switch]$IncludeWifiCheckpoint,[switch]$IncludeGraphicsTopologyCache,[switch]$IncludeDisplayDeviceBindings,[switch]$IncludeBatteryFirstFailure)
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 function Hash($p){(Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant()}
 $w=[IO.Path]::GetFullPath($WorkspaceRoot).TrimEnd('\')
@@ -90,6 +90,7 @@ foreach($file in @('read-fresh200-native-inventory.ps1','ReadonlyInventory200Hiv
 if($IncludeWifiCheckpoint){$r.source_recipe_files['read-mt6630-checkpoint-loaded.ps1']=Hash (Join-Path $PSScriptRoot 'read-mt6630-checkpoint-loaded.ps1')}
 if($IncludeGraphicsTopologyCache){$r.source_recipe_files['read-graphics-topology-cache.ps1']=Hash (Join-Path $PSScriptRoot 'read-graphics-topology-cache.ps1')}
 if($IncludeDisplayDeviceBindings){$r.source_recipe_files['read-display-device-bindings.ps1']=Hash (Join-Path $PSScriptRoot 'read-display-device-bindings.ps1')}
+if($IncludeBatteryFirstFailure){$r.source_recipe_files['read-lc709203f-first-failure.ps1']=Hash (Join-Path $PSScriptRoot 'read-lc709203f-first-failure.ps1')}
 $wifiCheckpoint=$null
 $mount='MT8167OfflineSYSTEM_'+[Guid]::NewGuid().ToString('N');$root=$null;$priv=$null;$loaded=$false
 try{
@@ -212,6 +213,10 @@ try{
  }finally{$key.Dispose()}}
  $r.observed_counts=@{old_services=$r.old_services.Count;named_values=$r.captured_named_values.Count;nodes=$r.nodes.Count}
  $r.full_service_capture_complete=$true
+ if($IncludeBatteryFirstFailure){
+  . (Join-Path $PSScriptRoot 'read-lc709203f-first-failure.ps1')
+  $r.battery_first_failure=Read-Lc709203fFirstFailure $root $cs
+ }
  if($r.new_service.present){throw 'NewServiceName200 is actually present; do not arm or mislabel it absent'}
 }catch{$r.errors+=@($_.Exception.Message)}finally{
  if($root){$root.Dispose()}
