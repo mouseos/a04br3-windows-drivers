@@ -55,11 +55,11 @@ def decode(data, after_generation=None):
                            detail=detail))
         if stage == 128:
             boundary = detail & 255
-            if phase != 2 or kind != 3 or not observed or boundary not in (1, 2, 3) or detail & ~0x1fff:
+            if phase != 2 or kind != 3 or not observed or boundary not in (1, 2, 3, 4) or detail & ~0x1fff:
                 raise ValueError('Unknown RESET boundary event')
             broker = bool(detail & (1 << 12))
             events[-1]['reset_boundary'] = dict(
-                boundary={1: 'radio_reset', 2: 'default_mib_profile', 3: 'final_idle'}[boundary],
+                boundary={1: 'radio_reset', 2: 'default_mib_profile', 3: 'final_idle', 4: 'wlan_only_reset'}[boundary],
                 backend_return=raw if raw < 2**31 else raw - 2**32,
                 entry_default_mib=bool(detail & (1 << 8)), entry_power=bool(detail & (1 << 9)),
                 entry_broker_compiled=broker,

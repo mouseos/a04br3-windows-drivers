@@ -101,3 +101,21 @@ int a04_windows_firmware_prepare(struct a04_windows_fw_snapshot *s,const uint8_t
 int a04_windows_firmware_boot_prepared(struct a04_wmt_bridge *b,struct a04_windows_fw_snapshot *s,
  const uint8_t expected[32],const struct a04_wmt_startup_options *options)
 {return a04_windows_firmware_boot_prepared_traced(b,s,expected,options,NULL,NULL);}
+
+/* NDIS WLAN RESET retains WMT/fn2. Prepare before changing hardware; the
+ * existing pinned file/hash policy applies without reloading WMT firmware. */
+int a04_windows_firmware_prepare_wlan(struct a04_windows_fw_snapshot *out)
+{
+ struct snapshot wlan={0};uint8_t digest[32];
+ if(!out||out->wmt||out->wlan||KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
+ if(!NT_SUCCESS(read_snapshot(L"\\SystemRoot\\System32\\drivers\\a04br3\\mt6630-wlan.bin",237008,&wlan)))return -1;
+ if(!wlan_digest_matches(wlan.bytes,wlan.length,digest)){release_snapshot(&wlan);return -1;}
+ out->wlan=wlan.bytes;out->wlan_length=wlan.length;return 0;
+}
+int a04_windows_firmware_boot_wlan_prepared(struct a04_wmt_bridge *b,struct a04_windows_fw_snapshot *s)
+{
+ uint8_t digest[32];
+ if(!b||!s||!s->wlan||s->wmt||KeGetCurrentIrql()!=PASSIVE_LEVEL||
+    !wlan_digest_matches(s->wlan,s->wlan_length,digest))return -1;
+ return a04_wmt_bridge_boot_wlan(b,s->wlan,s->wlan_length,a04_sha256);
+}

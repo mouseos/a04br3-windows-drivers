@@ -33,6 +33,7 @@ struct a04_ndis_runtime {
  A04_SHARED_WIFI_INTERFACE parent;int referenced,uncertain,paused;
  struct a04_windows_session session;struct a04_windows_irq irq;
  struct a04_station_runtime radio;struct a04_wlan_security security;struct a04_native_tx tx;struct a04_os_security os_security;
+ unsigned reset_in_progress,reset_mgmt_pending,reset_mgmt_pid,reset_mgmt_status;
  unsigned association_reported,early_length;uint8_t early_rx[4096];
  uint8_t mpdu[A04_NATIVE_MPDU_MAX],ethernet[A04_NATIVE_ETH_MAX];
  NDIS_SPIN_LOCK lock;NDIS_EVENT idle;KTIMER timer;KDPC dpc;
@@ -59,6 +60,8 @@ int a04_ndis_idle_reconcile(struct a04_ndis_runtime *);
 int a04_ndis_rf_wake(struct a04_ndis_runtime *);
 int a04_ndis_power_profile(struct a04_ndis_runtime *,ULONG,BOOLEAN,int);
 int a04_ndis_radio_power(struct a04_ndis_runtime *,int);
+/* Only reset_request calls this; it releases reset_in_progress after MIB/idle. */
+int a04_ndis_wlan_reset(struct a04_ndis_runtime *);
 int a04_ndis_radio_reset(struct a04_ndis_runtime *);
 NDIS_STATUS a04_ndis_attributes(struct a04_ndis_runtime *);
 NDIS_STATUS a04_ndis_control(struct a04_ndis_runtime *,PNDIS_OID_REQUEST);

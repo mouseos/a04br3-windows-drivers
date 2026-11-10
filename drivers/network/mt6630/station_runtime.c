@@ -23,6 +23,9 @@ static int packet(struct a04_station_runtime *r,const uint8_t *p,unsigned n)
  r->rx_bytes=n;r->rx_descriptor=n>=4?a04_wmt_le16(p+2):0;r->rx_error=0;r->rx_phase=1;
  if(n>=8&&a04_wmt_le16(p+2)==0xe000){
   struct a04_wlan_event v;e=a04_wlan_event_parse(p,n,&v);if(e){r->rx_error=e;return fail(r,e);}
+  /* A source-backed host cancellation retires this scan sequence until
+   * an actual WLAN firmware restart, not merely a host state clear. */
+  if(v.id==0x0d&&v.length>=4&&(r->cancelled_scan_sequences[v.payload[0]>>5]&(1u<<(v.payload[0]&31))))return 0;
   if(v.id==0x0d&&b->scan.pending){
    e=a04_wmt_bridge_scan_event(b,p,n);if(e)return fail(r,e);
    /* Native scan confirmation consumes bridge.complete, not the observed

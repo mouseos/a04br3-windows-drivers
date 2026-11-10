@@ -32,7 +32,7 @@ static void finish_tx(struct a04_ndis_runtime *a,PNET_BUFFER_LIST nbl,NDIS_STATU
  NET_BUFFER_LIST_STATUS(nbl)=status;NdisMSendNetBufferListsComplete(a->adapter,nbl,flags);
 }
 void a04_ndis_tx_complete(void *context,PNET_BUFFER_LIST nbl,NDIS_STATUS status)
-{finish_tx(context,nbl,status,0);}
+{struct a04_ndis_runtime *a=context;finish_tx(a,nbl,a->reset_in_progress?NDIS_STATUS_RESET_IN_PROGRESS:status,0);}
 /* Caller holds a->lock. A paused adapter cannot indicate new data or admit
  * new TX, but the independent HCI broker and OIDs remain serviceable. Claim
  * completion at the actual worker/API drain boundary, not by waiting on an
@@ -98,19 +98,19 @@ int a04_ndis_poll(struct a04_ndis_runtime *a)
 #if A04_WIFI_BT_BROKER
  if(a04_combo_poll(a))result=-1;
 #endif
- if(!result&&!a->radio.bridge->wlan.fw_owned)result=a04_station_runtime_poll(&a->radio);
- if(a->peer_reset_pending){a->peer_reset_pending=0;
+ if(!result&&!a->radio.failed&&a->radio.bridge->wlan_ready&&!a->radio.bridge->wlan.fw_owned)result=a04_station_runtime_poll(&a->radio);
+ if(!a->reset_in_progress&&a->peer_reset_pending){a->peer_reset_pending=0;
   if(a->tx.pending)(void)a04_native_nbl_abort(&a->tx,&a->session.diagnostic.bridge);
   result=a04_ndis_radio_reset(a);
  }
- if(!result&&a04_ndis_unreachable_check(a))result=-1;
+ if(!result&&!a->reset_in_progress&&a04_ndis_unreachable_check(a))result=-1;
  if(result)a04_ndis_runtime_snapshot(a,A04_CP_RUNTIME_FAILURE,(ULONG)result,1);
  /* A poll consumes at most64 actual HIF packets. All admitted RX frames
   * have independent nonpaged bytes/MDLs/NBLs until synchronous RESOURCES
   * indication returns. Pause/halt waits for this worker to finish them. */
  for(unsigned i=0;i<a->rx_count;i++){
   struct a04_rx_slot *slot=&a->rx[i];NDIS_STATUS status=NDIS_STATUS_PAUSED;
-  if(!result&&!a->radio.failed&&!a->closing&&!a->paused&&a->power&&slot->epoch==a->receive_epoch){NET_BUFFER_DATA_LENGTH(NET_BUFFER_LIST_FIRST_NB(slot->nbl))=slot->length;status=a04_native_indicate_mpdu(a->adapter,slot->nbl,slot->bytes,slot->length,&slot->info);}
+  if(!result&&!a->reset_in_progress&&!a->radio.failed&&!a->closing&&!a->paused&&a->power&&slot->epoch==a->receive_epoch){NET_BUFFER_DATA_LENGTH(NET_BUFFER_LIST_FIRST_NB(slot->nbl))=slot->length;status=a04_native_indicate_mpdu(a->adapter,slot->nbl,slot->bytes,slot->length,&slot->info);}
   unsigned kind=slot->length>=10?destination_kind(slot->bytes+4):0;
   NdisAcquireSpinLock(&a->lock);
   if(status==NDIS_STATUS_SUCCESS&&!slot->management){a->stats.rx_packets[kind]++;a->stats.rx_bytes[kind]+=slot->length;}else if(status!=NDIS_STATUS_SUCCESS)a->stats.rx_discards++;
@@ -162,11 +162,18 @@ static NTSTATUS query_parent(struct a04_ndis_runtime *a)
 static int firmware_event(void *p,const uint8_t *packet,unsigned bytes,uint64_t time)
 {
  struct a04_ndis_runtime *a=p;
+ if(a->reset_in_progress&&a->reset_mgmt_pending){
+  struct a04_wlan_event event;
+  if(!a04_wlan_event_parse(packet,bytes,&event)&&event.id==0x0f&&event.length==16&&
+     event.payload[0]==a->reset_mgmt_pid&&event.payload[4]==a->radio.station.local.wlan){
+   a->reset_mgmt_status=event.payload[1];a->reset_mgmt_pending=0;return 0;
+  }
+ }
  /* Published gen3 EVENT_BSS_BEACON_TIMEOUT is four bytes. Lack of host
   * traffic alone is not proof of peer loss (firmware can filter beacons). */
  if(bytes>=8&&packet[4]==0x13){
   if(bytes!=12)return -1;
-  if(a->radio.connected&&packet[8]==a->radio.station.local.bss&&packet[9]!=8)
+  if(!a->reset_in_progress&&a->radio.connected&&packet[8]==a->radio.station.local.bss&&packet[9]!=8)
    a->peer_loss.suspected=1; /* evaluate after the complete RX poll batch */
   return 0;
  }
@@ -188,6 +195,7 @@ int a04_ndis_rate_lookup(void *p,unsigned mode,unsigned code,ULONG *phy,UCHAR *r
 static int receive_data(void *p,const uint8_t *packet,unsigned bytes)
 {
  struct a04_ndis_runtime *a=p;struct a04_native_hif_rx rx;NDIS_STATUS status;struct a04_wlan_rx_frame management;struct a04_native_retry_ticket retry;
+ if(a->reset_in_progress)return 0; /* drain owned RX without new indications */
  if(!a04_wlan_rx_frame_parse(packet,bytes,&management)&&management.length>=24&&!(management.data[0]&0x0c)){
   if(a->radio.connected&&management.length>=36&&(management.data[0]==0x80||management.data[0]==0x50)&&
     a04_wlan_equal(management.data+10,a->radio.station.ap.mac,6)&&a04_wlan_equal(management.data+16,a->radio.station.ap.mac,6)&&
@@ -369,6 +377,112 @@ int a04_ndis_radio_power(struct a04_ndis_runtime *a,int on)
  RtlZeroMemory(&a->tx,sizeof(a->tx));a->tx.adapter=a->adapter;a->tx.completion_context=a;a->tx.completion=a04_ndis_tx_complete;
  if(hardware_start(a)){a->radio.failed=-1;return -1;}a->power=TRUE;if(a04_ndis_idle_reconcile(a))return -1;return radio_setting(a,1);
 }
+/* Sole PASSIVE owner. GPIO/WMT/session cold-reset is intentionally absent.
+ * A real WLAN_READY-clear + pinned firmware restart is the key/PHY epoch
+ * boundary; host key/slot state is never cleared merely on command submit. */
+static int wlan_reset_disassociate(struct a04_ndis_runtime *a)
+{
+ struct a04_wlan_station *s=&a->radio.station;struct a04_wlan_host *h=&a->radio.bridge->wlan;
+ uint8_t frame[26]={0};unsigned all=0,basic=0;uint64_t end;int e;
+ if(!a04_wlan_mac_valid(s->ap.mac)||!a04_wlan_local_valid(&s->local)||!s->sta_active)return A04_WLAN_STATE;
+ if((e=a04_wlan_rate_mask(&s->ap,&all,&basic)))return e;
+ frame[0]=0xa0; /* mac.h MAC_FRAME_DISASSOC; no PMF is negotiated here. */
+ for(unsigned i=0;i<6;i++){frame[4+i]=s->ap.mac[i];frame[10+i]=s->local.mac[i];frame[16+i]=s->ap.mac[i];}
+ a04_wmt_put16(frame+24,8); /* REASON_CODE_DISASSOC_LEAVING_BSS */
+ a04_wlan_zero(h->tx,28);a04_wmt_put16(h->tx,sizeof(frame)+28);h->tx[2]=26;h->tx[3]=0x88;
+ h->tx[4]=(uint8_t)s->local.wlan;h->tx[5]=0xcc;h->tx[7]=(uint8_t)(s->local.own<<2);
+ h->tx[8]=10;h->tx[11]=0x80;a04_wmt_put16(h->tx+12,1u<<11);
+ a04_wmt_put16(h->tx+26,a04_wlan_basic_rate_code(basic)<<2);
+ a->reset_mgmt_pid=a->tx.state.next_pid%127+1;a->tx.state.next_pid=a->reset_mgmt_pid;
+ h->tx[20]=(uint8_t)a->reset_mgmt_pid;h->tx[21]=2; /* nic_tx.c TXS to MCU + PID */
+ NdisMoveMemory(h->tx+28,frame,sizeof(frame));a->reset_mgmt_status=0xffffffffu;a->reset_mgmt_pending=1;
+ e=a04_wlan_send(h,sizeof(frame)+28,1);if(e)return e;
+ end=now(a)+1000000u;
+ while(a->reset_mgmt_pending&&!a->closing&&now(a)<end){if((e=a04_ndis_poll(a)))return e;wait_us(a,1000);}
+ if(a->reset_mgmt_pending)return A04_WLAN_TIMEOUT;
+ /* gen3 aisDeauthXmitComplete continues local disconnect for terminal
+  * air failures (1..4) too. This proves an attempt ended, not AP delivery.
+  * Unknown/flush/internal outcomes remain failures. */
+ return a->reset_mgmt_status<=4?0:A04_WLAN_STATUS;
+}
+int a04_ndis_wlan_reset(struct a04_ndis_runtime *a)
+{
+ struct a04_wmt_bridge *b=a->radio.bridge;struct a04_windows_fw_snapshot fw={0};
+ PNET_BUFFER_LIST queued[A04_NATIVE_QUEUE+1],inflight;unsigned count=0,activity=a->ps_activity;
+ struct a04_wlan_local local=a->radio.station.local;
+ struct a04_wlan_scan_state prior_scan=a->radio.station.scan;
+ ULONG auth=a->os_security.auth,unicast=a->os_security.unicast,multicast=a->os_security.multicast;
+ ULONG default_id=a->os_security.default_id;unsigned exclude=a->os_security.exclude_unencrypted;
+ DOT11_DISASSOCIATION_PARAMETERS dis;unsigned connected=a->radio.connected;int e=A04_WLAN_STATE;uint64_t end;
+ if(KeGetCurrentIrql()!=PASSIVE_LEVEL||a->closing||a->reset_in_progress)return e;
+ NdisZeroMemory(&dis,sizeof(dis));dis.Header.Type=NDIS_OBJECT_TYPE_DEFAULT;dis.Header.Revision=1;dis.Header.Size=sizeof(dis);
+ NdisMoveMemory(dis.MacAddr,a->radio.station.ap.mac,6);dis.uReason=DOT11_ASSOC_STATUS_DISASSOCIATED_BY_OS;
+ if(a->power){
+  if(!b||b->wlan_reset_service||a->uncertain||a->radio.failed||!a->radio.initialized||!a04_wlan_local_valid(&local)||
+     b->scan.pending||b->failed||b->wlan.failed||b->transport.failed)return e;
+  if(a04_windows_firmware_prepare_wlan(&fw))return e; /* prepare before teardown */
+ }else if((a->session.state!=A04_SESSION_OFF&&a->session.state!=A04_SESSION_STOPPED)||
+          a->tx.pending||connected||a->radio.connecting)return e;
+ if(a->power)b->wlan_reset_service=1;
+ NdisAcquireSpinLock(&a->lock);a->reset_in_progress=1;inflight=a->tx.pending;
+ if(a->send){if(a->send!=inflight)queued[count++]=a->send;a->send=NULL;a04_queue_release(&a->send_queue);}
+ while(a->send_queue.count)queued[count++]=a04_queue_remove(&a->send_queue,0);
+ NdisReleaseSpinLock(&a->lock);
+ for(unsigned i=0;i<count;i++)finish_tx(a,queued[i],NDIS_STATUS_RESET_IN_PROGRESS,0);
+ a->ps_activity=1;
+ if(a->power){
+  if((e=a04_wlan_driver_own(&b->wlan)))goto done;
+  end=now(a)+1000000u;
+  while(a->tx.pending&&!a->closing&&now(a)<end){if((e=a04_ndis_poll(a)))goto done;wait_us(a,1000);}
+  if(a->tx.pending){e=A04_WLAN_TIMEOUT;goto done;}
+  if(connected&&(e=wlan_reset_disassociate(a)))goto done;
+  /* Cancelled scans were confirmed before this queued RESET was dispatched.
+   * Reconcile real RX/events and command returns before stopping WLAN. */
+  if((e=a04_ndis_poll(a)))goto done;
+  if((e=a04_wmt_bridge_wlan_stop(b)))goto done;
+ }
+ /* Actual stopped WLAN, or an already quiescent RF-OFF session: keys cannot
+  * be used by a running firmware epoch. Keep software MIB unless requested. */
+ a04_os_security_clear(a);a->os_security.auth=auth;a->os_security.unicast=unicast;
+ a->os_security.multicast=multicast;a->os_security.default_id=default_id;a->os_security.exclude_unencrypted=exclude;
+ a->radio.connected=a->radio.connecting=a->radio.initialized=0;a->peer_reset_pending=0;a->peer_loss.suspected=0;
+ a->association_reported=a->early_length=a->eapol_tx_observed=0;RtlSecureZeroMemory(a->early_rx,sizeof(a->early_rx));
+ for(unsigned i=0;i<a->rx_count;i++){RtlSecureZeroMemory(a->rx[i].bytes,sizeof(a->rx[i].bytes));a->rx[i].length=0;}a->rx_count=0;
+ NdisAcquireSpinLock(&a->lock);NdisZeroMemory(&a->stats,sizeof(a->stats));NdisZeroMemory(&a->association_base,sizeof(a->association_base));NdisReleaseSpinLock(&a->lock);
+ if(connected)a04_ndis_status(a,NDIS_STATUS_DOT11_DISASSOCIATION,&dis,sizeof(dis));
+ if(!a->power){e=0;goto done;}
+ if(a->closing){e=A04_WLAN_STATE;goto done;}
+ if((e=a04_windows_firmware_boot_wlan_prepared(b,&fw)))goto done;
+ if((e=a04_windows_calibration_load(b)))goto done;
+ if((e=a04_wlan_native_be_enable(&b->wlan)))goto done;
+ NdisZeroMemory(&a->radio.station,sizeof(a->radio.station));
+ if((e=a04_wmt_bridge_station_setup(b,&a->radio.station,&local)))goto done;
+ /* Retained BSS observations may be selected after RESET without another
+  * explicit scan. Preserve only an already observed completed scan receipt;
+  * this is host cache provenance, not a claim that the new FW scanned. */
+ if(prior_scan.complete&&!prior_scan.pending&&!prior_scan.failed)a->radio.station.scan=prior_scan;
+ a->radio.slots.bss=1u<<local.bss;a->radio.slots.own=1u<<local.own;a->radio.slots.sta=1u<<local.sta;
+ a->radio.slots.wtbl=(1u<<local.wlan)|(1u<<local.bmc);
+ NdisZeroMemory(a->radio.cancelled_scan_sequences,sizeof(a->radio.cancelled_scan_sequences));
+ a->radio.selected_bssid_set=a->radio.rx_pending=a->radio.phase=0;a->radio.initialized=1;a->idle_bss=0;
+ NdisZeroMemory(&a->tx.state,sizeof(a->tx.state));
+ e=a04_ndis_power_profile(a,a->power_request,a->media_streaming,0);
+ done:
+ if(e){
+  /* Unknown in-flight WLAN state stays unusable. Do not poison/reset the
+   * shared combo merely to manufacture a successful WLAN reset. */
+  a->radio.failed=-1;
+  /* native_nbl_send/native_security_send copy into adapter-owned buffers;
+   * a04_wlan_send -> CMD53 PIO is synchronous (msdc2_pio.c). No DMA or
+   * retained caller NBL/MDL address reaches FW. Releasing this NBL is safe
+   * even when FW TX_DONE is unknown; the WLAN epoch remains failed. */
+  if(a->tx.pending){PNET_BUFFER_LIST n=a->tx.pending;a->tx.pending=NULL;a->tx.state.failed=A04_WLAN_STATE;finish_tx(a,n,NDIS_STATUS_RESET_IN_PROGRESS,0);}
+ }
+ if(b)b->wlan_reset_service=0;
+ a->reset_mgmt_pending=0;a->ps_activity=activity;
+ /* reset_request retains TX admission closure through its final MIB/idle step. */
+ a04_windows_firmware_release(&fw);return e;
+}
 int a04_ndis_radio_reset(struct a04_ndis_runtime *a)
 {
  a->peer_loss.suspected=0;a->peer_reset_pending=0;
@@ -426,7 +540,7 @@ again:
  if(request){s=a->cancelled||a->closing?NDIS_STATUS_REQUEST_ABORTED:a04_ndis_control(a,request);NdisAcquireSpinLock(&a->lock);a->request=NULL;NdisReleaseSpinLock(&a->lock);if(s!=NDIS_STATUS_PENDING)NdisMOidRequestComplete(a->adapter,request,s);}
  else if(send){
   s=a->closing?NDIS_STATUS_REQUEST_ABORTED:(a->paused?NDIS_STATUS_PAUSED:NDIS_STATUS_ADAPTER_NOT_READY);
-  if(!a->closing&&!a->paused&&a->power&&a->radio.connected){uint64_t end=now(a)+900000;
+  if(!a->closing&&!a->reset_in_progress&&!a->radio.failed&&!a->paused&&a->power&&a->radio.connected){uint64_t end=now(a)+900000;
    s=a->radio.station.secured?a04_os_security_send(a,send,now(a),end):a04_native_nbl_send(&a->tx,&a->session.diagnostic.bridge,&a->radio.station,&a->security,send,a->mpdu,sizeof(a->mpdu),a->ethernet,sizeof(a->ethernet),NULL,NULL,now(a),end);
    if(s==NDIS_STATUS_PENDING){while(a->tx.pending&&!a->closing&&now(a)<end){if(a04_ndis_poll(a))break;wait_us(a,1000);}if(a->tx.pending)(void)a04_native_nbl_abort(&a->tx,&a->session.diagnostic.bridge);}
   }
@@ -615,7 +729,7 @@ VOID RuntimeSend(NDIS_HANDLE p,PNET_BUFFER_LIST list,NDIS_PORT_NUMBER port,ULONG
  while(list){
   PNET_BUFFER_LIST n=list;NDIS_STATUS status=NDIS_STATUS_PENDING;list=NET_BUFFER_LIST_NEXT_NBL(n);NET_BUFFER_LIST_NEXT_NBL(n)=NULL;
   NdisAcquireSpinLock(&a->lock);
-  if(a->closing)status=NDIS_STATUS_REQUEST_ABORTED;else if(a->paused)status=NDIS_STATUS_PAUSED;
+  if(a->closing)status=NDIS_STATUS_REQUEST_ABORTED;else if(a->reset_in_progress)status=NDIS_STATUS_RESET_IN_PROGRESS;else if(a->paused)status=NDIS_STATUS_PAUSED;
   else if(port||!NET_BUFFER_LIST_FIRST_NB(n)||NET_BUFFER_NEXT_NB(NET_BUFFER_LIST_FIRST_NB(n)))status=NDIS_STATUS_NOT_SUPPORTED;
   else if(NET_BUFFER_DATA_LENGTH(NET_BUFFER_LIST_FIRST_NB(n))>A04_RUNTIME_MPDU_MAX)status=NDIS_STATUS_INVALID_LENGTH;
   else if(a04_queue_put(&a->send_queue,n))status=NDIS_STATUS_RESOURCES;

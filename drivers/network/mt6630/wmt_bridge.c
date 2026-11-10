@@ -27,6 +27,11 @@ static void delay_us(void *context,unsigned us)
 static int transfer(void *context,uint32_t arg,void *buffer,unsigned length)
 {
  struct a04_wmt_bridge *b=context;
+ /* Reset download/calibration must not starve the shared fn2 receive path.
+  * fn2 does not recurse here; no parallel host consumer or WLAN reentry. */
+ if(b->wlan_reset_service&&((arg>>28)&7)==1&&b->service_other){
+  int e=b->service_other(b->service_context);if(e)return e;
+ }
  return a04_wifi_life_cmd53(b->life,arg>>31,(arg>>28)&7,(arg>>26)&1,(arg>>9)&0x1ffff,buffer,length);
 }
 static int verify_block(struct a04_wmt_bridge *b,unsigned fn)
@@ -74,6 +79,50 @@ int a04_wmt_bridge_boot_wlan(struct a04_wmt_bridge *b,const void *data,unsigned 
  if(verify_block(b,1))return fault(b,-1);
  e=a04_wlan_download(&b->wlan,&b->wlan_fw,&b->wlan_state);b->wlan_fw.count=0;if(e)return fault(b,e);
  b->wlan_ready=b->wlan_state.ready;return b->wlan_ready?0:fault(b,-1);
+}
+
+/* gen3 wlanAdapterStop: NIC_POWER_CTRL(mode1), real WLAN_READY clear,
+ * then FW-own. This never touches PMU/reset, WMT state, fn2 or the lease. */
+int a04_wmt_bridge_wlan_stop(struct a04_wmt_bridge *b)
+{
+ uint8_t power[4]={1,0,0,0};uint32_t value;int e;
+ if(!alive(b)||!b->wlan_ready||b->failed||!b->wlan.runtime||b->scan.pending||
+    b->wlan.failed||b->transport.failed||b->pending_wlan_status)return A04_WLAN_STATE;
+ e=a04_wlan_set(&b->wlan,4,power,sizeof(power),NULL);if(e)return e;
+ /* gen3 config.h CFG_RESPONSE_POLLING_TIMEOUT=512, 1 ms per poll. */
+ for(unsigned i=0;i<512;i++){
+  uint32_t status,lengths;unsigned remaining=0;
+  if(b->service_other&&b->service_other(b->service_context))return A04_WLAN_STATE;
+  /* wlanAdapterStop drains IST before accepting READY-clear. TX_DONE is
+   * not a page credit; all credits still come from real WTQCR/FFA reads. */
+  if((e=a04_wlan_interrupt_status(&b->wlan,&status)))return e;
+  if(status&~0x87u)return A04_WLAN_STATUS;
+  if((status&1u)&&(e=a04_wlan_resources(&b->wlan)))return e;
+  for(unsigned port=0;port<2;port++){
+   for(unsigned packets=0;;packets++){
+    if((e=a04_wlan_read(&b->wlan,0x90,&lengths)))return e;
+    if(!((lengths>>(16*port))&0xffffu))break;
+    if(packets==32){remaining=1;break;}
+    if((e=a04_wlan_receive(&b->wlan,port,1)))return e;
+    a04_wlan_secret_clear(b->wlan.rx,sizeof(b->wlan.rx));
+   }
+  }
+  e=a04_wlan_read(&b->wlan,0,&value);if(e)return e;
+  if((value&0xffff)!=0x6630)return A04_WLAN_FORMAT;
+  if(!(value&(1u<<21))&&!remaining){
+   /* Unlike idle entry, stopped FW has no outstanding packet to reuse.
+    * Do not manufacture runtime credit returns to pass the idle helper. */
+   e=a04_wlan_lp_request(&b->wlan,1);if(e)return e;
+   e=a04_wlan_read(&b->wlan,4,&value);if(e)return e;
+   if(value&0x100)return A04_WLAN_STATE;
+   b->wlan.fw_owned=1;b->wlan_ready=0;b->calibration_submitted=0;
+   a04_wlan_zero((uint8_t *)&b->wlan_state,sizeof(b->wlan_state));
+   a04_wlan_zero((uint8_t *)&b->scan,sizeof(b->scan));
+   return 0;
+  }
+  b->delay(b->delay_context,1000);
+ }
+ return A04_WLAN_TIMEOUT;
 }
 
 struct manufacture_context {struct a04_wmt_bridge *bridge;unsigned last_cid;};

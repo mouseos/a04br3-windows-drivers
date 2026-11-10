@@ -13,6 +13,7 @@ struct a04_station_runtime {
  int (*exclude_bssid)(void *,const uint8_t *);
  const uint8_t *association_ies;unsigned association_ies_length;
  unsigned rx_pending; /* deferred read-clear RX port bits */
+ uint32_t cancelled_scan_sequences[8];
  unsigned initialized,connecting,connected,phase;int failed;
  /* Descriptor-only observations; no MAC/SSID/key material. First rejected AP retained. */
  unsigned rx_phase,rx_bytes,rx_descriptor,rx_error;

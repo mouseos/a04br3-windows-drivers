@@ -83,12 +83,44 @@ static NDIS_STATUS copy_query(PNDIS_OID_REQUEST q,const void *p,ULONG n)
  if(q->DATA.QUERY_INFORMATION.InformationBufferLength<n)return NDIS_STATUS_BUFFER_TOO_SHORT;
  if(n)NdisMoveMemory(q->DATA.QUERY_INFORMATION.InformationBuffer,p,n);q->DATA.QUERY_INFORMATION.BytesWritten=n;q->DATA.QUERY_INFORMATION.BytesNeeded=0;return NDIS_STATUS_SUCCESS;
 }
+static int reset_queued(struct a04_ndis_runtime *a)
+{
+ int queued=0;DOT11_RESET_REQUEST input;PNDIS_OID_REQUEST q;ULONG any=0;
+ NdisAcquireSpinLock(&a->lock);q=a->next_request;
+ if(q&&!a->next_cancelled&&q->RequestType==NdisRequestMethod&&q->DATA.METHOD_INFORMATION.Oid==OID_DOT11_RESET_REQUEST&&
+    q->DATA.METHOD_INFORMATION.InputBufferLength>=sizeof(input)&&q->DATA.METHOD_INFORMATION.OutputBufferLength>=sizeof(DOT11_STATUS_INDICATION)){
+  NdisMoveMemory(&input,q->DATA.METHOD_INFORMATION.InformationBuffer,sizeof(input));
+  for(unsigned i=0;i<6;i++)any|=input.dot11MacAddress[i];
+  queued=input.dot11ResetType==dot11_reset_type_phy_and_mac&&
+   (!any||a04_wlan_equal(input.dot11MacAddress,a->radio.bridge->regulatory.mac,6));
+ }
+ NdisReleaseSpinLock(&a->lock);return queued;
+}
+static NDIS_STATUS scan_cancel_for_reset(struct a04_ndis_runtime *a,struct a04_wmt_bridge *b)
+{
+ int e=a04_wmt_bridge_scan_cancel_submit(b,b->scan.sequence,b->scan.bss);
+ NDIS_STATUS result=e?NDIS_STATUS_FAILURE:NDIS_STATUS_REQUEST_ABORTED;
+ if(!e){
+  a->radio.cancelled_scan_sequences[b->scan.sequence>>5]|=1u<<(b->scan.sequence&31);
+  b->scan.pending=b->scan.complete=0;
+ }else a->radio.failed=-1;
+ /* gen3 cancel is no-response; explicit cancellation is a host outcome,
+  * not a successful scan or a fabricated SCAN_DONE firmware event. */
+ a->ps_activity=0;a04_ndis_status(a,NDIS_STATUS_DOT11_SCAN_CONFIRM,&result,sizeof(result));
+ return NDIS_STATUS_PENDING; /* scan OID already completed */
+}
 static NDIS_STATUS scan(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
 {
  struct a04_native_scan_policy policy={0};struct a04_wmt_bridge *b=a->radio.bridge;ULONG needed=0;NDIS_STATUS s;uint64_t end;
  if(a->radio.connected)return NDIS_STATUS_DOT11_MEDIA_IN_USE;
  policy.hidden_ssid=a->hidden_network?a->desired.ucSSID:NULL;policy.hidden_ssid_length=a->hidden_network?a->desired.uSSIDLength:0;
- policy.bss=a->radio.station.local.bss;policy.sequence=(b->scan.sequence+1)&255;policy.probes=2;policy.min_dwell=20;policy.dwell=40;policy.timeout=2000;
+ policy.bss=a->radio.station.local.bss;policy.sequence=(b->scan.sequence+1)&255;
+ for(unsigned tries=0;tries<256;tries++){
+  if(!(a->radio.cancelled_scan_sequences[policy.sequence>>5]&(1u<<(policy.sequence&31))))break;
+  policy.sequence=(policy.sequence+1)&255;
+ }
+ if(a->radio.cancelled_scan_sequences[policy.sequence>>5]&(1u<<(policy.sequence&31)))return NDIS_STATUS_RESOURCES;
+ policy.probes=2;policy.min_dwell=20;policy.dwell=40;policy.timeout=2000;
  struct a04_native_scan_request parsed;
  s=a04_native_scan_parse(q->DATA.SET_INFORMATION.InformationBuffer,q->DATA.SET_INFORMATION.InformationBufferLength,&parsed,&needed);
  if(s!=NDIS_STATUS_SUCCESS){q->DATA.SET_INFORMATION.BytesNeeded=needed;return s;}
@@ -107,7 +139,10 @@ static NDIS_STATUS scan(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
  /* OID completes when scan is queued; confirmation follows the real event. */
  NdisAcquireSpinLock(&a->lock);a->request=NULL;NdisReleaseSpinLock(&a->lock);NdisMOidRequestComplete(a->adapter,q,NDIS_STATUS_SUCCESS);
  end=a->radio.now(a)+3000000;
- while(b->scan.pending&&!a->closing&&!a->cancelled&&a->radio.now(a)<end){if(a04_ndis_poll(a))break;a->radio.wait(a,1000);}
+ while(b->scan.pending&&!a->closing&&!a->cancelled&&a->radio.now(a)<end){
+  if(reset_queued(a))return scan_cancel_for_reset(a,b);
+  if(a04_ndis_poll(a))break;a->radio.wait(a,1000);
+ }
  a->ps_activity=0;
  if(b->scan.complete){
   if(a04_ndis_idle_reconcile(a)){
@@ -202,8 +237,8 @@ static NDIS_STATUS reset_request(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
  reset_flags|=((a->combo.file!=NULL)<<10)|((!!a->combo.sco_holds)<<11)|(1u<<12);
 #endif
  unsigned activity=a->ps_activity;a->ps_activity=1;
- e=a04_ndis_radio_reset(a);
- a04_ndis_connection_trace(a,A04_CT_RESET_BOUNDARY,A04_CP_RESULT,A04_CP_BACKEND,e,reset_flags|1u);
+ e=a04_ndis_wlan_reset(a);
+ a04_ndis_connection_trace(a,A04_CT_RESET_BOUNDARY,A04_CP_RESULT,A04_CP_BACKEND,e,reset_flags|4u);
  /* ExtSTA RESET clears privacy exemptions even when bSetDefaultMIB is
   * FALSE. The generic radio reset preserves policy for non-OID callers. */
  if(!e){a->os_security.exemption_count=0;RtlSecureZeroMemory(a->os_security.exemptions,sizeof(a->os_security.exemptions));}
@@ -224,7 +259,9 @@ static NDIS_STATUS reset_request(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
  output.uStatusType=DOT11_STATUS_RESET_CONFIRM;output.ndisStatus=e?NDIS_STATUS_FAILURE:NDIS_STATUS_SUCCESS;
  NdisMoveMemory(q->DATA.METHOD_INFORMATION.InformationBuffer,&output,sizeof(output));
  q->DATA.METHOD_INFORMATION.BytesRead=sizeof(input);q->DATA.METHOD_INFORMATION.BytesNeeded=0;
- link_state(a);return e?NDIS_STATUS_FAILURE:NDIS_STATUS_SUCCESS;
+ link_state(a);
+ NdisAcquireSpinLock(&a->lock);a->reset_in_progress=0;NdisReleaseSpinLock(&a->lock);
+ return e?NDIS_STATUS_FAILURE:NDIS_STATUS_SUCCESS;
 }
 static NDIS_STATUS control_impl(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
 {

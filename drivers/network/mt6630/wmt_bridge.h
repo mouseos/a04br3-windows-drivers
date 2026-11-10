@@ -28,6 +28,7 @@ struct a04_wmt_bridge {
  unsigned identity_ready,wmt_ready,wlan_ready,failed,calibration_submitted;uint32_t pending_wlan_status;
  /* Optional same-worker fn2 service. Must not call WLAN polling/reenter.
   * No second thread/IRQ consumer; NULL retains the WLAN-only behavior. */
+ unsigned wlan_reset_service; /* same-worker fn2 service between fn1 reset transfers */
  void *service_context;int (*service_other)(void *);
 };
 int a04_wmt_bridge_open(struct a04_wmt_bridge *,struct a04_wifi_life *,unsigned functions,void *,void (*)(void *,unsigned));
@@ -45,6 +46,9 @@ typedef void (*a04_calibration_progress)(void *,unsigned stage,int raw,unsigned 
 int a04_wmt_bridge_load_calibration_traced(struct a04_wmt_bridge *,const uint8_t [512],a04_calibration_progress,void *);
 /* Scan policy (channels, timing and calibration) must come from an actual
  * configured regulatory/runtime owner. Completion follows a real event. */
+/* WLAN-only stop: success requires actual READY clear and FW ownership.
+ * A successful stop permits boot_wlan with a fresh pinned snapshot only. */
+int a04_wmt_bridge_wlan_stop(struct a04_wmt_bridge *);
 int a04_wmt_bridge_scan_begin(struct a04_wmt_bridge *,const struct a04_wlan_scan *);
 /* ExtSTA scan cancel command submission only. Caller serializes with the
  * sole runtime owner; no scan state is retired and no completion is inferred.

@@ -38,7 +38,7 @@ class ResetBoundaryDecode(unittest.TestCase):
 
     def test_legacy_record_and_unknown_boundary(self):
         self.assertEqual(cp.decode(record([(101, 2, 1, 1, 0, 0x0e010192)]))['events'][0]['stage'], 'CONNECT_OID')
-        for event in ((128, 2, 3, 1, 0, 4), (128, 2, 3, 1, 0, 0x2001), (128, 2, 1, 1, 0, 1)):
+        for event in ((128, 2, 3, 1, 0, 5), (128, 2, 3, 1, 0, 0x2001), (128, 2, 1, 1, 0, 1)):
             with self.assertRaises(ValueError):
                 cp.decode(record([event]))
 

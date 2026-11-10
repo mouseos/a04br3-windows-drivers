@@ -38,7 +38,8 @@ enum {A04_CT_CONTEXT=100,A04_CT_OID=101,A04_CT_PRIOR_REJECTION=102,A04_CT_GATE=1
  A04_CT_KEY_OID=123,A04_CT_KEY_CID7=124,A04_CT_KEY_EVENT=125,A04_CT_PORT=126,A04_CT_END=127,
  A04_CT_RESET_BOUNDARY=128};
 /* RESET_BOUNDARY: BACKEND_INT raw is the actual signed return value.
- * detail low8: 1=radio_reset, 2=default-MIB profile, 3=final idle.
+ * detail low8: 1=legacy radio_reset, 2=default-MIB profile, 3=final idle,
+ * 4=WLAN-only owner reset.
  * Bits8..12 are RESET-entry snapshots: defaultMIB, power, HCI-open,
  * SCO-held, broker-compiled. Without bit12 HCI/SCO are unavailable.
  * A missing phase is unobserved/skipped, never an implied success. */
