@@ -1,0 +1,49 @@
+{
+  "object_sha256": "5ae52ca984a42d65f77c0d2b10c64b88cf780c59157b7ed915671d1a03e522c1",
+  "source_dependencies": {
+    "tools/clock/mt8167-clock-snapshot.c": "2be643f6dce9d92eb1dd638f838b75b9f096ad21de6f044620f061775da4269f",
+    "drivers/power/mt8167-thermal/readout_ioctl.h": "50fd2519dc349b5cf01a06ab67359e9076e6afb31b18fd2c579ca3d28ace708b",
+    "drivers/system/mt8167-clock/clock_snapshot_ioctl.h": "f0b43b9d94f36127e75234ebea4e80c8a1dfe46450ce298392dc6303f026ce0a",
+    "drivers/bus/mt8167-shared/clock_snapshot.h": "73b415d3c0e552a6c53e0c11d152adc51196a9fea6ca970681e6107c8fb81e6c"
+  },
+  "libraries": {
+    "kernel32.lib": "c91612edab9e074a6daa2baafdf5fdf345a551f6bc20ea133782d6423737f61e",
+    "setupapi.lib": "4ef0d9548092c1d1588c4f0a95e8516028030fb9f21c1fdb7ffeed9ed6fd790c"
+  },
+  "RT81_exports": {
+    "kernel32.dll": {
+      "actual_RT81_sha256": "a7a035b4105ac4c3c9aa521571b919f54fdd2e60997fd2f3b8527e1f0c434c5b",
+      "symbols": [
+        "CancelIoEx",
+        "CloseHandle",
+        "CreateEventW",
+        "CreateFileW",
+        "DeviceIoControl",
+        "ExitProcess",
+        "FlushFileBuffers",
+        "GetCommandLineW",
+        "GetLastError",
+        "GetOverlappedResult",
+        "GetStdHandle",
+        "WaitForSingleObject",
+        "WriteFile",
+        "lstrcmpW",
+        "lstrcmpiW"
+      ],
+      "forwarded": {},
+      "local_evidence": "port/xnu/out/private-windows-rt-display-rotation-probe-exports/kernel32.dll"
+    },
+    "setupapi.dll": {
+      "actual_RT81_sha256": "200c0a781107d9b6f92b88ab2f8185446fcc6c042db4b617b97ece9a810eb6cb",
+      "symbols": [
+        "SetupDiDestroyDeviceInfoList",
+        "SetupDiEnumDeviceInterfaces",
+        "SetupDiGetClassDevsW",
+        "SetupDiGetDeviceInterfaceDetailW",
+        "SetupDiGetDeviceRegistryPropertyW"
+      ],
+      "forwarded": {},
+      "local_evidence": "port/xnu/out/windows-rt-peripheral-next122-packet-v2/rt81-exports/setupapi.dll"
+    }
+  }
+}
