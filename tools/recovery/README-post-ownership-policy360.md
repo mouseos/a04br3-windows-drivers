@@ -1,0 +1,13 @@
+# 統合display向け標準ACPI POST選択の復元
+
+GPU359/DIS0 357/FW0943は変更しない。183実機ではAcquirePostDisplayOwnershipがSTATUS_SUCCESSでも全寸法0/TargetFFFFFFFFだった。これは有効なPOST情報未取得を示し、GOP path単独原因を証明しない。
+
+同一hashの実dxgkrnlをREAで確認。FUN_00090544はIRP_MN_QUERY_RESOURCESでboot framebuffer全範囲のcontainmentを調べ、不成立でもGUID_BUS_TYPE_ACPI (d7b46895-001a-4942-891f-a7d46610a843)ならGraphicsDriversのDisableAutoAcpiPostDeivceを既定0で読む。0はOS標準auto ACPI POST選択、1はその抑止。選択結果がAddDeviceのadapter flagとbootadapter globalへ渡り、実callbackは該当adapterだけへ有効情報を返す。バイナリ変更はしない。
+
+1は旧offscreen GE8300RenderBase向け明示policyとしてf5797a07で導入。別DODからunified displayへ移行した現在の実fresh184でも1が残る。360はその抑止だけを厳密DWORD1→0へ復元する。実POST取得/表示の解消は次実機まで未証明。
+
+PostOwnershipPolicy360.csは既OfflineSystemHiveNative.csと同時にAdd-Typeし、既load済みprivate mount名をPolicy.Applyへ渡す。実Select Current/Default1、GPU3.59/DIS0 3.57の実選択を検証し、既0や異型/異サイズを拒否。対象以外の全SYSTEM raw値・型・サイズ・key構造を前後hash照合する。REG_LINKはraw targetのみ記録し追跡しない。正綴り別key/ValidateWDDMCaps/他controlsetも除外しない。未知や読取り失敗は拒否しcloneを破棄する。
+
+専用test-post-ownership-policy360.ps1はfresh184のimmutable SYSTEM3fileを新outputへcopyしnative replay、1→0、既0への再実行拒否、原本hash不変、unload/privilege復元を確認する。元1証拠と失敗receiptを保持する。185ではservice184登録と同じcloneだけを変更し、最終candidate hashを正式native reportへ記録する。実機やlive SYSTEMへ適用しない。
+
+Microsoft一次API契約: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/dispmprt/nc-dispmprt-dxgkcb_acquire_post_display_ownership 。Width0はnonPOST/OS情報なし等を含む。fallback framebufferを偽代入せずOS ownership callbackと既strict layout/DMA guardを保持する。
