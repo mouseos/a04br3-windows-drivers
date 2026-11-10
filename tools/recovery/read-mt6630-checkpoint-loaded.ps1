@@ -84,10 +84,10 @@ function Read-Mt6630LoadedCheckpoint($Root,[string]$ControlSet,[string]$OutputDi
    $b=New-Object byte[] 1624;for($i=0;$i -lt 1624;$i++){$b[$i]=[Convert]::ToByte($raw.RawHex.Substring(2*$i,2),16)}
    $r.record_headers[$name]=@{magic=[BitConverter]::ToUInt32($b,0);version=[BitConverter]::ToUInt32($b,4);bytes=[BitConverter]::ToUInt32($b,8);channel=[BitConverter]::ToUInt32($b,12);count=[BitConverter]::ToUInt32($b,48);legacy_driver_build=[BitConverter]::ToUInt32($b,84)}
    $gen=Test-Mt6630CheckpointRecord $b $channel
-   if($name -ceq 'RuntimeFailure' -and [BitConverter]::ToUInt32($b,84) -eq 1029){$r.RuntimeFailure_first_only_per_adapter=$false}
+   if($name -ceq 'RuntimeFailure' -and [BitConverter]::ToUInt32($b,84) -in @(1029,1030)){$r.RuntimeFailure_first_only_per_adapter=$false}
    if(!$r.values.Generation.present -or $gen -gt $r.values.Generation.value){throw 'Record generation exceeds/misses saved counter'}
    $p=Join-Path $OutputDirectory ($name+'.bin');[IO.File]::WriteAllBytes($p,$b);$outputs+=@($p)
-   $r.values[$name]=@{present=$true;type=3;bytes=1624;sha256=(Hash $p);generation=$gen;parent_generation=[BitConverter]::ToUInt64($b,24);interrupt_time=[BitConverter]::ToUInt64($b,32);system_time=[BitConverter]::ToUInt64($b,40);legacy_driver_build=[BitConverter]::ToUInt32($b,84);matches_1027_internal_build=([BitConverter]::ToUInt32($b,84) -eq 1023);connection_trace_build1029=([BitConverter]::ToUInt32($b,84) -eq 1029);attempt_binding='unverified'}
+   $r.values[$name]=@{present=$true;type=3;bytes=1624;sha256=(Hash $p);generation=$gen;parent_generation=[BitConverter]::ToUInt64($b,24);interrupt_time=[BitConverter]::ToUInt64($b,32);system_time=[BitConverter]::ToUInt64($b,40);legacy_driver_build=[BitConverter]::ToUInt32($b,84);matches_1027_internal_build=([BitConverter]::ToUInt32($b,84) -eq 1023);connection_trace=($channel -eq 3 -and [BitConverter]::ToUInt32($b,84) -in @(1029,1030));connection_trace_build1030=([BitConverter]::ToUInt32($b,84) -eq 1030);connection_trace_build1029=([BitConverter]::ToUInt32($b,84) -eq 1029);attempt_binding='unverified'}
   }
  }else{foreach($name in @('Generation','DriverEntry','Initialize','Scan','RuntimeFailure')){$r.values[$name]=@{present=$false}}}
 

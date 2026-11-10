@@ -22,4 +22,22 @@ class Summary(unittest.TestCase):
    put('RuntimeFailure',record(3,102,101,[(100,2,4,1,1,0)]));self.assertFalse(m.summarize_receipt(d)['connect_request_context_observed'])
    (d/'RuntimeFailure.bin').write_bytes(b'changed')
    with self.assertRaises(ValueError):m.summarize_receipt(d)
+class KnownWireBuilds(unittest.TestCase):
+ def test_identical_wire_size_does_not_admit_unknown_build_semantics(self):
+  for build in (1029,1030,1031):
+   raw=record(3,102,101,[(100,2,4,1,2,0)],build)
+   self.assertEqual(len(raw),1624)
+   self.assertEqual(m.decode(raw)['connection_trace'],build in (1029,1030))
+  raw=record(3,102,101,build=1030);m.HEADER.pack_into(raw,0,0x50433441,2,len(raw),3,102,101,0,0,0,0,0,0,0,0,0,0,0,1030)
+  with self.assertRaises(ValueError):m.decode(raw)
+ def test_1030_summary_binds_only_matching_initialize_generation_and_build(self):
+  (repo/'build').mkdir(exist_ok=True)
+  with tempfile.TemporaryDirectory(dir=repo/'build') as tmp:
+   d=Path(tmp);r=dict(status='checkpoint-extracted-not-a-connection-diagnosis',errors=[],load_rc=0,unload_rc=0,privilege_restore_error=0,originals_unchanged=True,manifest_unchanged=True,source_manifest_sha256='a'*64,values={},selection=dict(selected_present=True,fields={'DriverVersion':{'value':'2026.11.11.1030'}}))
+   def put(name,b):
+    (d/(name+'.bin')).write_bytes(b);r['values'][name]={'present':True,'sha256':hashlib.sha256(b).hexdigest()};(d/'receipt.json').write_text(json.dumps(r))
+   put('DriverEntry',record(0,100,0,build=1030));put('Initialize',record(1,101,100,build=1030))
+   for build,parent,expected in ((1030,101,True),(1029,101,False),(1031,101,False),(1030,99,False)):
+    put('RuntimeFailure',record(3,102,parent,[(100,2,4,1,2,0),(117,2,1,1,0,0)],build))
+    result=m.summarize_receipt(d);self.assertTrue(result['selection_1030']);self.assertEqual(result['connection_parent_bound'],expected);self.assertEqual(result['connect_request_context_observed'],expected);self.assertFalse(result['connection_success_claimed'])
 if __name__=='__main__':unittest.main()

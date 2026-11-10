@@ -9,6 +9,9 @@ import struct
 HEADER = struct.Struct('<4I4Q10I')
 EVENT = struct.Struct('<6I')
 CAPACITY = 64
+# Identical checkpoint_wire.h schema1/1624B in c1198155 (1029) and
+# 4bcae1b6 (1030); unknown builds do not inherit connection semantics.
+CONNECTION_TRACE_BUILDS = (1029, 1030)
 STAGES = {
     100:'CONNECT_CONTEXT',101:'CONNECT_OID',102:'CONNECT_PRIOR_REJECTION',103:'CONNECT_GATE',104:'CONNECT_POLICY',105:'CONNECT_CANDIDATE',106:'CONNECT_WAKE',107:'CONNECT_SELECT',108:'CONNECT_CHANNEL',109:'CONNECT_AUTH_TX',110:'CONNECT_AUTH_RX',111:'CONNECT_ASSOC_TX',112:'CONNECT_ASSOC_RX',113:'CONNECT_STA',114:'CONNECT_WAIT',115:'CONNECT_OID_COMPLETE',116:'CONNECT_ASSOC_COMPLETE',117:'CONNECT_CONNECT_COMPLETE',118:'CONNECT_RX_DECODE',119:'CONNECT_EARLY_RX',120:'CONNECT_EAPOL_RX',121:'CONNECT_EAPOL_TX',122:'CONNECT_TX_DONE',123:'CONNECT_KEY_OID',124:'CONNECT_KEY_CID7',125:'CONNECT_KEY_EVENT',126:'CONNECT_PORT',127:'CONNECT_END',
     89:'RX_RESULT',90:'RX_DESCRIPTOR',91:'AP_REJECT',92:'AP_REJECT_DESCRIPTOR',88:'LAST_OID',80:'RUNTIME_STATE',81:'HOST_STATE',82:'CREDITS',83:'WHISR',84:'WASR',85:'LAST_COMMAND',86:'SCAN_STATE',87:'RUNTIME_RESULT',
@@ -80,8 +83,8 @@ def decode(data, after_generation=None):
                 last_observed_flush=f'0x{flush_status:08x}' if flush_known else None,
                 tail_flush_result='unobserved', durable_success=False,
                 return_prepared=bool(prepared), ndis_handoff_observed=False,
-                connection_trace=(channel==3 and build>=1029),
-                connection_binding=('initialize_parent_generation; context1=preconnect/context2=CONNECT_REQUEST' if channel==3 and build>=1029 else 'legacy'),
+                connection_trace=(channel==3 and build in CONNECTION_TRACE_BUILDS),
+                connection_binding=('initialize_parent_generation; context1=preconnect/context2=CONNECT_REQUEST' if channel==3 and build in CONNECTION_TRACE_BUILDS else 'legacy'),
                 history_truncated=bool(overflow),
                 events=events, unobserved_stages=[v for k, v in STAGES.items()
                                                 if not any(e['stage'] == v and e['observed'] for e in events)])
@@ -110,12 +113,14 @@ def summarize_receipt(directory):
     init_bound = bool(entry and init and init['parent_generation'] == entry['generation']
                       and init['driver_build'] == entry['driver_build'] and init['generation'] > entry['generation'])
     runtime_bound = bool(init_bound and runtime and runtime['parent_generation'] == init['generation']
-                         and runtime['driver_build'] == init['driver_build'] == 1029 and runtime['generation'] > init['generation'])
+                         and runtime['driver_build'] == init['driver_build'] and runtime['driver_build'] in CONNECTION_TRACE_BUILDS and runtime['generation'] > init['generation'])
     events = [e for e in runtime.get('events', []) if e['stage'].startswith('CONNECT_') and e['observed']] if runtime_bound else []
     selection = receipt.get('selection', {})
     return dict(source_manifest_sha256=receipt['source_manifest_sha256'],
                 selection=selection, selection_1029=(selection.get('fields', {}).get('DriverVersion', {}).get('value', '').endswith('.1029')
                     if selection.get('selected_present') else None),
+                selection_1030=(selection.get('fields', {}).get('DriverVersion', {}).get('value', '').endswith('.1030') if selection.get('selected_present') else None),
+                connection_trace_driver_build=runtime.get('driver_build') if runtime_bound else None,
                 records=records, initialize_parent_bound=init_bound,
                 connection_parent_bound=runtime_bound,
                 connect_request_context_observed=any(e['stage']=='CONNECT_CONTEXT' and
@@ -129,7 +134,7 @@ def summarize_receipt(directory):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('record', nargs='?', type=Path, help='Raw REG_BINARY exported by the main operator')
-    parser.add_argument('--receipt-directory', type=Path, help='Existing clean native extraction directory; summarize selection and bound 1029 trace')
+    parser.add_argument('--receipt-directory', type=Path, help='Existing clean native extraction directory; summarize selection and bound 1029/1030 trace')
     parser.add_argument('--after-generation', type=int, help='Pre-test native-replayed baseline counter')
     args = parser.parse_args()
     if args.after_generation is not None and not 0 <= args.after_generation < 2**64:
