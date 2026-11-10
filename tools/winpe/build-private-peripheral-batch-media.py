@@ -236,6 +236,9 @@ def main():
  elif a.combined176_profile:
   require(len(p['diagnostic_clients'])==(2 if a.combined184_profile else 1) and all(c['relative_directory']=='.' for c in p['diagnostic_clients']),'Exact System32 assets only')
   for name in ['mt8167-dxgi-console-launch356.exe','mt8167-dxgi-present356.exe']:prepare+=['if exist C:\\Windows\\System32\\'+name+' goto baselinefail']
+ if a.combined184_profile:
+  require(p['diagnostic_clients'][0]['exe']=='mt8167-clock-snapshot.exe' and p['diagnostic_clients'][0]['sha256']=='eae9efe8c2872dda76928120cf9e4919c1e87457cbd61aed2a749a73e1d85b5f','Fixed newly installed clock client')
+  prepare+=['if exist C:\\Windows\\System32\\mt8167-clock-snapshot.exe goto baselinefail']
  prepare+=['if exist C:\\Windows\\System32\\'+DIRECTORY+' goto baselinefail','if exist C:\\Windows\\System32\\'+SERVICE+'.exe goto baselinefail','set "A04_CANDIDATE_STARTED=1"','> "%A04_BK%\\JOURNAL.txt" echo STATE=CANDIDATE_WRITE_STARTED','mkdir C:\\Windows\\System32\\'+DIRECTORY+'\\logs >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
  if rotation:
   prepare+=['move "'+old+'" "'+archive+'" >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail','X:\\a04br3\\compare-files.exe X:\\a04br3\\rotation-proof\\log.bin "'+archive+'" >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail','if exist "'+old+'" goto candidatefail']
