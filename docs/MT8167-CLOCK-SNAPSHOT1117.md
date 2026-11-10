@@ -74,3 +74,16 @@ StopAdmissionDrainのsoftware順序は(1)InterlockedExchange(admissionClosed,1)�
 close前にrundown取得済みならStopは返却までunmapへ進まない。close後だがExWait開始前にrundownを取ったqueryも、ParentLockの前後admission検査でMMIOに入らず返す。read中のclose/removeは次readとpublish前に拒否し、callback失敗/ADMISSION_LOSTを返す。ExWait開始後は新rundown取得が失敗する。D0再開時は既sourceの再初期化＋admission確定を使う。これはsoftware mapping teardownのsource根拠で、突然の物理bus abort、全firmware排他、kernel並行実測の保証ではない。成功返却後もD0やclockを将来にわたり保持するleaseはない。
 
 bounded decoderは固定128byte、11index、postdivider3bit、PCW21/21/7bit、参照1～UINT32_MAXだけを処理する。primary clk-mt8167.cのclk26m_ck=clk26m、mainpll_d2=mainpll/2とmux4選択も明示し、selected mux parentのconfigured値だけを返す。Linux clk-fixed-factor.cの整数除算に一致する。CPU postmux divider不明、reference精度未確認、実効CPU/DDR Hzはnullを維持する。全postdiv/PCW境界・参照境界・4mux・invalid ABIを含むdecoder321件とhost100件を検査した。
+
+
+## WDK増分候補1120 / thermal1.11
+
+新候補はparent 2026.11.10.1120とthermal 0.0.1.11。resource契約1117、query ABI1、thermalV3/build1104、HPv2/build1107は維持する。既1117/1.10 packageを上書きしない。両方のcompileでMT8167_CLOCK_SNAPSHOT_QUERY=1を追加する。UMはARM objectのみで、この工程ではparent/thermalだけをlink/signする。
+
+実WDK環境では変更5TU+flagOFF2TUが通過。初回parentのcommon flags不足を修正し、parent/sampler/parent-OFFの3objectのみ元1117のO2、mfpu=none、mno-unaligned-access、fno-builtin等を保って再compileした。leaf2objectとUM objectは保持。13parent/3thermal helperと既kernel/WDF librariesはsource/include/hashを検証して再利用する。SDK再構築・署名key exportは不要。
+
+再現はcompile-mt8167-clock-snapshot.ps1の固定manifest/header guardを通し、そのcompile directoriesをlink-sign-mt8167-clock1120.ps1へ渡す。checkout内out出力を使う場合、compile前にtask専用 .git/info/exclude の /out/ 行でbuild出力だけを除外する。tracked source差分や他のuntracked入力は隠さず、clean guardを維持する。scriptの新規output guardを維持し、再試行は別名出力へ行う。compile-recipe.jsonのsource hashが一致する既objectだけを使うため、非runtimeのrecipe修正ではcompileを繰返す必要はない。
+
+imports契約は実RT8.1 ntoskrnl/hal/WdfLdrのhash/exportと旧1117/1.10 IATを照合する。thermal consumerのPASSIVE_LEVEL検査により新たに必要なhal!KeGetCurrentIrqlだけを明示追加許可し、旧IATにあったと偽らない。これは既parentも使用する実RT8.1 exportであり、未知symbolの包括許可ではない。
+
+SYS/CAT署名とCAT所属の成功は候補作成の証拠であり、Windows上のload/query/stop並行性・実clock/DDR取得成功ではない。任意referenceを与えないdecoderではHz=nullを維持する。mainの次に必要な一括batchへ独立seal後に統合し、現freeze済媒体へ自動追加しない。
