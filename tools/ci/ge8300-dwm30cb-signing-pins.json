@@ -1,0 +1,30 @@
+{
+  "build_source_commit": "30cb20f79ec3c5f71c056d5783fe6743e92bf2ce",
+  "baseline_signed_manifest_sha256": "eef81706cf51711e375ddd7f6b46b6ef05fe7ed73c0ebd97dd64d484565fc32e",
+  "baseline_files": {
+    "display-transport/mt8167-display-transport.cat": "66645368cd9836564fc5eadc347de3c908685bfcc71e10b21d15a4877e29497e",
+    "display-transport/mt8167-display-transport.inf": "e2cc28e52c9fee0b920d24eb5b99d243701d7919cf1b1523659bbd36312580ef",
+    "display-transport/mt8167-display-transport.sys": "902009a9201a416c6a160504d47809f1e7fbfccf08ce32376b40caa60ae829c5",
+    "ge8300-d3d-clear.exe": "1aa85355adb96d827e2224f10361dc56f73a3cfcdaf1dee18eb4c1bf3cb8b081",
+    "ge8300-d3d-texture-boundary.exe": "07cca1a73e1ca0dd19083cee2de6490ae8855db3670b1a2c7f1bbcb20d94081e",
+    "ge8300-d3d-texture.exe": "ba9429a58ea54359dedbd6adcc3a3cec3db34a53fa95082aa0818e082ed12fa0",
+    "ge8300-d3d-ui-texture.exe": "f965f4591b92a2a101cdceacc08476f3386c1ed492add320f21cdff8d49bd3c8",
+    "ge8300-mips.fw": "5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1",
+    "ge8300-render.cat": "dda05ff3b687203435ebe33e1a464d1c85af834e1c1138384819c58bbde995df",
+    "ge8300-render.inf": "e7ae27579da40ad27d67f132074afdeef0e6317e7e627d97cc0e1d248de614bc",
+    "ge8300-render.sys": "cd2ec8d1d8aea5c1d3ed9d7f23c697950371ae2c9db38380dc07b647cd4e2da0",
+    "ge8300-umd.dll": "a32befbf700b81653d388e7232928f6a442f2a72b17c6c1c621ba6ebd05aceac",
+    "ge8300-umd.lib": "58a3c45bddbe096f08a980ba53d61d9317b4c8299f08a3b5542fe9455b86112d",
+    "mt8167-development.cer": "33680a69f647193e7f7adcecf137db525262019c3a8f971ab3095d40f894d72a",
+    "mt8167-dxgi-present356.exe": "eaa30760ebc38a1955ccb3bbd834ee5c3972ce8842b90e6a58bc5084109ef8d5"
+  },
+  "helper_origin_commit": "2ffc193078da9badbfff67cba2868f34a47b99f8",
+  "helper_hashes": {
+    "ge8300_panel_signing_common.py": "766d524de1cdffdd10db1fe8f06532487e4468e8ff801c59ed2f8e3d1c8207cd",
+    "verify-dwm-certificates.ps1": "7f5ed069ef52f51929b7e5c4318a4fa890d819d539b550e4e3326f62eedd66fd"
+  },
+  "signer_thumbprint": "BCBF6C456C6F0DD0818434763B189488FBF13570",
+  "deployable_with_timing369_profile": false,
+  "hardware_verified": false,
+  "previous_certificate_helper_sha256": "ee40be41aea5f8a9bb59cf3777cc267dcdcba6e9ac48f89174197d8ae9768320"
+}
