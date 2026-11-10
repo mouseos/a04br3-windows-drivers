@@ -1,3 +1,30 @@
+# 統合描画候補362のソースビルド
+
+`work/ge8300-unified362`では、公開入口に`-UnifiedDisplay`を追加した。
+同じdefineをnative owner・KMD・SEH unitへ渡し、display bridge、BDD/brightness/
+SetPalette拒否を含む表示10 TUと、独立したMT8167 display transportをソースから作る。
+UMDのDEFAULT texture UpdateSubresourceUPと12Drawの標準評価clientも同じcheckoutを使う。
+
+```powershell
+git clone --depth 1 --single-branch --branch work/ge8300-unified362 https://github.com/mouseos/a04br3-windows-drivers.git
+Set-Location a04br3-windows-drivers
+./tools/ci/build-ge8300-from-source.ps1 -EnableCandidate -UnifiedDisplay
+```
+
+前提は従来と同じ正規WDK8.1、LLVM、MSVC ARM32、ARM32 UCRT付きWindows SDK。
+過去のdriver cache、private hive、別checkoutは通常ビルドの入力にしない。
+`-UnifiedDisplay`を省略した従来のrender-only開発経路は保持する。公開source-build
+workflowもこのオプションを入力として選択できる。現在の増分署名作業は別recipeで
+既cacheを使い、375 TUのコンパイラやSDKを作り直さない。
+
+出力は未署名SYS/DLL/clientとsource/toolchain/hash manifest。統合modeでは
+`mt8167-display-transport.sys`を含む。INF/CAT包装、署名、firmware・GPT書込み、
+実機操作はこの入口で行わない。通常fullbuildのWindowsでの完走と、この入口から
+生成したdriverの実機動作は未検証。出自照合とPowerShell構文確認の成功を、
+compile/link/実機成功とは区別する。
+
+以下は以前の手順と検証履歴として残す。
+
 # 現行332 source build
 
 branch `work/ge8300-readback-safety332`の通常wrapperは331 ABI5機能と332 DMA IRQL/readback/新boundaryclientをsource buildする。native61/compiler375 TU、過去driver cache/private hive不要。必要TUの増分署名と通常fullbuild/CI全実行は区別する。reset解消・実GPU成功は未検証。

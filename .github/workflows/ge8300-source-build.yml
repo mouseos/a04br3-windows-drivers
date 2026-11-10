@@ -1,6 +1,11 @@
-name: GE8300 ABI4 single-checkout source build
+name: GE8300 single-checkout source build
 on:
   workflow_dispatch:
+    inputs:
+      unified_display:
+        description: Build unified GE8300 display and MT8167 transport
+        type: boolean
+        default: true
 permissions:
   contents: read
 jobs:
@@ -14,7 +19,11 @@ jobs:
           fetch-depth: 1
       - name: Build KMD, native owner, compiler, UMD and client from source
         shell: powershell
-        run: ./tools/ci/build-ge8300-from-source.ps1 -EnableCandidate -RunHostTests
+        env:
+          GE8300_UNIFIED_DISPLAY: ${{ inputs.unified_display }}
+        run: |
+          $unified = $env:GE8300_UNIFIED_DISPLAY -eq 'true'
+          ./tools/ci/build-ge8300-from-source.ps1 -EnableCandidate -RunHostTests -UnifiedDisplay:$unified
       - uses: actions/upload-artifact@v4
         with:
           name: ge8300-source-build-${{ github.sha }}

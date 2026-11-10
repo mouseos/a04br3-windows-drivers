@@ -9,6 +9,7 @@ param(
  [string]$ReuseVerifiedDirectory,
  [switch]$WithOwnerAllocation,
  [switch]$WithFactory,
+ [switch]$UnifiedDisplay,
  [string[]]$ShaderCodecArguments
 )
 $ErrorActionPreference='Stop'
@@ -41,6 +42,7 @@ $common=@('--target=thumbv7-pc-windows-msvc','-std=c11','-O2','-fms-extensions',
  '-Werror=implicit-function-declaration','-Werror=incompatible-pointer-types','-Werror=return-type',
  '-D_KERNEL_MODE','-D_ARM_','-DARM','-DNTDDI_VERSION=0x06030000','-D_WIN32_WINNT=0x0603','-DA04_GE8300_VENDOR_NATIVE_CLEAR_JOB=1',
  '-D__ldrexd=__geo_wdk81_ldrexd_declaration',"-I$resource\include","-I$inc\km","-I$inc\km\crt","-I$inc\shared","-I$gpu","-I$gpu\fwif","-I$gpu\compat","-I$gpu\vendor_m1_11")
+if($UnifiedDisplay){$common+='-DA04_GE8300_UNIFIED_DISPLAY356=1'}
 if($WithMdlTarget){
  $units+=@('gpu_mmu','vendor_m1_11\native_owner_dispatch','vendor_m1_11\windows_native_target','vendor_m1_11\windows_native_storage','vendor_m1_11\windows_native_cold','vendor_m1_11\windows_native_code','vendor_m1_11\windows_native_backing','vendor_m1_11\windows_native_job','vendor_m1_11\windows_native_execute','vendor_m1_11\windows_uncached','vendor_m1_11\native_resources','vendor_m1_11\native_hwrt_profile','vendor_m1_11\render_resources','vendor_m1_11\native_clear_job','vendor_m1_11\native_clear_data','vendor_m1_11\native_terminate_stream','vendor_m1_11\native_clear_surface','vendor_m1_11\native_clear_codespace','vendor_m1_11\native_clear_pds','vendor_m1_11\native_eot_program','vendor_m1_11\native_record_fields','vendor_m1_11\native_pair','vendor_m1_11\native_ccb')
  $common+='-DA04_GE8300_NATIVE_OWNER_MDL_TARGET=1'
@@ -89,7 +91,7 @@ try {
  foreach($unit in $units){
   $source=Join-Path $root $sourceMap.native_unit_sources.$unit;$obj=Join-Path $out ($unit.Replace('\','-')+'.obj')
   $unitFlags=@($common)
-  if($unit -in @('wddm-render\compiler\witness_codec','wddm-render\compiler\witness_info')){if(!$ShaderCodecArguments){throw 'Explicit source-plan compiler headers required for kernel witness codec'};$unitFlags=@($ShaderCodecArguments)+@('-DNDEBUG','-mfpu=none')}
+  if($unit -in @('wddm-render\compiler\witness_codec','wddm-render\compiler\witness_info')){if(!$ShaderCodecArguments){throw 'Explicit source-plan compiler headers required for kernel witness codec'};$unitFlags=@($ShaderCodecArguments)+@('-DNDEBUG','-mfpu=none');if($UnifiedDisplay){$unitFlags+='-DA04_GE8300_UNIFIED_DISPLAY356=1'}}
   $compileArgs=@($unitFlags)+@('-c',$source,'-o',$obj)
   $reused=$false
   if($previous){

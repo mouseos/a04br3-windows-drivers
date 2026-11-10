@@ -32,3 +32,8 @@ MMA8652も実配置1.10の源泉9ad5ef0aと11source pathを照合し、古いsen
 fresh186に対して新service MT8167CombinedFollowup186を作るrun187 profileを追加する。GPU362だけを選択し、親1120・温度1.11・MMA1.10・DIS0 transport・FW0943・POST DWORD0は保持する。古い1→0のPOST policy patchは再適用しない。18旧service全体と100個の取得済みnamed値、原SYSTEM三本、既存ファイルを保持し、通常DXGI Present clientをphase1/index0で1回だけ実行する。clock clientは再実行しない。新12Draw texture-update clientは必要な後続検証用に保持する。
 
 新profileは署名GPU362 manifestと全output hash、fresh186/native receipt、実配置baseline版/driver hashが揃うまでfinalizeできない。ソースやpolicyが生成できたことを、書込み・実機描画成功とは扱わない。既run185/旧helperは別generationとして保持する。
+
+
+## 公開ビルド入口の整合
+
+統合後の4ファイルと新UpdateSubresource headerを出自一覧へ追加し、過去のoriginを履歴として残した。source verifierは145 origin file、127 scoped native file、67 native TU、604 compiler snapshot file/375 TUを照合する。さらに通常のsource入口へ明示`-UnifiedDisplay`を追加し、単一checkoutから表示10 TU/bridge/transportまでcompile/linkする経路を用意した。従来入口をそのまま使うとrender-only構成になる問題を分けて扱う。Linux上の公式PowerShell parserで構文を確認するが、Windowsでのfullbuild完走や新cold-build生成物の実機成功は未検証。既存cacheを使う今回の1 TU増分署名経路は変更しない。

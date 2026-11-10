@@ -1,6 +1,8 @@
 # Opt-in module-only ARM32 build. Does not build/install a render SYS or UMD DLL.
-param([switch]$EnableCandidate,[string]$OutputDirectory,[string]$ReuseDirectory,[string]$ReuseSourceCommit='5a26a0dd547561251f5e9fb188b4477d0699d791',[string]$MicrosoftArmCompiler,[string]$MicrosoftArmCompilerSha256,[string]$MicrosoftCrtInclude)
+param([switch]$EnableCandidate,[string]$OutputDirectory,[string]$ReuseDirectory,[string]$ReuseSourceCommit='5a26a0dd547561251f5e9fb188b4477d0699d791',[string]$MicrosoftArmCompiler,[string]$MicrosoftArmCompilerSha256,[string]$MicrosoftCrtInclude,[string]$MicrosoftUcrtInclude,[switch]$UnifiedDisplay)
 $ErrorActionPreference='Stop'
+if($UnifiedDisplay -and $ReuseDirectory){throw 'Unified source build requires fresh modules, not render-only cached flags'}
+if($UnifiedDisplay -and !(Test-Path (Join-Path $MicrosoftUcrtInclude 'stdio.h'))){throw 'Unified display requires installed ARM32 UCRT headers'}
 if(!$EnableCandidate){throw 'WDDM render candidate is default off; pass -EnableCandidate explicitly'}
 if(!$MicrosoftArmCompiler -or $MicrosoftArmCompilerSha256 -notmatch '^[0-9a-fA-F]{64}$' -or !(Test-Path $MicrosoftArmCompiler) -or (Get-FileHash $MicrosoftArmCompiler -Algorithm SHA256).Hash -ne $MicrosoftArmCompilerSha256){throw 'Real hash-pinned Microsoft ARM cl.exe is required for the independent MDL lock SEH TU'}
 if(!(Test-Path (Join-Path $MicrosoftCrtInclude 'vcruntime.h'))){throw 'Fixed Microsoft compiler CRT headers required'}
@@ -46,6 +48,7 @@ try {
  $resource=(& clang -print-resource-dir)
  if($LASTEXITCODE -ne 0 -or !(Test-Path (Join-Path $resource 'include\intrin.h'))){throw 'Missing compiler intrinsic headers'}
  $common=@('--target=thumbv7-pc-windows-msvc','-std=c11','-fms-extensions','-ffreestanding','-fno-builtin','-fno-stack-protector','-O2','-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access','-mfpu=none','-D_ARM_','-DARM','-D_WIN32_WINNT=0x0603','-DNTDDI_VERSION=0x06030000','-DDXGKDDI_INTERFACE_VERSION=0x4002','-DD3D_UMD_INTERFACE_VERSION=0x4002',"-I$inc\shared")
+ if($UnifiedDisplay){$common+='-DA04_GE8300_UNIFIED_DISPLAY356=1'}
  foreach($unit in @('clear_protocol','frontend/draw_protocol','clear_engine','capture','kmd_clear','kmd_objects','query_adapter','preempt','render_contract','lifecycle','miniport','frontend_memory','umd/clear_ddi','umd/bootstrap','umd/frontend','umd/shader_state','umd/tokenized_shader','compiler/sm2','umd/entry','testclient/d3d-clear','testclient/d3d9-flat','testclient/memory')) {
   $name=($unit -replace '/','_');$relative="drivers/gpu/mt8167/wddm-render/$unit.c"
   if($reuseClient -and $unit -eq 'testclient/d3d-clear'){$reuseRecords+=@{unit=$unit;kind='verified existing EXE';origin=$ReuseSourceCommit};continue}
@@ -77,11 +80,31 @@ try {
   & clang @unitFlags @includes -c (Join-Path $PSScriptRoot "$unit.c") -o (Join-Path $out "$name.obj")
   if($LASTEXITCODE -ne 0){throw "ARM32 compile failed: $unit"}
  }
- & $MicrosoftArmCompiler /nologo /c /O2 /GS- /kernel /Zl /TC /D_ARM_ /DARM /D_KERNEL_MODE /D_WIN32_WINNT=0x0603 /DNTDDI_VERSION=0x06030000 "/I$inc\shared" "/I$inc\km" "/I$inc\km\crt" "/I$MicrosoftCrtInclude" (Join-Path $PSScriptRoot 'mdl_pin.c') "/Fo$out\mdl_pin.obj"
+ $msvcUnits=@('mdl_pin');$sehModeFlags=@();if($UnifiedDisplay){$sehModeFlags+='/DA04_GE8300_UNIFIED_DISPLAY356=1'}
+ & $MicrosoftArmCompiler /nologo /c /O2 /GS- /kernel /Zl /TC @sehModeFlags /D_ARM_ /DARM /D_KERNEL_MODE /D_WIN32_WINNT=0x0603 /DNTDDI_VERSION=0x06030000 "/I$inc\shared" "/I$inc\km" "/I$inc\km\crt" "/I$MicrosoftCrtInclude" (Join-Path $PSScriptRoot 'mdl_pin.c') "/Fo$out\mdl_pin.obj"
  if($LASTEXITCODE -ne 0){throw 'Microsoft ARM SEH pin compile failed; do not replace with unsafe dereference'}
  $pinPe=@(& llvm-readobj --file-headers (Join-Path $out 'mdl_pin.obj'))
  if($LASTEXITCODE -ne 0 -or !($pinPe -match 'IMAGE_FILE_MACHINE_ARMNT')){throw 'SEH compiler did not emit ARMNT'}
- & llvm-lib /machine:arm "/out:$out\ge8300-kmd-clear.lib" "$out\clear_protocol.obj" "$out\frontend_draw_protocol.obj" "$out\clear_engine.obj" "$out\capture.obj" "$out\kmd_clear.obj" "$out\kmd_objects.obj" "$out\query_adapter.obj" "$out\preempt.obj" "$out\render_contract.obj" "$out\lifecycle.obj" "$out\miniport.obj" "$out\frontend_memory.obj" "$out\mdl_pin.obj"
+ $displayObjects=@();$displaySourceRecords=@()
+ if($UnifiedDisplay){
+  $gpuRoot=Split-Path $PSScriptRoot;$displayRoot=Join-Path $gpuRoot 'wddm-display'
+  $unifiedKernelFlags=@($common)+@('-D_KERNEL_MODE','-DGEO_LINKED_NATIVE_CORE=1','-D__ldrexd=__geo_wdk81_ldrexd_declaration',"-I$resource\include","-I$inc\shared","-I$inc\km","-I$inc\km\crt")
+  foreach($unifiedUnit in @(@{source='wddm-render/display_adapter356.c';object='display_adapter356.obj'},@{source='display-transport/transport356.c';object='transport356.obj'},@{source='vendor_m1_11/windows_shared_scanout.c';object='scanout_vidmm356.obj'})){
+   $unifiedSource=Join-Path $gpuRoot $unifiedUnit.source;$unifiedObject=Join-Path $out $unifiedUnit.object
+   & clang @unifiedKernelFlags -c $unifiedSource -o $unifiedObject
+   if($LASTEXITCODE){throw "Unified bridge/transport compile failed: $($unifiedUnit.source)"}
+   $displaySourceRecords+=@{source=$unifiedUnit.source;sha256=(Get-FileHash $unifiedSource -Algorithm SHA256).Hash;object=$unifiedUnit.object;object_sha256=(Get-FileHash $unifiedObject -Algorithm SHA256).Hash;arguments=$unifiedKernelFlags}
+  }
+  $displayObjects+=Join-Path $out 'display_adapter356.obj'
+  $displayFlags=@('/nologo','/c','/kernel','/Gy','/GS-','/Zl','/D_KERNEL_MODE','/D_ARM_','/DARM','/DNTDDI_VERSION=0x06030000','/D_WIN32_WINNT=0x0603','/DDXGKDDI_INTERFACE_VERSION=0x4002','/DA04_MT8167_DISPLAY_BRIGHTNESS=1','/DA04_GE8300_UNIFIED_DISPLAY356=1','/DA04_GE8300_WDDM_DIRECT_EXPERIMENT=0','/DA04_GE8300_WDDM_SHARED_AUTOSTART=0','/DA04_GE8300_WDDM_VENDOR_TILE=0','/DA04_GE8300_WDDM_COPY=0',"/I$inc\km","/I$inc\shared","/I$inc\um","/I$MicrosoftCrtInclude","/I$MicrosoftUcrtInclude","/I$displayRoot")
+  foreach($displayUnit in @('bdd','bdd_dmm','bdd_util','bltfuncs','blthw','mt8167_brightness','unified_display','memory','ge8300_trace','ge8300_present')){
+   $displaySource=Join-Path $displayRoot ($displayUnit+'.cxx');$displayObject=Join-Path $out ('display_'+$displayUnit+'.obj')
+   & $MicrosoftArmCompiler @displayFlags $displaySource "/Fo$displayObject"
+   if($LASTEXITCODE){throw "Unified display compile failed: $displayUnit"}
+   $msvcUnits+=('display_'+$displayUnit);$displayObjects+=$displayObject;$displaySourceRecords+=@{source=('wddm-display/'+$displayUnit+'.cxx');sha256=(Get-FileHash $displaySource -Algorithm SHA256).Hash;object=('display_'+$displayUnit+'.obj');object_sha256=(Get-FileHash $displayObject -Algorithm SHA256).Hash;arguments=$displayFlags}
+  }
+ }
+ & llvm-lib /machine:arm "/out:$out\ge8300-kmd-clear.lib" "$out\clear_protocol.obj" "$out\frontend_draw_protocol.obj" "$out\clear_engine.obj" "$out\capture.obj" "$out\kmd_clear.obj" "$out\kmd_objects.obj" "$out\query_adapter.obj" "$out\preempt.obj" "$out\render_contract.obj" "$out\lifecycle.obj" "$out\miniport.obj" "$out\frontend_memory.obj" "$out\mdl_pin.obj" @displayObjects
  if($LASTEXITCODE -ne 0){throw 'KMD module archive failed'}
  & llvm-lib /machine:arm "/out:$out\ge8300-umd-clear.lib" "$out\clear_protocol.obj" "$out\frontend_draw_protocol.obj" "$out\umd_clear_ddi.obj" "$out\umd_bootstrap.obj" "$out\umd_frontend.obj" "$out\umd_shader_state.obj" "$out\umd_tokenized_shader.obj" "$out\compiler_sm2.obj" "$out\testclient_memory.obj"
  if($LASTEXITCODE -ne 0){throw 'UMD module archive failed'}
@@ -99,7 +122,7 @@ try {
  $flatPe|Set-Content "$out\ge8300-d3d9-flat.exe.pe.txt"
  $sources=@(Get-ChildItem $PSScriptRoot -File -Recurse | Where-Object {$_.Extension -in '.c','.h','.ps1','.md'} | ForEach-Object {@{path=$_.FullName.Substring($root.Length+1);sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash}})
  $outputs=@('ge8300-kmd-clear.lib','ge8300-umd-clear.lib','umd_entry.obj','ge8300-d3d-clear.exe','ge8300-d3d9-flat.exe')|ForEach-Object {@{name=$_;sha256=(Get-FileHash (Join-Path $out $_) -Algorithm SHA256).Hash}}
- @{source_commit=$commit;microsoft_seh_compiler_sha256=$MicrosoftArmCompilerSha256;microsoft_compile_units=@('mdl_pin');source_dirty=(@(& git -C $root status --porcelain).Count -ne 0);candidate_default_off=$true;wdk81_intrinsic_compat='__ldrexd declaration-only alias; no replacement implementation';kind='DDI implementation archives plus standard D3D client; no installable miniport/UMD';owner_abi='in-process control-v2; native factory and full caps/frontend not linked';shader_compiler='real D3D9 TL/flat frontend and bounded shader/state capture; PCO/NIR ARM32 static closure linked separately';runtime_verified=$false;reuse_records=$reuseRecords;compile_units=@('clear_protocol','frontend/draw_protocol','clear_engine','capture','kmd_clear','kmd_objects','query_adapter','preempt','render_contract','lifecycle','miniport','frontend_memory','umd/clear_ddi','umd/bootstrap','umd/frontend','umd/shader_state','umd/tokenized_shader','compiler/sm2','umd/entry','testclient/d3d-clear','testclient/d3d9-flat','testclient/memory');sources=$sources;outputs=$outputs}|ConvertTo-Json -Depth 6|Set-Content "$out\build-manifest.json"
+ @{source_commit=$commit;unified_display=$UnifiedDisplay.IsPresent;unified_source_commands=$displaySourceRecords;microsoft_seh_compiler_sha256=$MicrosoftArmCompilerSha256;microsoft_compile_units=$msvcUnits;source_dirty=(@(& git -C $root status --porcelain).Count -ne 0);candidate_default_off=$true;wdk81_intrinsic_compat='__ldrexd declaration-only alias; no replacement implementation';kind='DDI implementation archives plus standard D3D client; no installable miniport/UMD';owner_abi='in-process control-v2; native factory and full caps/frontend not linked';shader_compiler='real D3D9 TL/flat frontend and bounded shader/state capture; PCO/NIR ARM32 static closure linked separately';runtime_verified=$false;reuse_records=$reuseRecords;compile_units=@('clear_protocol','frontend/draw_protocol','clear_engine','capture','kmd_clear','kmd_objects','query_adapter','preempt','render_contract','lifecycle','miniport','frontend_memory','umd/clear_ddi','umd/bootstrap','umd/frontend','umd/shader_state','umd/tokenized_shader','compiler/sm2','umd/entry','testclient/d3d-clear','testclient/d3d9-flat','testclient/memory');sources=$sources;outputs=$outputs}|ConvertTo-Json -Depth 6|Set-Content "$out\build-manifest.json"
 } finally {
  if($transcript){Stop-Transcript|Out-Null}
  $env:TEMP=$oldTemp;$env:TMP=$oldTmp

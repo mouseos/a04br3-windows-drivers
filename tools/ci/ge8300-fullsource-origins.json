@@ -654,37 +654,45 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/umd/clear_ddi.c",
-      "source_commit": "ae6c1508e7fea7a95efca0db960827bcd6f2827f",
-      "role": "UI359 NPOT/pitch/BGRA-RGBA allocation-to-GPU sampling; original shader constraints retained",
-      "sha256": "4311721b84b7daa0533ea87345c7f64bc8e27c3fedc6290daa68ce5192a549b2",
+      "source_commit": "2e242dec8be1ee381e91dc34feef669650f6190c",
+      "role": "DEFAULT texture update Lock/Unlock lifetime; retain UI359 layout and old shader limits",
+      "sha256": "018dec5711101c01e4ca9b2b142746ee305649fce2f7301101837af9596fab95",
       "previous_origins": [
         {
           "path": "drivers/gpu/mt8167/wddm-render/umd/clear_ddi.c",
-          "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
-          "role": "Unified356 source overlay; prior origin retained",
-          "sha256": "ce1dcfded6e6b0fe3b05c96c7981324d8fdc5a13b8173966658b131972e6fe71",
+          "source_commit": "ae6c1508e7fea7a95efca0db960827bcd6f2827f",
+          "role": "UI359 NPOT/pitch/BGRA-RGBA allocation-to-GPU sampling; original shader constraints retained",
+          "sha256": "4311721b84b7daa0533ea87345c7f64bc8e27c3fedc6290daa68ce5192a549b2",
           "previous_origins": [
             {
-              "source_commit": "adbd3e5c631bc548f8a402aee40b31a2fd3fa1ef",
-              "role": "332 same-source readback retry input preservation",
-              "sha256": "56b8bfd08b3347e822f85fc9086c235ce38e11403a9b0377fd4fada3ab98f25c",
+              "path": "drivers/gpu/mt8167/wddm-render/umd/clear_ddi.c",
+              "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+              "role": "Unified356 source overlay; prior origin retained",
+              "sha256": "ce1dcfded6e6b0fe3b05c96c7981324d8fdc5a13b8173966658b131972e6fe71",
               "previous_origins": [
                 {
-                  "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
-                  "sha256": "f06fbe97e6f08001681d5bd2f34cb347e07cbe3e0ac9dfbcb967c95923e9cfe4",
-                  "role": "Texture326/327 explicit source overlay"
+                  "source_commit": "adbd3e5c631bc548f8a402aee40b31a2fd3fa1ef",
+                  "role": "332 same-source readback retry input preservation",
+                  "sha256": "56b8bfd08b3347e822f85fc9086c235ce38e11403a9b0377fd4fada3ab98f25c",
+                  "previous_origins": [
+                    {
+                      "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
+                      "sha256": "f06fbe97e6f08001681d5bd2f34cb347e07cbe3e0ac9dfbcb967c95923e9cfe4",
+                      "role": "Texture326/327 explicit source overlay"
+                    },
+                    {
+                      "source_commit": "729d296b1f4710e9b162a85dca60560d0c22c8ee",
+                      "sha256": "a250c2685267ad8ed025e3331f65ede1437e40894d7b81ae4885b4f1bbbf3ae3",
+                      "role": "332 bounded readback, retention and durable boundary"
+                    }
+                  ]
                 },
                 {
-                  "source_commit": "729d296b1f4710e9b162a85dca60560d0c22c8ee",
-                  "sha256": "a250c2685267ad8ed025e3331f65ede1437e40894d7b81ae4885b4f1bbbf3ae3",
-                  "role": "332 bounded readback, retention and durable boundary"
+                  "source_commit": "ab744bc6278fc1ed099e42f31b07444a2c860b61",
+                  "sha256": "78a1a52519929d25f06fd5f0f7b72737d9807c97dd82b71ff0eb1b3e4f1da88d",
+                  "role": "Integrated real Copy336 all-consumer/ownership contract"
                 }
               ]
-            },
-            {
-              "source_commit": "ab744bc6278fc1ed099e42f31b07444a2c860b61",
-              "sha256": "78a1a52519929d25f06fd5f0f7b72737d9807c97dd82b71ff0eb1b3e4f1da88d",
-              "role": "Integrated real Copy336 all-consumer/ownership contract"
             }
           ]
         }
@@ -922,25 +930,33 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/umd/typed_resource.c",
-      "source_commit": "ae6c1508e7fea7a95efca0db960827bcd6f2827f",
-      "role": "UI359 NPOT/pitch/BGRA-RGBA allocation-to-GPU sampling; original shader constraints retained",
-      "sha256": "9ff5bf75f11703b7d4f8b5c9a030cfdbc69dcd338bb5a8fb4096681907745958",
+      "source_commit": "2e242dec8be1ee381e91dc34feef669650f6190c",
+      "role": "DEFAULT texture UpdateSubresourceUP full/box/independent pitch using existing VidMm synchronization",
+      "sha256": "8c66df4ef3db0a7fee6663d8acf922a5864373fb9d0d21051577e28d4e90fe4d",
       "previous_origins": [
         {
           "path": "drivers/gpu/mt8167/wddm-render/umd/typed_resource.c",
-          "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
-          "role": "Unified356 source overlay; prior origin retained",
-          "sha256": "cf23587c58e8d5885576ba63184c68391a068d00b7fe50dcbfe2da68a8d9baf4",
+          "source_commit": "ae6c1508e7fea7a95efca0db960827bcd6f2827f",
+          "role": "UI359 NPOT/pitch/BGRA-RGBA allocation-to-GPU sampling; original shader constraints retained",
+          "sha256": "9ff5bf75f11703b7d4f8b5c9a030cfdbc69dcd338bb5a8fb4096681907745958",
           "previous_origins": [
             {
-              "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
-              "sha256": "3b5ec4e0d6f1ba7d4b9a3f73767665bc90b6962b13e0963a38b078f5dcf590f9",
-              "role": "Texture326/327 explicit source overlay"
-            },
-            {
-              "source_commit": "729d296b1f4710e9b162a85dca60560d0c22c8ee",
-              "sha256": "08e98a93259f356596f78508845ebcf224cafa49098ecbf5b6533e8f178140cc",
-              "role": "332 bounded readback, retention and durable boundary"
+              "path": "drivers/gpu/mt8167/wddm-render/umd/typed_resource.c",
+              "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+              "role": "Unified356 source overlay; prior origin retained",
+              "sha256": "cf23587c58e8d5885576ba63184c68391a068d00b7fe50dcbfe2da68a8d9baf4",
+              "previous_origins": [
+                {
+                  "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
+                  "sha256": "3b5ec4e0d6f1ba7d4b9a3f73767665bc90b6962b13e0963a38b078f5dcf590f9",
+                  "role": "Texture326/327 explicit source overlay"
+                },
+                {
+                  "source_commit": "729d296b1f4710e9b162a85dca60560d0c22c8ee",
+                  "sha256": "08e98a93259f356596f78508845ebcf224cafa49098ecbf5b6533e8f178140cc",
+                  "role": "332 bounded readback, retention and durable boundary"
+                }
+              ]
             }
           ]
         }
@@ -1591,9 +1607,17 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/unified_display.cxx",
-      "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
-      "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8",
-      "sha256": "6d14eaf35578c42cea5f7e0365ab8dd76057946eea0d288f1e1dfa6badc2c31c"
+      "source_commit": "523584213f3624551c86100a18039216a683b736",
+      "role": "Required SetPalette rejection for unified32-bit true-colour display; no palette hardware claimed",
+      "sha256": "2fd6b2d574474f1f1dbbc06bb0417b5b73e8de4c1ac89c207f46377251affdb2",
+      "previous_origins": [
+        {
+          "path": "drivers/gpu/mt8167/wddm-display/unified_display.cxx",
+          "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+          "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8",
+          "sha256": "6d14eaf35578c42cea5f7e0365ab8dd76057946eea0d288f1e1dfa6badc2c31c"
+        }
+      ]
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/unified_display.h",
@@ -1709,9 +1733,17 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/testclient/ui_texture_probe.inc",
-      "sha256": "1fafa44ab46b5658a6fa6ece4596a6dce7b9a1efefb4bff0a7703a5c7404240e",
-      "role": "UI standard D3D evaluation, no GPU success claimed",
-      "source_commit": "8c5878d87087c2bc73112bd94443d98ea2bffe2d"
+      "sha256": "8f4ff2a5a383109fca80b133e19a2f7dfc09a216b56a4024ba38b11945187bce",
+      "role": "Standard D3D11 full update/partial last-texel update/unchanged first-texel sample; four cases twelve Draws",
+      "source_commit": "2308a993cf1dd535e7f1583e014521f16613a456",
+      "previous_origins": [
+        {
+          "path": "drivers/gpu/mt8167/wddm-render/testclient/ui_texture_probe.inc",
+          "sha256": "1fafa44ab46b5658a6fa6ece4596a6dce7b9a1efefb4bff0a7703a5c7404240e",
+          "role": "UI standard D3D evaluation, no GPU success claimed",
+          "source_commit": "8c5878d87087c2bc73112bd94443d98ea2bffe2d"
+        }
+      ]
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/testclient/ui_texture_oracle.h",
@@ -1724,6 +1756,12 @@
       "source_commit": "43753e0d6e06a6a7ed24a6c1bab731a477b52b0e",
       "sha256": "007d83c2aa66bdfe1fa862b71075a7de79de34ec5531842827dec2648e4fd63d",
       "role": "359 fixed384B optional startup evidence writer"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/umd/update_subresource.h",
+      "source_commit": "2e242dec8be1ee381e91dc34feef669650f6190c",
+      "sha256": "3c55648988e295233243f4350f9674dd12b80a0ba2e5fb4f78317aa8ef624809",
+      "role": "Bounded two-dimensional DEFAULT texture upload layout; no new DMA/capability claim"
     }
   ],
   "legacy_files_preserved": [
@@ -3198,5 +3236,18 @@
       "drivers/gpu/mt8167/wddm-display/bdd.cxx"
     ],
     "reconciliation_reason": "185 operational checkout carries older GPU source snapshots while signed installed binary remains359; preserve359 exact GPU runtime and segmented-zero fix, no POST runtime fallback"
+  },
+  "unified362_integration": {
+    "base_source": "28663c7e43982eaf930f8f441795d9c30f89378b",
+    "new_overlay_files": [
+      "drivers/gpu/mt8167/wddm-render/umd/clear_ddi.c",
+      "drivers/gpu/mt8167/wddm-render/umd/typed_resource.c",
+      "drivers/gpu/mt8167/wddm-render/umd/update_subresource.h",
+      "drivers/gpu/mt8167/wddm-display/unified_display.cxx",
+      "drivers/gpu/mt8167/wddm-render/testclient/ui_texture_probe.inc"
+    ],
+    "source_build_verified": false,
+    "hardware_verified": false,
+    "old_origins_retained": true
   }
 }
