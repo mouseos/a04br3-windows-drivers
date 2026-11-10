@@ -34,6 +34,11 @@ def main():
     if not re.fullmatch('[0-9a-f]{64}', a.manifest_sha256) or sha(media / 'manifest.json') != a.manifest_sha256:
         raise SystemExit('媒体manifestが一致しません')
     m = json.loads((media / 'manifest.json').read_text())
+    if (m.get('schema') != 'MT6630_WIFI1029_OFFLINE_ONLY_V1' or m.get('serial') != SERIAL or
+            m.get('install_targets') != ['wifi'] or m.get('diagnostic_clients') != [] or
+            any(m.get(k) is not False for k in ('trust_added', 'runtime_CI_changed', 'firmware_changed',
+                                               'parent_changed', 'BT_changed', 'boot_written', 'gpt_written'))):
+        raise SystemExit('WiFi単独の検証済み媒体契約と一致しません')
     if sha(backup) != m['host_backup_manifest_sha256'] or not re.fullmatch('[0-9A-F]{16}', m['token']):
         raise SystemExit('今回のbackup/tokenが一致しません')
     if not re.fullmatch('[0-9a-f]{64}', m['esp_sha256']) or sha(media / 'update-esp.img') != m['esp_sha256'] or sha(root / NORMAL) != NORMAL_SHA:
