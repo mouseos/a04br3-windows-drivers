@@ -18,6 +18,7 @@ struct a04_hub_action { unsigned kind, generation; };
 #define A04_HUB_POWER_ON 1
 #define A04_HUB_POWER_OFF 2
 #define A04_HUB_RESET 3
+#define A04_HUB_DISABLE 4
 /* Observations must come from the board owner, never from USB request data. */
 struct a04_hub_observation {
  int qualified, id_host, overcurrent_clear, vbus_verified, vbus_off_verified, endpoints_quiesced;

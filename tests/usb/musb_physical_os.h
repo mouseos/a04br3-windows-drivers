@@ -3,17 +3,36 @@
 static ULONGLONG test_now=10000000;static ULONG test_maps,test_unmaps,test_acquires,test_releases,test_stops,test_refs,test_free;
 static KIRQL test_irql;static ULONG test_writes;static PVOID test_cancel_context;static ULONG test_cancel_cookie;
 static BOOLEAN test_stale,test_generation_change,test_proof_incomplete,test_qualified,test_stop_fail,test_health_fail,test_stuck,test_vbus;
-static UCHAR test_mac[0x10000],test_phy[0x10000],test_pool[0x20000];
+static UCHAR test_mac[0x10000],test_phy[0x10000],test_pool[0x40000];
 static PIO_WORKITEM_ROUTINE test_work,test_cleanup;
 static PVOID test_work_context,test_cleanup_context;static ULONG test_work_id;
 static NTSTATUS MtTestQueryOwner(PDEVICE_OBJECT,MT_MUSB_OWNER_INTERFACE *);
-static UCHAR TestRead8(volatile UCHAR *p){return *p;}
-static USHORT TestRead16(volatile USHORT *p){return *p;}
+/* Banked MUSB seam for simultaneous endpoint tests. Default flat mode keeps
+ * legacy fault fixtures independent. This models register ownership, not bus timing. */
+static BOOLEAN test_banked;static UCHAR test_bank[8][0x80],test_fifo[8][0x4000];
+static ULONG test_fifo_out[8],test_fifo_in[8];
+static BOOLEAN BankedOffset(ULONG_PTR off){return (off>=0x10&&off<0x20)||(off>=0x62&&off<0x68);}
+static ULONG BankIndex(void){return test_mac[0xe]&7;}
+static UCHAR TestRead8(volatile UCHAR *p){ULONG_PTR off=(ULONG_PTR)p-(ULONG_PTR)test_mac;
+ if(test_banked&&off<0x10000){if(BankedOffset(off))return test_bank[BankIndex()][off];
+  if(off>=0x20&&off<0x40&&!(off&3)){unsigned n=(unsigned)(off-0x20)/4;return test_fifo[n][test_fifo_in[n]++];}}
+ return *p;}
+static USHORT TestRead16(volatile USHORT *p){ULONG_PTR off=(ULONG_PTR)p-(ULONG_PTR)test_mac;
+ if(test_banked&&BankedOffset(off))return *(USHORT*)&test_bank[BankIndex()][off];return *p;}
 static ULONG TestRead32(volatile ULONG *p){return *p;}
-static VOID TestWrite8(volatile UCHAR *p,UCHAR v){test_writes++;*p=v;}
+static VOID TestWrite8(volatile UCHAR *p,UCHAR v){ULONG_PTR off=(ULONG_PTR)p-(ULONG_PTR)test_mac;test_writes++;
+ if(test_banked&&off<0x10000){if(BankedOffset(off)){test_bank[BankIndex()][off]=v;return;}
+  if(off>=0x20&&off<0x40&&!(off&3)){unsigned n=(unsigned)(off-0x20)/4;test_fifo[n][test_fifo_out[n]++]=v;return;}}
+ *p=v;}
 static VOID TestWrite16(volatile USHORT *p,USHORT v){
  test_writes++;ULONG_PTR off=(ULONG_PTR)p-(ULONG_PTR)test_mac;
  if(off==2||off==4){*p&=~v;return;}
+ if(test_banked&&BankedOffset(off)){
+  unsigned n=BankIndex();USHORT *reg=(USHORT*)&test_bank[n][off];
+  if(off==0x12&&((!n&&(v&0x100))||(n&&(v&8))))v=(n?(*reg&0x100):0)|(test_stuck?1:0);
+  if(n&&off==0x16&&(v&16))v=(*reg&0x200)|(test_stuck?1:0);
+  *reg=v;return;
+ }
  if((off==0x12&&(v&0x108))||(off==0x16&&(v&0x10)))v=test_stuck?1:0;
  *p=v;
 }

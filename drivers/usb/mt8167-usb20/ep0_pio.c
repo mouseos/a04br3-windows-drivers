@@ -33,6 +33,32 @@ static EP0_ACTION issue(MT8167_USB20_EP0 *e, EP0_ACTION action)
     e->io.write16(e->io.context,CSR0,csr);
     return action;
 }
+/* NAK is flow control, not a completed/failed data transaction. Re-arm the
+ * resident token without refilling FIFO, reading IN data, advancing EP0 or
+ * extending the caller's absolute URB deadline. No setup retry: USB SETUP
+ * must be accepted; an unexpected setup NAK stays a protocol failure.
+ * CT3 musb_h_ep0_irq distinguishes H_NAKTIMEOUT from RXSTALL/H_ERROR;
+ * mtk_musb_reg.h defines these same CSR0 commands/WZC bits. */
+static EP0_ACTION nak_wait(MT8167_USB20_EP0 *e, unsigned short csr)
+{
+    unsigned short token;
+    if ((csr & RX_READY) || e->transfer.stage==EP0_SETUP) {
+        e->fault=MT8167_EP0_FAULT_PROTOCOL;return Ep0Fail(&e->transfer);
+    }
+    switch(e->transfer.stage) {
+    case EP0_IN: token=REQUEST;break;
+    case EP0_OUT: token=TX_READY;break;
+    case EP0_STATUS:
+        token=STATUS | (e->transfer.total && e->transfer.direction_in ? TX_READY : REQUEST);break;
+    default:
+        e->fault=MT8167_EP0_FAULT_PROTOCOL;return Ep0Fail(&e->transfer);
+    }
+    /* Clear timeout and an outstanding request before issuing the same
+     * transaction. Crucially do not call issue() for an OUT data packet. */
+    e->io.write16(e->io.context,CSR0,0);
+    e->io.write16(e->io.context,CSR0,token);
+    return EP0_WAIT;
+}
 EP0_ACTION Mt8167Ep0Start(MT8167_USB20_EP0 *e, const MT8167_USB20_IO *io,
                          const unsigned char *setup, unsigned char *buffer,
                          unsigned length, unsigned max_packet)
@@ -41,7 +67,7 @@ EP0_ACTION Mt8167Ep0Start(MT8167_USB20_EP0 *e, const MT8167_USB20_IO *io,
     EP0_ACTION action;
     if (!e || !io || !setup || !io->read8 || !io->read16 || !io->write8 ||
         !io->write16 || (length && !buffer)) return EP0_ABORT;
-    e->io=*io; e->buffer=buffer;
+    e->io=*io; e->buffer=buffer;e->fault=MT8167_EP0_FAULT_NONE;
     for (i=0; i<8; ++i) e->setup[i]=setup[i];
     action=Ep0Begin(&e->transfer,setup,length,max_packet);
     if (action==EP0_ABORT) return action;
@@ -57,12 +83,14 @@ EP0_ACTION Mt8167Ep0Interrupt(MT8167_USB20_EP0 *e)
         return EP0_ABORT;
     e->io.write8(e->io.context,INDEX,0);
     csr=e->io.read16(e->io.context,CSR0);
-    if (csr & (STALL|ERROR_BIT|NAK_TIMEOUT)) return Ep0Fail(&e->transfer);
+    if (csr & STALL) {e->fault=MT8167_EP0_FAULT_STALL;return Ep0Fail(&e->transfer);}
+    if (csr & ERROR_BIT) {e->fault=MT8167_EP0_FAULT_PROTOCOL;return Ep0Fail(&e->transfer);}
+    if (csr & NAK_TIMEOUT) return nak_wait(e,csr);
     if (e->transfer.stage==EP0_IN) {
         if (!(csr & RX_READY)) return EP0_WAIT;
         count=e->io.read8(e->io.context,COUNT0);
         if (count>e->transfer.max_packet || count>e->transfer.total-e->transfer.actual)
-            return Ep0Fail(&e->transfer);
+            {e->fault=MT8167_EP0_FAULT_PROTOCOL;return Ep0Fail(&e->transfer);}
         for (i=0; i<count; ++i)
             e->buffer[e->transfer.actual+i]=e->io.read8(e->io.context,FIFO0);
     } else if (e->transfer.stage==EP0_OUT) {
@@ -70,7 +98,8 @@ EP0_ACTION Mt8167Ep0Interrupt(MT8167_USB20_EP0 *e)
         count=e->transfer.pending;
     } else if (e->transfer.stage==EP0_SETUP || e->transfer.stage==EP0_STATUS) {
         if (csr & (TX_READY|REQUEST)) return EP0_WAIT;
-    } else return Ep0Fail(&e->transfer);
+    } else {e->fault=MT8167_EP0_FAULT_PROTOCOL;return Ep0Fail(&e->transfer);}
     action=Ep0Advance(&e->transfer,count);
+    if(action==EP0_ABORT)e->fault=MT8167_EP0_FAULT_PROTOCOL;
     return issue(e,action);
 }
