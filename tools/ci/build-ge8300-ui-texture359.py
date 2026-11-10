@@ -2,7 +2,8 @@
 """Nine-TU texture delta on sealed359; preserve start/display/FW/compiler objects."""
 from pathlib import Path
 import argparse,json,hashlib,subprocess,shutil,re,copy,ntpath,zipfile
-p=argparse.ArgumentParser();p.add_argument('--task-root',type=Path,required=True);p.add_argument('--source-commit',required=True);p.add_argument('--resume-link',action='store_true');p.add_argument('--packaging-commit');a=p.parse_args();t=a.task_root;r=t/'source';b=Path('C:/mt8167-startgap359/build');o=t/'build';pkg=o/'package-ui-texture359';llvm=Path('C:/Program Files/LLVM/bin');sha=lambda p:hashlib.sha256(Path(p).read_bytes()).hexdigest();load=lambda p:json.loads(Path(p).read_text(encoding='utf-8-sig'))
+p=argparse.ArgumentParser();p.add_argument('--task-root',type=Path,required=True);p.add_argument('--source-commit',required=True);p.add_argument('--resume-link',action='store_true');p.add_argument('--packaging-commit');p.add_argument('--finalize-only',action='store_true');a=p.parse_args();t=a.task_root;r=t/'source';b=Path('C:/mt8167-startgap359/build');o=t/'build';pkg=o/'package-ui-texture359';llvm=Path('C:/Program Files/LLVM/bin');sha=lambda p:hashlib.sha256(Path(p).read_bytes()).hexdigest();load=lambda p:json.loads(Path(p).read_text(encoding='utf-8-sig'))
+if a.finalize_only:a.resume_link=True
 def pin(p,h):
  if sha(p)!=h:raise ValueError('Input pin mismatch '+str(p))
 def run(cmd,name):
@@ -76,22 +77,23 @@ for x in old['compiler_link_inputs']:
  if q is None:raise ValueError('Missing existing compiler/lib input '+n+' '+x['sha256'])
  ul.append(q)
 if len(ul)!=10:raise ValueError('Pinned compiler library closure10')
-run([llvm/'lld-link.exe','/dll','/machine:arm','/subsystem:windows,6.03','/entry:_DllMainCRTStartup','/nodefaultlib',b/'umd_entry.obj',o/'umd_typed_entry.obj',o/'ge8300-native-umd.lib',b/'pco_pair.obj',*ul,'/out:'+str(pkg/'ge8300-umd.dll'),'/map:'+str(o/'ge8300-umd.map')],'link-umd.log')
-inf=pkg/'ge8300-render.inf';raw=inf.read_bytes();enc='utf-16'if raw[:2]in (b'\xff\xfe',b'\xfe\xff')else'utf-8-sig';text=raw.decode(enc)
-if text.count('0.0.3.59')!=1:raise ValueError('Baseline359 INF version')
-inf.write_text(text.replace('0.0.3.59','0.0.3.61'),encoding=enc)
-sign=Path('C:/mt8167-minimal-service-host/cache/kit81/bin/x86/signtool.exe');thumb='BCBF6C456C6F0DD0818434763B189488FBF13570'
-for n in ['ge8300-render.sys','ge8300-umd.dll']:run([sign,'sign','/fd','SHA256','/sha1',thumb,pkg/n],n+'.sign.log')
-transport=pkg/'display-transport';saved=t/'preserved-display-transport';transport.rename(saved)
-try:run(['C:/mt8167-hp1033/inputs/signing/bin/Inf2Cat.exe','/driver:'+str(pkg),'/os:6_3_ARM','/uselocaltime'],'catalog.log')
-finally:saved.rename(transport)
-run([sign,'sign','/fd','SHA256','/sha1',thumb,pkg/'ge8300-render.cat'],'cat-sign.log')
-for n in ['ge8300-render.sys','ge8300-umd.dll','ge8300-render.cat']:run([sign,'verify','/pa',pkg/n],n+'.verify.log')
-for n in ['ge8300-render.sys','ge8300-render.inf','ge8300-umd.dll','ge8300-mips.fw']:run([sign,'verify','/pa','/c',pkg/'ge8300-render.cat',pkg/n],n+'.CAT.log')
+if not a.finalize_only:
+ run([llvm/'lld-link.exe','/dll','/machine:arm','/subsystem:windows,6.03','/entry:_DllMainCRTStartup','/nodefaultlib',b/'umd_entry.obj',o/'umd_typed_entry.obj',o/'ge8300-native-umd.lib',b/'pco_pair.obj',*ul,'/out:'+str(pkg/'ge8300-umd.dll'),'/map:'+str(o/'ge8300-umd.map')],'link-umd.log')
+ inf=pkg/'ge8300-render.inf';raw=inf.read_bytes();enc='utf-16'if raw[:2]in (b'\xff\xfe',b'\xfe\xff')else'utf-8-sig';text=raw.decode(enc)
+ if text.count('0.0.3.59')!=1:raise ValueError('Baseline359 INF version')
+ inf.write_text(text.replace('0.0.3.59','0.0.3.61'),encoding=enc)
+ sign=Path('C:/mt8167-minimal-service-host/cache/kit81/bin/x86/signtool.exe');thumb='BCBF6C456C6F0DD0818434763B189488FBF13570'
+ for n in ['ge8300-render.sys','ge8300-umd.dll']:run([sign,'sign','/fd','SHA256','/sha1',thumb,pkg/n],n+'.sign.log')
+ transport=pkg/'display-transport';saved=t/'preserved-display-transport';transport.rename(saved)
+ try:run(['C:/mt8167-hp1033/inputs/signing/bin/Inf2Cat.exe','/driver:'+str(pkg),'/os:6_3_ARM','/uselocaltime'],'catalog.log')
+ finally:saved.rename(transport)
+ run([sign,'sign','/fd','SHA256','/sha1',thumb,pkg/'ge8300-render.cat'],'cat-sign.log')
+ for n in ['ge8300-render.sys','ge8300-umd.dll','ge8300-render.cat']:run([sign,'verify','/pa',pkg/n],n+'.verify.log')
+ for n in ['ge8300-render.sys','ge8300-render.inf','ge8300-umd.dll','ge8300-mips.fw']:run([sign,'verify','/pa','/c',pkg/'ge8300-render.cat',pkg/n],n+'.CAT.log')
 for x in old['outputs']:
  if x['name']not in {'ge8300-render.sys','ge8300-render.inf','ge8300-render.cat','ge8300-umd.dll'}:pin(pkg/x['name'],x['sha256'])
-newclosures=[closures.get((c['role'],c['source']),c)for c in old['actual_include_closure']]
-m.update(schema='GPU-ui-texture359-independent-delta-v1',package_source_commit=a.source_commit,kernel_binary_source_commit=a.source_commit,compile_source_commit=a.source_commit,packaging_source_commit=a.packaging_commit or a.source_commit,packaging_script_sha256=sha(Path(__file__)),inf_driverver='11/09/2026,0.0.3.61',compiled_ui_texture_units=selected,archives=archives,actual_include_closure=newclosures,texture_archive_delta=deltas,unchanged_display_POST_start_objects=[dict(file=str(p),sha256=sha(p))for p in [b/'display_adapter356.obj',*bdd]],runtime_build_id='Inherited GPU359 module ID; texture delta identified by exact SYS/UMD/source hashes',baseline359_manifest_sha256=sha(b/'package359/signed-manifest.json'),Carson360_included=False,clock185_included=False,hardware_verified=False,full_DWM_shader_support=False,per_allocation_bytes=4194304,texture_descriptor_edge_max=16384,texture_stride_bytes_max=131072,SDK_rebuilt=False,PCO_rebuilt=False,diagnostic_only=False,texture_functional_delta=True,resumed_link_without_recompile=a.resume_link,actual_compiler_link_inputs=[dict(path=str(p),sha256=sha(p))for p in ul])
+newclosures=[c for c in old['actual_include_closure'] if (c.get('role'),c['source'])not in closures]+list(closures.values())
+m.update(schema='GPU-ui-texture359-independent-delta-v1',package_source_commit=a.source_commit,kernel_binary_source_commit=a.source_commit,compile_source_commit=a.source_commit,packaging_source_commit=a.packaging_commit or a.source_commit,packaging_script_sha256=sha(Path(__file__)),inf_driverver='11/09/2026,0.0.3.61',compiled_ui_texture_units=selected,archives=archives,actual_include_closure=newclosures,texture_archive_delta=deltas,unchanged_display_POST_start_objects=[dict(file=str(p),sha256=sha(p))for p in [b/'display_adapter356.obj',*bdd]],runtime_build_id=old.get('runtime_build_id','GPU359-start-gap-v1'),module_identity_build_id_inherited=True,texture_delta_identifier='NPOT-pitch-BGRA-RGBA UI source359 overlay',baseline359_manifest_sha256=sha(b/'package359/signed-manifest.json'),Carson360_included=False,clock185_included=False,hardware_verified=False,full_DWM_shader_support=False,per_allocation_bytes=4194304,texture_descriptor_edge_max=16384,texture_stride_bytes_max=131072,SDK_rebuilt=False,PCO_rebuilt=False,diagnostic_only=False,texture_functional_delta=True,resumed_link_without_recompile=a.resume_link,actual_compiler_link_inputs=[dict(path=str(p),sha256=sha(p))for p in ul])
 m['outputs']=[dict(name=x['name'],sha256=sha(pkg/x['name']))for x in old['outputs']];m.pop('build_manifest_sha256',None);(o/'build-manifest-ui-texture.json').write_text(json.dumps(m,indent=2)+'\n');shutil.copyfile(o/'build-manifest-ui-texture.json',pkg/'ui-texture-build-manifest.json');m['build_manifest_sha256']=sha(pkg/'ui-texture-build-manifest.json');(pkg/'signed-manifest.json').write_text(json.dumps(m,indent=2)+'\n')
 with zipfile.ZipFile(t/'outputs.zip','w',zipfile.ZIP_DEFLATED)as z:
  for f in sorted(o.rglob('*')):
