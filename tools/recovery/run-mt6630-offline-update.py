@@ -68,7 +68,12 @@ def main():
 
     def deploy(image, digest, label):
         # Verify only the RAM staging file. Never read back the physical ESP.
-        run(adb('push', str(image), '/tmp/mt6630-verified-esp.img'), label + '.log')
+        staged = subprocess.run(adb('shell', 'sha256sum', '/tmp/mt6630-verified-esp.img'),
+                                capture_output=True, timeout=30)
+        if staged.returncode == 0 and staged.stdout.split()[:1] == [digest.encode()]:
+            (out / (label + '.log')).write_text('既転送RAMファイルのSHA256一致。再転送を省略。\n')
+        else:
+            run(adb('push', str(image), '/tmp/mt6630-verified-esp.img'), label + '.log')
         command = ('set -e; test "$(id -u)" = 0; '
                    'test "$(readlink -f /dev/block/by-name/EFI)" = /dev/block/mmcblk0p18; '
                    'test "$(cat /sys/class/block/mmcblk0p18/start)" = 360448; '
