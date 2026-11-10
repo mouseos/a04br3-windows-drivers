@@ -7,7 +7,15 @@ from pathlib import Path
 import json,re,sys
 r=Path.cwd();d=Path(sys.argv[1]).resolve().parent
 c=json.loads(Path(sys.argv[1]).read_text());s=json.loads(Path(sys.argv[2]).read_text())
-assert c['status']=='validated-main-seal' and c['service_name']=='MT8167CombinedFollowup200' and c['data_directory']=='MT8167CombinedFollowup200'
+known={
+ 'GPU368_RUN201_MAIN_SEAL_V1':('combined-run201','MT8167CombinedFollowup200'),
+ 'GPU368_RUN203_MAIN_SEAL_V1':('combined-run203','MT8167CombinedFollowup202'),
+ 'GPU369_RUN209_MAIN_SEAL_V1':('combined-run209','MT8167CombinedFollowup208'),
+}
+assert c['schema'] in known
+transaction,service=known[c['schema']]
+assert c['status']=='validated-main-seal' and c['transaction']==transaction and s['transaction']==transaction
+assert c['service_name']==c['data_directory']==service
 if s['status']=='pipeline-stopped':
  proof=json.loads((d/'rejected-prepare-proof.json').read_text());assert proof['CRC_valid'] and proof['status']=='BASELINE_REJECTED_NO_CHANGE' and proof['volume_release_exit']==0 and proof['update_exit']==6 and not proof['candidate_applied']
 else:
