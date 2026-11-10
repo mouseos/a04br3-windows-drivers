@@ -60,7 +60,8 @@ for ar in m['archives']:
   for x in ar['members']:
    h=sha(d/x['name']);x['before_sha256']=x['sha256'];x['sha256']=h
    if h!=x['before_sha256']:deltas[ar['role']].append(x['name'])
- else:assert ar['role']=='pco';pin(b/ar['file'],ar['sha256'])
+ else:
+  assert ar['role']=='pco';pin(b/ar['file'],ar['sha256']);shutil.copyfile(b/ar['file'],o/ar['file'])
  archives.append(ar)
 if {k:len(v)for k,v in deltas.items()}!={'native':3,'kmd':1,'umd':4}:raise ValueError('Unexpected archive delta '+str(deltas))
 # Explicit old359 source objects, byte-preserved display/POST/start/FW ownership.
