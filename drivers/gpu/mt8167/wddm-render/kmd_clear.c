@@ -441,12 +441,12 @@ static int present_region(const RECT *src,const RECT *dst,const RECT *dirty,
 }
 NTSTATUS APIENTRY GeoPresent(HANDLE context,DXGKARG_PRESENT *p) {
  struct geo_kmd_context *c=context;struct copy_begin x;struct geo_copy_region region;
- NTSTATUS status;UINT i,count;
+ NTSTATUS status;UINT i,count,start;SIZE_T bytes;struct geo_present_batch *batch=NULL;
  if(!c||!c->adapter||!p)return STATUS_INVALID_PARAMETER;
  if(KeGetCurrentIrql()!=PASSIVE_LEVEL||p->Flags.Value!=1u||p->FlipInterval||p->DmaBufferSegmentId||
     !p->pAllocationList||(p->SubRectCnt&&!p->pDstSubRects))return STATUS_NOT_SUPPORTED;
- count=p->SubRectCnt?p->SubRectCnt:1u;
- if(p->MultipassOffset>=count)return STATUS_INVALID_PARAMETER;
+ count=p->SubRectCnt?p->SubRectCnt:1u;start=p->MultipassOffset;
+ if(start>=count)return STATUS_INVALID_PARAMETER;
  if(!c->adapter->synchronize||!c->adapter->engine.owner.prepare_copy_region)return STATUS_DEVICE_NOT_READY;
  if(!GeoSessionEnter(c->adapter,1))return STATUS_DEVICE_NOT_READY;
  RtlZeroMemory(&x,sizeof(x));x.context=c;
@@ -457,18 +457,29 @@ NTSTATUS APIENTRY GeoPresent(HANDLE context,DXGKARG_PRESENT *p) {
     !p->pAllocationList[DXGK_PRESENT_DESTINATION_INDEX].WriteOperation||p->pAllocationList[DXGK_PRESENT_SOURCE_INDEX].WriteOperation||
     x.destination->desc.format!=x.source->desc.format||
     x.destination->logical_width!=x.source->logical_width||x.destination->logical_height!=x.source->logical_height){status=STATUS_NOT_SUPPORTED;goto done;}
- for(i=0;i<count;i++)if(!present_region(&p->SrcRect,&p->DstRect,p->SubRectCnt?&p->pDstSubRects[i]:&p->DstRect,x.source,x.destination,&region)){
-  status=STATUS_INVALID_PARAMETER;goto done;
- }
+ if((SIZE_T)(count-start-1u)>(MAXULONG-sizeof(*batch))/sizeof(batch->regions[0])){status=STATUS_INSUFFICIENT_RESOURCES;goto done;}
  if(!p->pPatchLocationListOut||p->PatchLocationListOutSize<2||!p->pDmaBuffer||((ULONG_PTR)p->pDmaBuffer&3)||
     p->DmaSize<sizeof(x.ticket)||!p->pDmaBufferPrivateData||((ULONG_PTR)p->pDmaBufferPrivateData&3)||p->DmaBufferPrivateDataSize<sizeof(x.ticket)){
   status=STATUS_GRAPHICS_INSUFFICIENT_DMA_BUFFER;goto done;
  }
- (void)present_region(&p->SrcRect,&p->DstRect,p->SubRectCnt?&p->pDstSubRects[p->MultipassOffset]:&p->DstRect,x.source,x.destination,&x.region);
+ /* Capture the complete remaining list into ONE scheduler transaction.
+  * The incoming RECT storage is never retained past this callback. */
+ bytes=sizeof(*batch)+(SIZE_T)(count-start-1u)*sizeof(batch->regions[0]);
+ batch=ExAllocatePoolWithTag(NonPagedPool,bytes,'dCeG');
+ if(!batch){status=STATUS_INSUFFICIENT_RESOURCES;goto done;}
+ batch->count=count-start;batch->index=0;
+ for(i=0;i<count;i++){
+  if(!present_region(&p->SrcRect,&p->DstRect,p->SubRectCnt?&p->pDstSubRects[i]:&p->DstRect,x.source,x.destination,&region)){
+   status=STATUS_INVALID_PARAMETER;goto done;
+  }
+  if(i>=start)batch->regions[i-start]=region;
+ }
+ x.region=batch->regions[0];
  GeoCollectPendingPayloads(c->adapter);
  if(!c->adapter->synchronize(c->adapter->sync_context,begin_copy,&x)){status=fail_copy_render(c->adapter,STATUS_DEVICE_NOT_READY);goto done;}
  status=x.status;if(status!=STATUS_SUCCESS)goto done;
  c->adapter->pending[x.ticket.slot].generation=x.ticket.generation;
+ c->adapter->pending[x.ticket.slot].copy=batch;batch=NULL;
  if(GeoWriteTicket(p->pDmaBuffer,&x.ticket)!=STATUS_SUCCESS||GeoWriteTicket(p->pDmaBufferPrivateData,&x.ticket)!=STATUS_SUCCESS){
   status=fail_copy_render(c->adapter,STATUS_INVALID_PARAMETER);goto done;
  }
@@ -479,12 +490,10 @@ NTSTATUS APIENTRY GeoPresent(HANDLE context,DXGKARG_PRESENT *p) {
   p->pPatchLocationListOut->AllocationIndex=i?DXGK_PRESENT_SOURCE_INDEX:DXGK_PRESENT_DESTINATION_INDEX;
   p->pPatchLocationListOut->DriverId=GEO_COPY_MAGIC;p->pPatchLocationListOut++;
  }
- /* One private ticket is one atomic scheduler transaction (Patch/Submit
-  * consume exactly one). Each subsequent rectangle needs a fresh private
-  * DMA transaction; never batch tickets that those callbacks cannot retain. */
- p->MultipassOffset++;
- status=p->MultipassOffset<count?STATUS_GRAPHICS_INSUFFICIENT_DMA_BUFFER:STATUS_SUCCESS;
- done:GeoSessionLeave(c->adapter,1);return status;
+ /* One descriptor fits all regions; capacity failure above returns with
+  * unchanged progress and no capture. No RECT-count-driven ticket growth. */
+ p->MultipassOffset=count;status=STATUS_SUCCESS;
+ done:if(batch)ExFreePoolWithTag(batch,'dCeG');GeoSessionLeave(c->adapter,1);return status;
 }
 /* The two legal semantic lists: normal Render 0/1, Present Blt 2/1.
  * Never silently reinterpret Draw or escalate read-only allocation rights. */
@@ -608,6 +617,19 @@ NTSTATUS GeoInitializeClearNotifications(struct geo_kmd_adapter *a,const DXGKRNL
 NTSTATUS GeoCompleteFromInterrupt(struct geo_kmd_adapter *a,uint64_t token,uint32_t generation,int32_t status,uint32_t visibility) {
  DXGKARGCB_NOTIFY_INTERRUPT_DATA data;uint32_t fence;NTSTATUS s;
  if(!a||!a->notifications_ready||KeGetCurrentIrql()!=a->owner_irql||a->owner_irql<=DISPATCH_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+ /* Only a real owner completion with CPU visibility may advance a batch.
+  * Keep allocation/open/context refs and the original scheduler fence until
+  * the final region. Stop/TDR still needs the ordinary owner drain proof. */
+ if(status==STATUS_SUCCESS&&visibility==(GEO_COMPLETION_GPU_DONE|GEO_COMPLETION_CPU_VISIBLE)&&!a->engine.poisoned){
+  UINT i;for(i=0;i<GEO_MAX_JOBS;i++){
+   struct geo_job *j=&a->engine.jobs[i];struct geo_present_batch *batch=a->pending[i].copy;
+   if(j->state==2&&j->kind==GEO_COPY_MAGIC&&j->owner_job==token&&j->generation==generation&&
+      a->pending[i].generation==generation&&batch&&batch->index+1u<batch->count){
+    batch->index++;j->copy_region=batch->regions[batch->index];j->owner_job=0;j->state=GEO_JOB_COPY_CONTINUE;
+    InterlockedOr(&a->service_pending,2);return STATUS_SUCCESS;
+   }
+  }
+ }
  s=geo_complete(&a->engine,token,generation,status,visibility,&fence);
  if(s!=STATUS_SUCCESS)return s; /* No stale/fault/visibility failure becomes a completed fence. */
  if(geo_submitted_prepare_ready(&a->engine))InterlockedOr(&a->service_pending,2);

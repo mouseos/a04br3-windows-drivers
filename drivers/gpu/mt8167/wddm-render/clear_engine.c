@@ -166,7 +166,7 @@ int32_t geo_cancel_prepared(struct geo_engine *e,const struct geo_dma_ticket *t)
  retire_job(j);return GEO_OK;
 }
 static int active(const struct geo_engine *e) {
- uint32_t i;for(i=0;i<GEO_MAX_JOBS;i++)if(e->jobs[i].state==2||e->jobs[i].state==8)return 1;return 0;
+ uint32_t i;for(i=0;i<GEO_MAX_JOBS;i++)if(e->jobs[i].state==2||e->jobs[i].state==8||e->jobs[i].state==GEO_JOB_COPY_CONTINUE)return 1;return 0;
 }
 static void publish_next(struct geo_engine *e) {
  uint32_t i;struct geo_job *next=0;int32_t status;
@@ -202,6 +202,11 @@ int32_t geo_claim_submitted_prepare(struct geo_engine *e,struct geo_dma_ticket *
  uint32_t i,slot=GEO_MAX_JOBS;
  if(!e||!t)return GEO_INVALID;
  if(e->poisoned)return GEO_POISONED;
+ /* Complete the current indivisible scheduler DMA even if preemption was
+  * requested between its regions. No later DMA may pass this continuation. */
+ for(i=0;i<GEO_MAX_JOBS;i++)if(e->jobs[i].state==GEO_JOB_COPY_CONTINUE){
+  e->jobs[i].state=8;t->magic=GEO_TICKET_MAGIC;t->slot=i;t->generation=e->jobs[i].generation;t->reserved=0;return GEO_OK;
+ }
  if(e->preempt_pending||active(e))return GEO_NOT_READY;
  for(i=0;i<GEO_MAX_JOBS;i++)if((e->jobs[i].state==5||e->jobs[i].state==7)&&
     (slot==GEO_MAX_JOBS||serial_after(e->jobs[slot].fence,e->jobs[i].fence)))slot=i;
@@ -212,7 +217,9 @@ int32_t geo_claim_submitted_prepare(struct geo_engine *e,struct geo_dma_ticket *
 }
 int geo_submitted_prepare_ready(const struct geo_engine *e) {
  uint32_t i,slot=GEO_MAX_JOBS;
- if(!e||e->poisoned||e->preempt_pending||active(e))return 0;
+ if(!e||e->poisoned)return 0;
+ for(i=0;i<GEO_MAX_JOBS;i++)if(e->jobs[i].state==GEO_JOB_COPY_CONTINUE)return 1;
+ if(e->preempt_pending||active(e))return 0;
  for(i=0;i<GEO_MAX_JOBS;i++)if((e->jobs[i].state==5||e->jobs[i].state==7)&&
     (slot==GEO_MAX_JOBS||serial_after(e->jobs[slot].fence,e->jobs[i].fence)))slot=i;
  return slot<GEO_MAX_JOBS&&e->jobs[slot].state==7;

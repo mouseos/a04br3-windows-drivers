@@ -42,7 +42,9 @@ def main():
     changed = set(subprocess.check_output(['git', '-C', ROOT, 'diff', '--name-only', spec['runtime_base'], '--', 'drivers/gpu/mt8167'], text=True).splitlines())
     require(changed - expected == {'drivers/gpu/mt8167/wddm-render/ge8300-render.inf',
                                   'drivers/gpu/mt8167/wddm-render/tests/gdi_present.py',
-                                  'drivers/gpu/mt8167/wddm-render/tests/standard_staging.py'},
+                                  'drivers/gpu/mt8167/wddm-render/tests/standard_staging.py',
+                                  'drivers/gpu/mt8167/wddm-render/clear_engine.h',
+                                  'drivers/gpu/mt8167/wddm-render/kmd_clear.h'},
             'Unexpected GPU changes outside exact eight TU plan')
     require(expected <= changed, 'An expected changed TU is absent')
     inputs, out = a.inputs.resolve(), a.output.resolve()

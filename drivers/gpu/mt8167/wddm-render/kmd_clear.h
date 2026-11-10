@@ -13,7 +13,10 @@
 #include "frontend/texture_draw_abi.h"
 #include "frontend/shader_draw_abi.h"
 struct geo_mdl_record;
-struct geo_pending_payload {struct geo_clear_packet clear;struct geo_draw_packet *draw;UINT generation;};
+/* COPY batches and DRAW captures use the same nonpaged pool ownership and
+ * release tag. The union preserves the retained adapter layout/ABI. */
+struct geo_present_batch {UINT count,index;struct geo_copy_region regions[1];};
+struct geo_pending_payload {struct geo_clear_packet clear;union {struct geo_draw_packet *draw;struct geo_present_batch *copy;};UINT generation;};
 /* These are DDI implementation modules, not a DriverEntry that registers an
  * incomplete WDDM adapter. The full miniport owns synchronization/rundown,
  * querycaps, paging and real DIRQL ISR/DPC routing. */

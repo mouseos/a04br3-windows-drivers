@@ -4,6 +4,9 @@
 #include "owner_abi.h"
 #include "shared_surface.h"
 #define GEO_MAX_JOBS 32u
+/* A submitted multi-region COPY retains its one scheduler fence between
+ * actual hardware completions. It is not an unsubmitted capture. */
+#define GEO_JOB_COPY_CONTINUE 9u
 struct geo_allocation {
  struct geo_allocation *next;
  struct geo_surface_desc desc;
