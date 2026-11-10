@@ -137,7 +137,7 @@ NTSTATUS APIENTRY GeoGetStandardAllocationDriverData(HANDLE handle,DXGKARG_GETST
  if(p->StandardAllocationType==D3DKMDT_STANDARDALLOCATION_SHAREDPRIMARYSURFACE&&A04_GE8300_UNIFIED_DISPLAY356){
   struct geo_allocation_data_v2 primary;
   status=GeoDisplay356PrimaryLayout(a,p->pCreateSharedPrimarySurfaceData,&primary);if(status!=STATUS_SUCCESS)return status;
-  if(p->pAllocationPrivateDriverData&&p->AllocationPrivateDriverDataSize<sizeof(primary))return STATUS_BUFFER_TOO_SMALL;
+  /* WDK8.1: サイズ欄はout。OSが確保したfillバッファの入力capacityではない。 */
   p->AllocationPrivateDriverDataSize=sizeof(primary);p->ResourcePrivateDriverDataSize=0;
   if(p->pAllocationPrivateDriverData)RtlCopyMemory(p->pAllocationPrivateDriverData,&primary,sizeof(primary));return STATUS_SUCCESS;
  }
