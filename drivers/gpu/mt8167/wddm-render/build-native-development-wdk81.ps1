@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 # UMD/client only. Never build or install a kernel driver.
 param([switch]$EnableCandidate,[switch]$EnableLimitedDevelopmentProfile,[switch]$SourceCompiler,[switch]$UnifiedDisplay,[string]$CompilerSourceCommit,
+ [string]$CompilerReuseReceipt,[string]$CompilerReuseReceiptSha256,
  [Parameter(Mandatory=$true)][string]$CompilerDirectory,
  [Parameter(Mandatory=$true)][string]$CompilerManifestSha256,
  [Parameter(Mandatory=$true)][string]$PairDirectory,
@@ -17,7 +18,12 @@ if($SourceCompiler){
  $currentSource=(& git -C $root rev-parse HEAD)
  if(!$CompilerSourceCommit){$CompilerSourceCommit=$currentSource}
  if($CompilerSourceCommit -cnotmatch '^[0-9a-f]{40}$'){throw 'Exact compiler source commit required'}
- if($CompilerSourceCommit -cne $currentSource){
+ if($CompilerReuseReceipt){
+  Verify $CompilerReuseReceipt $CompilerReuseReceiptSha256
+  $reuseProof=Get-Content $CompilerReuseReceipt -Raw|ConvertFrom-Json
+  if($reuseProof.schema -cne 'pco375-verified-reuse-v1' -or !$reuseProof.all_sources_includes_flags_tools_API_identical -or $reuseProof.current_source_commit -cne $currentSource -or $reuseProof.compiled_source_commit -cne $CompilerSourceCommit -or $reuseProof.link_manifest_sha256 -cne $CompilerManifestSha256.ToLowerInvariant() -or $reuseProof.pair_manifest_sha256 -cne $PairManifestSha256.ToLowerInvariant() -or $reuseProof.source_plan_sha256 -cne (Get-FileHash "$root\third_party\mesa-pco\source-plan.json" -Algorithm SHA256).Hash.ToLowerInvariant() -or $reuseProof.cache_evidence_sha256 -cne (Get-FileHash "$CompilerDirectory\cache-evidence.json" -Algorithm SHA256).Hash.ToLowerInvariant()){throw 'Compiler all-include/API reuse receipt does not bind this source, pair, and cache'}
+ }
+ if($CompilerSourceCommit -cne $currentSource -and !$CompilerReuseReceipt){
   $compilerRecipeChanges=@(& git -C $root diff --name-only $CompilerSourceCommit $currentSource)
   if($LASTEXITCODE -or !$compilerRecipeChanges.Count -or @($compilerRecipeChanges|Where-Object{$_ -cnotin @('tools/ci/build-ge8300-from-source.ps1','drivers/gpu/mt8167/wddm-render/build-native-development-wdk81.ps1')}).Count){throw 'Compiler reuse permits only explicit wrapper/UMD-recipe differences; no compiler input changes'}
  }

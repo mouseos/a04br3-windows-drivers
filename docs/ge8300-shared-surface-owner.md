@@ -42,3 +42,38 @@ geo_allocation、geo_engine、geo_kmd_adapterのlayoutが変わる。変更し�
 - https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/ns-d3dkmddi-_dxgkarg_createallocation
 - https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/ns-d3dkmddi-_dxgkarg_openallocation
 - https://learn.microsoft.com/en-us/windows-hardware/drivers/display/handling-resource-creation-and-destruction
+
+## cloneからのfullsource recipe
+
+公開originは8f5d372dの実装11ファイルへ更新し、以前のorigin行全体をprevious_originsとして保持する。native_source_commit・native TU67本のrouting・legacy114ファイルは変更しない。shared_surface_integrationをoriginとnative mapの両方で照合し、以前のorigin行のdigestも検査する。verifierは古いGit履歴もdriver cacheも使わない。
+
+Windows側では既存のfullsource入口を使う。新しい出力先を選び、既存objectのReuseDirectory/ReuseVerifiedDirectoryは渡さない。この入口はnative67TU、全KMD module/bridge/display TU、全UMD TUを同じclean HEADで再compileする。SDK・licensed toolchainの既存ファイルだけを利用し、インストールやSDK再構築は行わない。
+
+```powershell
+# このcheckoutのHEADを固定した後に実行。既存のMSVC ARM32/WDK8.1/ARM32 UCRTを使用。
+python -B .\tools\ci\verify-ge8300-fullsource.py
+if ($LASTEXITCODE) { throw 'fullsource verifier failed' }
+.\tools\ci\build-ge8300-from-source.ps1 -EnableCandidate -UnifiedDisplay -OutputDirectory "$PWD\build\shared-surface-owner"
+```
+
+これは証拠付きcacheを指定しない通常経路であり、PCO/NIR/support/pairの375TUもsourceからcompileする。SDK再構築は0。Windows上のbuildはこのbranch作業では未実行。
+
+### PCO375だけを再利用する場合
+
+既存cacheに`cache-evidence.json`があり、そのdigestが`link-manifest.json`に記録されている場合だけ再利用できる。新しいsource compiler recipeは各実compileに`-MD`を付け、system includeを含む全dependencyのhashを記録する。source-plan/API/pair、375TUすべてのsourceとflags、objectとlibrary、Clang binary、現在のMicrosoft API libraryが一致する必要がある。さらに現在のsource/全includeの解決先を375回の`clang -M`で再確認する。object compileは行わない。追加されたshadow headerも検出する。
+
+古いcacheにcompile時点の全include証拠がなければ、現在のheaderだけを調べて旧objectの出自を後付け認定しない。指定cacheの検査失敗時は停止し、自動でPCOやSDKの再構築へ切り替えない。
+
+```powershell
+# $Pco375にはmainが保有する証拠付きcacheの実在directoryを指定する。
+$PcoManifestSha = (Get-FileHash "$Pco375\link-manifest.json" -Algorithm SHA256).Hash
+.\tools\ci\build-ge8300-from-source.ps1 -EnableCandidate -UnifiedDisplay -OutputDirectory "$PWD\build\shared-surface-owner-cached-pco" -VerifiedCompilerDirectory $Pco375 -ExpectedCompilerCacheManifestSha256 $PcoManifestSha
+```
+
+cacheを別commitから利用しても、compiled_source_commitは旧commitのまま記録する。current_source_commitと同一扱いに改名しない。検査receiptはcurrent HEAD、link/pair manifest、source-plan、all-include evidenceを結び付け、UMD build時にも照合する。
+
+### 一括manifestと未確認事項
+
+`source-build-manifest.json`が同じHEADのnative owner library・KMD library/SYS・UMD DLLと各子manifestのhashをまとめる。PCOの元compile commit/cache receipt、native/KMD/UMD旧object再利用0、SDK再構築0も記録する。SHARED DEFAULT single mip/slice/sample、既存storage範囲、RT-onlyまたはSRV-onlyという制約を維持し、RT/SRV・blend・DWMはfalseのまま。
+
+Windowsでのリンク/署名/配置・実機/DWM成功は未確認。manifest生成は実際のbuild成功後だけ行う。Linuxのhost/clone verifier通過をWindows build成功と扱わない。

@@ -9,7 +9,7 @@ out.mkdir(parents=True);fixture=out/'fixture'
 origins=json.loads((root/'tools/ci/ge8300-fullsource-origins.json').read_text())
 native=json.loads((root/'tools/ci/ge8300-native-source-map.json').read_text())
 plan=json.loads((root/'third_party/mesa-pco/source-plan.json').read_text())
-paths={'tools/ci/build-ge8300-native-owner-core.ps1','tools/ci/ge8300-copy-usc-asset.json','tools/ci/ge8300-fullsource-origins.json','tools/ci/ge8300-native-source-map.json','tools/ci/verify-ge8300-fullsource.py','third_party/mesa-pco/source-plan.json','tests/fixtures/tokenized_shader_before323.c'}
+paths={'tools/ci/build-ge8300-from-source.ps1','tools/ci/build-ge8300-native-owner-core.ps1','tools/ci/ge8300-copy-usc-asset.json','tools/ci/ge8300-fullsource-origins.json','tools/ci/ge8300-native-source-map.json','tools/ci/verify-ge8300-fullsource.py','third_party/mesa-pco/source-plan.json','tests/fixtures/tokenized_shader_before323.c'}
 paths.update(r['path'] for r in origins['files']+origins['legacy_files_preserved']+plan['files'])
 paths.update(r['destination'] for r in native['files'])
 for name in sorted(paths):
@@ -66,6 +66,19 @@ assetfile=fixture/'tools/ci/ge8300-copy-usc-asset.json';asset=json.loads(assetfi
 run('change fixed copy USC while preserving old claimed hash',False)
 assetfile.write_bytes((root/'tools/ci/ge8300-copy-usc-asset.json').read_bytes())
 run('restored complete native67 recipe and exact copy USC asset',True)
+
+# New shared integration preserves the complete old origin row, not just a SHA.
+changed_orig=json.loads(json.dumps(origins))
+shared_path='drivers/gpu/mt8167/wddm-render/clear_engine.c'
+for row in changed_orig['files']:
+ if row['path']==shared_path:row['previous_origins'][0]['role']='history silently relabelled'
+origfile.write_text(json.dumps(changed_orig));run('alter preserved shared-source old origin history',False)
+origfile.write_text(json.dumps(origins))
+fullrecipefile=fixture/'tools/ci/build-ge8300-from-source.ps1'
+original_full=fullrecipefile.read_text();fullrecipefile.unlink()
+fullrecipefile.write_text(original_full.replace('-WithMdlTarget -WithOwnerAllocation','-ReuseVerifiedDirectory old-layout-cache -WithMdlTarget -WithOwnerAllocation'))
+run('reuse old internal-layout native objects in fullsource recipe',False)
+fullrecipefile.write_text(original_full);run('restored fresh shared layout recipe and old history',True)
 
 receipt={'schema':'ge8300-fullsource-map-regression-v1','production_source_modified':False,'driver_cache_used':False,'hardware_operations':False,'cases':records}
 (out/'receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
