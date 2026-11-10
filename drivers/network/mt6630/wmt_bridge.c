@@ -116,6 +116,20 @@ int a04_wmt_bridge_scan_begin(struct a04_wmt_bridge *b,const struct a04_wlan_sca
  if(e && (b->scan.failed||b->wlan.failed||b->transport.failed))return fault(b,e);
  return e;
 }
+/* gen3 nic_cmd_event.h CMD_SCAN_CANCEL / scan_fsm.c scnFsmMsgAbort:
+ * CID0x1b, set/no-response, scan sequence + P2P extension + reserved[2].
+ * ExtSTA has no P2P extension. This submits only; it neither proves FW
+ * cancellation nor retires pending/late events or indicates scan/reset success.
+ * The single runtime owner must retain the pending scan identity. */
+int a04_wmt_bridge_scan_cancel_submit(struct a04_wmt_bridge *b,unsigned sequence,unsigned bss)
+{
+ uint8_t payload[4];
+ if(!alive(b)||!b->wlan_ready||b->failed||!b->wlan.runtime||b->wlan.failed||
+    b->transport.failed||!b->scan.pending||b->scan.complete||b->scan.failed||
+    sequence>255||bss>3||sequence!=b->scan.sequence||bss!=b->scan.bss)return A04_WLAN_STATE;
+ payload[0]=(uint8_t)sequence;payload[1]=payload[2]=payload[3]=0;
+ return a04_wlan_set(&b->wlan,0x1b,payload,sizeof(payload),NULL);
+}
 int a04_wmt_bridge_scan_event(struct a04_wmt_bridge *b,const uint8_t *packet,unsigned length)
 {
  struct a04_wlan_event event;int e;

@@ -46,6 +46,10 @@ int a04_wmt_bridge_load_calibration_traced(struct a04_wmt_bridge *,const uint8_t
 /* Scan policy (channels, timing and calibration) must come from an actual
  * configured regulatory/runtime owner. Completion follows a real event. */
 int a04_wmt_bridge_scan_begin(struct a04_wmt_bridge *,const struct a04_wlan_scan *);
+/* ExtSTA scan cancel command submission only. Caller serializes with the
+ * sole runtime owner; no scan state is retired and no completion is inferred.
+ * Not yet used by NDIS RESET: late-event handling/indications remain required. */
+int a04_wmt_bridge_scan_cancel_submit(struct a04_wmt_bridge *,unsigned sequence,unsigned bss);
 int a04_wmt_bridge_scan_event(struct a04_wmt_bridge *,const uint8_t *,unsigned);
 int a04_wmt_bridge_scan_consume(struct a04_wmt_bridge *);
 /* Timeout/cancellation poisons the session: a late SCAN_DONE is ambiguous. */
