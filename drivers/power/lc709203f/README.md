@@ -56,7 +56,7 @@ registry flushは行わないため急停止での永続化保証はない。
   5 SelfManagedIoInit（BatteryClassInitializeDevice）。ReleaseHardware/D0Exitは
   現sourceでは常に成功のため対象外。通常IOCTLの拒否は起動失敗として記録しない。
 - fault値は既contextをbus lock下でコピーする。admission値は既判定のread結果を
-  保存するだけで、short-circuitで未読のbitは0。追加MMIO/転送/待機はない。
+  保存するだけで、short-circuitで未読のbitは0。追加MMIO/転送/固定待ち/busywaitはない。
   callbackと独立した既fault値を、そのcallbackの原因と自動的に断定しない。
 
 ### 既collectorと同一loadで必要な最少読取り
