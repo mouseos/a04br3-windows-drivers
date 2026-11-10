@@ -197,6 +197,52 @@ static void live_paths(UINT phase,LUID id){
   }
  }
 }
+static int same_luid(LUID a,LUID b){return a.HighPart==b.HighPart&&a.LowPart==b.LowPart;}
+/* Select only the already available physical target of this hardware adapter.
+ * Let CCD choose modes through the driver's advertised mode set. Do not invent
+ * signal timing or alter the persistent topology database for this probe. */
+static HRESULT activate_display_path(LUID id){
+ static DISPLAYCONFIG_PATH_INFO paths[16];
+ static DISPLAYCONFIG_MODE_INFO modes[64];
+ DISPLAYCONFIG_PATH_INFO chosen;UINT32 pc=16,mc=64;UINT matches=0,active=0;LONG status;
+ status=QueryDisplayConfig(QDC_ALL_PATHS,&pc,paths,&mc,modes,NULL);
+ line("ACTIVATION_QUERY_ALL_STATUS",status);if(status!=ERROR_SUCCESS)return HRESULT_FROM_WIN32(status);
+ for(UINT i=0;i<pc;i++){
+  DISPLAYCONFIG_PATH_INFO *p=&paths[i];int match=same_luid(p->sourceInfo.adapterId,id)&&same_luid(p->targetInfo.adapterId,id)&&p->sourceInfo.id==0&&p->targetInfo.id==0&&p->targetInfo.targetAvailable;
+  if(match){matches++;chosen=*p;}
+  if(p->flags&DISPLAYCONFIG_PATH_ACTIVE){active++;if(!match){line("ACTIVATION_OTHER_ACTIVE_PATH",1);return E_UNEXPECTED;}}
+ }
+ line("ACTIVATION_MATCH_COUNT",matches);line("ACTIVATION_EXISTING_ACTIVE",active);
+ if(matches!=1||active>1)return E_UNEXPECTED;
+ if(!active){
+  chosen.flags|=DISPLAYCONFIG_PATH_ACTIVE;
+  chosen.sourceInfo.modeInfoIdx=DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+  chosen.targetInfo.modeInfoIdx=DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+  if(!chosen.targetInfo.refreshRate.Numerator&&!chosen.targetInfo.refreshRate.Denominator)
+   chosen.targetInfo.scanLineOrdering=DISPLAYCONFIG_SCANLINE_ORDERING_UNSPECIFIED;
+  else if(!chosen.targetInfo.refreshRate.Denominator)return E_UNEXPECTED;
+  status=SetDisplayConfig(1,&chosen,0,NULL,SDC_VALIDATE|SDC_USE_SUPPLIED_DISPLAY_CONFIG);
+  line("ACTIVATION_VALIDATE_STATUS",status);if(status!=ERROR_SUCCESS)return HRESULT_FROM_WIN32(status);
+  status=SetDisplayConfig(1,&chosen,0,NULL,SDC_APPLY|SDC_USE_SUPPLIED_DISPLAY_CONFIG);
+  line("ACTIVATION_APPLY_STATUS",status);if(status!=ERROR_SUCCESS)return HRESULT_FROM_WIN32(status);
+ }
+ pc=16;mc=64;
+ status=QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS,&pc,paths,&mc,modes,NULL);
+ line("ACTIVATION_QUERY_ACTIVE_STATUS",status);line("ACTIVATION_ACTIVE_COUNT",pc);line("ACTIVATION_MODE_COUNT",mc);
+ if(status!=ERROR_SUCCESS)return HRESULT_FROM_WIN32(status);
+ if(pc!=1||!(paths[0].flags&DISPLAYCONFIG_PATH_ACTIVE)||!same_luid(paths[0].sourceInfo.adapterId,id)||!same_luid(paths[0].targetInfo.adapterId,id)||paths[0].sourceInfo.id||paths[0].targetInfo.id||!paths[0].targetInfo.targetAvailable)return E_UNEXPECTED;
+ UINT32 si=paths[0].sourceInfo.modeInfoIdx,ti=paths[0].targetInfo.modeInfoIdx;
+ if(si>=mc||ti>=mc||modes[si].infoType!=DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE||modes[ti].infoType!=DISPLAYCONFIG_MODE_INFO_TYPE_TARGET||!same_luid(modes[si].adapterId,id)||!same_luid(modes[ti].adapterId,id)||modes[si].id||modes[ti].id)return E_UNEXPECTED;
+ line("ACTIVATION_SOURCE_WIDTH",modes[si].sourceMode.width);line("ACTIVATION_SOURCE_HEIGHT",modes[si].sourceMode.height);line("ACTIVATION_TARGET_ROTATION",paths[0].targetInfo.rotation);
+ if(modes[si].sourceMode.width!=800||modes[si].sourceMode.height!=1280||paths[0].targetInfo.rotation!=DISPLAYCONFIG_ROTATION_IDENTITY)return E_UNEXPECTED;
+ line("ACTIVATION_TARGET_WIDTH",modes[ti].targetMode.targetVideoSignalInfo.activeSize.cx);
+ line("ACTIVATION_TARGET_HEIGHT",modes[ti].targetMode.targetVideoSignalInfo.activeSize.cy);
+ line("ACTIVATION_TARGET_SCALING",paths[0].targetInfo.scaling);
+ /* Equal source/target geometry is required; do not confuse the configured
+  * scaling policy with effective scaling. Present still needs pixel proof. */
+ if(modes[ti].targetMode.targetVideoSignalInfo.activeSize.cx!=800||modes[ti].targetMode.targetVideoSignalInfo.activeSize.cy!=1280)return E_UNEXPECTED;
+ return S_OK;
+}
 /* A factory owns a topology snapshot. Creating a new factory alone does not
  * refresh adapters retained from the old one; join the same hardware LUID. */
 static HRESULT refreshed_adapter(LUID id,IDXGIFactory **factory,IDXGIAdapter **chosen){
@@ -235,6 +281,7 @@ static HRESULT run_swapchain(IDXGIFactory *factory,IDXGIAdapter *adapter,LUID id
  hr=IDXGIAdapter_EnumOutputs(adapter,0,&output);line("ENUM_SAME_ADAPTER_OUTPUT_HRESULT",hr);
  if(FAILED(hr)&&hr!=DXGI_ERROR_NOT_FOUND)goto done;
  if(output){IDXGIOutput_Release(output);output=NULL;}
+ hr=activate_display_path(id);line("DISPLAY_PATH_ACTIVATION_HRESULT",hr);live_paths(2,id);if(FAILED(hr))goto done;
  /* Keep the real hardware device alive while taking the new snapshot. No
   * software fallback and no private command changes topology for this probe. */
  hr=refreshed_adapter(id,&fresh_factory,&fresh_adapter);if(FAILED(hr))goto done;
@@ -277,7 +324,7 @@ void mainCRTStartup(void){
  /* Keep one exact frame digit index; no command line supplies an output path. */
  logpath[base++]=L'.';logpath[base++]=L'l';logpath[base++]=L'o';logpath[base++]=L'g';logpath[base]=0;
  disk=CreateFileW(logpath,GENERIC_WRITE,FILE_SHARE_READ,NULL,CREATE_NEW,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,NULL);if(disk==INVALID_HANDLE_VALUE)ExitProcess(2);
- line("PID",pid);line("TICK",tick);line("CLIENT_VERSION",373);hr=hardware_luid(&id);if(FAILED(hr))goto done;
+ line("PID",pid);line("TICK",tick);line("CLIENT_VERSION",374);hr=hardware_luid(&id);if(FAILED(hr))goto done;
  hr=CreateDXGIFactory(&IID_IDXGIFactory,(void **)&factory);if(FAILED(hr))goto done;
  for(UINT i=0;;i++){IDXGIAdapter *a=NULL;DXGI_ADAPTER_DESC desc;
   hr=IDXGIFactory_EnumAdapters(factory,i,&a);if(hr==DXGI_ERROR_NOT_FOUND){hr=S_OK;break;}if(FAILED(hr))goto done;
