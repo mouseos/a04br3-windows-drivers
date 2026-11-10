@@ -99,3 +99,5 @@ validatorは保存host artifactの実SHAとseal内pin、最後の書込み出自
 既に実read証拠がある場合のcapture-read経路は `kind=capture-read`、`physical_read_this_capture=true` を明示する。この経路のために新たな物理readを要求・実行しない。新たな物理readなしで利用できるretained-chainが今回の修正点である。
 
 host検証：`python -B tests/test-gpu368-retained-boot.py --workspace <TAB-A04-BR3 root>`。実run177/197/trial199保存記録と既host imageのみでcomponentを確認し、read偽装・異なるboot・trial199のboot/GPT書込み・host pin不一致を拒否する。fresh200 witness/profileは生成しない。
+
+SCM200の最初のWindows compileはglobaldiag引数の余分な引用符により生成Cが`L""C:...""`となって失敗した。obj/link/署名は未生成。空白を含まない固定絶対prefixは1個の引数として渡せるため、この引数データの外側引用符だけを除去した。汎用cstrや旧profileは変更しない。実184値policyから生成したliteralはhost clang構文検査を通過した。失敗header/logは保持し、新規出力へSCM1TUを再実行する。

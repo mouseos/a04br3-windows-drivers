@@ -142,7 +142,7 @@ def build_policy(root,spec):
  require(helper['source_commit']=='a5d8048c3e1572015d09bd308e4304333d9a53f4' and helper['schema']=='DXG_GLOBAL_DIAG198_BUILD_V1' and helper['API_Type']==9 and helper['raw_capacity']==262144 and helper['executed'] is False and helper['compiled_TUs']==1 and helper['signer']==THUMB and helper['exe_sha256']==sha(q)=='9be80b8176696302a0e4408e6871d41792c780a37bcf6caca817c817b97061ac','実署名helper source/byte')
  require(proof['candidate_sha256']==sha(q) and proof['missing']==[] and proof['hardware_verified'] is False and proof['machine']=='ARMNT' and proof['subsystem']==[6,3] and len(proof['imports'])==14 and all(x['validation']['status']=='present' for x in proof['imports']),'実RT81の14imports解決')
  pins[q.relative_to(root).as_posix()]=sha(q)
- diag=dict(name='gpu_globaldiag',exe=exe,directory=directory.as_posix(),relative_directory='.',sha256=sha(q),dependencies=[],arguments=['"C:\\Windows\\System32\\'+SERVICE+'\\logs\\global-diag368"'],timeout_ms=60000,phase=1)
+ diag=dict(name='gpu_globaldiag',exe=exe,directory=directory.as_posix(),relative_directory='.',sha256=sha(q),dependencies=[],arguments=['C:\\Windows\\System32\\'+SERVICE+'\\logs\\global-diag368'],timeout_ms=60000,phase=1)
  boot=pin(spec['boot_witness']);transition=copy.deepcopy(prior['boot_transition'])
  def pin_file(ref):
   q=rooted(root,ref['path']);require(sha(q)==ref['sha256'],'保持host artifact SHA不一致');pins[q.relative_to(root).as_posix()]=ref['sha256']
