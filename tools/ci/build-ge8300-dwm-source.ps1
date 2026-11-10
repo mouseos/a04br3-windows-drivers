@@ -1,5 +1,6 @@
 # Source-only DWM candidate: preserve the strict recovered compiler375 cache.
 param([Parameter(Mandatory=$true)][string]$VerifiedCompilerDirectory,
+ [switch]$AllowAdapterDerivedCompilerCache,
  [Parameter(Mandatory=$true)][string]$ExpectedCompilerCacheManifestSha256,
  [Parameter(Mandatory=$true)][string]$VcToolsDirectory,
  [Parameter(Mandatory=$true)][string]$KernelVcToolsDirectory,
@@ -20,7 +21,7 @@ if($ExpectedCompilerCacheManifestSha256 -notmatch '^[0-9A-Fa-f]{64}$' -or
 # The fullsource entry verifies the 375 sources/includes/args/tools/API before
 # using the existing libraries, and performs no compiler or SDK reconstruction.
 & "$PSScriptRoot\build-ge8300-from-source.ps1" -EnableCandidate -UnifiedDisplay `
- -VerifiedCompilerDirectory $VerifiedCompilerDirectory `
+ -VerifiedCompilerDirectory $VerifiedCompilerDirectory -AllowAdapterDerivedCompilerCache:$AllowAdapterDerivedCompilerCache `
  -ExpectedCompilerCacheManifestSha256 $ExpectedCompilerCacheManifestSha256 `
  -VcToolsDirectory $VcToolsDirectory -KernelVcToolsDirectory $KernelVcToolsDirectory `
  -WindowsKit10Version $WindowsKit10Version -OutputDirectory $OutputDirectory

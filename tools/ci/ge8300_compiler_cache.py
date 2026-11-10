@@ -47,15 +47,22 @@ def resolve(token,roots):
  raise ValueError('Unknown dependency root: '+token)
 def dependency_rows(depfile,roots):
  return [{'path':t,'sha256':sha(resolve(t,roots))} for t in sorted({canonical(p,roots) for p in dependencies(depfile)})]
-def verify(root,cache,expected,roots,compiler,api,include_probe):
+def verify(root,cache,expected,roots,compiler,api,include_probe,allow_adapter_derived=False):
  root=root.resolve();cache=cache.resolve();linkpath=cache/'link-manifest.json'
  if sha(linkpath)!=expected:raise ValueError('Compiler link manifest pin mismatch')
  link=read(linkpath);pair=read(cache/'pair-manifest.json');compilepath=cache/'compile-manifest.json';comp=read(compilepath)
  evidence=read(cache/'cache-evidence.json');planpath=root/'third_party/mesa-pco/source-plan.json';plan=read(planpath)
  if link.get('schema')!='compiler-source-closure-v1' or link.get('source_dirty') or not link.get('source_built') or not link.get('all_compile_exit_codes_zero') or link.get('compiled_units')!=375:raise ValueError('Not a clean successful source-built375 cache')
  if link.get('cache_evidence_sha256')!=sha(cache/'cache-evidence.json'):raise ValueError('Missing/bad all-include cache evidence; old cache cannot be certified retroactively')
- if evidence.get('schema')!='pco375-all-includes-cache-v1' or evidence.get('compile_manifest_sha256')!=sha(compilepath):raise ValueError('Compile/include evidence mismatch')
- if evidence.get('build_recipe_sha256')!=sha(root/'tools/ci/build-ge8300-compiler-source.py') or evidence.get('cache_verifier_sha256')!=sha(root/'tools/ci/ge8300_compiler_cache.py'):raise ValueError('Compiler build recipe changed')
+ derived=evidence.get('schema')=='pco375-adapter-derived-cache-v1'
+ if derived and not allow_adapter_derived:raise ValueError('Adapter-derived cache requires explicit opt-in')
+ if evidence.get('schema') not in (['pco375-all-includes-cache-v1','pco375-adapter-derived-cache-v1'] if allow_adapter_derived else ['pco375-all-includes-cache-v1']) or evidence.get('compile_manifest_sha256')!=sha(compilepath):raise ValueError('Compile/include evidence mismatch')
+ if derived:
+  if evidence.get('compiler_core_recompiled')!=0 or not evidence.get('historical_exit_codes_complete'):raise ValueError('Derived compiler-core/exit provenance invalid')
+  for name,h in evidence.get('parent_evidence_sha256',{}).items():
+   if Path(name).name!=name or sha(cache/'parent-evidence'/name)!=h:raise ValueError('Derived parent evidence changed')
+  if set(evidence.get('parent_evidence_sha256',{}))!={'compile-manifest.json','link-manifest.json','cache-evidence.json','pair-manifest.json','strict-verification.json'}:raise ValueError('Incomplete derived parent evidence')
+ if evidence.get('build_recipe_sha256')!=sha(root/('tools/ci/derive-ge8300-adapter-cache.py' if derived else 'tools/ci/build-ge8300-compiler-source.py')) or evidence.get('cache_verifier_sha256')!=sha(root/'tools/ci/ge8300_compiler_cache.py'):raise ValueError('Compiler build recipe changed')
  if any(x.get('source_plan_sha256')!=sha(planpath) for x in [link,pair,comp,evidence]) or len(plan['units'])!=375:raise ValueError('PCO source/flags/API plan changed')
  if link.get('compiler_sha256')!=sha(compiler) or evidence.get('compiler_sha256')!=sha(compiler):raise ValueError('Compiler binary changed')
  for x in plan['files']:
@@ -82,7 +89,7 @@ def verify(root,cache,expected,roots,compiler,api,include_probe):
   if name in api and sha(api[name])!=entry['sha256']:raise ValueError('Current toolchain API library changed: '+name)
  return {'schema':'pco375-verified-reuse-v1','current_source_commit':subprocess.check_output(['git','-C',str(root),'rev-parse','HEAD'],text=True).strip(),'compiled_source_commit':link['source_commit'],'source_plan_sha256':sha(planpath),'link_manifest_sha256':sha(linkpath),'pair_manifest_sha256':sha(cache/'pair-manifest.json'),'cache_evidence_sha256':sha(cache/'cache-evidence.json'),'compiled_units':375,'all_sources_includes_flags_tools_API_identical':True,'compiler_rebuilt':False,'SDK_rebuilt':False,'hardware_verified':False}
 def main():
- p=argparse.ArgumentParser()
+ p=argparse.ArgumentParser();p.add_argument('--allow-adapter-derived',action='store_true')
  for key in ['cache','expected-link-sha256','vc-include','ucrt-include','sdk-shared','sdk-um','vc-arm-libraries','sdk-arm-libraries','ucrt-arm-libraries','output']:p.add_argument('--'+key,required=True)
  a=p.parse_args();root=Path(__file__).resolve().parents[2]
  import shutil
@@ -108,6 +115,6 @@ def main():
    depfile=td/'current.d'
    subprocess.run([compiler,*args,'-ivfsoverlay',str(vfs),'-M','-MF',str(depfile),'-MT','ge8300-unit',str(root/unit['source'])],check=True,stdout=subprocess.DEVNULL)
    return dependency_rows(depfile,roots)
-  result=verify(root,Path(a.cache),a.expected_link_sha256.lower(),roots,compiler,api,probe)
+  result=verify(root,Path(a.cache),a.expected_link_sha256.lower(),roots,compiler,api,probe,allow_adapter_derived=a.allow_adapter_derived)
  output.write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result))
 if __name__=='__main__':main()

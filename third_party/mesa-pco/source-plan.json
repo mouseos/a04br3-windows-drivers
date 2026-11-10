@@ -28093,13 +28093,13 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/compiler/pco_sm2.c",
-      "sha256": "99c4438a8fb04a04f376ee12740bf1f1f0f214fffe2b91c9b1ebdfeaeb5b314d",
+      "sha256": "06659eec37321e4dc3a7808ea6fbd637901badae1a2e29df437761693752b1d4",
       "origin": "Isolated witness source329:6a3e94a9eb4dbe90ffbefdb297c489c2e9d8d3cf",
       "previous_sha256": "e7d5a9009add0b8ae9233474ff05834d757a0149487c7c9a4edcb993d68debd0"
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/compiler/shader_compiler.h",
-      "sha256": "d727cbe4224f1ec672d975a6f29ea4f46d6a915fe342928b8c97cc80dcfa9647",
+      "sha256": "8468a12e0fd63a6b51d3404dc17d0bdd40bc5bc9a7adbcbe964064f1436078cf",
       "origin": "Reviewed shader329:b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
       "previous_sha256": "04251b758a5504d6e867e4302bfc1f65b43d17518b9617c86ad5a9d3e89ce4ec"
     },
@@ -31091,17 +31091,17 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/compiler/texture2d_sm4.h",
-      "sha256": "dd649143ddc20742942993de54841413d8d71487a178b5afd1184cb48f0397c6",
+      "sha256": "588a145de702a8624d6703aa4b012098362df7538cba640d78933876eba8c9fa",
       "origin": "Texture327 source overlay:f118dfdce3a58f85b22230526e0154c044270813"
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/compiler/pco_texture2d.c",
-      "sha256": "547e9667f0f18be9659b09b6f897d44d42e7e99d0d39b2db0178c65b99cc8fac",
+      "sha256": "0629b828f89a9ecb502399fc771ac22bd95c6e0cc55a15d1b65ac43bdb92d53a",
       "origin": "Texture327 source overlay:f118dfdce3a58f85b22230526e0154c044270813"
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/frontend/shader_witness.h",
-      "sha256": "afeb1e95a605ec7b73d7f4cb5926349e070772289ece5bbd61460a72e44e36ed",
+      "sha256": "1b7d03184c5fb0fa843603a129de120c4579f898f4ff5333880a59866d819044",
       "origin": "VS common-store330:9aa8386cf967e8348e0130a23d419cc9b627d0e6",
       "previous_sha256": "f83acf1b83c157ded6f266c3a4a4e043c03f759cf7a52ec7e420484da01f3691"
     },
@@ -31112,7 +31112,7 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/compiler/witness_codec.c",
-      "sha256": "c9881b30edcb03fb80f5f2a6d537c3b4805460a365a26928bb74533358dfa721",
+      "sha256": "a3130319cf5bf17de8bbe7765890ce8b510698e1cf84c46078c2384c81ba174b",
       "origin": "VS common-store330:9aa8386cf967e8348e0130a23d419cc9b627d0e6",
       "previous_sha256": "a0f617541f5c6037bf56f4deed12182cd1a37254b0a49f5fdeee674a31ab433f"
     },
@@ -31120,6 +31120,10 @@
       "path": "drivers/gpu/mt8167/wddm-render/compiler/witness_info.c",
       "sha256": "c7529a6344883043535e4f1539f839127928b8dea277cb5709762398826aeaea",
       "origin": "Isolated witness table329:6a3e94a9eb4dbe90ffbefdb297c489c2e9d8d3cf"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/compiler/pco_premultiplied.h",
+      "sha256": "120d5479e074fafd0c5c4023d075bc78a4b1fec67534b9353368656706361315"
     }
   ],
   "overlays": {

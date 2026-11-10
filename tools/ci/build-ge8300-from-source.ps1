@@ -3,7 +3,7 @@ param([switch]$EnableCandidate,[switch]$RunHostTests,[switch]$UnifiedDisplay,[st
  [string]$VcToolsDirectory,[string]$WindowsKit10Version,
  [ValidateRange(1,8)][int]$CompilerJobs=2,
  [string]$VerifiedCompilerDirectory,[string]$ExpectedCompilerCacheManifestSha256,
- [string]$KernelVcToolsDirectory,[switch]$ArchiveCompilerCache)
+ [string]$KernelVcToolsDirectory,[switch]$ArchiveCompilerCache,[switch]$AllowAdapterDerivedCompilerCache)
 $ErrorActionPreference='Stop'
 if(!$EnableCandidate){throw 'Explicit limited development source build required'}
 $scRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
@@ -70,10 +70,11 @@ try{
  # consumer and all67 native TUs are rebuilt from this one clean checkout.
  $scCompilerOut="$scOut\compiler";$scCompilerReuseReceipt=$null;$scCompilerCommit=$scCommit
  if($VerifiedCompilerDirectory){
+ $scDerivedArgs=@();if($AllowAdapterDerivedCompilerCache){$scDerivedArgs+='--allow-adapter-derived'}
   if($ExpectedCompilerCacheManifestSha256 -notmatch '^[a-fA-F0-9]{64}$'){throw 'Exact compiler cache manifest hash required'}
   $scCompilerOut=[IO.Path]::GetFullPath($VerifiedCompilerDirectory)
   $scCompilerReuseReceipt="$scOut\compiler-cache-verification.json"
-  & python -B "$PSScriptRoot\ge8300_compiler_cache.py" --cache $scCompilerOut --expected-link-sha256 $ExpectedCompilerCacheManifestSha256 --vc-include "$scVc\include" --ucrt-include "$scKit10\Include\$WindowsKit10Version\ucrt" --sdk-shared "$scKit81\Include\shared" --sdk-um "$scKit81\Include\um" --vc-arm-libraries "$scVc\lib\arm" --sdk-arm-libraries "$scKit81\Lib\winv6.3\um\arm" --ucrt-arm-libraries "$scKit10\Lib\$WindowsKit10Version\ucrt\arm" --output $scCompilerReuseReceipt
+  & python -B "$PSScriptRoot\ge8300_compiler_cache.py" --cache $scCompilerOut --expected-link-sha256 $ExpectedCompilerCacheManifestSha256 --vc-include "$scVc\include" --ucrt-include "$scKit10\Include\$WindowsKit10Version\ucrt" --sdk-shared "$scKit81\Include\shared" --sdk-um "$scKit81\Include\um" --vc-arm-libraries "$scVc\lib\arm" --sdk-arm-libraries "$scKit81\Lib\winv6.3\um\arm" --ucrt-arm-libraries "$scKit10\Lib\$WindowsKit10Version\ucrt\arm" --output $scCompilerReuseReceipt @scDerivedArgs
   if($LASTEXITCODE){throw 'PCO375 all-source/include/flags/tools/API cache verification failed; no fallback rebuild'}
   $scCompilerCommit=(Get-Content "$scCompilerOut\link-manifest.json" -Raw|ConvertFrom-Json).source_commit
  }
