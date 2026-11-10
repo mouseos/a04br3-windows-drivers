@@ -120,3 +120,23 @@ native67TU、全KMD/bridge/display TU、全UMD TUは現HEADのソースから再
 `prebuilt-compiler-input.json`にはlive照合内容と元cache/stage/APIの対応を記録する。元manifestは旧sourceのまま保持し、旧include/toolのunknown値を現在値で補完しない。新しい現HEADのcompiler source buildやstrict cache完全適合とは主張しない。
 
 SHARED DEFAULT single mip/slice/sample、既存storage範囲、RT-only/SRV-onlyの制約を維持する。RT/SRV・blend・DWMは未完了。Windows warm recipe、live旧cacheの照合、実機/DWMはこのbranch作業では未実行であり、mainの後続実行結果を別途確認する。
+
+## warm196完了cacheからのMSVC14.29限定resume
+
+公開warm入口に`KernelVcToolsDirectory`を分離した。PCO用`VcToolsDirectory=14.44.35207`とAPI6本の照合は維持し、kernelのCL/CRT include/LINKだけ14.29.30133を既定とする。
+
+既に完了したwarm196をやり直す必要はない。旧cacheを残したまま、新しいrecipe commitへcheckoutして次を実行する。
+
+```powershell
+python -B C:/mt8167-shared-surface-warm196/tools/ci/resume-ge8300-warm196-msvc1429.py --enable-candidate --warm-directory C:/mt8167-shared-surface-warm196/build/shared-surface-warm-f4 --kernel-vc-tools-directory 'C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/14.29.30133' --output C:/mt8167-shared-surface-warm196/build/shared-surface-msvc1429-resume
+```
+
+実compile前の照合だけなら`--validate-only`を追加する。この場合outputは作成しない。
+
+回収したdriver-build-cacheから固定した146ファイルのSHAと、native/modules manifestのsource snapshotおよび表示10C++ sourceを検査する。C/Hの追加・欠落も拒否する。旧Git履歴へのdiff依存はない。現在源泉が一致しない場合は停止し、warm cacheや旧manifestを上書きしない。
+
+現HEADの表示10C++とmdl_pin.cだけをcl14.29で再compileし、実`/showIncludes`の新include closureを保存する。baselineのUCRT22621は維持し、GPU366のUCRT26100と完全一致とは主張しない。保持するClang13 memberと新MSVC11 memberからKMD24-member archiveを新規作成し、両SYSをSHA固定LINK14.29と既WDKで再linkする。native67、PCO375、UMDは再compileしない。PCOやSDKへのfallback rebuild、署名、実機操作は行わない。
+
+`resume-build-manifest.json`は新recipe HEADとbaseline compile commit aa661314を分け、source bytesの一致、146 cache pin、501 source snapshot、MSVC11 TUのactual include closure、tool/hash/arguments、新KMD archive/SYS、保持native/UMDの出自を記録する。元warm manifestもコピーして履歴を残す。CompilerSourceCommit旧f4とincludeClosureRecorded=falseはPCO入力の属性として維持する。
+
+出力は未署名。Registry文字列参照の静的確認、署名/CAT、実機検証は後続工程であり未完了として記録する。local hostでは回収cache/source照合とobject改変拒否を確認済み。Windows compile/linkはこのrecipe作成作業では実行していない。
