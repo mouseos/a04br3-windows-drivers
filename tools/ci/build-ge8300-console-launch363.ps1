@@ -1,8 +1,8 @@
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
-$t='C:\mt8167-console-launch363';New-Item -ItemType Directory $t|Out-Null
+$t='C:\mt8167-console-launch363-r2';New-Item -ItemType Directory $t|Out-Null
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-[IO.Compression.ZipFile]::ExtractToDirectory('C:\mt8167-console-launch363-input.zip',$t)
-$j=Get-Content C:\mt8167-console-launch363-input-pins.json -Raw|ConvertFrom-Json
+[IO.Compression.ZipFile]::ExtractToDirectory('C:\mt8167-console-launch363-r2-input.zip',$t)
+$j=Get-Content C:\mt8167-console-launch363-r2-input-pins.json -Raw|ConvertFrom-Json
 function Sha($p){(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()}
 if((Sha "$t\dxgi-console-launch363.c") -cne $j.source_sha256 -or (Sha "$t\memory.obj") -cne $j.memory_object_sha256){throw 'Exact source/object pins'}
 $llvm='C:\Program Files\LLVM\bin';$kit='C:\mt8167-minimal-service-host\cache\kit81\Include';$libs='C:\Program Files (x86)\Windows Kits\10\Lib\10.0.17763.0\um\arm';$link='C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.29.30133\bin\Hostx64\arm\link.exe'
@@ -26,5 +26,5 @@ $sign='C:\mt8167-minimal-service-host\cache\kit81\bin\x86\signtool.exe'
 & $sign verify /pa "$t\mt8167-dxgi-console-launch363.exe";if($LASTEXITCODE){throw 'Console-launch356 trust'}
 $a=Get-AuthenticodeSignature "$t\mt8167-dxgi-console-launch363.exe"
 @{source_commit=$j.source_commit;source_sha256=$j.source_sha256;sha256=(Sha "$t\mt8167-dxgi-console-launch363.exe");signer=$a.SignerCertificate.Thumbprint;signature_status=[string]$a.Status;compiled_TUs=1;memory_object_retained=$true;memory_object_sha256=$j.memory_object_sha256;evaluator_sha256=$j.evaluator_sha256;GPU_calls_in_launcher=0;user_token_substitution=$false;console_system_token_duplicate=$true;hardware_verified=$false}|ConvertTo-Json -Depth 5|Set-Content -Encoding UTF8 "$t\signed-manifest.json"
-Compress-Archive "$t\*" C:\mt8167-console-launch363-output.zip
+Compress-Archive "$t\*" C:\mt8167-console-launch363-r2-output.zip
 'CONSOLE_LAUNCH363_SIGNED_HARDWARE_UNVERIFIED'

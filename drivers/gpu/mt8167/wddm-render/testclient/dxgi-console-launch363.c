@@ -58,7 +58,7 @@ void mainCRTStartup(void){
   for(enabled=0;enabled<3;enabled++){stage=20+enabled;if(!privilege(token,names[enabled],&old[enabled],&old_size[enabled])){error=GetLastError();goto done;}value("ENABLED_PRIVILEGE_INDEX",enabled);}
   stage=30;if(!DuplicateTokenEx(token,TOKEN_QUERY|TOKEN_DUPLICATE|TOKEN_ASSIGN_PRIMARY|TOKEN_ADJUST_DEFAULT|TOKEN_ADJUST_SESSIONID,NULL,SecurityImpersonation,TokenPrimary,&duplicate)){error=GetLastError();goto done;}
   stage=40;if(!SetTokenInformation(duplicate,TokenSessionId,&target,sizeof(target))){error=GetLastError();goto done;}
-  stage=50;SetLastError(ERROR_SUCCESS);launched=CreateProcessAsUserW(duplicate,image,command,NULL,NULL,FALSE,CREATE_UNICODE_ENVIRONMENT|CREATE_NO_WINDOW,NULL,NULL,&startup,&process);
+  stage=50;SetLastError(ERROR_SUCCESS);launched=CreateProcessAsUserW(duplicate,image,command,NULL,NULL,FALSE,CREATE_UNICODE_ENVIRONMENT|CREATE_NO_WINDOW|CREATE_BREAKAWAY_FROM_JOB,NULL,NULL,&startup,&process);
  }else {stage=51;SetLastError(ERROR_SUCCESS);launched=CreateProcessW(image,command,NULL,NULL,FALSE,CREATE_NO_WINDOW,NULL,NULL,&startup,&process);}
  if(!launched){error=GetLastError();goto done;}
  stage=60;value("EVALUATOR_PID",process.dwProcessId);value("EVALUATOR_SESSION",target);CloseHandle(process.hThread);process.hThread=NULL;
