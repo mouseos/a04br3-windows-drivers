@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "clear_ddi.h"
+#include "../texture_layout.h"
 #include "../memory.h"
 #include <dxgi.h>
 #include "readback_wait.h"
@@ -26,7 +27,7 @@ HRESULT geo_umd_clear_init(struct geo_umd_device *d,HANDLE runtime,const D3DDDI_
 }
 static HRESULT APIENTRY create_resource(HANDLE h,D3DDDIARG_CREATERESOURCE *p) {
  struct geo_umd_device *d=h;struct geo_umd_resource *r;struct geo_allocation_data data;struct geo_allocation_data_v2 extended;D3DDDICB_ALLOCATE request;D3DDDI_ALLOCATIONINFO info;HRESULT hr;
- if(!d||!p||!p->pSurfList||p->SurfCount!=1||p->MipLevels!=1||(p->Format!=D3DDDIFMT_A8R8G8B8&&p->Format!=D3DDDIFMT_VERTEXDATA&&p->Format!=D3DDDIFMT_INDEX16&&p->Format!=D3DDDIFMT_INDEX32)||
+ if(!d||!p||!p->pSurfList||p->SurfCount!=1||p->MipLevels!=1||(p->Format!=D3DDDIFMT_A8R8G8B8&&p->Format!=D3DDDIFMT_A8B8G8R8&&p->Format!=D3DDDIFMT_VERTEXDATA&&p->Format!=D3DDDIFMT_INDEX16&&p->Format!=D3DDDIFMT_INDEX32)||
     (p->Pool!=D3DDDIPOOL_SYSTEMMEM&&p->Pool!=D3DDDIPOOL_STAGINGMEM&&p->Pool!=D3DDDIPOOL_VIDEOMEMORY)||
     p->MultisampleType!=D3DDDIMULTISAMPLE_NONE||p->MultisampleQuality||p->pSurfList[0].Depth>1||p->pSurfList[0].pSysMem||
     (p->Flags.Value&~(1u|0x4u|0x8u|0x40u|0x80u|0x10000u|0x80000u|0x100000u|0x1000000u|(A04_GE8300_UNIFIED_DISPLAY356?0x8000u:0u)))||p->Rotation!=D3DDDI_ROTATION_IDENTITY)return E_NOTIMPL;
@@ -34,13 +35,14 @@ static HRESULT APIENTRY create_resource(HANDLE h,D3DDDIARG_CREATERESOURCE *p) {
  r->device=d;r->runtime=p->hResource;r->desc.size=sizeof(r->desc);r->desc.version=1;
  r->desc.width=p->pSurfList[0].Width;r->desc.height=p->pSurfList[0].Height;
  if((p->Format==D3DDDIFMT_VERTEXDATA&&(!p->Flags.VertexBuffer||p->Flags.RenderTarget||p->Flags.Texture))||
-    (p->Format==D3DDDIFMT_A8R8G8B8&&(p->Flags.VertexBuffer||p->Flags.IndexBuffer))||
+    ((p->Format==D3DDDIFMT_A8R8G8B8||p->Format==D3DDDIFMT_A8B8G8R8)&&(p->Flags.VertexBuffer||p->Flags.IndexBuffer))||
     ((p->Format==D3DDDIFMT_INDEX16||p->Format==D3DDDIFMT_INDEX32)&&(!p->Flags.IndexBuffer||p->Flags.VertexBuffer||p->Flags.Texture||p->Flags.RenderTarget))) {HeapFree(GetProcessHeap(),0,r);return E_INVALIDARG;}
- if(r->desc.width>1024&&p->Format==D3DDDIFMT_A8R8G8B8){HeapFree(GetProcessHeap(),0,r);return E_NOTIMPL;}
- r->desc.pitch=p->Format==D3DDDIFMT_A8R8G8B8?r->desc.width*4u:r->desc.width;r->desc.format=(UINT)p->Format;
+ if(p->Format==D3DDDIFMT_A8B8G8R8&&(!p->Flags.Texture||p->Flags.RenderTarget)){HeapFree(GetProcessHeap(),0,r);return E_NOTIMPL;}
+ if(r->desc.width>1024&&p->Format==D3DDDIFMT_A8R8G8B8&&!p->Flags.Texture){HeapFree(GetProcessHeap(),0,r);return E_NOTIMPL;}
+ r->desc.pitch=(p->Format==D3DDDIFMT_A8R8G8B8||p->Format==D3DDDIFMT_A8B8G8R8)?r->desc.width*4u:r->desc.width;r->desc.format=(UINT)p->Format;
  r->desc.usage=p->Format==D3DDDIFMT_VERTEXDATA?GEO_USAGE_VERTEX_BUFFER:
   ((p->Format==D3DDDIFMT_INDEX16||p->Format==D3DDDIFMT_INDEX32)?GEO_USAGE_INDEX_BUFFER:(p->Flags.RenderTarget?GEO_USAGE_RENDER_TARGET:p->Flags.Texture?GEO_USAGE_TEXTURE2D:GEO_USAGE_STAGING));
- if(r->desc.usage==GEO_USAGE_TEXTURE2D)r->desc.version=GEO_TEXTURE_STORAGE_VERSION;
+ if(r->desc.usage==GEO_USAGE_TEXTURE2D){r->desc.version=GEO_TEXTURE_STORAGE_VERSION;r->desc.pitch=geo_texture_default_pitch(r->desc.width);}
  r->logical_width=r->desc.width;r->logical_height=r->desc.height;
  if(r->desc.usage==GEO_USAGE_RENDER_TARGET){
   if(r->logical_width>800u||r->logical_height>A04_NATIVE_FRAME_HEIGHT){HeapFree(GetProcessHeap(),0,r);return E_NOTIMPL;}

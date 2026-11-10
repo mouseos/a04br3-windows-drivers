@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include "typed_device.h"
+#include "../texture_layout.h"
 void geo_typed_device_trace(struct geo_typed_device *,const char *,UINT);
 #include "../memory.h"
 /* Internal development trace only; no resource/handle ABI change. Log the
@@ -62,9 +63,12 @@ static HRESULT desc_valid(const D3D11DDIARG_CREATERESOURCE *p) {
      !(p->BindFlags&(D3D10_DDI_BIND_VERTEX_BUFFER|D3D10_DDI_BIND_INDEX_BUFFER|D3D10_DDI_BIND_CONSTANT_BUFFER))||
      (p->BindFlags&~(D3D10_DDI_BIND_VERTEX_BUFFER|D3D10_DDI_BIND_INDEX_BUFFER|D3D10_DDI_BIND_CONSTANT_BUFFER)))return E_NOTIMPL;
  } else if(p->ResourceDimension==D3D10DDIRESOURCE_TEXTURE2D){
-  if(p->Format!=DXGI_FORMAT_B8G8R8A8_UNORM||m->TexelWidth>800u||m->TexelHeight>A04_NATIVE_FRAME_HEIGHT||
-     p->SampleDesc.Count!=1||p->SampleDesc.Quality||(p->BindFlags&~(D3D10_DDI_BIND_RENDER_TARGET|D3D10_DDI_BIND_SHADER_RESOURCE|(A04_GE8300_UNIFIED_DISPLAY356?D3D10_DDI_BIND_PRESENT:0))))return E_NOTIMPL;
-  if(p->BindFlags&D3D10_DDI_BIND_SHADER_RESOURCE){if(p->BindFlags!=D3D10_DDI_BIND_SHADER_RESOURCE||m->TexelWidth>128||m->TexelHeight>128)return E_NOTIMPL;}
+  if(p->SampleDesc.Count!=1||p->SampleDesc.Quality||(p->BindFlags&~(D3D10_DDI_BIND_RENDER_TARGET|D3D10_DDI_BIND_SHADER_RESOURCE|(A04_GE8300_UNIFIED_DISPLAY356?D3D10_DDI_BIND_PRESENT:0))))return E_NOTIMPL;
+  if(p->BindFlags&D3D10_DDI_BIND_SHADER_RESOURCE){
+   if(p->BindFlags!=D3D10_DDI_BIND_SHADER_RESOURCE||
+      (p->Format!=DXGI_FORMAT_B8G8R8A8_UNORM&&p->Format!=DXGI_FORMAT_R8G8B8A8_UNORM)||
+      !geo_texture_layout_valid(m->TexelWidth,m->TexelHeight,geo_texture_default_pitch(m->TexelWidth)))return E_NOTIMPL;
+  }else if(p->Format!=DXGI_FORMAT_B8G8R8A8_UNORM||m->TexelWidth>800u||m->TexelHeight>A04_NATIVE_FRAME_HEIGHT)return E_NOTIMPL;
  } else return E_NOTIMPL;
  if(p->Usage==D3D10_DDI_USAGE_STAGING&&(p->BindFlags||!p->MapFlags))return E_INVALIDARG;
  if(p->Usage==D3D10_DDI_USAGE_IMMUTABLE&&(!p->pInitialDataUP||p->MapFlags))return E_INVALIDARG;
@@ -103,7 +107,7 @@ static void APIENTRY create_resource(D3D10DDI_HDEVICE h,const D3D11DDIARG_CREATE
  r->magic=GEO_TYPED_RESOURCE_MAGIC;r->refs=1;r->device=d;r->usage=p->Usage;r->bind=p->BindFlags;r->map_flags=p->MapFlags;r->format=p->Format;r->dimension=p->ResourceDimension;
  r->width=p->pMipInfoList[0].TexelWidth;r->height=p->pMipInfoList[0].TexelHeight;r->bytes=r->width*r->height*(r->dimension==D3D10DDIRESOURCE_BUFFER?1u:4u);
  memset(&q,0,sizeof(q));memset(&surf,0,sizeof(surf));surf.Width=r->width;surf.Height=r->height;surf.Depth=1;
- q.Format=r->dimension==D3D10DDIRESOURCE_BUFFER?D3DDDIFMT_VERTEXDATA:D3DDDIFMT_A8R8G8B8;
+ q.Format=r->dimension==D3D10DDIRESOURCE_BUFFER?D3DDDIFMT_VERTEXDATA:r->format==DXGI_FORMAT_R8G8B8A8_UNORM?D3DDDIFMT_A8B8G8R8:D3DDDIFMT_A8R8G8B8;
  q.Pool=(p->BindFlags&D3D10_DDI_BIND_RENDER_TARGET)?D3DDDIPOOL_VIDEOMEMORY:D3DDDIPOOL_SYSTEMMEM;
  q.hResource=runtime.handle;q.pSurfList=&surf;q.SurfCount=q.MipLevels=1;q.Rotation=D3DDDI_ROTATION_IDENTITY;
  q.Flags.Texture=(p->BindFlags&D3D10_DDI_BIND_SHADER_RESOURCE)!=0;
@@ -123,8 +127,13 @@ static void APIENTRY create_resource(D3D10DDI_HDEVICE h,const D3D11DDIARG_CREATE
   if(!p->pInitialDataUP->pSysMem||(r->height>1&&p->pInitialDataUP->SysMemPitch<row)){geo_typed_error(h,E_INVALIDARG);return;}
   hr=map_backend(r,D3D10_DDI_MAP_WRITE,0,&map);
   if(SUCCEEDED(hr)){
-   for(y=0;y<r->height;y++)memcpy((BYTE *)map.pData+y*map.RowPitch,(const BYTE *)p->pInitialDataUP->pSysMem+y*p->pInitialDataUP->SysMemPitch,row);
-   hr=unmap_backend(r);
+   if(r->bind==D3D10_DDI_BIND_SHADER_RESOURCE){
+    int invalid=geo_texture_upload_rows(map.pData,map.RowPitch,p->pInitialDataUP->pSysMem,p->pInitialDataUP->SysMemPitch,r->width,r->height);
+    hr=unmap_backend(r);if(SUCCEEDED(hr)&&invalid)hr=E_INVALIDARG;
+   }else{
+    for(y=0;y<r->height;y++)memcpy((BYTE *)map.pData+y*map.RowPitch,(const BYTE *)p->pInitialDataUP->pSysMem+y*p->pInitialDataUP->SysMemPitch,row);
+    hr=unmap_backend(r);
+   }
   }
   if(FAILED(hr))geo_typed_error(h,hr);
  }

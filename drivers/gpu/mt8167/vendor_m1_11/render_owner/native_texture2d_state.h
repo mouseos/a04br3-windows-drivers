@@ -2,14 +2,16 @@
 #ifndef A04_NATIVE_TEXTURE2D_STATE_H
 #define A04_NATIVE_TEXTURE2D_STATE_H
 #include <stdint.h>
+#include "../../wddm-render/texture_layout.h"
 /* Internal producer contract, not a user wire ABI or capability declaration.
  * Owned retained backing is supplied by the caller, never an unchecked DDI VA.
- * Only single-mip/single-layer BGRA8, normalized POINT+CLAMP, no comparison.
- * Dimensions are an initial bounded implementation limit, not chip caps. */
+ * Single-mip/single-layer BGRA8/RGBA8, normalized regular filters, no comparison.
+ * Dimension/stride field widths are validated independently of residency budgets. */
 #define A04_TEXTURE2D_STATE_VERSION 1u
 #define A04_TEXTURE2D_BGRA8 87u
-#define A04_TEXTURE2D_MAX_EDGE 128u
-#define A04_TEXTURE2D_MAX_BYTES 65536u
+#define A04_TEXTURE2D_RGBA8 28u
+#define A04_TEXTURE2D_MAX_EDGE GEO_TEXTURE_MAX_EDGE
+#define A04_TEXTURE2D_MAX_BYTES GEO_TEXTURE_MAX_BYTES
 struct a04_texture2d_storage {
  uint32_t size,version,width,height,row_pitch,bytes,format;
  uint32_t mip_levels,array_size,sample_count,reserved;

@@ -11,7 +11,7 @@
 #include <winternl.h>
 #include <d3dkmthk.h>
 #include "fixed_shaders.h"
-#ifdef GEO_TEXTURE_CLIENT
+#if defined(GEO_TEXTURE_CLIENT) || defined(GEO_UI_TEXTURE_CLIENT)
 #include "texture_shaders.h"
 #endif
 #ifdef GEO_COLOR_PAIR_CLIENT
@@ -365,6 +365,10 @@ static int initialize_progress(void) {
 }
 static int boundary(const char *key,UINT stage,UINT status){line(key,status);return geo_progress_write(stage,status,0)&&log_ok;}
 #endif
+#ifdef GEO_UI_TEXTURE_CLIENT
+#include "ui_texture_probe.inc"
+#define probe ui_texture_probe
+#else
 static HRESULT probe(IDXGIAdapter *adapter) {
  ID3D11Device *device=NULL;ID3D11DeviceContext *ctx=NULL;ID3D11Texture2D *target=NULL,*staging=NULL;
  ID3D11RenderTargetView *view=NULL;D3D_FEATURE_LEVEL level,wanted=D3D_FEATURE_LEVEL_9_1;
@@ -427,6 +431,7 @@ static HRESULT probe(IDXGIAdapter *adapter) {
  if(device)ID3D11Device_Release(device);
  return hr;
 }
+#endif /* legacy suite excluded from UI evaluation */
 /* An absent OpenAdapter trace cannot distinguish loader failure from runtime
  * negotiation. Observe the fixed installed DLL through normal Windows APIs;
  * never invoke a DDI manually or substitute this for the D3D pixel result. */
@@ -462,6 +467,9 @@ void mainCRTStartup(void) {
 #endif
 #else
  line("SCHEMA",4);
+#endif
+ #ifdef GEO_UI_TEXTURE_CLIENT
+ line("UI_TEXTURE_SCHEMA",1);line("UI_CASE_COUNT",4);line("UI_DRAW_COUNT",8);line("CLIENT_TIMEOUT_MS",900000);
 #endif
  line("SELECTION_MODE",(UINT)selected);line("EXPLICIT_LUID",selected==1);
  if(selected==2){auto_hr=hardware_luid(&id);line("AUTO_IDENTITY_HRESULT",auto_hr);}

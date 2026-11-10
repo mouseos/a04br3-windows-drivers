@@ -5,6 +5,7 @@
 #include "kmd_objects.h"
 #include "query_adapter.h"
 #include "init_checkpoint.h"
+#include "../start_gap359.h"
 #include "../vendor_m1_11/native_factory_checkpoint.h"
 #ifndef GEO_LINKED_NATIVE_CORE
 #error Build this wrapper only with the reviewed in-process native owner core
@@ -30,36 +31,42 @@ static NTSTATUS add_device(PDEVICE_OBJECT pdo,void **out) {
  *out=d;GeoInitCheckpoint(3,STATUS_SUCCESS);return STATUS_SUCCESS;
 }
 static NTSTATUS start_device(void *context,DXGK_START_INFO *start,DXGKRNL_INTERFACE *dxgk,ULONG *sources,ULONG *children) {
- struct geo_render_device *d=context;NTSTATUS status;
+ struct geo_render_device *d=context;NTSTATUS status;struct geo_gap359_record gap;Geo359Begin(&gap,1);
  if(!d||!start||!dxgk||!sources||!children||d->started||d->native_created||
-    KeGetCurrentIrql()!=PASSIVE_LEVEL||dxgk->Size<sizeof(*dxgk)||!dxgk->DxgkCbGetDeviceInformation)return STATUS_INVALID_PARAMETER;
+    KeGetCurrentIrql()!=PASSIVE_LEVEL||dxgk->Size<sizeof(*dxgk)||!dxgk->DxgkCbGetDeviceInformation)return Geo359End(&gap,STATUS_INVALID_PARAMETER);
  d->dxgk=*dxgk;RtlZeroMemory(&d->device_info,sizeof(d->device_info));
- status=dxgk->DxgkCbGetDeviceInformation(dxgk->DeviceHandle,&d->device_info);GeoInitCheckpoint(4,status);if(status!=STATUS_SUCCESS)return status;
+ status=dxgk->DxgkCbGetDeviceInformation(dxgk->DeviceHandle,&d->device_info);GeoInitCheckpoint(4,status);if(status!=STATUS_SUCCESS)return Geo359End(&gap,status);
  d->native.size=sizeof(d->native);d->native.version=2;
  status=GeoNativeOwnerCreateV3(d->pdo,dxgk,&d->device_info,&d->adapter.memory_api,&d->native);GeoInitCheckpoint(5,status);
- if(status!=STATUS_SUCCESS){if(d->native.native_context)d->native_created=1;return status;}
+ if(status!=STATUS_SUCCESS){if(d->native.native_context)d->native_created=1;return Geo359End(&gap,status);}
  d->native_created=1;
- if(d->native.size!=sizeof(d->native)||d->native.version!=2||!d->native.native_context)return STATUS_INVALID_DEVICE_STATE;
- status=GeoConfigureAperture(&d->adapter,&d->native.aperture);GeoInitCheckpoint(6,status);if(status!=STATUS_SUCCESS)return status;
+ if(d->native.size!=sizeof(d->native)||d->native.version!=2||!d->native.native_context)return Geo359End(&gap,STATUS_INVALID_DEVICE_STATE);
+ status=GeoConfigureAperture(&d->adapter,&d->native.aperture);GeoInitCheckpoint(6,status);if(status!=STATUS_SUCCESS)return Geo359End(&gap,status);
  status=GeoStartInProcessOwnerSession(&d->session,&d->adapter,&d->native.control,dxgk);GeoInitCheckpoint(7,status);
- if(status!=STATUS_SUCCESS)return status; /* Ambiguous resources remain pinned. */
+ if(status!=STATUS_SUCCESS)return Geo359End(&gap,status); /* Ambiguous resources remain pinned. */
  status=GeoNativeOwnerGetDrawOpsV1(&d->native,&d->adapter.draw);GeoInitCheckpoint(8,status);
- if(status!=STATUS_SUCCESS)return status;
+ if(status!=STATUS_SUCCESS)return Geo359End(&gap,status);
  if(d->adapter.draw.size!=sizeof(d->adapter.draw)||d->adapter.draw.version!=GEO_DRAW_ABI_VERSION||
-    !d->adapter.draw.context||!d->adapter.draw.prepare_draw)return STATUS_INVALID_DEVICE_STATE;
+    !d->adapter.draw.context||!d->adapter.draw.prepare_draw)return Geo359End(&gap,STATUS_INVALID_DEVICE_STATE);
  status=GeoNativeOwnerGetDrawOpsV2(&d->native,&d->adapter.draw_v2);GeoInitCheckpoint(9,status);
- if(status!=STATUS_SUCCESS)return status;
+ if(status!=STATUS_SUCCESS)return Geo359End(&gap,status);
  if(d->adapter.draw_v2.size!=sizeof(d->adapter.draw_v2)||d->adapter.draw_v2.version!=2||
-    !d->adapter.draw_v2.context||!d->adapter.draw_v2.prepare_draw)return STATUS_INVALID_DEVICE_STATE;
- status=GeoNativeOwnerGetDrawOpsV3(&d->native,&d->adapter.draw_v3);
- if(status!=STATUS_SUCCESS||d->adapter.draw_v3.size!=sizeof(d->adapter.draw_v3)||d->adapter.draw_v3.version!=3||!d->adapter.draw_v3.context||!d->adapter.draw_v3.prepare_draw)return STATUS_INVALID_DEVICE_STATE;
- status=GeoNativeOwnerGetDrawOpsV4(&d->native,&d->adapter.draw_v4);
- if(status!=STATUS_SUCCESS||d->adapter.draw_v4.size!=sizeof(d->adapter.draw_v4)||d->adapter.draw_v4.version!=4||!d->adapter.draw_v4.context||!d->adapter.draw_v4.prepare_draw)return STATUS_INVALID_DEVICE_STATE;
- status=GeoNativeOwnerGetDrawOpsV5(&d->native,&d->adapter.draw_v5);
- if(status!=STATUS_SUCCESS||d->adapter.draw_v5.size!=sizeof(d->adapter.draw_v5)||d->adapter.draw_v5.version!=5||!d->adapter.draw_v5.context||!d->adapter.draw_v5.prepare_draw)return STATUS_INVALID_DEVICE_STATE;
- *sources=0;*children=0;
- if(A04_GE8300_UNIFIED_DISPLAY356){status=GeoDisplay356Start(&d->adapter,d->pdo,start,dxgk,sources,children);if(status!=STATUS_SUCCESS)return status;}
- d->started=1;GeoInitCheckpoint(10,STATUS_SUCCESS);return STATUS_SUCCESS;
+    !d->adapter.draw_v2.context||!d->adapter.draw_v2.prepare_draw)return Geo359End(&gap,STATUS_INVALID_DEVICE_STATE);
+ Geo359Enter(&gap,1);status=GeoNativeOwnerGetDrawOpsV3(&d->native,&d->adapter.draw_v3);Geo359Result(&gap,1,status);
+ gap.value[0]=d->adapter.draw_v3.size;gap.value[1]=d->adapter.draw_v3.version;gap.value[2]=!!d->adapter.draw_v3.context;gap.value[3]=!!d->adapter.draw_v3.prepare_draw;
+ Geo359Enter(&gap,2);if(status!=STATUS_SUCCESS||d->adapter.draw_v3.size!=sizeof(d->adapter.draw_v3)||d->adapter.draw_v3.version!=3||!d->adapter.draw_v3.context||!d->adapter.draw_v3.prepare_draw)return Geo359End(&gap,STATUS_INVALID_DEVICE_STATE);
+ Geo359Result(&gap,2,STATUS_SUCCESS);
+ Geo359Enter(&gap,3);status=GeoNativeOwnerGetDrawOpsV4(&d->native,&d->adapter.draw_v4);Geo359Result(&gap,3,status);
+ gap.value[4]=d->adapter.draw_v4.size;gap.value[5]=d->adapter.draw_v4.version;gap.value[6]=!!d->adapter.draw_v4.context;gap.value[7]=!!d->adapter.draw_v4.prepare_draw;
+ Geo359Enter(&gap,4);if(status!=STATUS_SUCCESS||d->adapter.draw_v4.size!=sizeof(d->adapter.draw_v4)||d->adapter.draw_v4.version!=4||!d->adapter.draw_v4.context||!d->adapter.draw_v4.prepare_draw)return Geo359End(&gap,STATUS_INVALID_DEVICE_STATE);
+ Geo359Result(&gap,4,STATUS_SUCCESS);
+ Geo359Enter(&gap,5);status=GeoNativeOwnerGetDrawOpsV5(&d->native,&d->adapter.draw_v5);Geo359Result(&gap,5,status);
+ gap.value[8]=d->adapter.draw_v5.size;gap.value[9]=d->adapter.draw_v5.version;gap.value[10]=!!d->adapter.draw_v5.context;gap.value[11]=!!d->adapter.draw_v5.prepare_draw;
+ Geo359Enter(&gap,6);if(status!=STATUS_SUCCESS||d->adapter.draw_v5.size!=sizeof(d->adapter.draw_v5)||d->adapter.draw_v5.version!=5||!d->adapter.draw_v5.context||!d->adapter.draw_v5.prepare_draw)return Geo359End(&gap,STATUS_INVALID_DEVICE_STATE);
+ Geo359Result(&gap,6,STATUS_SUCCESS);
+ Geo359Result(&gap,0,STATUS_SUCCESS);*sources=0;*children=0;
+ if(A04_GE8300_UNIFIED_DISPLAY356){Geo359Enter(&gap,7);status=GeoDisplay356Start(&d->adapter,d->pdo,start,dxgk,sources,children);Geo359Result(&gap,7,status);gap.value[12]=*sources;gap.value[13]=*children;if(status!=STATUS_SUCCESS)return Geo359End(&gap,status);}
+ d->started=1;GeoInitCheckpoint(10,STATUS_SUCCESS);return Geo359End(&gap,STATUS_SUCCESS);
 }
 static NTSTATUS stop_device(void *context) {
  struct geo_render_device *d=context;NTSTATUS status;
@@ -225,8 +232,8 @@ struct geo_module_identity_v1 {
 C_ASSERT(sizeof(struct geo_module_identity_v1)==144);
 static void module_identity(PDRIVER_OBJECT driver)
 {
- static const CHAR source[]="eb2bc820c3b67168b16f50dbe3fbf27f513ddfae";
- static const CHAR build[]="GPU357-start-predicates-v1";
+ static const CHAR source[]="e0727eb0d840883a31d3c501b0ee17652ebdcad4";
+ static const CHAR build[]="GPU359-start-gap-v1";
  struct geo_module_identity_v1 r={0};HANDLE key=NULL;UNICODE_STRING path,name;
  OBJECT_ATTRIBUTES oa;ULONG disposition;NTSTATUS status;
  if(!driver||KeGetCurrentIrql()!=PASSIVE_LEVEL||!driver->DriverStart||!driver->DriverSize)return;
