@@ -27,7 +27,7 @@ static inline int a04_panel_timing_frequencies(const struct a04_panel_timing *t,
  if(!t||!f||sizeof(*t)!=64||t->magic!=A04_PANEL_TIMING_MAGIC||
     t->version!=1||t->size!=64||t->flags!=A04_PANEL_TIMING_LK_VALID||
     t->panel_id!=A04_PANEL_AUO_WXGA_DSI||t->width!=800||t->height!=1280||
-    t->htotal!=960||t->vtotal!=1300||!t->fps100||t->fps_denominator!=100||
+    t->htotal!=960||t->vtotal!=1300||t->fps100<4500||t->fps100>7500||t->fps_denominator!=100||
     t->reserved[0]||t->reserved[1]||t->reserved[2]||t->reserved[3]||t->reserved[4])return 0;
  /* AUO vendor porches, NOT PLL245: 800+4+132+24,1280+4+8+8.
   * Reduce before multiplying to retain exact Hz and avoid 32-bit overflow.

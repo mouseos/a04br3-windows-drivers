@@ -261,6 +261,7 @@ static NTSTATUS panel_timing(void *context,struct a04_panel_timing *timing){
  if(!irp)return STATUS_INSUFFICIENT_RESOURCES;
  status=IoCallDriver(d->lower,irp);
  if(status==STATUS_PENDING){KeWaitForSingleObject(&event,Executive,KernelMode,FALSE,NULL);status=iosb.Status;}
+ if(status==STATUS_OBJECT_NAME_NOT_FOUND||status==STATUS_NOT_FOUND)return STATUS_DEVICE_NOT_READY;
  if(!NT_SUCCESS(status))return status;
  if(iosb.Information<prefix+sizeof(record)||iosb.Information>sizeof(storage)||
     out->Signature!=ACPI_EVAL_OUTPUT_BUFFER_SIGNATURE||out->Length!=prefix+sizeof(record)||

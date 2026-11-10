@@ -19,8 +19,9 @@ DIS0 namespaceの`DTM0()`（引数なし）は64byteのACPI Bufferを返す。
 |11..15|reserved|すべて0|
 
 UEFIは実chosen/chosen@0のatag,videolfb、panelnameとfpsを検証してからvalidを立てる。
-データ未取得時はvalid=0。WindowsはSTATUS_DEVICE_NOT_READYを返し、60Hzで補わない。
-未知version/flags/panel、geometry不一致、reserved非0、fps0、表現不能な周波数は拒否する。
+UEFIのvalidHOB欠落時はDTM0不在を許容する（明示的name-not-foundはnotready）。
+データ未取得をrecordで表す場合はvalid=0。WindowsはSTATUS_DEVICE_NOT_READYを返し、60Hzで補わない。
+未知version/flags/panel、geometry不一致、reserved非0、fps100が4500..7500外、表現不能な周波数は拒否する。
 board HOB／immutable ACPI生成は別UEFI branchの責任範囲。EDK2共通変更なし。
 
 ## 源泉と計算
