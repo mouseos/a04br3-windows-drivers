@@ -35,7 +35,9 @@ function Read-GraphicsTopologyCache($Root,[string]$ControlSet) {
       if($kind -ne [Microsoft.Win32.RegistryValueKind]::DWord){
        $row.ignored_non_DWORD+=@([ordered]@{name=$name;kind=[string]$kind});continue
       }
-      $hex=[MT8167OfflineHive.Native]::ReadFixedRawValue($key,$name,4,4)
+      $raw=[MT8167OfflineHive.Native]::ReadRawValue($key,$name,4)
+      if(!$raw.Present -or $raw.Type -ne 4 -or $raw.Bytes -ne 4){throw 'Display DWORD type/size changed during read'}
+      $hex=$raw.RawHex
       $bytes=New-Object byte[] 4
       for($i=0;$i -lt 4;$i++){$bytes[$i]=[Convert]::ToByte($hex.Substring($i*2,2),16)}
       $v=[ordered]@{kind='DWord';bytes=4;raw_hex=$hex;value_uint32=[BitConverter]::ToUInt32($bytes,0)}
