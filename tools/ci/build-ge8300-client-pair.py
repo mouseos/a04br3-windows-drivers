@@ -2,8 +2,7 @@
 """Two separate one-TU builds. The launcher digest must be a real Git commit."""
 import argparse,hashlib,json,os,re,shutil,struct,subprocess,time,zipfile
 from pathlib import Path
-from ge8300_client_signing_common import require,pe,unchanged_signed_payload
-from ge8300_compiler_cache import dependencies
+from ge8300_client_signing_common import require,pe,unchanged_signed_payload,dependencies
 RECIPE=Path(__file__).resolve().parents[2]
 def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
 def read(p):return json.loads(Path(p).read_text(encoding='utf-8-sig'))

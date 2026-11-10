@@ -42,3 +42,28 @@ def unchanged_signed_payload(unsigned, signed):
     require(a == b and not any(signed[len(unsigned):c]) and not any(signed[c+n:]), 'Signing changed non-signature payload')
 
 
+
+# Windows make dependency parser from the validated source4a path.
+import re
+def parse_make_dependencies(text):
+ # Clang's Windows make output preserves path separators (C:\dir\file)
+ # and escapes spaces as \ . POSIX shlex destroys those separators.
+ text=re.sub(r'\\\r?\n',' ',text.lstrip('\ufeff'))
+ if not text.startswith('ge8300-unit:'):raise ValueError('Unknown compiler dependency target')
+ text=text[len('ge8300-unit:'):];result=[];token=[];i=0
+ while i<len(text):
+  c=text[i]
+  if c.isspace():
+   if token:result.append(''.join(token));token=[]
+   i+=1;continue
+  if c=='#':
+   end=text.find('\n',i);i=len(text) if end<0 else end;continue
+  if c=='\\' and i+1<len(text) and (text[i+1] in ' \t#'):
+   token.append(text[i+1]);i+=2;continue
+  if c=='$' and i+1<len(text) and text[i+1]=='$':token.append('$');i+=2;continue
+  token.append(c);i+=1
+ if token:result.append(''.join(token))
+ return result
+
+def dependencies(depfile):
+ return parse_make_dependencies(Path(depfile).read_text(encoding='utf-8-sig'))
