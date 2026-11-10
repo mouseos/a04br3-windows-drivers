@@ -1,10 +1,10 @@
-# 実fresh200専用・private clone read-only inventory。profile/native/capture-contractは事前不要。
+﻿# 実fresh200専用・private clone read-only inventory。profile/native/capture-contractは事前不要。
 param([Parameter(Mandatory=$true)][string]$WorkspaceRoot,
  [Parameter(Mandatory=$true)][string]$Manifest,[Parameter(Mandatory=$true)][string]$ExpectedManifestSha256,
  [Parameter(Mandatory=$true)][string]$SourceDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,
  [Parameter(Mandatory=$true)][string]$PolicyPath,[Parameter(Mandatory=$true)][string]$ExpectedPolicyFileSha256,
  [string]$ExpectedPolicySha256,[ValidatePattern('^MT8167CombinedFollowup[0-9]{3}$')][string]$NewServiceName='MT8167CombinedFollowup200',
- [string[]]$AdditionalServiceNames=@(),[int]$TimingCaptureNumber=0,[switch]$IncludeWifiCheckpoint,[switch]$IncludeGraphicsTopologyCache,[switch]$IncludeDisplayDeviceBindings)
+ [string[]]$AdditionalServiceNames=@(),[int]$TimingCaptureNumber=0,[switch]$IncludeWifiCheckpoint,[switch]$IncludeGraphicsTopologyCache,[switch]$IncludeDisplayDeviceBindings,[switch]$IncludeBootEnvironment)
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 function Hash($p){(Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant()}
 $w=[IO.Path]::GetFullPath($WorkspaceRoot).TrimEnd('\')
@@ -88,6 +88,7 @@ $r.captured_driver_files=$capturedDrivers
 $r.source_recipe_files=[ordered]@{}
 foreach($file in @('read-fresh200-native-inventory.ps1','ReadonlyInventory200HiveNative.cs','prepare-offline-system-service.ps1','read-post-ownership-policy360.ps1','read-gpu-native-checkpoint.ps1','read-ge8300-start-gap359.ps1')){$r.source_recipe_files[$file]=Hash (Join-Path $PSScriptRoot $file)}
 if($IncludeWifiCheckpoint){$r.source_recipe_files['read-mt6630-checkpoint-loaded.ps1']=Hash (Join-Path $PSScriptRoot 'read-mt6630-checkpoint-loaded.ps1')}
+if($IncludeBootEnvironment){$r.source_recipe_files['read-boot-environment.ps1']=Hash (Join-Path $PSScriptRoot 'read-boot-environment.ps1')}
 if($IncludeGraphicsTopologyCache){$r.source_recipe_files['read-graphics-topology-cache.ps1']=Hash (Join-Path $PSScriptRoot 'read-graphics-topology-cache.ps1')}
 if($IncludeDisplayDeviceBindings){$r.source_recipe_files['read-display-device-bindings.ps1']=Hash (Join-Path $PSScriptRoot 'read-display-device-bindings.ps1')}
 $wifiCheckpoint=$null
@@ -102,6 +103,10 @@ try{
  $cs='ControlSet001'
  . "$PSScriptRoot\read-post-ownership-policy360.ps1"
  $r.post_ownership_policy360=Read-PostOwnershipPolicy360 $root
+ if($IncludeBootEnvironment){
+  . (Join-Path $PSScriptRoot 'read-boot-environment.ps1')
+  $r.boot_environment=Read-BootEnvironment $root $cs
+ }
  # These are observed fresh values, not a comparison against the old template.
  $names=@($p.service_preservation.PSObject.Properties.Name)+@($AdditionalServiceNames)
  $services=[MT8167OfflineHive.Native]::OpenPath($root,"$cs\Services",$false)
