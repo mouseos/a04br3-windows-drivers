@@ -59,6 +59,9 @@ def validate_existing_sys(directory,spec,record,acknowledged):
  # The original link script records output/tool/displib SHA, not input archives.
  # Preserve main's separate record, and do not upgrade it to independent input proof.
  result={};pins={};main_record=read(record)
+ for name,h in spec['existing_linked_products'].items():pin(record if name=='main-link-resume.json' else directory/name,h)
+ if main_record.get('compile_source')!=spec['compiled_source_commit'] or any(main_record.get(k)!=0 for k in ['objects_recompiled','PCO_rebuilt','SDK_rebuilt']) or main_record.get('signed') is not False:
+  raise ValueError('Existing main link source/rebuild classification mismatch')
  for name,meta,mapname in [('ge8300-render.sys','kernel-link.json','ge8300-render.map'),('mt8167-display-transport.sys','transport-link.json','transport.map')]:
   m=read(directory/meta);pin(directory/name,m['output_sha256'])
   if m['sha256'].lower()!=spec['LINK1429_sha256'] or m['displib_sha256'].lower()!=spec['displib_sha256']:raise ValueError('Existing SYS linker/displib mismatch')

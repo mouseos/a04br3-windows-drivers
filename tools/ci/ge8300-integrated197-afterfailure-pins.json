@@ -591,5 +591,15 @@
   "ps1_hash_normalization": "CRLF to LF only",
   "CL1429_sha256": "697a8f41ff7fcb71e7c6625f5517ef6e2f8ea146d1e351e078317ff92da0839c",
   "LINK1429_sha256": "f8b2e9c5341419525f915b61b87d1bc8aa307adca6e1e022071175912e965938",
-  "displib_sha256": "dc2b7c25e084277bd52b288c4fb913b1c89d344990f4242751a5ff62deb9e00e"
+  "displib_sha256": "dc2b7c25e084277bd52b288c4fb913b1c89d344990f4242751a5ff62deb9e00e",
+  "existing_linked_products": {
+    "ge8300-render.sys": "482f4325c004b43d19300adff49ee22680aabc06f97022dd91803d4b06535099",
+    "mt8167-display-transport.sys": "9cd6e6d817f07b126955e16f8cc4bce178364f9f5ec7a88914db0e57bab03bc4",
+    "kernel-link.json": "16e4dc6500ec4f497625dc8e3e03e5a628ee37076d9c39841500f05e79f82194",
+    "transport-link.json": "4097fcc36a3264ae625a144353e90977db10307f96a987bca590f16fe2269a5a",
+    "ge8300-render.map": "9f26e068812496180ac7bb279bbbc8e08b223d09cc1abe89c1f6eb6856c71296",
+    "transport.map": "e825f910fe2387e73208da56f8a36ecedf2b4fac2da3f66a8673940ad28e2970",
+    "main-link-resume.json": "2ee6ec86c48c12cff0b4d42d32f5fbe61213214637bac0d97e3129e2e767fb4f"
+  },
+  "existing_linked_products_zip_sha256": "ec04324c5d5bc850db5b541c399ac1505f3f0a8cfee2cea109ae792dd44261c2"
 }

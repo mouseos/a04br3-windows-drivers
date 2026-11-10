@@ -87,3 +87,19 @@ existing_link_input_archives_independently_bound_by_link_metadata=falseを記録
 固定3dのinput115個は別途照合し、既存SYSがその固定入力から生成された点は
 mainの記録と明示acknowledgementを証拠として保持する。
 SYS_relink_invocations=0、全TU再compile=0。
+
+### main exec19436の実生成SYSを固定
+
+回収済みwindows-rt-integrated197-linked.zipを一次入力として、両SYS・両map・
+両link metadata・main-link-resume.jsonの実SHAをspecへ固定した。
+既SYSmodeではこの固定SHAにも完全一致を要求する。
+
+- ge8300-render.sys: 482f4325c004b43d19300adff49ee22680aabc06f97022dd91803d4b06535099
+- mt8167-display-transport.sys: 9cd6e6d817f07b126955e16f8cc4bce178364f9f5ec7a88914db0e57bab03bc4
+
+main記録はcompile_source=3d、objects_recompiled/PCO_rebuilt/SDK_rebuilt=0、
+signed=falseを確認する。module_full_metadata_pending=trueと
+full_wrapper_invocation_complete=falseは過去のmain記録として変更せず保存する。
+helperが生成する復旧後metadataとは区別する。
+実回収SYSを用いたvalidate-onlyは成功。SYS/client link実行はこの作業では行っていない。
+次にmainが実行するのは上記「両SYSを再linkしない場合」のコマンドのみ。
