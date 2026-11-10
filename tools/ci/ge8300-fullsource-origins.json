@@ -419,8 +419,8 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
-      "source_commit": "d910b3edde4b2933dd98507c7c0650bf4f6b1785",
-      "sha256": "81eb766c817b9f3651274408530cc55ea224d3fd3083731f4b20a02fa4a9cb24",
+      "source_commit": "465679f24402ff822b2c2a815b02379595aeaad5",
+      "sha256": "37d64c794895c9a65e010ce8233f0b3665bcbd3a031669c6b720f575968117cf",
       "role": "364 bounded StopDevice/PowerState/native-display-drain return provenance; original controls retained",
       "previous_origins": [
         {
@@ -529,6 +529,12 @@
               ]
             }
           ]
+        },
+        {
+          "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
+          "source_commit": "d910b3edde4b2933dd98507c7c0650bf4f6b1785",
+          "sha256": "81eb766c817b9f3651274408530cc55ea224d3fd3083731f4b20a02fa4a9cb24",
+          "role": "364 bounded StopDevice/PowerState/native-display-drain return provenance; original controls retained"
         }
       ]
     },
@@ -1627,23 +1633,37 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/unified_display.cxx",
-      "source_commit": "523584213f3624551c86100a18039216a683b736",
+      "source_commit": "465679f24402ff822b2c2a815b02379595aeaad5",
       "role": "Required SetPalette rejection for unified32-bit true-colour display; no palette hardware claimed",
-      "sha256": "2fd6b2d574474f1f1dbbc06bb0417b5b73e8de4c1ac89c207f46377251affdb2",
+      "sha256": "b479edd77688abad3338f63f002393b443ed30b63549b59cb537bd7fc0d682ec",
       "previous_origins": [
         {
           "path": "drivers/gpu/mt8167/wddm-display/unified_display.cxx",
           "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
           "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8",
           "sha256": "6d14eaf35578c42cea5f7e0365ab8dd76057946eea0d288f1e1dfa6badc2c31c"
+        },
+        {
+          "path": "drivers/gpu/mt8167/wddm-display/unified_display.cxx",
+          "source_commit": "523584213f3624551c86100a18039216a683b736",
+          "role": "Required SetPalette rejection for unified32-bit true-colour display; no palette hardware claimed",
+          "sha256": "2fd6b2d574474f1f1dbbc06bb0417b5b73e8de4c1ac89c207f46377251affdb2"
         }
       ]
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/unified_display.h",
-      "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+      "source_commit": "465679f24402ff822b2c2a815b02379595aeaad5",
       "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8",
-      "sha256": "f843401338c9cec25e9f7901807231b629dae0a90dba8f29cafe137ddf6d09e8"
+      "sha256": "7c355a9526fb0309ceae4a10f8e6549f0d1f12ccb26a8bda4d901fc8771d6409",
+      "previous_origins": [
+        {
+          "path": "drivers/gpu/mt8167/wddm-display/unified_display.h",
+          "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+          "role": "Unified356 primary/display transport source; BDD1.7 origin2d94bcc8",
+          "sha256": "f843401338c9cec25e9f7901807231b629dae0a90dba8f29cafe137ddf6d09e8"
+        }
+      ]
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/display_adapter356.c",
@@ -1793,6 +1813,12 @@
       "source_commit": "d910b3edde4b2933dd98507c7c0650bf4f6b1785",
       "sha256": "c55124bc15c227d8698f01dd8b85319436332e91db2d0353ba0afa2d0ce5a5e1",
       "role": "364 fixed80-byte optional PASSIVE lifecycle records; no control/flush/MMIO changes"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/post_release_stack366.h",
+      "source_commit": "465679f24402ff822b2c2a815b02379595aeaad5",
+      "sha256": "eced47319c7a2945432c88501b480c5264960611c31092aeea67eee84f323179",
+      "role": "POST366 bounded normalized callback caller evidence; optional RTL helpers"
     }
   ],
   "legacy_files_preserved": [
