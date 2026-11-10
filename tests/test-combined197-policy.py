@@ -50,6 +50,21 @@ wrong['GPU367_manifest'] = oldmap['GPU366_manifest']
 wrong['GPU367_handoff'] = oldmap['GPU366_handoff']
 rejected(wrong, 'Exact GPU367 candidate')
 
+# 新UMDと旧FWの組だけを許可する。これはhelperの単体検査で、署名成果物ではない。
+members = prior['packages']['render']['extra_members']
+hashes = {x['name']: x['sha256'] for x in members}
+hashes['ge8300-umd.dll'] = '1' * 64
+updated = module.render_extras(members, hashes)
+assert next(x for x in updated if x['name']=='ge8300-umd.dll')['baseline_sha256'] != '1' * 64
+assert next(x for x in updated if x['name']=='ge8300-umd.dll')['sha256'] == '1' * 64
+hashes['ge8300-mips.fw'] = '2' * 64
+try:
+    module.render_extras(members, hashes)
+except ValueError as error:
+    assert 'Retain actual FW' in str(error)
+else:
+    raise AssertionError('FW変更を許容した')
+
 # 既存tupleを使う生成処理だけの確認。final policy/mediaを作成しない。
 fixture = copy.deepcopy(prior)
 fixture.update(profile=module.PROFILE, service=module.SERVICE, data_directory=module.SERVICE,
@@ -74,6 +89,7 @@ out.mkdir(parents=True)
     'baseline_files_verified': 42, 'old_full_services': 18, 'named_values': 125,
     'POST_retained': '00000000', 'pending_and_old_candidate_rejected': True,
     'wrong_capture_and_USB_targets_rejected': True, 'generation_fixture_only': True,
+    'UMD_update_allowed_FW_change_rejected_helper_only': True,
     'python_AST_and_collector_shell_syntax': True,
     'final_policy_created': False, 'Windows_runner_device_REA_access': False,
 }, indent=2) + '\n')

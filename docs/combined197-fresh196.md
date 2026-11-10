@@ -14,14 +14,27 @@ USB keyboard1010、BT2018、Wi-Fi1027など旧対象を保持する。boot/GPT�
 
 GPU367は統合source `3d4a3d1097b7f6a796972e0425e37d0263b2b070`、
 INF `11/10/2026,0.0.3.67`、実SYS/INF/CATとmainの署名成果物照合receiptが
-一致するまでfinalizeを拒否する。receiptはmanifest SHA256とSYS SHA256を結合する。
-既存UMD/FWは実baselineとbyte同一を要求する。runnerのビルド開始やplaceholderの
+一致するまでfinalizeを拒否する。receiptはmanifest SHA256、SYS SHA256、UMD SHA256を結合する。
+SYS/UMD共通layoutを更新するため、UMDは同じ署名manifestの新leafへ更新できる。
+旧UMDはbaseline witnessとして保存し、更新後の保持対象へ旧hashを混ぜない。
+FWと旧DIS0 transport357は実baselineとbyte同一を要求する。runnerのビルド開始やplaceholderの
 mapだけを成果物完成・署名成功・実機成功の根拠にしない。
 
 `prepare-peripheral-followup196.py --audit-only`は原本保持の監査結果だけを作る。
 arm用policy/header/mediaは作らず、`normal_install_allowed=false`とする。
 `--finalize`とは排他。署名leafが未確定なら、mapのGPU367二参照をnullのまま
 残せるが、build/media入口はこれを拒否する。
+
+## DIS0 transport357の互換性
+
+旧357の署名manifestが記録するtransport実compile include closureの7ファイルは、
+source3d4a3d10とbyte同一。GUID/version1、関数表、snapshot、MDL lease v1、
+transport本体に差はなく、scanout helper本体も旧sourceと同一である。
+`geo_kmd_adapter.shared_resources`と`geo_allocation.shared`のlayout変更は
+render/native内部だけに適用され、transportにはMDLとopaque contextと参照callbackを
+渡す。`shared_surface.h`のversion3 descriptorはSYS/UMD間のwireであり、
+transportは解釈しない。従って今回の更新でdisplay target追加は不要。
+新リンクのimports差や新SYSのbyte差だけでABI変更とは判断しない。
 
 ## USB1121/HCD1019を今回含めない理由
 

@@ -13,6 +13,14 @@ FRESH_SHA='7e6c1316961a1dc0807595552434488ff0efa43d3f43629bea8aef599a2ff8d2'
 BOOT_SHA='0943ab8a6008942d9701140542da6ecaa902f750bf34b864bb6a66808c08df42'
 BUILD_ID='GPU359-start-gap-v1';SOURCE_BASE='e0727eb0d840883a31d3c501b0ee17652ebdcad4'
 def paths():return _b.paths()
+def render_extras(members,hashes):
+ # SYS/UMDは署名367の同じmanifestで結合する。FWは旧実byteを保持する。
+ result=copy.deepcopy(members)
+ for x in result:
+  old=x['sha256'];new=hashes[x['name']]
+  require(x['name']=='ge8300-umd.dll' or new==old,'Retain actual FW/other extra bytes')
+  x.update(sha256=new,baseline_sha256=old)
+ return result
 def audit_baseline(root,spec):
  pins={}
  def pin(ref):
@@ -55,11 +63,11 @@ def build_policy(root,spec):
  gp=Path(spec['GPU367_manifest']['path']).parent
  for f in gm['outputs']:
   q=rooted(root,gp/f['name']);require(sha(q)==f['sha256'],'New GPU output '+f['name']);pins[q.relative_to(root).as_posix()]=f['sha256']
- pkgs=copy.deepcopy(prior['packages']);e=pkgs['render'];old_extra={x['name']:x['sha256'] for x in e['extra_members']};e.update(directory=gp.as_posix(),manifest=spec['GPU367_manifest']['path'],manifest_sha256=spec['GPU367_manifest']['sha256'],source_commit=gm['package_source_commit'],driver_version='0.0.3.67',driver_date='11/10/2026')
+ pkgs=copy.deepcopy(prior['packages']);e=pkgs['render'];e.update(directory=gp.as_posix(),manifest=spec['GPU367_manifest']['path'],manifest_sha256=spec['GPU367_manifest']['sha256'],source_commit=gm['package_source_commit'],driver_version='0.0.3.67',driver_date='11/10/2026')
  hashes={f['name']:f['sha256'] for f in gm['outputs']}
  require(hashes['ge8300-render.sys']==handoff['SYS_sha256'],'Main SYS/manifest join')
- for x in e['extra_members']:require(hashes[x['name']]==old_extra[x['name']],'Retain actual UMD/FW bytes')
- for x in e['extra_members']:x.update(sha256=hashes[x['name']],baseline_sha256=old_extra[x['name']])
+ require(hashes['ge8300-umd.dll']==handoff['UMD_sha256'],'Main matched SYS/UMD367 manifest join')
+ e['extra_members']=render_extras(e['extra_members'],hashes)
  packages={r:_b.package(root,pkgs[r],r) for r in ROLES}
  preserved={};sources={};witnesses={}
  for name,f in originals.items():
@@ -69,7 +77,7 @@ def build_policy(root,spec):
   if x['sha256']==x['baseline_sha256']:preserved[name]=sha(q);sources[name]=q.relative_to(root).as_posix()
   else:witnesses[name]={'path':q.relative_to(root).as_posix(),'sha256':sha(q)}
  for name,h in prior['preserved_files'].items():
-  if name=='Windows/System32/Drivers/ge8300-render.sys':continue
+  if name=='Windows/System32/Drivers/ge8300-render.sys' or name in witnesses:continue
   q=rooted(root,prior['preserved_sources'][name]);require(sha(q)==h,'Retain historical preserved source');preserved[name]=h;sources[name]=q.relative_to(root).as_posix();pins[q.relative_to(root).as_posix()]=h
  rel='Windows/System32/MT8167CombinedFollowup194.exe';q=rooted(root,Path(spec['diagnostics'])/'fixed'/rel);preserved[rel]=sha(q);sources[rel]=q.relative_to(root).as_posix();pins[q.relative_to(root).as_posix()]=sha(q)
  baseline=pin(spec['mutable_baseline']);require(baseline['source_transaction']=='run195','Latest sameboot client logs');mutable=[]
