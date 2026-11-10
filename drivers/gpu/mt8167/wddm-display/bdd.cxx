@@ -41,7 +41,7 @@ BASIC_DISPLAY_DRIVER::BASIC_DISPLAY_DRIVER(_In_ DEVICE_OBJECT* pPhysicalDeviceOb
 #endif
     KeInitializeMutex(&m_PresentMutex,0);
 #if A04_MT8167_DISPLAY_BRIGHTNESS
-    m_Brightness.Initialize();m_UnifiedBrightnessResources=NULL;
+    m_Brightness.Initialize();m_UnifiedBrightnessResources=NULL;RtlZeroMemory(&m_PanelTiming,sizeof(m_PanelTiming));
 #endif
 #if A04_GE8300_WDDM_SHARED_AUTOSTART
     KeInitializeEvent(&m_SharedWorkerStop,NotificationEvent,FALSE);

@@ -53,3 +53,6 @@ tests/test-fresh200-bt-root-values.py text eol=lf
 tools/recovery/read-fresh202-native-inventory.ps1 text eol=lf
 tools/recovery/prepare-peripheral-followup202.py text eol=lf
 tools/winpe/combined202_policy.py text eol=lf
+
+drivers/gpu/mt8167/display-transport/panel_timing.h text eol=lf
+tests/ge8300_panel_timing_test.c text eol=lf
