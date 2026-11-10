@@ -2633,22 +2633,30 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/bdd.cxx",
-      "sha256": "32ebe22c0d01956951b07fc4aed52ed012b037ccfb9def6b8afce9cb2ffec1a4",
+      "sha256": "d388f3065411be142cd397b20e242ac33aedf7d5d8d36236457cd974100168d5",
       "previous_origins": [
         {
           "path": "drivers/gpu/mt8167/wddm-display/bdd.cxx",
-          "sha256": "0d122dca6c64498d30e6bc9e51e67cff5286adca1b43b6e2a1c15c9253c49c10",
+          "sha256": "32ebe22c0d01956951b07fc4aed52ed012b037ccfb9def6b8afce9cb2ffec1a4",
           "previous_origins": [
             {
-              "sha256": "68f919b9af09c708e8bb3ae7e3e41d16141dcf50b3233bec75a14942a2723684"
+              "path": "drivers/gpu/mt8167/wddm-display/bdd.cxx",
+              "sha256": "0d122dca6c64498d30e6bc9e51e67cff5286adca1b43b6e2a1c15c9253c49c10",
+              "previous_origins": [
+                {
+                  "sha256": "68f919b9af09c708e8bb3ae7e3e41d16141dcf50b3233bec75a14942a2723684"
+                }
+              ],
+              "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+              "role": "Unified356 source overlay; prior origin retained"
             }
           ],
-          "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
-          "role": "Unified356 source overlay; prior origin retained"
+          "source_commit": "43753e0d6e06a6a7ed24a6c1bab731a477b52b0e",
+          "role": "359 startup observation only; preserve control policy"
         }
       ],
-      "source_commit": "43753e0d6e06a6a7ed24a6c1bab731a477b52b0e",
-      "role": "359 startup observation only; preserve control policy"
+      "source_commit": "113a0d3dd02ee029aaea1b1046b4969d777090a4",
+      "role": "Herschel VidPn capability output zero-initialization; Code43 causality unproven"
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/bdd.hxx",

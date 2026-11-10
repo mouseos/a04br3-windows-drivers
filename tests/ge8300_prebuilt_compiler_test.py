@@ -48,7 +48,7 @@ old=rows[0]['command'][1];rows[0]['command'][1]='--target=other';persist();run(F
 old=rows[0]['source_sha256'];rows[0]['source_sha256']='0'*64;persist();run(False);rows[0]['source_sha256']=old
 link['source_commit']='0'*40;persist();run(False);link['source_commit']=spec['compiled_source_commit'];persist();run(True)
 # Canonical fullsource entry pin; omitted kernel selection and strict/cold CLI defaults are retained.
-cold_default_pins={'tools/ci/build-ge8300-from-source.ps1': '5fdcb5ba1833c1d506430044c4524a81bc7945823d6073266b15a3ff1e251457', 'tools/ci/ge8300_compiler_cache.py': 'aa87d445072e3d35f37aaa3f7ea5ad0831f7d2cedba8cccf9ea9babfd22a44cb'}
+cold_default_pins={'tools/ci/build-ge8300-from-source.ps1': '5fdcb5ba1833c1d506430044c4524a81bc7945823d6073266b15a3ff1e251457', 'tools/ci/ge8300_compiler_cache.py': '7194d7048984e36649198d5c3e2842f14f02368c96c916084d4d709856063cd8'}
 for name,pin in cold_default_pins.items():assert m.sha(root/name)==pin,name
 warm=(root/'tools/ci/build-ge8300-shared-surface-warm.ps1').read_text()
 assert 'if(!$EnableCandidate -or !$EnablePinnedPrebuiltCompiler)' in warm
