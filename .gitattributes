@@ -33,3 +33,12 @@ drivers/gpu/mt8167/fwif/pvr_rogue_cr_defs.h -text
 # The normal texture source gate pins these additional source bytes too.
 drivers/gpu/mt8167/wddm-render/testclient/*.hlsl text eol=lf
 drivers/gpu/mt8167/wddm-render/testclient/*.inc text eol=lf
+
+# All remaining LF files pinned by the GE8300 fullsource closure.
+drivers/gpu/mt8167/display-transport/*.[ch] text eol=lf
+drivers/gpu/mt8167/start_checkpoint357.h text eol=lf
+drivers/gpu/mt8167/start_gap359.h text eol=lf
+# These recipe bytes are hashed by compiler-cache evidence/host contracts.
+tools/ci/build-ge8300-compiler-source.py text eol=lf
+tools/ci/ge8300_compiler_cache.py text eol=lf
+tools/ci/build-ge8300-from-source.ps1 text eol=lf
