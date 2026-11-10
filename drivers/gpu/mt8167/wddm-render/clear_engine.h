@@ -2,6 +2,7 @@
 #ifndef GEO_CLEAR_ENGINE_H
 #define GEO_CLEAR_ENGINE_H
 #include "owner_abi.h"
+#include "shared_surface.h"
 #define GEO_MAX_JOBS 32u
 struct geo_allocation {
  struct geo_allocation *next;
@@ -11,6 +12,7 @@ struct geo_allocation {
  uint32_t references,bound,poisoned,open_count,cpu_only;
  uint64_t aperture_offset;uint32_t aperture_pages;
  uint32_t primary,source_id,display_refs;
+ struct geo_shared_surface shared;
 };
 struct geo_job {
  struct geo_allocation *allocation,*vertex;
@@ -39,6 +41,8 @@ int32_t geo_engine_init(struct geo_engine *,const struct geo_owner_ops *);
 int32_t geo_create(struct geo_engine *,struct geo_allocation *,const struct geo_surface_desc *);
 int32_t geo_bind(struct geo_engine *,struct geo_allocation *,void *mdl,uint32_t offset,uint32_t bytes,uint64_t aperture_offset);
 int32_t geo_unbind(struct geo_engine *,struct geo_allocation *);
+int32_t geo_open_reference(struct geo_engine *,struct geo_allocation *);
+int32_t geo_close_reference(struct geo_engine *,struct geo_allocation *,void *open_handle);
 int32_t geo_destroy(struct geo_engine *,struct geo_allocation *);
 int32_t geo_prepare_begin(struct geo_engine *,struct geo_allocation *,const struct geo_clear_packet *,struct geo_dma_ticket *);
 int32_t geo_prepare_copy_begin(struct geo_engine *,struct geo_allocation *destination,struct geo_allocation *source,struct geo_dma_ticket *);

@@ -95,7 +95,7 @@ static NTSTATUS stop_device(void *context) {
 static NTSTATUS remove_device(void *context) {
  struct geo_render_device *d=context;
  if(!d||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
- if(InterlockedCompareExchange(&d->adapter.memory_record_count,0,0)||InterlockedCompareExchange(&d->adapter.memory_fault,0,0)||d->native_created||d->started||(d->adapter.engine.allocation_count||d->adapter.device_count)||InterlockedCompareExchange(&d->work_busy,0,0))return STATUS_DEVICE_BUSY;
+ if(InterlockedCompareExchange(&d->adapter.memory_record_count,0,0)||InterlockedCompareExchange(&d->adapter.memory_fault,0,0)||d->native_created||d->started||d->adapter.shared_resources||(d->adapter.engine.allocation_count||d->adapter.device_count)||InterlockedCompareExchange(&d->work_busy,0,0))return STATUS_DEVICE_BUSY;
  IoFreeWorkItem(d->work);ObDereferenceObject(d->pdo);ExFreePoolWithTag(d,'mOeG');return STATUS_SUCCESS;
 }
 static BOOLEAN interrupt_routine(void *context,ULONG message) {

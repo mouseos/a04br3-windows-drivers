@@ -4,6 +4,9 @@
 void geo_typed_device_trace(struct geo_typed_device *,const char *,UINT);
 #include "../memory.h"
 #include "update_subresource.h"
+_Static_assert(D3D10_DDI_RESOURCE_MISC_SHARED==GEO_SHARED_MISC&&D3D10_DDI_BIND_RENDER_TARGET==GEO_SHARED_RT&&
+ D3D10_DDI_BIND_SHADER_RESOURCE==GEO_SHARED_SRV&&DXGI_FORMAT_B8G8R8A8_UNORM==GEO_SHARED_BGRA&&
+ DXGI_FORMAT_R8G8B8A8_UNORM==GEO_SHARED_RGBA&&D3D10DDIRESOURCE_TEXTURE2D==3,"Shared wire matches WDK8.1 enum values");
 /* Internal development trace only; no resource/handle ABI change. Log the
  * real runtime descriptor before validation so the staging failure is not
  * confused with KMD allocation failure or a rejected Map operation. */
@@ -54,7 +57,9 @@ HRESULT geo_typed_resource_unref(struct geo_typed_resource *r) {
 }
 static HRESULT desc_valid(const D3D11DDIARG_CREATERESOURCE *p) {
  const D3D10DDI_MIPINFO *m;
- if(!p||!p->pMipInfoList||p->MipLevels!=1||p->ArraySize!=1||p->MiscFlags||(!A04_GE8300_UNIFIED_DISPLAY356&&p->pPrimaryDesc)||p->ByteStride||p->DecoderBufferType)return E_NOTIMPL;
+ if(!p||!p->pMipInfoList||p->MipLevels!=1||p->ArraySize!=1||(p->MiscFlags&~D3D10_DDI_RESOURCE_MISC_SHARED)||(!A04_GE8300_UNIFIED_DISPLAY356&&p->pPrimaryDesc)||p->ByteStride||p->DecoderBufferType)return E_NOTIMPL;
+ if(p->MiscFlags&&(p->ResourceDimension!=D3D10DDIRESOURCE_TEXTURE2D||p->Usage!=D3D10_DDI_USAGE_DEFAULT||p->MapFlags||p->pPrimaryDesc||
+    (p->BindFlags!=D3D10_DDI_BIND_RENDER_TARGET&&p->BindFlags!=D3D10_DDI_BIND_SHADER_RESOURCE)))return E_NOTIMPL;
  m=p->pMipInfoList;
  if(p->pPrimaryDesc&&(!(p->BindFlags&D3D10_DDI_BIND_PRESENT)||p->pPrimaryDesc->VidPnSourceId||p->pPrimaryDesc->ModeDesc.Width!=m->TexelWidth||p->pPrimaryDesc->ModeDesc.Height!=m->TexelHeight))return E_NOTIMPL;
  if(!m->TexelWidth||!m->TexelHeight||m->TexelDepth!=1||m->PhysicalWidth!=m->TexelWidth||m->PhysicalHeight!=m->TexelHeight||m->PhysicalDepth!=1)return E_INVALIDARG;
@@ -119,7 +124,15 @@ static void APIENTRY create_resource(D3D10DDI_HDEVICE h,const D3D11DDIARG_CREATE
  q.Flags.VertexBuffer=r->dimension==D3D10DDIRESOURCE_BUFFER;q.Flags.RenderTarget=(p->BindFlags&D3D10_DDI_BIND_RENDER_TARGET)!=0;
  geo_typed_resource_trace(h,"RESOURCE_BACKEND_POOL",q.Pool);
  geo_typed_resource_trace(h,"RESOURCE_RUNTIME_HANDLE_PRESENT",runtime.handle!=NULL);
- hr=d->memory.pfnCreateResource(&d->backend,&q);
+ if(p->MiscFlags==D3D10_DDI_RESOURCE_MISC_SHARED){
+  struct geo_shared_surface shared={0};
+  shared.base.size=sizeof(shared);shared.base.version=3;shared.base.logical_width=r->width;shared.base.logical_height=r->height;
+  shared.base.storage=(struct geo_surface_desc){sizeof(struct geo_surface_desc),q.Flags.Texture?GEO_TEXTURE_STORAGE_VERSION:1,
+   q.Flags.Texture?r->width:800,q.Flags.Texture?r->height:A04_NATIVE_FRAME_HEIGHT,
+   q.Flags.Texture?geo_texture_default_pitch(r->width):3200,(UINT)q.Format,q.Flags.Texture?GEO_USAGE_TEXTURE2D:GEO_USAGE_RENDER_TARGET,0};
+  shared.magic=GEO_SHARED_MAGIC;shared.bind=p->BindFlags;shared.format=p->Format;shared.dimension=p->ResourceDimension;shared.misc=p->MiscFlags;
+  hr=geo_umd_create_shared(&d->backend,&shared,runtime.handle,&q.hResource);
+ }else hr=d->memory.pfnCreateResource(&d->backend,&q);
  geo_typed_resource_trace(h,"RESOURCE_BACKEND_CREATE_HRESULT",(UINT)hr);
  if(FAILED(hr)){HeapFree(GetProcessHeap(),0,r);geo_typed_error(h,hr);return;}
  r->backend=q.hResource;r->next=d->resources;d->resources=r;((struct geo_typed_handle *)handle.pDrvPrivate)->object=r;
@@ -224,24 +237,43 @@ static BOOL APIENTRY staging_busy(D3D10DDI_HDEVICE h,D3D10DDI_HRESOURCE handle) 
  if(FAILED(hr)){geo_typed_error(h,hr);return TRUE;}
  hr=unmap_backend(r);if(FAILED(hr)){geo_typed_error(h,hr);return TRUE;}return FALSE;
 }
+static int shared_open_descriptor(const D3D10DDIARG_OPENRESOURCE *p,struct geo_shared_surface *s) {
+ struct geo_shared_surface a;
+ if(!p||p->NumAllocations!=1||!p->pOpenAllocationInfo||!p->pPrivateDriverData||p->PrivateDriverDataSize!=sizeof(*s)||!p->hKMResource.handle||
+    !p->pOpenAllocationInfo->hAllocation||!p->pOpenAllocationInfo->pPrivateDriverData||p->pOpenAllocationInfo->PrivateDriverDataSize!=sizeof(a))return 0;
+ memcpy(s,p->pPrivateDriverData,sizeof(*s));memcpy(&a,p->pOpenAllocationInfo->pPrivateDriverData,sizeof(a));
+ return geo_shared_surface_equal(s,&a);
+}
 static SIZE_T APIENTRY opened_size(D3D10DDI_HDEVICE h,const D3D10DDIARG_OPENRESOURCE *p){
- if(!A04_GE8300_UNIFIED_DISPLAY356||!geo_typed_device(h)||!p||p->NumAllocations!=1||!p->pOpenAllocationInfo||p->PrivateDriverDataSize)return 0;
- return sizeof(struct geo_typed_handle);
+ struct geo_shared_surface s;
+ if(!geo_typed_device(h)||!p||p->NumAllocations!=1||!p->pOpenAllocationInfo)return 0;
+ if(p->PrivateDriverDataSize)return shared_open_descriptor(p,&s)?sizeof(struct geo_typed_handle):0;
+ return A04_GE8300_UNIFIED_DISPLAY356?sizeof(struct geo_typed_handle):0;
 }
 static void APIENTRY open_resource(D3D10DDI_HDEVICE h,const D3D10DDIARG_OPENRESOURCE *p,D3D10DDI_HRESOURCE handle,D3D10DDI_HRTRESOURCE runtime){
- struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_resource *r;struct geo_surface_desc desc;HRESULT hr;
- if(!d||!handle.pDrvPrivate||!opened_size(h,p)){geo_typed_error(h,E_INVALIDARG);return;}
+ struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_resource *r;struct geo_surface_desc desc;struct geo_shared_surface shared={0};HRESULT hr;
+ if(!d||!handle.pDrvPrivate){geo_typed_error(h,E_INVALIDARG);return;}
  ((struct geo_typed_handle *)handle.pDrvPrivate)->object=NULL;
+ if(FAILED(d->error)){geo_typed_error(h,d->error);return;}
+ if(!opened_size(h,p)){geo_typed_error(h,E_INVALIDARG);return;}
  r=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*r));if(!r){geo_typed_error(h,E_OUTOFMEMORY);return;}
- hr=geo_umd_open_primary(&d->backend,p->pOpenAllocationInfo,runtime.handle,&r->backend,&desc);
+ if(p->PrivateDriverDataSize){
+  if(!shared_open_descriptor(p,&shared)){HeapFree(GetProcessHeap(),0,r);geo_typed_error(h,E_INVALIDARG);return;}
+  hr=geo_umd_open_shared(&d->backend,&shared,p->pOpenAllocationInfo,runtime.handle,&r->backend);
+ }else hr=geo_umd_open_primary(&d->backend,p->pOpenAllocationInfo,runtime.handle,&r->backend,&desc);
  if(FAILED(hr)){HeapFree(GetProcessHeap(),0,r);geo_typed_error(h,hr);return;}
- r->magic=GEO_TYPED_RESOURCE_MAGIC;r->refs=1;r->device=d;r->primary=1;r->usage=D3D10_DDI_USAGE_DEFAULT;
- r->bind=D3D10_DDI_BIND_PRESENT|(desc.usage==GEO_USAGE_RENDER_TARGET?D3D10_DDI_BIND_RENDER_TARGET:0);
- r->width=desc.width;r->height=desc.height;r->bytes=desc.pitch*desc.height;r->format=DXGI_FORMAT_B8G8R8A8_UNORM;r->dimension=D3D10DDIRESOURCE_TEXTURE2D;
+ r->magic=GEO_TYPED_RESOURCE_MAGIC;r->refs=1;r->device=d;r->usage=D3D10_DDI_USAGE_DEFAULT;
+ if(p->PrivateDriverDataSize){
+  r->bind=shared.bind;r->width=shared.base.logical_width;r->height=shared.base.logical_height;r->format=shared.format;desc=shared.base.storage;
+ }else{
+  r->primary=1;r->bind=D3D10_DDI_BIND_PRESENT|(desc.usage==GEO_USAGE_RENDER_TARGET?D3D10_DDI_BIND_RENDER_TARGET:0);
+  r->width=desc.width;r->height=desc.height;r->format=DXGI_FORMAT_B8G8R8A8_UNORM;
+ }
+ r->bytes=desc.pitch*desc.height;r->dimension=D3D10DDIRESOURCE_TEXTURE2D;
  r->next=d->resources;d->resources=r;((struct geo_typed_handle *)handle.pDrvPrivate)->object=r;
 }
 void geo_typed_resources_install(D3D11_1DDI_DEVICEFUNCS *f) {
- if(A04_GE8300_UNIFIED_DISPLAY356){f->pfnCalcPrivateOpenedResourceSize=opened_size;f->pfnOpenResource=open_resource;}
+ f->pfnCalcPrivateOpenedResourceSize=opened_size;f->pfnOpenResource=open_resource;
  f->pfnCalcPrivateResourceSize=resource_size;f->pfnCreateResource=create_resource;f->pfnDestroyResource=destroy_resource;
  f->pfnResourceUpdateSubresourceUP=update_subresource;
  f->pfnResourceIsStagingBusy=staging_busy;f->pfnResourceMap=map_resource;f->pfnResourceUnmap=unmap_resource;f->pfnStagingResourceMap=map_resource;f->pfnStagingResourceUnmap=unmap_resource;
