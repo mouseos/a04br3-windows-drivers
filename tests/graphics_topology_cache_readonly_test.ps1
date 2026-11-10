@@ -17,13 +17,14 @@ namespace MT8167OfflineHive {
   public RegistryValueKind GetValueKind(string n){return Values[n] is uint ? RegistryValueKind.DWord : RegistryValueKind.String;}
   public void Dispose(){Closed++;}
  }
+ public sealed class RawValue {public bool Present;public uint Type;public int Bytes;public string RawHex;}
  public static class Native {
   public static Dictionary<string,MockKey> Keys=new Dictionary<string,MockKey>();
   public static List<string> Reads=new List<string>();
   public static MockKey OpenPath(object root,string p,bool writable){if(writable)throw new Exception("write rejected");MockKey k;return Keys.TryGetValue(p,out k)?k:null;}
-  public static string ReadFixedRawValue(MockKey k,string n,uint type,int bytes){
-   if(type!=4||bytes!=4||!(k.Values[n] is uint))throw new Exception("non-DWORD data read");
-   Reads.Add(n);return BitConverter.ToString(BitConverter.GetBytes((uint)k.Values[n])).Replace("-","");
+  public static RawValue ReadRawValue(MockKey k,string n,int maximumBytes){
+   if(maximumBytes!=4||!(k.Values[n] is uint))throw new Exception("non-DWORD data read");
+   Reads.Add(n);return new RawValue {Present=true,Type=4,Bytes=4,RawHex=BitConverter.ToString(BitConverter.GetBytes((uint)k.Values[n])).Replace("-","")};
   }
  }
 }
