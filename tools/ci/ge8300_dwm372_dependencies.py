@@ -1,7 +1,17 @@
 """Present compatibility probes are explicitly NOT historical include evidence."""
 import concurrent.futures,json,re,subprocess,time,os
-from pathlib import Path
-from ge8300_compiler_cache import dependencies
+from pathlib import Path,PureWindowsPath
+from ge8300_compiler_cache import dependencies,parse_make_dependencies
+
+def original_native_dependencies(path,obj):
+    # Original native -MD files used their real object path as make target.
+    # Bind it to the actual manifest object; never rewrite the original trace.
+    text=Path(path).read_text(encoding='utf-8-sig')
+    separator=re.search(r':(?=\s|$)',text)
+    if separator is None:raise ValueError('Original native make target absent')
+    target=text[:separator.start()].replace('\\ ',' ')
+    if PureWindowsPath(target)!=PureWindowsPath(str(obj)):raise ValueError('Original native dependency/object target mismatch')
+    return parse_make_dependencies('ge8300-unit:'+text[separator.end():])
 
 def present_compatibility(root,baseline,out,spec,sha,jobs,cl):
     out.mkdir();oldroot=baseline.parents[1].resolve();root=root.resolve()
@@ -49,7 +59,7 @@ def present_compatibility(root,baseline,out,spec,sha,jobs,cl):
             with raw.open('wb') as so,err.open('wb') as se:p=subprocess.run(command,stdout=so,stderr=se,cwd=root,env=dict(os.environ,VSLANG="1033",TEMP=str(out),TMP=str(out)))
             if p.returncode:raise ValueError('Current compatibility probe failed: '+u['identity']+'; '+str(err))
             historical=False
-        deps=([str(rebind(u['source'])),*re.findall(r'^Note: including file:\s*(.+)$',raw.read_text(errors='replace')+'\n'+err.read_text(errors='replace'),re.M)] if u.get('tool')=='msvc' else dependencies(raw))
+        deps=([str(rebind(u['source'])),*re.findall(r'^Note: including file:\s*(.+)$',raw.read_text(errors='replace')+'\n'+err.read_text(errors='replace'),re.M)] if u.get('tool')=='msvc' else original_native_dependencies(raw,u['object']) if historical else dependencies(raw))
         if u.get('tool')=='msvc' and len(deps)<2:raise ValueError('MSVC current include probe is empty')
         source_rows=[];external=[];changed=[]
         for token in deps:
