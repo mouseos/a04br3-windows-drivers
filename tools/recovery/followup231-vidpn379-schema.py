@@ -4,6 +4,8 @@ Admission still requires the actual accepted lock, not source expectations alone
 import hashlib,json,re
 from pathlib import Path
 SCHEMA='GE8300_VIDPN379_SINGLE_TU_V1'
+MANIFEST='2046d42b7da6c5c3401a87786ff45b3ff4f02ae49804ecf9f3c5fb62cada6aa9'
+SYS='5a7066d4b1b8664d3015d02ea242cf6886683047d509656e1c3c51e9e28c3237'
 ADAPTER_ID='vidpn379-single-tu-client-settle-v1'
 TRACE='b9fb91571b587ab98c01ed1a118c847b634b21ca'
 RECIPE='2f210c9f05e784a1245170a1ae525b0b9507d8b0'
@@ -30,11 +32,16 @@ def validate(root,manifest,lock):
  # Both independent review and finalized client/launcher pair are mandatory.
  for key in ('main_review','client_pair'):
   r=lock[key];require(set(r)=={'path','sha256'} and sha(path(root,r['path']))==r['sha256'],'actual379 review/client pair ref')
+ return inspect_signed_manifest(root,manifest)
+
+def inspect_signed_manifest(root,manifest):
+ # Read-only artifact inspection does not admit finalize or substitute main review.
+ root=root.resolve(strict=True);require(sha(manifest)==MANIFEST,'exact actual379 manifest')
  m=read(manifest)
  require(m['schema']==SCHEMA and m['source_commit']==RECIPE and m['trace_source_commit']==TRACE and m['baseline_source_commit']==BASE and m['client_source_commit']==CLIENT,'exact379 source family')
  require(m['success'] is True and m['signed'] is True and m['signer_thumbprint']==SIGNER and m['candidate_version']==379 and m['runtime_build_id_retained_from378'] is True and m['hardware_verified'] is False,'actual379 signed result only')
  require(all(m[k] is False for k in ('SDK_rebuilt','PCO_rebuilt','UMD_rebuilt','native_owner_rebuilt')) and m['native_owner_sha256']==NATIVE,'retained378 inputs only')
- tus=m['compiled_TUs'];require(len(tus)==1 and tus[0]['source']=='drivers/gpu/mt8167/wddm-display/unified_display.cxx' and tus[0]['object']=='display_unified_display.obj' and re.fullmatch('[0-9a-f]{64}',tus[0]['sha256']),'one bridge TU only')
+ tus=m['compiled_TUs'];require(len(tus)==1 and tus[0]['source'].replace('\\','/')=='drivers/gpu/mt8167/wddm-display/unified_display.cxx' and tus[0]['object']=='display_unified_display.obj' and re.fullmatch('[0-9a-f]{64}',tus[0]['sha256']),'one bridge TU only')
  closure=tus[0]['include_closure'];require(len(closure)>10,'actual trace include closure')
  for suffix,digest in (
   ('/drivers/gpu/mt8167/wddm-display/unified_display.cxx','4393a26b5b5faaa328ca8a5b3c2c3e8c6bcdcebfa36a7f367d22641a609b6ba4'),
@@ -50,5 +57,5 @@ def validate(root,manifest,lock):
  for r in m['outputs']:
   n=r['name'];require(re.fullmatch(r'(?:display-transport/)?[A-Za-z0-9_.-]+',n) and n not in files and n in prior,'fixed379 output names')
   p=path(root,manifest.parent/n);require(p.stat().st_size==r['bytes'] and sha(p)==r['sha256'],'actual379 output hash/size '+n);files[n]=r['sha256']
- require(set(files)==set(prior) and {n for n in files if files[n]!=prior[n]}==CHANGED and files['mt8167-dxgi-present356.exe']==EVALUATOR,'only SYS/INF/CAT/settle evaluator changed; UMD/FW/transport retained')
+ require(set(files)==set(prior) and {n for n in files if files[n]!=prior[n]}==CHANGED and files['mt8167-dxgi-present356.exe']==EVALUATOR and files['ge8300-render.sys']==SYS,'only SYS/INF/CAT/settle evaluator changed; UMD/FW/transport retained')
  return m,files

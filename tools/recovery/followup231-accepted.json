@@ -3,7 +3,10 @@
   "status": "pending-hegel-signed-candidates",
   "adapter_id": null,
   "mode": null,
-  "GPU_candidate": null,
+  "GPU_candidate": {
+    "path": "port/xnu/out/windows-rt-vidpn-callback-candidate/kernel379/build/package379/signed-manifest.json",
+    "sha256": "2046d42b7da6c5c3401a87786ff45b3ff4f02ae49804ecf9f3c5fb62cada6aa9"
+  },
   "client_pair": null,
   "main_review": null,
   "filter_root_transitions": []
