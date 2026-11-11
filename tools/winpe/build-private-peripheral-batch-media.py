@@ -243,7 +243,12 @@ def main():
  if signed_source!=a.source_commit:
   subprocess.run(['git','-C',str(repo),'merge-base','--is-ancestor',signed_source,a.source_commit],check=True)
   changed=set(subprocess.check_output(['git','-C',str(repo),'diff','--name-only',signed_source,a.source_commit],text=True).splitlines())
-  if a.combined200_profile:
+  if a.gpu375_combined_profile:
+   require(signed_source=='c922efe5227b582801acd2ddba60c6fc823cd0b3','Combined221 service source is the actual signed C922')
+   allowed={'tools/winpe/build-private-peripheral-batch-media.py','tools/recovery/run-gpu368-fresh200.py','tools/recovery/combined222_rebind223.py','tools/recovery/collect-combined200.sh','tools/recovery/README-combined222-resume223.md'}
+   require(changed and changed<=allowed,'Only explicit media/controller/rebind tooling may follow signed C922')
+   require(sha(repo/'tools/winpe/mt8167-peripheral-update.c')==sm['source_sha256'],'Signed C922 SCM TU unchanged')
+  elif a.combined200_profile:
    require(changed and changed<={'tools/winpe/private_hardware_probe_input.py','tools/winpe/build-private-peripheral-batch-media.py'},'GPU368 post-sign changes are limited to the media validator and its admission gate')
    require(sha(repo/'tools/winpe/mt8167-peripheral-update.c')==sm['source_sha256'],'Signed GPU368 SCM TU unchanged')
   elif a.combined196_profile:

@@ -30,7 +30,12 @@ else:
  assert s['status'] in ['diagnostic-terminal-await-disk-verification','install-failed-await-disk-verification','runtime-exception-await-collection','unexpected-second-runtime-restart','runtime-restarted-requires-install-disk-proof','diagnostic-timeout-await-file-proof','install-timeout-await-file-proof']
 for k in ['service_name','data_directory','gpu_log_directory']:
  assert re.fullmatch(r'[A-Za-z0-9_-]{1,100}',c[k]);print(c[k])
-print('port/xnu/out/private-windows-rt-prebackup-run'+str(int(transaction[len('combined-run'):])+1)+'/manifest.json')
+capture='port/xnu/out/private-windows-rt-prebackup-run'+str(int(transaction[len('combined-run'):])+1)
+if c.get('baseline_reject_resume'):
+ assert c['schema']=='GPU375_COMBINED_RUN222_MAIN_SEAL_V1'
+ capture+='-resume223'
+assert c['capture_output']==capture
+print(capture+'/manifest.json')
 CONFIG
 )
 [ "${#cfg[@]}" = 4 ]
