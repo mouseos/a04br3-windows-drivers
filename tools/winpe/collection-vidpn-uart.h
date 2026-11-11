@@ -67,12 +67,13 @@ static void collection_vidpn_uart_snapshot(void)
  done:
  if(storage)HeapFree(GetProcessHeap(),0,storage);if(key)RegCloseKey(key);
  if(uart_quarantined&&!transport.error)transport.error=ERROR_IO_INCOMPLETE;
- /* Registry absence/shape/unknown epoch is diagnostic evidence, not a new
-  * client error. Transport/cancel/deadline failures block collection ready. */
- if(transport.error)collection_latch_io(2,transport.error);
+ /* Snapshot failure is evidence unavailability, not failed client/storage
+  * completion. Only unresolved UART ownership blocks the collection I/O gate;
+  * the existing stop_event/proof.cancelled independently rejects cancellation. */
+ if(uart_quarantined)collection_latch_io(2,ERROR_IO_INCOMPLETE);
  /* Local log only: never submit an extra UART operation after stop/deadline.
   * Original result/e and client cleanup results remain untouched. */
- {char line[40],*at=line;DWORD n;*at++='P';*at++='B';*at++=' ';at=hex(at,0);*at++=' ';at=hex(at,0x3de);*at++=' ';at=hex(at,result);*at++='\n';
-  if(logfile==INVALID_HANDLE_VALUE||!WriteFile(logfile,line,(DWORD)(at-line),&n,NULL)||n!=(DWORD)(at-line)||!FlushFileBuffers(logfile))log_error=ERROR_WRITE_FAULT;}
+ {DWORD event;for(event=0x3dd;event<=0x3de;event++){char line[40],*at=line;DWORD n;*at++='P';*at++='B';*at++=' ';at=hex(at,0);*at++=' ';at=hex(at,event);*at++=' ';at=hex(at,event==0x3dd?transport.error:result);*at++='\n';
+  if(logfile==INVALID_HANDLE_VALUE||!WriteFile(logfile,line,(DWORD)(at-line),&n,NULL)||n!=(DWORD)(at-line)||!FlushFileBuffers(logfile))log_error=ERROR_WRITE_FAULT;}}
 }
 #endif

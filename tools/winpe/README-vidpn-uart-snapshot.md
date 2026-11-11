@@ -89,8 +89,9 @@ recipeは新header2件を含むsourceclosureと実macro3個をmanifestに結合�
 全体deadline30秒は開始時一度だけ設定。各submit前に4秒以上の残予算を必須にする。
 既busy2秒＋最後のpending/cancel約1.25秒＋success150msを保守的に収める。
 OS scheduling・同期registry APIのhard realtime保証ではなく、API境界で期限を再確認する。
-結果はservice.logのPB3deへlocal-onlyで保存し、期限後の追加UART submitを避ける。
-transport/cancel/deadline errorは独立I/O latchへ渡し、元diagnostic result/eを変えない。
+結果enumはservice.logのPB3de、transportの実errorはPB3ddへlocal-onlyで保存し、期限後の追加UART submitを避ける。
+MISSING/SHAPE/CHANGED/未完了や既知の送信失敗・期限切れは診断取得不可であり、再起動条件にはしない。
+元diagnostic result/eを変えず、storage/log失敗・cancel・uart_quarantined未収束IRPだけを既gateで拒否する。
 terminal recordで後からquarantineした場合もproof gateがreadyを拒否する。
 
 bindingは既PB run/PIDだけ。既installed_sysの実file guardとselected metadataがともに0の場合だけ
