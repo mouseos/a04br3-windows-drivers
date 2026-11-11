@@ -1,5 +1,15 @@
 # TAB-A04-BR3 Windows ドライバ
 
+## 実runtime379の公開source build入口
+
+`work/public-runtime379-source-build` は実runtime正本 `2f210c9f` のGDI376/377・wire378・trace379を
+通常buildのsource closureへ結合したbranch。旧controller6687とはGPU sourceが異なる。
+[手順・検証範囲・正式pairとの境界](tools/ci/README-ge8300-source-build.md)を参照。
+通常構成には `-EnableCandidate -UnifiedDisplay` が必須。
+source gate成功とWindowsでの全compile/link、署名package byte再現、実機成功は区別する。
+
+以下の362説明は当時の履歴。現在のsource対象と検証範囲は上記を優先する。
+
 ## 統合描画候補362と現在の入口
 
 現在の公開作業branchは`work/ge8300-unified362`。

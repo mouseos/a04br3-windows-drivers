@@ -1,3 +1,48 @@
+# 実runtime379の公開source build
+
+対象branchは `work/public-runtime379-source-build`。実runtime正本 `2f210c9f` を基点に、
+GDI376/377、owner4 wire378 (`dee0b733`)、VidPn trace379 (`b9fb9157`) の正確な
+source/hashと通常buildのorigin/mapを結合した。旧controller6687のsource gate成功は代用しない。
+GPU runtime本体は2fと同byte。評価clientだけは `bdc6e061` のsettle sourceへ明示更新している。
+
+```powershell
+git clone --depth 1 --single-branch --branch work/public-runtime379-source-build https://github.com/mouseos/a04br3-windows-drivers.git
+Set-Location a04br3-windows-drivers
+./tools/ci/build-ge8300-from-source.ps1 -EnableCandidate -UnifiedDisplay
+```
+
+**379構成には `-UnifiedDisplay` が必須。** native/KMD/UMD/linkへ既存defineを一貫して渡し、
+既bridge CXX flagsでtraceをcompileする。trace用の追加define、SCM用UART macroは不要。
+省略時のrender-only旧経路を379構成として認定しない。
+
+通常cold入口はprivate signed package・旧obj/lib・hiveを必須入力にしない。
+正規の既存WDK8.1、LLVM/Python、ARM32 MSVC/UCRT付きSDKは必要。SDKをinstall/rebuildしない。
+公開sourceからnative67TU、KMD/BDD/transport、UMD/client、PCO375TUを生成する。
+固定copy USCは公開JSONからheaderへ生成する。firmware包装・INF/CAT署名・実機操作は範囲外。
+kernelの実379 toolchainへ合わせる場合は `-KernelVcToolsDirectory` に既存MSVC14.29を指定する。
+PCO側VC/UCRT/APIとは分離し、実cl/link hashを既guardで照合する。
+
+既PCO cacheの再利用は任意。`-VerifiedCompilerDirectory` と
+`-ExpectedCompilerCacheManifestSha256` を明示し、全source/include/flags/tools/APIを照合する。
+adapter-derived cacheにはさらに既 `-AllowAdapterDerivedCompilerCache` と厳密receiptが必要。
+不一致を理由に自動で375TUを再構築しない。native/KMD/UMDの旧object混在は通常入口では許さない。
+今回のorigin修正でPCO source plan/605fileは変えていないため、新375TU/SDK buildの根拠はない。
+
+出力は未署名render SYS、transport SYS、UMDと標準clients。新たに
+`mt8167-dxgi-present356.exe` をbdc6 sourceから通常compile/linkし、manifestにhashを残す。
+これは評価clientのsource buildであり、run232の正式pairを再現したという主張ではない。
+30cf launcherには署名済evaluatorの正確なhash guardがあるため、正式launcher/署名package生成は別工程。
+既signed379のBuildID文字列・retained component出自と、現在のcompile source commitも混同しない。
+
+今回確認したのはsource byte一致、旧出自保持、通常recipe接続、verifierとsource-gate回帰試験。
+Windowsの通常full wrapperによる全compile/linkはこの修正版では未実行。
+source gateをcompile成功、既signed379とのbyte同一、実機成功へ昇格させない。
+既 `a04e2248` や `30cb20f7` のsource-build成果は存在するが、旧世代／一部再利用の実績として区別する。
+現2fに無条件流用できる証拠ではない。必要な次のbuild検証は、照合済PCO cacheと既toolchainを使った
+この通常入口のnative/KMD/UMD/client compile/linkであり、SDKやPCO本体の無目的な再構築ではない。
+
+以下は旧世代の手順・当時の検証状況を履歴として保持する。
+
 # 統合描画候補362のソースビルド
 
 `work/ge8300-unified362`では、公開入口に`-UnifiedDisplay`を追加した。
