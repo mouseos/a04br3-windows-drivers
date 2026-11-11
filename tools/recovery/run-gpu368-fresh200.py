@@ -44,12 +44,19 @@ def contract(name):
   runtime_output='port/gsi/logs/ios-feasibility/windows-rt-combined-run%d-runtime'%k['run'])
  return k
 
-def resume_paths(k):
+def resume_paths(k,capture=223):
  # One fixed retry namespace; the original run222 outputs/latch stay immutable.
  require(k.get('combined375') is True,'限定combined222 resumeのみ')
+ require(capture in (223,224),'固定223/224 resumeだけ')
  k=dict(k)
- for key in ('runtime_output','capture_output','diagnostics_output'):k[key]+='-resume223'
+ for key in ('runtime_output','capture_output','diagnostics_output'):k[key]+='-resume'+str(capture)
  return k
+
+def resume_capture(root,c):
+ ref=c['baseline_reject_resume'];p=rooted(root,ref['path']);require(sha(p)==ref['sha256'],'resume sidecar hash不一致')
+ side=read(p);number=side.get('resume_capture_number',223)
+ require((side['schema'],number) in (('GPU375_RUN222_REJECTED_REBIND223_V1',223),('GPU375_RUN222_JOURNAL_REJECTED_REBIND224_V1',224)),'未知sidecar/suffix拒否')
+ return number
 
 def rebind_module():
  sp=importlib.util.spec_from_file_location('rebind223',Path(__file__).with_name('combined222_rebind223.py'))
@@ -87,7 +94,7 @@ def validate_seal(root,path,digest,known_profile="run201",entrypoint=None):
  require(re.fullmatch('[0-9a-f]{64}',digest or '') and sha(path)==digest,'main seal SHA不一致')
  c=read(path)
  if c.get('baseline_reject_resume'):
-  require(known_profile=='run222-combined','他候補へのresume転用不可');k=resume_paths(k)
+  require(known_profile=='run222-combined','他候補へのresume転用不可');k=resume_paths(k,resume_capture(root,c))
  require(c['schema']==k['schema'] and c['status']=='validated-main-seal' and c['transaction']==k['transaction'],'確定main sealのみ')
  require(c['target_tools']=='port/gsi/logs/ios-feasibility/windows-rt-target-tools.sh' and c['reset_script']=='unixnu/UniXNU-a04br3/scripts/a04br3-reset.sh','既target/reset実装のみ')
  require(c['boot_written'] is False and c['gpt_written'] is False and c['hardware_success_claimed'] is False,'sealは実行前状態、GPT変更/成功主張は禁止')
@@ -295,16 +302,16 @@ def main(known_profile="run201",entrypoint=None,argv=None):
  ap=argparse.ArgumentParser();ap.add_argument('--resume-baseline-reject',action='store_true',help='固定223 rebind sidecar付きsealによる未arm拒否だけの1回resume');ap.add_argument('--workspace',type=Path,required=True);ap.add_argument('--seal',type=Path,required=True);ap.add_argument('--seal-sha256',required=True);ap.add_argument('--output',type=Path,required=True);ap.add_argument('--validate-only',action='store_true');ap.add_argument('--collect-only','--resume-collect',dest='collect_only',action='store_true',help='held terminalから回収のみ。install/診断を再実行しない');a=ap.parse_args(argv)
  root=a.workspace.resolve(strict=True);seal=rooted(root,a.seal);c,m=validate_seal(root,seal,a.seal_sha256,known_profile,entrypoint)
  require(bool(c.get('baseline_reject_resume'))==a.resume_baseline_reject,'resume sealは明示--resume-baseline-rejectのみ')
- live_c=c
+ live_c=c;resume_number=None
  if a.resume_baseline_reject:
-  k=resume_paths(k);side=rebind_module().validate(root,c['baseline_reject_resume'],c)
+  resume_number=resume_capture(root,c);k=resume_paths(k,resume_number);side=rebind_module().validate(root,c['baseline_reject_resume'],c)
   live_c=dict(c,fresh_manifest=side['fresh_manifest'],fresh_manifest_sha256=side['fresh_manifest_sha256'],recovery_boot_id=side['recovery_boot_id'])
  out=a.output.resolve();require(known_profile=='run201' or out==(root/k['runtime_output']).resolve(),'run203専用runtime出力必須')
  if a.validate_only and not a.collect_only:print('GPU%d_SEAL_VALIDATED_NO_DEVICE_OPERATION'%k['run']);return
  require(out.is_relative_to(root),'root内のログ出力必須')
  require(not (root/c['capture_output']).exists() and not (root/c['diagnostics_output']).exists(),'既存capture/diagnosticsを上書きしない')
  if (k.get('timing') or k.get('output371') or k.get('client373')) and not a.collect_only:stage_preflight(root,live_c,out,a.seal_sha256)
- latches=root/('port/gsi/logs/ios-feasibility/%s-run%d-executions'%(('gpu%d'%k.get('client_version',373)) if k.get('client373') else 'gpu371' if k.get('output371') else 'gpu369' if k.get('timing') else 'gpu368',k['run']));latch=latches/(k['transaction']+('-resume223' if a.resume_baseline_reject else '')+'.json')
+ latches=root/('port/gsi/logs/ios-feasibility/%s-run%d-executions'%(('gpu%d'%k.get('client_version',373)) if k.get('client373') else 'gpu371' if k.get('output371') else 'gpu369' if k.get('timing') else 'gpu368',k['run']));latch=latches/(k['transaction']+('-resume'+str(resume_number) if a.resume_baseline_reject else '')+'.json')
  if a.collect_only:
   require(out.is_dir(),'既存held runtime出力必須')
   held_out=out;st=verify_collection(out,c,a.seal_sha256,k,latch)

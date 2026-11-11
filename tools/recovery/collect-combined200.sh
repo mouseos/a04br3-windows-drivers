@@ -33,7 +33,12 @@ for k in ['service_name','data_directory','gpu_log_directory']:
 capture='port/xnu/out/private-windows-rt-prebackup-run'+str(int(transaction[len('combined-run'):])+1)
 if c.get('baseline_reject_resume'):
  assert c['schema']=='GPU375_COMBINED_RUN222_MAIN_SEAL_V1'
- capture+='-resume223'
+ import hashlib
+ ref=c['baseline_reject_resume'];sidepath=(r/ref['path']).resolve();assert sidepath.is_relative_to(r)
+ assert hashlib.sha256(sidepath.read_bytes()).hexdigest()==ref['sha256']
+ side=json.loads(sidepath.read_text());number=side.get('resume_capture_number',223)
+ assert (side['schema'],number) in [('GPU375_RUN222_REJECTED_REBIND223_V1',223),('GPU375_RUN222_JOURNAL_REJECTED_REBIND224_V1',224)]
+ capture+='-resume'+str(number)
 assert c['capture_output']==capture
 print(capture+'/manifest.json')
 CONFIG
