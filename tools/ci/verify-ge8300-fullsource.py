@@ -137,8 +137,25 @@ for marker in ['[string]$VerifiedNativeCompileCache','[string]$NativeCompileInpu
  if marker not in full_recipe:raise ValueError('Native admission/cold-default contract missing: '+marker)
 for path in cache_policy['files']:
  row=next((r for r in origins['files'] if r['path']==path),None)
+ if path=='tools/ci/build-ge8300-from-source.ps1' and origins.get('kernel_only_modules_integration'):
+  # The opt-in module filter preserves the accepted native-admission wrapper
+  # as a complete historical origin; do not relabel that implementation.
+  row=historical_row(row,{'source_commit':cache_policy['implementation_source_commit'],
+                          'sha256':'c54685fbf89a985866a79903106b25b7f328168d5dfe1f5c43518286ddb29305'}) if row else None
  if not row or row['source_commit']!=cache_policy['implementation_source_commit']:
   raise ValueError('Native cache host source origin missing: '+path)
+# Only the full source entry skips modules' duplicate prototype products.
+module_policy=origins.get('kernel_only_modules_integration',{})
+if module_policy.get('schema')!='kernel-only-modules-source-v1' or module_policy.get('default_enabled') is not False or module_policy.get('normal_entry_enabled') is not True or module_policy.get('kernel_archive_inputs_changed') is not False:
+ raise ValueError('KernelOnly explicit source policy missing')
+module_recipe=file('drivers/gpu/mt8167/wddm-render/build-wdk81.ps1').decode()
+for marker in ['[switch]$KernelOnly',"if($KernelOnly -and $ReuseDirectory){throw 'KernelOnly cannot use legacy ReuseDirectory'}",'if(!$KernelOnly){','kernel_only=$KernelOnly.IsPresent','compile_units=$compileUnits']:
+ if marker not in module_recipe:raise ValueError('KernelOnly default/reuse/manifest contract missing: '+marker)
+module_calls=[line for line in full_recipe.splitlines() if line.lstrip().startswith('& ') and 'build-wdk81.ps1' in line]
+if len(module_calls)!=1 or not module_calls[0].endswith(' -KernelOnly'):raise ValueError('Normal entry must request KernelOnly')
+for path in module_policy['files']:
+ row=next((r for r in origins['files'] if r['path']==path),None)
+ if not row or row['source_commit']!=module_policy['implementation_source_commit']:raise ValueError('KernelOnly source origin missing: '+path)
 # Independent kernel/PCO tool inputs; archive compiler outputs before driver work.
 for marker in ['[string]$KernelVcToolsDirectory,[switch]$ArchiveCompilerCache','$scKernelVc=$scVc','-MicrosoftArmCompiler $scKernelCl','-MicrosoftCrtInclude "$scKernelVc\\include"','697a8f41ff7fcb71e7c6625f5517ef6e2f8ea146d1e351e078317ff92da0839c','f8b2e9c5341419525f915b61b87d1bc8aa307adca6e1e022071175912e965938']:
  if marker not in full_recipe:raise ValueError('Kernel/PCO tool separation missing: '+marker)

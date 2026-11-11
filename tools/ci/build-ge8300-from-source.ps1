@@ -113,7 +113,7 @@ try{
  }else{
  & "$PSScriptRoot\build-ge8300-native-owner-core.ps1" -EnableCandidate -ExpectedSourceCommit $scCommit -OutputDirectory "$scOut\native" -WithMdlTarget -WithOwnerAllocation -WithFactory -UnifiedDisplay:$UnifiedDisplay -ShaderCodecArguments $scCodecFlags
  }
- & "$scRoot\drivers\gpu\mt8167\wddm-render\build-wdk81.ps1" -EnableCandidate -OutputDirectory "$scOut\modules" -MicrosoftArmCompiler $scKernelCl -MicrosoftArmCompilerSha256 (Get-FileHash $scKernelCl -Algorithm SHA256).Hash -MicrosoftCrtInclude "$scKernelVc\include" -MicrosoftUcrtInclude "$scKit10\Include\$WindowsKit10Version\ucrt" -UnifiedDisplay:$UnifiedDisplay
+ & "$scRoot\drivers\gpu\mt8167\wddm-render\build-wdk81.ps1" -EnableCandidate -OutputDirectory "$scOut\modules" -MicrosoftArmCompiler $scKernelCl -MicrosoftArmCompilerSha256 (Get-FileHash $scKernelCl -Algorithm SHA256).Hash -MicrosoftCrtInclude "$scKernelVc\include" -MicrosoftUcrtInclude "$scKit10\Include\$WindowsKit10Version\ucrt" -UnifiedDisplay:$UnifiedDisplay -KernelOnly
  & "$scRoot\drivers\gpu\mt8167\wddm-render\link-kmd-msvc-wdk81.ps1" -KernelLibrary "$scOut\modules\ge8300-kmd-clear.lib" -NativeLibrary "$scOut\native\ge8300-native-owner-core.lib" -OutputFile "$scOut\ge8300-render.sys" -MapFile "$scOut\ge8300-render.map" -MetadataFile "$scOut\kernel-link.json" -MicrosoftLinker $scKernelLink -UnifiedDisplay:$UnifiedDisplay
  if($UnifiedDisplay){
   # The transport's shared scanout calls the source-built DMA/MMU helpers.
