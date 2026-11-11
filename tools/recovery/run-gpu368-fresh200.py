@@ -326,7 +326,7 @@ def main(known_profile="run201",entrypoint=None,argv=None):
  if a.validate_only and not a.collect_only:print('GPU%d_SEAL_VALIDATED_NO_DEVICE_OPERATION'%k['run']);return
  require(out.is_relative_to(root),'root内のログ出力必須')
  require(not (root/c['capture_output']).exists() and not (root/c['diagnostics_output']).exists(),'既存capture/diagnosticsを上書きしない')
- if (k.get('output377') or k.get('timing') or k.get('output371') or k.get('client373')) and not a.collect_only:stage_preflight(root,live_c,out,a.seal_sha256)
+ if (k.get('output378') or k.get('output377') or k.get('timing') or k.get('output371') or k.get('client373')) and not a.collect_only:stage_preflight(root,live_c,out,a.seal_sha256)
  latches=root/('port/gsi/logs/ios-feasibility/%s-run%d-executions'%('gpu378' if k.get('output378') else 'gpu377' if k.get('output377') else ('gpu%d'%k.get('client_version',373)) if k.get('client373') else 'gpu371' if k.get('output371') else 'gpu369' if k.get('timing') else 'gpu368',k['run']));latch=latches/(k['transaction']+('-resume'+str(resume_number) if a.resume_baseline_reject else '')+'.json')
  if a.collect_only:
   require(out.is_dir(),'既存held runtime出力必須')
