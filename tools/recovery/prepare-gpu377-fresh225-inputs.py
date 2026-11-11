@@ -99,7 +99,7 @@ def load_map(path,root):
  refs={k:spec[k] for k in ('fresh','supplement','native','capture_contract','template_policy','actual_package_rows','GPU377_manifest','GPU377_handoff','boot_witness','mutable_baseline','globaldiag_manifest','globaldiag_import_proof')}
  for ref in refs.values():
   q=rooted(root,ref['path']);require(sha(q)==ref['sha256'],'実入力SHA')
- require(spec['supplement']==dict(path=ASSETS_PATH,sha256=ASSETS_SHA) and spec['mutable_baseline']==dict(path=str(Path(ASSETS_PATH).with_name('mutable-baseline.json')),sha256=MUTABLE_SHA),'実225 assets/mutableだけ。旧221流用禁止')
+ require(spec['supplement']==dict(path=ASSETS_PATH,sha256=ASSETS_SHA) and spec['mutable_baseline']==dict(path=Path(ASSETS_PATH).with_name('mutable-baseline.json').as_posix(),sha256=MUTABLE_SHA),'実225 assets/mutableだけ。旧221流用禁止')
  assets=read(rooted(root,ASSETS_PATH));require(len(assets['files'])==127 and assets['recovery_boot_id']==RECOVERY,'実225 assets127集合')
  fresh=read(rooted(root,FRESH_PATH));require(fresh['recovery_boot_id']==RECOVERY and len(fresh['files'])==42,'実225/Recovery/42filesのみ')
  spec['_input_ref']=dict(path=path.relative_to(root).as_posix(),sha256=sha(path))
