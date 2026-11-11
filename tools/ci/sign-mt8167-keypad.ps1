@@ -12,7 +12,8 @@ if(Test-Path $OutputDirectory){throw 'Use dedicated fresh output'}
 New-Item -ItemType Directory $OutputDirectory|Out-Null
 Expand-Archive $InputZip $OutputDirectory
 $m=Get-Content "$OutputDirectory\unsigned-manifest.json" -Raw|ConvertFrom-Json
-if($m.target -cne 'MT6392\Buttons' -or $m.service -cne 'Mt6392Keys' -or $m.version -cne '0.0.1.2' -or $m.source_dirty){throw 'Candidate identity mismatch'}
+if($m.target -cne 'MT6392\Buttons' -or $m.service -cne 'Mt6392Keys' -or $m.version -cnotin @('0.0.1.2','0.0.1.3') -or $m.source_dirty){throw 'Candidate identity mismatch'}
+if($m.version -ceq '0.0.1.3' -and ($m.schema -cne 'mt8167-keypad13-incremental-v1' -or @($m.compiled).Count -ne 1 -or @($m.reused).Count -ne 2 -or $m.source_commit -cnotmatch '^[0-9a-f]{40}$')){throw 'Incremental 1.3 provenance mismatch'}
 foreach($f in $m.unsigned_outputs){
  if($f.path -cnotin @('package/mt8167-keypad.sys','package/mt8167-keypad.inf')){throw 'Unexpected package input'}
  if((Get-FileHash (Join-Path $OutputDirectory $f.path) -Algorithm SHA256).Hash.ToLowerInvariant() -cne $f.sha256){throw 'Unsigned package mismatch'}

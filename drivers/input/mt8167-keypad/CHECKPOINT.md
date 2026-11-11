@@ -72,3 +72,7 @@ B06/07は元のcount==1検証を通過した場合だけ記録。count不正時�
 | button_pipeline.obj | f766eee193c6ba31d9e79b87be476ed0c78c1078bf98b9ff89c54275a416afeb |
 
 現回収のsigned ZIP/sign-input ZIPはpackageのみで2objectを含まない。root内の該当objectも未確認。保持objectと元include closureを確保するまでは増分1TU実行を開始せず、無断で3TU再compileへ切り替えない。候補version/date/INF pinと実行時期はmain調整後に確定する。このsourceではINFを変更せず、候補のbuild/sign/実機適用は未実施。
+
+## 1.3候補の正式増分入口
+
+保持objectはgitignore対象の旧build内で発見し、上記2SHAと一致確認した。先の未確認記録は探索時点の状態として残す。`tools/ci/build-mt8167-keypad13-incremental.py --baseline RETAINED12 --cache RETAINED_WDK --output NEW_OUT` は実1.2manifest固定SHA、2object/source/header、6libを照合し1TU compile/link1回のみ行う。Windows LLVMの実versionと全再結合headerのSHAを記録し、旧Linux compiler/header closureと同一とは主張しない。Windowsのcase-insensitive pathで旧VFS overlayを置換する。既署名入口は1.2を維持して明示schemaの1.3も受理する。INFは日付11/10/2026・版0.0.1.3で識別し、名前/HWID/service/KMDF/LowerFilterは不変。
