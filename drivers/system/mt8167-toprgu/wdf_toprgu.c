@@ -11,6 +11,15 @@
 #include <wdmsec.h>
 #include "uart_screen.h"
 #endif
+#ifndef A04_TOPRGU_RX_OBSERVE
+#define A04_TOPRGU_RX_OBSERVE 0
+#endif
+#if A04_TOPRGU_RX_OBSERVE != 0 && A04_TOPRGU_RX_OBSERVE != 1
+#error invalid bounded RX observation option
+#endif
+#if A04_TOPRGU_RX_OBSERVE
+#include "rx_observe.h"
+#endif
 #ifndef A04_TOPRGU_UART_SCREEN
 #define A04_TOPRGU_UART_SCREEN 0
 #endif
@@ -55,6 +64,9 @@ typedef struct {
     BOOLEAN deadlineReported;
     ULONG backupCalls;
     struct mt8167_reset_parser parser;
+#if A04_TOPRGU_RX_OBSERVE
+    struct a04_rx_observe rx;
+#endif
 } TOPRGU_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(TOPRGU_CONTEXT, ToprguGetContext)
 EVT_WDF_DRIVER_DEVICE_ADD ToprguAdd;
@@ -80,6 +92,10 @@ static void Trace(TOPRGU_CONTEXT *c, const char *s)
     /* Do not splice watchdog trace text into a pending screen packet. */
     if (c->screenLen) return;
 #endif
+#if A04_TOPRGU_RX_OBSERVE
+    /* Keep one observation line intact; screen packets already have priority. */
+    if (c->rx.length) return;
+#endif
     while (*s) {
         for (budget=100000; budget; --budget)
             if (!(READ_REGISTER_ULONG(c->uart + 3) & 0x80u) &&
@@ -104,6 +120,24 @@ static void TraceTimer(TOPRGU_CONTEXT *c, ULONG ticks, ULONGLONG elapsed)
     }
     Trace(c,message);
 }
+
+#if A04_TOPRGU_RX_OBSERVE
+static void ToprguRxObserve(TOPRGU_CONTEXT *c, ULONGLONG now)
+{
+    int screen_idle=1;
+#if A04_TOPRGU_UART_SCREEN
+    screen_idle=!c->screenLen;
+#endif
+    a04_rx_queue(&c->rx,now,c->parser.matched,screen_idle);
+    /* Reuse the LAST LCR/LSR already sampled by RX. No additional read,
+     * including no clear-on-read LSR or RBR access for diagnostics. One byte
+     * per poll, only when that sample says THRE and DLAB is clear. */
+    if (screen_idle && c->rx.length && a04_rx_can_tx(&c->rx)) {
+        WRITE_REGISTER_ULONG(c->uart,(UCHAR)c->rx.line[c->rx.position]);
+        a04_rx_sent(&c->rx);
+    }
+}
+#endif
 
 NTSTATUS ToprguPrepare(WDFDEVICE device, WDFCMRESLIST raw, WDFCMRESLIST translated)
 {
@@ -154,6 +188,9 @@ NTSTATUS ToprguD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
     /* CPU1 still owns TOPRGU and UART until it enters Windows. Do not
      * touch either here, even when D0 arrives before AP startup. */
     c->parser.matched=0; c->ticks=0;
+#if A04_TOPRGU_RX_OBSERVE
+    a04_rx_d0(&c->rx);
+#endif
     c->started=KeQueryInterruptTime(); c->deadlineReported=FALSE;
     c->backupCalls=0;
     InterlockedExchange(&c->ownedFour,0);
@@ -206,6 +243,9 @@ static VOID ToprguPoll(TOPRGU_CONTEXT *c, BOOLEAN backup)
     ULONGLONG elapsed;
     if (InterlockedCompareExchange(&c->busy,1,0) != 0) return;
     if (InterlockedCompareExchange(&c->running,1,1) && c->wdt && c->uart) {
+#if A04_TOPRGU_RX_OBSERVE
+        a04_rx_begin(&c->rx);
+#endif
         four=KeQueryActiveProcessorCount(NULL) == 4;
         if (!four) {
             /* A previous CPU1 witness cannot authorize a later topology. */
@@ -265,13 +305,29 @@ static VOID ToprguPoll(TOPRGU_CONTEXT *c, BOOLEAN backup)
         /* CPU1 owns UART until all four OS processors are online. */
         if (four) {
             for (i=0; i<16; ++i) {
+#if A04_TOPRGU_RX_OBSERVE
+                ULONG lcr=READ_REGISTER_ULONG(c->uart+3),lsr,before;
+                UCHAR byte;int hit;
+                a04_rx_lcr(&c->rx,lcr);
+                if (lcr&0x80u) break;
+                lsr=READ_REGISTER_ULONG(c->uart+5);a04_rx_lsr(&c->rx,lsr);
+                if (!(lsr&1u)) break;
+                byte=(UCHAR)READ_REGISTER_ULONG(c->uart);before=c->parser.matched;
+                hit=mt8167_reset_consume(&c->parser,byte);
+                a04_rx_consumed(&c->rx,before,c->parser.matched,hit);
+                if (hit) { WRITE_REGISTER_ULONG(c->wdt+5,0x1209u);break; }
+#else
                 if ((READ_REGISTER_ULONG(c->uart + 3) & 0x80u) ||
                     !(READ_REGISTER_ULONG(c->uart + 5) & 1u)) break;
                 if (mt8167_reset_consume(&c->parser,(UCHAR)READ_REGISTER_ULONG(c->uart))) {
                     WRITE_REGISTER_ULONG(c->wdt + 5,0x1209u);
                     break;
                 }
+#endif
             }
+#if A04_TOPRGU_RX_OBSERVE
+            ToprguRxObserve(c,c->started+elapsed);
+#endif
         }
     }
 done:
@@ -298,6 +354,9 @@ NTSTATUS ToprguD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
     if (!(READ_REGISTER_ULONG(c->wdt) & 1u)) return STATUS_DEVICE_NOT_READY;
     WRITE_REGISTER_ULONG(c->wdt + 2,0x1971u);
     c->parser.matched=0; c->ticks=0;
+#if A04_TOPRGU_RX_OBSERVE
+    a04_rx_d0(&c->rx);
+#endif
     c->started=KeQueryInterruptTime(); c->deadlineReported=FALSE;
     c->backupCalls=0;
     InterlockedExchange(&c->running,1);
@@ -346,6 +405,9 @@ static VOID ToprguPoll(TOPRGU_CONTEXT *c, BOOLEAN backup)
     ULONGLONG elapsed;
     if (InterlockedCompareExchange(&c->busy,1,0) != 0) return;
     if (InterlockedCompareExchange(&c->running,1,1) && c->wdt && c->uart) {
+#if A04_TOPRGU_RX_OBSERVE
+        a04_rx_begin(&c->rx);
+#endif
         if (backup && ++c->backupCalls <= 3)
             Trace(c,"A04RGU backup DPC active\n");
         ++c->ticks;
@@ -373,13 +435,29 @@ static VOID ToprguPoll(TOPRGU_CONTEXT *c, BOOLEAN backup)
         if (four) {
             InterlockedExchange(&c->ownedFour,1);
             for (i=0; i<16; ++i) {
+#if A04_TOPRGU_RX_OBSERVE
+                ULONG lcr=READ_REGISTER_ULONG(c->uart+3),lsr,before;
+                UCHAR byte;int hit;
+                a04_rx_lcr(&c->rx,lcr);
+                if (lcr&0x80u) break;
+                lsr=READ_REGISTER_ULONG(c->uart+5);a04_rx_lsr(&c->rx,lsr);
+                if (!(lsr&1u)) break;
+                byte=(UCHAR)READ_REGISTER_ULONG(c->uart);before=c->parser.matched;
+                hit=mt8167_reset_consume(&c->parser,byte);
+                a04_rx_consumed(&c->rx,before,c->parser.matched,hit);
+                if (hit) { WRITE_REGISTER_ULONG(c->wdt+5,0x1209u);break; }
+#else
                 if ((READ_REGISTER_ULONG(c->uart + 3) & 0x80u) ||
                     !(READ_REGISTER_ULONG(c->uart + 5) & 1u)) break;
                 if (mt8167_reset_consume(&c->parser,(UCHAR)READ_REGISTER_ULONG(c->uart))) {
                     WRITE_REGISTER_ULONG(c->wdt + 5,0x1209u);
                     break;
                 }
+#endif
             }
+#if A04_TOPRGU_RX_OBSERVE
+            ToprguRxObserve(c,c->started+elapsed);
+#endif
         }
     }
     InterlockedExchange(&c->busy,0);
@@ -427,6 +505,11 @@ VOID ToprguScreenIoctl(WDFQUEUE queue,WDFREQUEST request,size_t out,size_t in,UL
     if (!InterlockedCompareExchange(&c->running,0,0) || !InterlockedCompareExchange(&c->ownedFour,0,0) || KeQueryActiveProcessorCount(NULL)!=4)
         status=STATUS_DEVICE_NOT_READY;
     else if(c->screenLen) status=STATUS_DEVICE_BUSY;
+#if A04_TOPRGU_RX_OBSERVE
+    /* Do not insert a new screen packet midway through an observation line.
+     * Same existing BUSY contract; diagnostic-only TX owns at most one line. */
+    else if(c->rx.length) status=STATUS_DEVICE_BUSY;
+#endif
     else { RtlCopyMemory(c->screenBuf,data,in);c->screenPos=0;c->screenLen=(ULONG)in; WdfTimerStart(c->screenTimer,WDF_REL_TIMEOUT_IN_MS(1));status=STATUS_SUCCESS; }
     InterlockedExchange(&c->busy,0);
 finish:
