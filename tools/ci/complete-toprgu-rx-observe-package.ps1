@@ -15,7 +15,7 @@ $manifest=Join-Path $CompiledOutput 'manifest.json'
 if((Hash $manifest) -cne $ExpectedBuildManifestSha256){throw 'Original build manifest SHA mismatch'}
 $m=Get-Content $manifest -Raw|ConvertFrom-Json
 if($m.schema -cne 'TOPRGU_RX_OBSERVE_BUILD_SIGN_V1' -or $m.success -ne $false -or $m.failure -cne 'Stage failed; retain completed artifacts: catalog12' -or $m.runtime_source_commit -cne '797121bc8ba5a2c31e09ed3372afa585600d3b4b' -or !$m.non_signature_payload.unchanged){throw 'Only division-free RX12 catalog failure accepted'}
-if(@($m.steps).Count -ne 3 -or $m.steps[0].name -cne 'generic-build' -or $m.steps[0].exit_code -ne 0 -or $m.steps[1].name -cne 'sign-sys' -or $m.steps[1].exit_code -ne 0 -or $m.steps[2].name -cne 'catalog12' -or $m.steps[2].exit_code -ne 1){throw 'Completed compile and SYS signing evidence required'}
+if(@($m.steps).Count -ne 3 -or $m.steps[0].name -cne 'generic-build' -or $m.steps[0].exit_code -ne 0 -or $m.steps[1].name -cne 'sign-sys' -or $m.steps[1].exit_code -ne 0 -or $m.steps[2].name -cne 'catalog12' -or $m.steps[2].exit_code -ne -2){throw 'Completed compile and SYS signing evidence required'}
 $thumb=$CertificateThumbprint.ToUpperInvariant()
 if($m.certificate.thumbprint -cne $thumb -or $m.certificate.store -cne 'CurrentUser'){throw 'Original CurrentUser signing identity required'}
 foreach($item in @($m.actual_dependencies)+@($m.link_libraries)+@($m.tools.PSObject.Properties|ForEach-Object Value)){
