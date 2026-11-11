@@ -24,10 +24,10 @@ class Summary(unittest.TestCase):
    with self.assertRaises(ValueError):m.summarize_receipt(d)
 class KnownWireBuilds(unittest.TestCase):
  def test_identical_wire_size_does_not_admit_unknown_build_semantics(self):
-  for build in (1029,1030,1031):
+  for build in (1029,1030,1031,1032):
    raw=record(3,102,101,[(100,2,4,1,2,0)],build)
    self.assertEqual(len(raw),1624)
-   self.assertEqual(m.decode(raw)['connection_trace'],build in (1029,1030))
+   self.assertEqual(m.decode(raw)['connection_trace'],build in (1029,1030,1031))
   raw=record(3,102,101,build=1030);m.HEADER.pack_into(raw,0,0x50433441,2,len(raw),3,102,101,0,0,0,0,0,0,0,0,0,0,0,1030)
   with self.assertRaises(ValueError):m.decode(raw)
  def test_1030_summary_binds_only_matching_initialize_generation_and_build(self):

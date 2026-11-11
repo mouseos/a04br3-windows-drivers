@@ -10,10 +10,10 @@ HEADER = struct.Struct('<4I4Q10I')
 EVENT = struct.Struct('<6I')
 CAPACITY = 64
 # Identical checkpoint_wire.h schema1/1624B in c1198155 (1029) and
-# 4bcae1b6 (1030); unknown builds do not inherit connection semantics.
-CONNECTION_TRACE_BUILDS = (1029, 1030)
+# 4bcae1b6 (1030), 6aa39105 (1031); unknown builds do not inherit semantics.
+CONNECTION_TRACE_BUILDS = (1029, 1030, 1031)
 STAGES = {
-    100:'CONNECT_CONTEXT',101:'CONNECT_OID',102:'CONNECT_PRIOR_REJECTION',103:'CONNECT_GATE',104:'CONNECT_POLICY',105:'CONNECT_CANDIDATE',106:'CONNECT_WAKE',107:'CONNECT_SELECT',108:'CONNECT_CHANNEL',109:'CONNECT_AUTH_TX',110:'CONNECT_AUTH_RX',111:'CONNECT_ASSOC_TX',112:'CONNECT_ASSOC_RX',113:'CONNECT_STA',114:'CONNECT_WAIT',115:'CONNECT_OID_COMPLETE',116:'CONNECT_ASSOC_COMPLETE',117:'CONNECT_CONNECT_COMPLETE',118:'CONNECT_RX_DECODE',119:'CONNECT_EARLY_RX',120:'CONNECT_EAPOL_RX',121:'CONNECT_EAPOL_TX',122:'CONNECT_TX_DONE',123:'CONNECT_KEY_OID',124:'CONNECT_KEY_CID7',125:'CONNECT_KEY_EVENT',126:'CONNECT_PORT',127:'CONNECT_END',
+    100:'CONNECT_CONTEXT',101:'CONNECT_OID',102:'CONNECT_PRIOR_REJECTION',103:'CONNECT_GATE',104:'CONNECT_POLICY',105:'CONNECT_CANDIDATE',106:'CONNECT_WAKE',107:'CONNECT_SELECT',108:'CONNECT_CHANNEL',109:'CONNECT_AUTH_TX',110:'CONNECT_AUTH_RX',111:'CONNECT_ASSOC_TX',112:'CONNECT_ASSOC_RX',113:'CONNECT_STA',114:'CONNECT_WAIT',115:'CONNECT_OID_COMPLETE',116:'CONNECT_ASSOC_COMPLETE',117:'CONNECT_CONNECT_COMPLETE',118:'CONNECT_RX_DECODE',119:'CONNECT_EARLY_RX',120:'CONNECT_EAPOL_RX',121:'CONNECT_EAPOL_TX',122:'CONNECT_TX_DONE',123:'CONNECT_KEY_OID',124:'CONNECT_KEY_CID7',125:'CONNECT_KEY_EVENT',126:'CONNECT_PORT',127:'CONNECT_END',128:'RESET_BOUNDARY',
     89:'RX_RESULT',90:'RX_DESCRIPTOR',91:'AP_REJECT',92:'AP_REJECT_DESCRIPTOR',88:'LAST_OID',80:'RUNTIME_STATE',81:'HOST_STATE',82:'CREDITS',83:'WHISR',84:'WASR',85:'LAST_COMMAND',86:'SCAN_STATE',87:'RUNTIME_RESULT',
     1: 'REGISTER_DRIVER', 2: 'INIT_ENTRY', 3: 'CONTEXT_ALLOCATION',
     4: 'REGISTRATION_ATTRIBUTES', 5: 'RX_POOL', 6: 'RX_SLOTS',
@@ -73,6 +73,18 @@ def decode(data, after_generation=None):
                 tx_done_observed=bool(mask & 4), completed=(receipt & 255) == 5)
             if stage == 68:
                 events[-1]['last_manufacture_cid'] = detail & 255
+        if stage == 128:
+            boundary = detail & 255
+            if phase != 2 or kind != 3 or not observed or boundary not in (1, 2, 3, 4) or detail & ~0x1fff:
+                raise ValueError('Unknown RESET boundary event')
+            broker = bool(detail & (1 << 12))
+            events[-1]['reset_boundary'] = dict(
+                boundary={1: 'radio_reset', 2: 'default_mib_profile', 3: 'final_idle', 4: 'wlan_only_reset'}[boundary],
+                backend_return=raw if raw < 2**31 else raw - 2**32,
+                entry_default_mib=bool(detail & (1 << 8)), entry_power=bool(detail & (1 << 9)),
+                entry_broker_compiled=broker,
+                entry_hci_open=bool(detail & (1 << 10)) if broker else None,
+                entry_sco_held=bool(detail & (1 << 11)) if broker else None)
     return dict(schema=version, driver_build=build, channel=('DriverEntry', 'Initialize', 'Scan', 'RuntimeFailure')[channel],
                 generation=generation, parent_generation=parent, interrupt_time=ticks,
                 system_time=system_time,
@@ -120,6 +132,7 @@ def summarize_receipt(directory):
                 selection=selection, selection_1029=(selection.get('fields', {}).get('DriverVersion', {}).get('value', '').endswith('.1029')
                     if selection.get('selected_present') else None),
                 selection_1030=(selection.get('fields', {}).get('DriverVersion', {}).get('value', '').endswith('.1030') if selection.get('selected_present') else None),
+                selection_1031=(selection.get('fields', {}).get('DriverVersion', {}).get('value', '').endswith('.1031') if selection.get('selected_present') else None),
                 connection_trace_driver_build=runtime.get('driver_build') if runtime_bound else None,
                 records=records, initialize_parent_bound=init_bound,
                 connection_parent_bound=runtime_bound,
@@ -134,7 +147,7 @@ def summarize_receipt(directory):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('record', nargs='?', type=Path, help='Raw REG_BINARY exported by the main operator')
-    parser.add_argument('--receipt-directory', type=Path, help='Existing clean native extraction directory; summarize selection and bound 1029/1030 trace')
+    parser.add_argument('--receipt-directory', type=Path, help='Existing clean native extraction directory; summarize selection and bound 1029/1030/1031 trace')
     parser.add_argument('--after-generation', type=int, help='Pre-test native-replayed baseline counter')
     args = parser.parse_args()
     if args.after_generation is not None and not 0 <= args.after_generation < 2**64:

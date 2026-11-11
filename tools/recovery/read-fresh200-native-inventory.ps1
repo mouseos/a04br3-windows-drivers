@@ -4,7 +4,7 @@ param([Parameter(Mandatory=$true)][string]$WorkspaceRoot,
  [Parameter(Mandatory=$true)][string]$SourceDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,
  [Parameter(Mandatory=$true)][string]$PolicyPath,[Parameter(Mandatory=$true)][string]$ExpectedPolicyFileSha256,
  [string]$ExpectedPolicySha256,[ValidatePattern('^MT8167CombinedFollowup[0-9]{3}$')][string]$NewServiceName='MT8167CombinedFollowup200',
- [string[]]$AdditionalServiceNames=@(),[int]$TimingCaptureNumber=0,[switch]$IncludeWifiCheckpoint,[switch]$IncludeGraphicsTopologyCache,[switch]$IncludeDisplayDeviceBindings,[switch]$IncludeBatteryFirstFailure)
+ [string[]]$AdditionalServiceNames=@(),[int]$TimingCaptureNumber=0,[ValidateSet('resume224')][string]$CaptureSuffix,[switch]$IncludeWifiCheckpoint,[switch]$IncludeGraphicsTopologyCache,[switch]$IncludeDisplayDeviceBindings,[switch]$IncludeBatteryFirstFailure)
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 function Hash($p){(Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant()}
 $w=[IO.Path]::GetFullPath($WorkspaceRoot).TrimEnd('\')
@@ -13,6 +13,7 @@ foreach($item in @($Manifest,$SourceDirectory,$OutputDirectory,$PolicyPath)){
 }
 if(!$ExpectedPolicySha256){$ExpectedPolicySha256=$ExpectedPolicyFileSha256}
 foreach($h in @($ExpectedManifestSha256,$ExpectedPolicyFileSha256,$ExpectedPolicySha256)){if($h -cnotmatch '^[0-9a-f]{64}$'){throw 'Explicit SHA256 required'}}
+if($CaptureSuffix -and ($CaptureSuffix -cne 'resume224' -or $TimingCaptureNumber -ne 223)){throw 'CaptureSuffix resume224 requires TimingCaptureNumber223'}
 if($TimingCaptureNumber){
  if($TimingCaptureNumber -lt 204 -or $TimingCaptureNumber -gt 999){throw 'Bounded timing capture204..999 required'}
  if($PSBoundParameters.ContainsKey('NewServiceName') -and $NewServiceName -cne "MT8167CombinedFollowup$TimingCaptureNumber"){throw 'New service/capture mismatch'}
@@ -20,7 +21,9 @@ if($TimingCaptureNumber){
  if((Hash $Manifest) -cne $ExpectedManifestSha256 -or (Hash $PolicyPath) -cne $ExpectedPolicyFileSha256){throw 'Explicit actual fresh/template SHA mismatch'}
  $m=Get-Content -LiteralPath $Manifest -Raw|ConvertFrom-Json
  $p=Get-Content -LiteralPath $PolicyPath -Raw|ConvertFrom-Json
- if($Manifest.Replace('\','/') -cnotmatch ("/private-windows-rt-prebackup-run"+$TimingCaptureNumber+"/manifest.json$")){throw 'Actual capture path mismatch'}
+ $captureLeaf='private-windows-rt-prebackup-run'+$TimingCaptureNumber+$(if($CaptureSuffix){'-'+$CaptureSuffix}else{''})
+ $manifestFull=[IO.Path]::GetFullPath($Manifest).Replace('\','/')
+ if($manifestFull -cnotmatch ([regex]::Escape('/'+$captureLeaf+'/manifest.json')+'$')){throw 'Actual capture path/suffix mismatch'}
  if($m.status -cne 'captured-unmounted' -or $m.read_only -ne $true -or $m.unmounted -ne $true -or $m.errors.Count -or !$m.recovery_boot_id){throw 'Completed real fresh capture required'}
  if(!$p.service_preservation -or !$p.captured_registry_values -or @($p.service_preservation.PSObject.Properties).Count -gt 128 -or @($p.captured_registry_values).Count -gt 2048){throw 'Bounded actual template names required'}
 }else{
@@ -84,6 +87,8 @@ function Keypad-WdfRuntimeObservation($Root) {
  }finally{$k.Dispose()}
 }
 $r=[ordered]@{schema=$(if($TimingCaptureNumber){"GPU369_FRESH$($TimingCaptureNumber)_READONLY_NATIVE_RECEIPT_V1"}else{'GPU368_FRESH200_READONLY_NATIVE_RECEIPT_V1'});scope='Actual private clone inventory; no previous snapshot comparison and no hardware execution';capture_number=$(if($TimingCaptureNumber){$TimingCaptureNumber}else{200});source_manifest_sha256=$ExpectedManifestSha256;recovery_boot_id=$m.recovery_boot_id;template_policy_sha256=$ExpectedPolicyFileSha256;policy_sha256=$ExpectedPolicySha256;policy_sha256_is_reference_only=$true;source_files=$pins;new_service_name=$NewServiceName;nodes=[ordered]@{};old_services=[ordered]@{};captured_named_values=[ordered]@{};missing_named_values=@();actual_driver_services=[ordered]@{};full_service_preservation_equal=$null;preservation_comparison_performed=$false;full_service_capture_complete=$false;combined=[ordered]@{};errors=@();load_rc=-1;unload_rc=-1;privilege_restore_error=-1;originals_unchanged=$false;physical_boot_read_performed=$false;registry_write_requested=$false;clone_replay_may_modify_clone=$true;hardware_verified=$false}
+$r.source_manifest_path=[IO.Path]::GetFullPath($Manifest).Substring($w.Length+1).Replace('\','/')
+$r.capture_directory_suffix=$CaptureSuffix
 $r.captured_driver_files=$capturedDrivers
 $r.source_recipe_files=[ordered]@{}
 foreach($file in @('read-fresh200-native-inventory.ps1','ReadonlyInventory200HiveNative.cs','prepare-offline-system-service.ps1','read-post-ownership-policy360.ps1','read-gpu-native-checkpoint.ps1','read-ge8300-start-gap359.ps1')){$r.source_recipe_files[$file]=Hash (Join-Path $PSScriptRoot $file)}
