@@ -538,3 +538,5 @@ pathsは実インストール先を指定する。WDF headersは `WdfRoot/Includ
 出力は `package/provider/mt6630-combo-runtime.{sys,inf}` と `unsigned-manifest.json`、object/dependency files、link map。manifestは43TUのsource/object hashと順序、実argv、tool/lib hash、元NDIS/overlay hash、INF版を記録する。unsignedでありCAT・署名・配備は別工程。接続成功や実機検証済みを意味しない。
 
 既存 `build-sign-mt6630-provider1033.py` は実1032 baselineを厳密再利用する増分/署名入口として変更せず保持する。coldはこれを呼ばず、旧objectも使わない。旧shared-parent型runtime/probeは `build-mt6630-runtime.ps1 -LegacyRuntime` で保持する。以前のNATIVE/RUN文書の同入口はこのlegacy経路の履歴であり、現1033の手順ではない。旧first-playback callerも明示legacy指定を使う。
+
+2026-11-11に固定source `8d492fb0350aa8fccad582b852869e26ba73aeee` の上記入口をWindowsで実行し、clang 20・MSVC 14.29 ARM LINK・既存WDK8.1/WDF1.13で43TUすべてのcompileとSYS linkが完了した。過去のdriver objectの使用は0。43 ARMNT object、実INF版 `2026.11.11.1033`、実compileの依存197ファイルの一覧、source/object/tool/libraryのhashを回収して照合した。回収したunsigned SYSのSHA256は `c9e4d1f1f2a56708acbf4a5c1667dff605f0a9cd77667e6079c5d5abaa4cb661`。これはこの構成でのビルド確認であり、異なるtoolchainでのbyte同一性、署名済packageとの同一性、Wi-Fi接続動作を保証しない。
