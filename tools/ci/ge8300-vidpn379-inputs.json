@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "baseline_source": "e215c7015f8040ffe8731bb97adc05519d3e1028",
+  "trace_source": "b9fb91571b587ab98c01ed1a118c847b634b21ca",
+  "client_source": "bdc6e061ddbaf22121286c81528159ccb55293c0",
+  "files": {
+    "package378/ge8300-render.inf": {
+      "bytes": 2468,
+      "sha256": "bf8df597e76d39e3bcdc6281034f806f627ec77bf9c0a8f0eff63622a8cd9a8d"
+    },
+    "package378/ge8300-d3d-clear.exe": {
+      "bytes": 19392,
+      "sha256": "1aa85355adb96d827e2224f10361dc56f73a3cfcdaf1dee18eb4c1bf3cb8b081"
+    },
+    "package378/ge8300-d3d-ui-texture.exe": {
+      "bytes": 19904,
+      "sha256": "f965f4591b92a2a101cdceacc08476f3386c1ed492add320f21cdff8d49bd3c8"
+    },
+    "package378/ge8300-d3d-texture-boundary.exe": {
+      "bytes": 25024,
+      "sha256": "07cca1a73e1ca0dd19083cee2de6490ae8855db3670b1a2c7f1bbcb20d94081e"
+    },
+    "package378/signed-manifest.json": {
+      "bytes": 117763,
+      "sha256": "6ff34226b405bf876055038d8634d72647d3db13033c100a41d269cf7820c99e"
+    },
+    "package378/ge8300-mips.fw": {
+      "bytes": 122880,
+      "sha256": "5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1"
+    },
+    "package378/mt8167-development.cer": {
+      "bytes": 822,
+      "sha256": "33680a69f647193e7f7adcecf137db525262019c3a8f971ab3095d40f894d72a"
+    },
+    "package378/ge8300-render.cat": {
+      "bytes": 3326,
+      "sha256": "21997d48ede5a97746509d24ebf9e1aba42a3b26b53be3a5eaf246ae5765a985"
+    },
+    "package378/mt8167-dxgi-present356.exe": {
+      "bytes": 11200,
+      "sha256": "eaa30760ebc38a1955ccb3bbd834ee5c3972ce8842b90e6a58bc5084109ef8d5"
+    },
+    "package378/ge8300-umd.dll": {
+      "bytes": 9338816,
+      "sha256": "c901e6509d944c10389a733736e8a48e76bc8a2580b289a30b7949c73d555525"
+    },
+    "package378/ge8300-d3d-texture.exe": {
+      "bytes": 22976,
+      "sha256": "ba9429a58ea54359dedbd6adcc3a3cec3db34a53fa95082aa0818e082ed12fa0"
+    },
+    "package378/ge8300-render.sys": {
+      "bytes": 299968,
+      "sha256": "d91a5ab410ccfc784e5e54629d42ce9ca73fe691e0903ac6883407b473147679"
+    },
+    "package378/ge8300-umd.lib": {
+      "bytes": 1572,
+      "sha256": "58a3c45bddbe096f08a980ba53d61d9317b4c8299f08a3b5542fe9455b86112d"
+    },
+    "package378/display-transport/mt8167-display-transport.cat": {
+      "bytes": 2551,
+      "sha256": "f0d4cb228033148f5993d5d3ebfa2a00d7df471fbfbf9233550a40a50824ff67"
+    },
+    "package378/display-transport/mt8167-display-transport.inf": {
+      "bytes": 1021,
+      "sha256": "b808ef184550a20cf2b8be53b840e3c026b24a3ed2616c0cbaea7c20743f6ce8"
+    },
+    "package378/display-transport/mt8167-display-transport.sys": {
+      "bytes": 26560,
+      "sha256": "e14466efe8e7ae0367f0e791775418d3c06e4e3c4a865552da11f7262bdea7df"
+    },
+    "baseline378/ge8300-kmd-clear.lib": {
+      "bytes": 602424,
+      "sha256": "7cfbcb5bdbc351f257f2f5c2a92843ff7e72b8697f3d8370bb59e8062bc71074"
+    },
+    "baseline378/ge8300-native-owner-core.lib": {
+      "bytes": 363774,
+      "sha256": "c7dcbffb1d3de151e22796c0494c033502570950d0afebb4162a6a2f598fa836"
+    },
+    "client/mt8167-dxgi-present356.exe": {
+      "bytes": 16832,
+      "sha256": "c6fb3f43c530288473fc243d986d8c843a49468c425d48d090dd44d518b244b4"
+    },
+    "client/receipt.json": {
+      "bytes": 41206,
+      "sha256": "c25893737ebed2df6deb626b434522926c4eb21b8a603563ecc182c4ca3a9bf2"
+    }
+  }
+}
