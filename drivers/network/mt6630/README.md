@@ -559,8 +559,8 @@ python tools/ci/sign-mt6630-public-cold.py `
   --thumbprint BCBF6C456C6F0DD0818434763B189488FBF13570
 ```
 
-独立レビュー後の署名実行時だけ、上記に `--execute --signtool <既存signtool.exe実path> --inf2cat <既存Inf2Cat.exe実path>` を追加する。toolsは公開固定hashと照合する。証明書は既存 `Cert:CurrentUser/My/BCBF...` の有効な秘密鍵付き証明書に限定し、SignTool `/s My /sha1` で選択する。新鍵作成・export・PFX・password・別certへのfallbackを行わない。OS側の既存trustはWindows verifyで検証し、この入口はtrust storeを変更しない。
+独立レビュー後の署名実行時だけ、上記に `--execute --signtool <既存signtool.exe実path> --inf2cat <既存Inf2Cat.exe実path>` を追加する。toolsは公開固定hashと照合する。`--thumbprint` は40桁ASCII hexのみ受け付け、大文字へ正規化する。指定した既存 `Cert:CurrentUser/My/<thumbprint>` の有効な秘密鍵付き証明書だけをSignTool `/s My /sha1` で選択する。任意の既存証明書を明示選択できる公開入口であり、BCBF固定ではない。今回の候補には上例のBCBFを明示し、既存identityを維持する。新鍵作成・export・PFX・password・別certへのfallbackを行わない。OS側の既存trustはWindows verifyで検証し、この入口はtrust storeを変更しない。
 
-SYS署名、Inf2Cat（6_3_ARM）、CAT署名、Windows verify（SYS/CAT）、CAT membership（SYS/INF）、thumbprint/trustを順に検査する。既存 `ge8300_panel_signing_common.unchanged_signed_payload` でSYSの署名以外のbytes保持を確認し、INFは完全byte保持する。入力を上書きせず、原manifestを `provenance/unsigned-manifest.json` にbyte保存する。新 `signing-receipt.json` と `package/provider/signed-manifest.json` は `compiled_source_commit` と `signing_recipe_commit` を分離し、元43TU情報・flags・tools/libs・原manifest SHA・全step/署名/検証log hashを結合する。失敗時は完了品とreceiptを保持し、自動再試行はしない。
+SYS署名、Inf2Cat（6_3_ARM）、CAT署名、Windows verify（SYS/CAT）、CAT membership（SYS/INF）、同じ選択thumbprint/trustを `verify-public-signing-certificates.ps1` で順に検査する。旧 `verify-dwm-certificates.ps1` のBCBF固定guardは変更しない。既存 `ge8300_panel_signing_common.unchanged_signed_payload` でSYSの署名以外のbytes保持を確認し、INFは完全byte保持する。入力を上書きせず、原manifestを `provenance/unsigned-manifest.json` にbyte保存する。新 `signing-receipt.json` と `package/provider/signed-manifest.json` は `compiled_source_commit` と `signing_recipe_commit` を分離し、元43TU情報・flags・tools/libs・原manifest SHA・全step/署名/検証log hashを結合する。失敗時は完了品とreceiptを保持し、自動再試行はしない。
 
 この入口の実装時点ではparseと既回収cold出力のread-only検証のみ。署名実行/Windows verifyは未実施。cold compile/link成功・署名成立・接続成功は別の判定であり、過去の増分signed1033とのbyte同一性を主張しない。

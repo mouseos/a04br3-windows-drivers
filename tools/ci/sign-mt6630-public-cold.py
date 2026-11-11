@@ -13,8 +13,12 @@ from ge8300_panel_signing_common import decode_inf, pe, require, unchanged_signe
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = ROOT / 'tools/ci'
-THUMB = 'BCBF6C456C6F0DD0818434763B189488FBF13570'
 NAME = 'mt6630-combo-runtime'
+
+
+def normalize_thumbprint(value):
+    require(isinstance(value, str) and re.fullmatch(r'[0-9a-fA-F]{40}', value) is not None, 'Thumbprint must be exactly 40 ASCII hex characters')
+    return value.upper()
 
 
 def sha(p):
@@ -141,13 +145,15 @@ def main():
     ap.add_argument('--inf2cat', type=Path)
     ap.add_argument('--execute', action='store_true')
     a = ap.parse_args()
-    require(a.thumbprint == THUMB, 'Only the specified existing BCBF certificate is allowed')
+    thumb = normalize_thumbprint(a.thumbprint)
     cold = a.cold_directory.resolve(); out = a.output.resolve()
     require(not out.exists() and out.is_relative_to(ROOT) and not out.is_relative_to(cold) and not cold.is_relative_to(out), 'Fresh checkout-local output, separate from immutable cold inputs')
     recipe_commit = git('rev-parse', 'HEAD').decode().strip()
     require(not git('status', '--porcelain'), 'Clean committed signer source required')
     m, locks = validate(cold, a.manifest_sha256, a.compiled_source_commit)
     receipt = dict(schema='mt6630-public-cold-signing-v1', source_commit=m['source_commit'], compiled_source_commit=m['source_commit'], signing_recipe_commit=recipe_commit, original_unsigned_manifest_sha256=a.manifest_sha256, version=m['version'], driver_ver=m['driver_ver'], objects=m['objects'], flags=m['flags'], libraries=m['libraries'], compile_tools=m['tools'], compile_count=0, link_count=0, sign_count=0, signed=False, success=False, private_driver_baseline_required=False, hardware_verified=False, association_verified=False, steps={})
+    receipt['selected_thumbprint'] = thumb
+    receipt['certificate_store'] = 'CurrentUser/My'
     observed = cold / 'actual-dependencies.json'
     receipt['actual_dependency_observation_sha256'] = sha(observed) if observed.exists() else None
     receipt['dependency_observation_timing'] = 'after-compile; not a precompile environment proof'
@@ -180,7 +186,7 @@ def main():
     try:
         save(); recheck()
         # Check only certificate metadata. Never import/export a key or handle a password.
-        check = "$ErrorActionPreference='Stop';$c=Get-Item -LiteralPath 'Cert:\\CurrentUser\\My\\" + THUMB + "';if(!$c.HasPrivateKey -or $c.NotBefore -gt (Get-Date) -or $c.NotAfter -lt (Get-Date)){throw 'Existing signing certificate unavailable'}"
+        check = "$ErrorActionPreference='Stop';$c=Get-Item -LiteralPath 'Cert:\\CurrentUser\\My\\" + thumb + "';if(!$c.HasPrivateKey -or $c.NotBefore -gt (Get-Date) -or $c.NotAfter -lt (Get-Date)){throw 'Existing signing certificate unavailable'}"
         run('existing-store', ['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', check])
         original = out / 'provenance'; original.mkdir()
         shutil.copyfile(cold / 'unsigned-manifest.json', original / 'unsigned-manifest.json')
@@ -191,23 +197,23 @@ def main():
         sys = pkg / (NAME + '.sys'); cat = pkg / (NAME + '.cat'); inf = pkg / (NAME + '.inf')
         unsigned = sys.read_bytes()
         require(sha(original / 'unsigned-manifest.json') == a.manifest_sha256, 'Keep original manifest bytes')
-        run('sign-sys', [tools['signtool'], 'sign', '/fd', 'SHA256', '/s', 'My', '/sha1', THUMB, sys])
+        run('sign-sys', [tools['signtool'], 'sign', '/fd', 'SHA256', '/s', 'My', '/sha1', thumb, sys])
         unchanged_signed_payload(unsigned, sys.read_bytes()); recheck()
         run('catalog', [tools['inf2cat'], '/driver:' + str(pkg), '/os:6_3_ARM', '/uselocaltime'])
-        run('sign-cat', [tools['signtool'], 'sign', '/fd', 'SHA256', '/s', 'My', '/sha1', THUMB, cat])
+        run('sign-cat', [tools['signtool'], 'sign', '/fd', 'SHA256', '/s', 'My', '/sha1', thumb, cat])
         for ext, p in (('sys', sys), ('cat', cat)):
             run('verify-' + ext, [tools['signtool'], 'verify', '/pa', '/v', p])
         for ext, p in (('sys', sys), ('inf', inf)):
             run('membership-' + ext, [tools['signtool'], 'verify', '/pa', '/c', cat, p])
         paths = out / 'signature-paths.json'; paths.write_text(json.dumps([str(sys), str(cat)]))
-        run('certificate-identity', ['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', HERE / 'verify-dwm-certificates.ps1', '-PathsJson', paths, '-ExpectedThumbprint', THUMB, '-ReportJson', out / 'certificate-report.json'])
+        run('certificate-identity', ['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', HERE / 'verify-public-signing-certificates.ps1', '-PathsJson', paths, '-ExpectedThumbprint', thumb, '-ReportJson', out / 'certificate-report.json'])
         recheck(); unchanged_signed_payload(unsigned, sys.read_bytes())
         require(sha(original / 'unsigned-manifest.json') == a.manifest_sha256, 'Original cold manifest remained byte-identical')
         if observed.exists():
             require(sha(original / observed.name) == locks[observed], 'Original dependency observation remained byte-identical')
         require(sha(inf) == locks[cold / 'package/provider' / inf.name], 'INF bytes must remain unchanged')
         require({p.name for p in pkg.iterdir()} == {NAME + '.' + ext for ext in ('sys', 'inf', 'cat')}, 'Signed package leaf set')
-        receipt.update(success=True, signed=True, signer_thumbprint=THUMB, non_signature_payload_unchanged=True, unsigned_SYS_sha256=hashlib.sha256(unsigned).hexdigest(), original_unsigned_manifest_preserved=True, files=[dict(path=p.name, bytes=p.stat().st_size, sha256=sha(p)) for p in sorted(pkg.iterdir())]); save()
+        receipt.update(success=True, signed=True, signer_thumbprint=thumb, non_signature_payload_unchanged=True, unsigned_SYS_sha256=hashlib.sha256(unsigned).hexdigest(), original_unsigned_manifest_preserved=True, files=[dict(path=p.name, bytes=p.stat().st_size, sha256=sha(p)) for p in sorted(pkg.iterdir())]); save()
         (pkg / 'signed-manifest.json').write_text(json.dumps(receipt, indent=2) + '\n')
     except Exception as e:
         receipt['error'] = str(e); raise
