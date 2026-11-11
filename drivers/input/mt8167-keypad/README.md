@@ -58,3 +58,7 @@ host decode/debounce試験と署名buildは実キー入力の成功証拠では�
 ## 最小lifecycle観測（未build）
 
 [固定schema・stage・1TU再利用条件](CHECKPOINT.md)を参照。実227の静的結合だけではstartedを断定できないため、既受理条件を維持して最初の到達点/失敗だけ記録する。実機での入力改善は未確認。
+
+### cold buildの版情報
+
+`cross-build-mt8167-keypad.py` は現在の INF の一意な `DriverVer` から日付と版を取得し、unsigned manifest に記録する。現 source は `11/11/2026,0.0.1.4`。1.2固定のmetadataは使用しない。SDK/WDF入力を `--cache` で指定し、3TUをsourceからコンパイルする。過去のdriver objectやprivate署名baselineは不要。これはunsigned出力であり、既存の1TU増分候補・専用署名gateとは別経路。ビルド成功や観測event追加はボタン動作成功を意味しない。

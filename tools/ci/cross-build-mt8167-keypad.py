@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """Build only MT8167 keypad using recovered WDK8.1 headers/libs, never an SDK setup."""
 from pathlib import Path
-import argparse,hashlib,json,subprocess,os,shutil
+import argparse,hashlib,json,subprocess,os,shutil,re
 p=argparse.ArgumentParser();p.add_argument('--cache',type=Path,required=True);p.add_argument('--output',type=Path,required=True);a=p.parse_args()
 r=Path(__file__).resolve().parents[2];out=a.output.resolve();cache=a.cache.resolve()
 if not out.is_relative_to(r) or out.exists():raise SystemExit('専用checkout内の未作成outputが必要です')
 if subprocess.check_output(['git','-C',str(r),'status','--porcelain']):raise SystemExit('sourceを先にcommitしてください')
 commit=subprocess.check_output(['git','-C',str(r),'rev-parse','HEAD'],text=True).strip();inc=cache/'sdk-headers/wdk/Include';lib=cache/'compiler-libs/wdk/Lib'
+inf=r/'drivers/input/mt8167-keypad/mt8167-keypad.inf'
+versions=re.findall(r'^\s*DriverVer\s*=\s*(\d{2}/\d{2}/\d{4}),\s*(\d+\.\d+\.\d+\.\d+)\s*$',inf.read_text(),re.I|re.M)
+if len(versions)!=1:raise SystemExit('INFに一意のDriverVerが必要です')
+driver_date,version=versions[0]
 (out/'tmp').mkdir(parents=True);(out/'obj').mkdir();(out/'package').mkdir()
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def entry(p):
@@ -27,5 +31,5 @@ sys=out/'package/mt8167-keypad.sys';run(['lld-link','/driver','/subsystem:native
 inf=r/'drivers/input/mt8167-keypad/mt8167-keypad.inf';(out/'package'/inf.name).write_bytes(inf.read_bytes().replace(b'\r\n',b'\n').replace(b'\n',b'\r\n'))
 inputs=[{'path':str(x.relative_to(r)),'sha256':sha(x)} for x in sorted((r/'drivers/input/mt8167-keypad').iterdir()) if x.is_file()]
 for rel in ('drivers/bus/mt8167-shared/client_interface.h','drivers/input/a04br3-buttons/shared_parent_contract.h','drivers/input/a04br3-buttons/button_pipeline.h','drivers/input/a04br3-buttons/button_state.h','tools/ci/cross-build-mt8167-keypad.py','tools/ci/sign-mt8167-keypad.ps1','tests/mt8167_keypad_test.c'):inputs.append({'path':rel,'sha256':sha(r/rel)})
-manifest={'status':'unsigned-cross-built-with-recovered-WDK81','source_commit':commit,'source_dirty':False,'target':'MT6392\\Buttons','service':'Mt6392Keys','version':'0.0.1.2','compiler':subprocess.check_output(['clang','--version'],text=True).splitlines()[0],'linker':subprocess.check_output(['lld-link','--version'],text=True).strip(),'compiled':compiled,'inputs':inputs,'libraries':[{'path':str(x),'sha256':sha(x)} for x in libs],'commands':commands,'codegen':flags,'parent_changed':False,'firmware_changed':False,'device_tested':False,'wake_implemented':False,'unsigned_outputs':[{'path':str(x.relative_to(out)),'bytes':x.stat().st_size,'sha256':sha(x)} for x in sorted((out/'package').iterdir()) if x.is_file()]}
+manifest={'status':'unsigned-cross-built-with-recovered-WDK81','source_commit':commit,'source_dirty':False,'target':'MT6392\\Buttons','service':'Mt6392Keys','version':version,'driver_date':driver_date,'driver_ver':driver_date+','+version,'compiler':subprocess.check_output(['clang','--version'],text=True).splitlines()[0],'linker':subprocess.check_output(['lld-link','--version'],text=True).strip(),'compiled':compiled,'inputs':inputs,'libraries':[{'path':str(x),'sha256':sha(x)} for x in libs],'commands':commands,'codegen':flags,'parent_changed':False,'firmware_changed':False,'device_tested':False,'wake_implemented':False,'unsigned_outputs':[{'path':str(x.relative_to(out)),'bytes':x.stat().st_size,'sha256':sha(x)} for x in sorted((out/'package').iterdir()) if x.is_file()]}
 (out/'unsigned-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n');print('MT8167_KEYPAD_CROSS_BUILD_NOT_DEVICE_TESTED')
