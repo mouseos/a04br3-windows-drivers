@@ -35,7 +35,7 @@ def runtime_plan(spec,rev):
   name=pending.pop();require(name not in seen,'Ambiguous include traversal');seen.add(name)
   for p in (ROOT/GPU).rglob('*'):
    if p.suffix not in ('.c','.cxx','.h'):continue
-   if re.search(r'^\s*#\s*include\s*[<"][^>"\n]*\b'+re.escape(name)+r'[>"]',p.read_text(errors='strict'),re.M):
+   if re.search(r'^\s*#\s*include\s*[<"][^>"\n]*\b'+re.escape(name)+r'[>"]',p.read_text(encoding='utf-8',errors='strict'),re.M):
     rel=p.relative_to(ROOT).as_posix()
     if p.suffix=='.h':
      if p.name not in seen:pending.add(p.name)
