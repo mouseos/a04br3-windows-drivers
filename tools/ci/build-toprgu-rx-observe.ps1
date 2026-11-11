@@ -14,7 +14,7 @@ $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $kit=if($WdkRoot){[IO.Path]::GetFullPath($WdkRoot)}else{[IO.Path]::GetFullPath($KitRoot)}
 $signRoot=if($SigningToolRoot){[IO.Path]::GetFullPath($SigningToolRoot)}else{Join-Path $kit 'bin\x86'}
 $out=[IO.Path]::GetFullPath($OutputDirectory);$thumb=$CertificateThumbprint.ToUpperInvariant()
-$runtime='2ffa832aeda46c3b9192433c9cc0e2b062230c05'
+$runtime='797121bc8ba5a2c31e09ed3372afa585600d3b4b'
 function Git([string[]]$Arguments){$v=& git.exe -C $root @Arguments;if($LASTEXITCODE){throw "Git failed: $Arguments"};return $v}
 function Hash([string]$Path){return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()}
 function FilePin([string]$Path){$p=[IO.Path]::GetFullPath($Path);$i=Get-Item -LiteralPath $p;if($i.PSIsContainer){throw "File required: $p"};return [ordered]@{path=$p;bytes=$i.Length;sha256=(Hash $p)}}
@@ -66,7 +66,7 @@ if(Git -Arguments @('status','--porcelain','--untracked-files=normal')){throw 'C
 if(Test-Path -LiteralPath $out){throw 'OutputDirectory must be new; failed/signed outputs are never overwritten or replayed'}
 $prefix='drivers/system/mt8167-toprgu/'
 $runtimeFiles=@('wdf_toprgu.c','reset_command.c','reset_command.h','watchdog_policy.h','handoff_policy.h','thermal_stop.h','uart_screen.h','rx_observe.h')
-foreach($name in $runtimeFiles){$rel=$prefix+$name;if((Git -Arguments @('rev-parse',"${runtime}:$rel")) -cne (Git -Arguments @('rev-parse',"${commit}:$rel"))){throw "Runtime differs from reviewed2ffa: $rel"}}
+foreach($name in $runtimeFiles){$rel=$prefix+$name;if((Git -Arguments @('rev-parse',"${runtime}:$rel")) -cne (Git -Arguments @('rev-parse',"${commit}:$rel"))){throw "Runtime differs from reviewed source $runtime / $rel"}}
 $inputs=@($runtimeFiles|ForEach-Object {$prefix+$_})+@(($prefix+'mt8167-toprgu.inf'),'tools/ci/build-mt8167-toprgu.ps1','tools/ci/build-toprgu-rx-observe.ps1')
 $sources=@();foreach($rel in $inputs){$sources+=@{path=$rel;git_blob=(Git -Arguments @('rev-parse',"${commit}:$rel"));sha256=(Hash (Join-Path $root $rel))}}
 $tools=[ordered]@{}
