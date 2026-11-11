@@ -95,6 +95,14 @@ def bt_payload_prepare(directory,bt):
  return commands
 
 def gpu368_media_contract(p,header,exe,root=None):
+ if p.get('signed_peripheral_contract'):
+  import importlib.util
+  ts=importlib.util.spec_from_file_location('peripherals',Path(__file__).resolve().parents[1]/'recovery/peripheral-signed-updates.py');tm=importlib.util.module_from_spec(ts);ts.loader.exec_module(tm)
+  require(root is not None,'Actual workspace required');tm.validate_runtime_policy(root,p)
+  require(p['diagnostic_clients']==[] and p['gpu_client_count']==0 and p['install_targets']==['wifi','keypad'],'No GPU execution/reinstall')
+  require(header==tm.generate(p),'Exact peripheral runtime header')
+  token=hashlib.sha256(json.dumps(p,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+  require(token.encode()+b'\0' in exe,'Signed peripheral runtime token');return token
  followup231=p['profile']=='combined-features-fresh231-reviewed-followup-v1'
  if followup231:
   import importlib.util
@@ -152,7 +160,9 @@ def main():
  ap.add_argument('--stage-only',action='store_true',help='GPU368 only: run every staging assertion and stop before WIM/ESP; not deployable');ap.add_argument('--reboot-after-commit',action='store_true',help='Reboot WinPE after committed update, volume release and UART stream success')
  for n in ('workspace','map','service-package','prepared-system','prepared-result','comparator','base','tools','out'):ap.add_argument('--'+n,type=Path,required=True)
  for n in ('prepared-sha256','comparator-manifest-sha256','source-commit'):ap.add_argument('--'+n,required=True)
- ap.add_argument('--followup231-profile',action='store_true');ap.add_argument('--gpu378-diagnostic-profile',action='store_true');ap.add_argument('--gpu378-keypad-profile',action='store_true');ap.add_argument('--gpu377-output-profile',action='store_true');ap.add_argument('--gpu375-combined-profile',action='store_true');ap.add_argument('--gpu373-client-profile','--gpu374-client-profile','--gpu375-client-profile',dest='gpu373_client_profile',action='store_true');ap.add_argument('--gpu371-output-profile',action='store_true');ap.add_argument('--gpu369-timing-profile',action='store_true');ap.add_argument('--combined202-profile',action='store_true');ap.add_argument('--combined200-profile',action='store_true');ap.add_argument('--combined196-profile',action='store_true');ap.add_argument('--combined194-profile',action='store_true');ap.add_argument('--combined192-profile',action='store_true');ap.add_argument('--combined190-profile',action='store_true');ap.add_argument('--combined188-profile',action='store_true');ap.add_argument('--combined186-profile',action='store_true');ap.add_argument('--combined184-profile',action='store_true');ap.add_argument('--combined182-profile',action='store_true');ap.add_argument('--combined180-profile',action='store_true');ap.add_argument('--combined178-profile',action='store_true');ap.add_argument('--combined176-profile',action='store_true');ap.add_argument('--combined174-profile',action='store_true');ap.add_argument('--combined172-profile',action='store_true');ap.add_argument('--combined170-profile',action='store_true');ap.add_argument('--combined168-profile',action='store_true');ap.add_argument('--combined166-profile',action='store_true');ap.add_argument('--combined164-profile',action='store_true');ap.add_argument('--combined162-profile',action='store_true');ap.add_argument('--combined160-profile',action='store_true');ap.add_argument('--combined158-profile',action='store_true');ap.add_argument('--combined156-profile',action='store_true');ap.add_argument('--combined154-profile',action='store_true');ap.add_argument('--combined152-profile',action='store_true');ap.add_argument('--combined150-profile',action='store_true');ap.add_argument('--combined148-profile',action='store_true');ap.add_argument('--combined146-profile',action='store_true');ap.add_argument('--combined144-profile',action='store_true');ap.add_argument('--combined142-profile',action='store_true');ap.add_argument('--combined140-profile',action='store_true');ap.add_argument('--combined138-profile',action='store_true');ap.add_argument('--combined136-profile',action='store_true');ap.add_argument('--next-profile',action='store_true');ap.add_argument('--service-source-commit');ap.add_argument('--enable-peripheral-batch',action='store_true');a=ap.parse_args();root=a.workspace.resolve(strict=True);here=Path(__file__).resolve().parent;repo=here.parents[1]
+ ap.add_argument('--signed-peripheral-profile',action='store_true');ap.add_argument('--followup231-profile',action='store_true');ap.add_argument('--gpu378-diagnostic-profile',action='store_true');ap.add_argument('--gpu378-keypad-profile',action='store_true');ap.add_argument('--gpu377-output-profile',action='store_true');ap.add_argument('--gpu375-combined-profile',action='store_true');ap.add_argument('--gpu373-client-profile','--gpu374-client-profile','--gpu375-client-profile',dest='gpu373_client_profile',action='store_true');ap.add_argument('--gpu371-output-profile',action='store_true');ap.add_argument('--gpu369-timing-profile',action='store_true');ap.add_argument('--combined202-profile',action='store_true');ap.add_argument('--combined200-profile',action='store_true');ap.add_argument('--combined196-profile',action='store_true');ap.add_argument('--combined194-profile',action='store_true');ap.add_argument('--combined192-profile',action='store_true');ap.add_argument('--combined190-profile',action='store_true');ap.add_argument('--combined188-profile',action='store_true');ap.add_argument('--combined186-profile',action='store_true');ap.add_argument('--combined184-profile',action='store_true');ap.add_argument('--combined182-profile',action='store_true');ap.add_argument('--combined180-profile',action='store_true');ap.add_argument('--combined178-profile',action='store_true');ap.add_argument('--combined176-profile',action='store_true');ap.add_argument('--combined174-profile',action='store_true');ap.add_argument('--combined172-profile',action='store_true');ap.add_argument('--combined170-profile',action='store_true');ap.add_argument('--combined168-profile',action='store_true');ap.add_argument('--combined166-profile',action='store_true');ap.add_argument('--combined164-profile',action='store_true');ap.add_argument('--combined162-profile',action='store_true');ap.add_argument('--combined160-profile',action='store_true');ap.add_argument('--combined158-profile',action='store_true');ap.add_argument('--combined156-profile',action='store_true');ap.add_argument('--combined154-profile',action='store_true');ap.add_argument('--combined152-profile',action='store_true');ap.add_argument('--combined150-profile',action='store_true');ap.add_argument('--combined148-profile',action='store_true');ap.add_argument('--combined146-profile',action='store_true');ap.add_argument('--combined144-profile',action='store_true');ap.add_argument('--combined142-profile',action='store_true');ap.add_argument('--combined140-profile',action='store_true');ap.add_argument('--combined138-profile',action='store_true');ap.add_argument('--combined136-profile',action='store_true');ap.add_argument('--next-profile',action='store_true');ap.add_argument('--service-source-commit');ap.add_argument('--enable-peripheral-batch',action='store_true');a=ap.parse_args();root=a.workspace.resolve(strict=True);here=Path(__file__).resolve().parent;repo=here.parents[1]
+ if a.signed_peripheral_profile:
+  require(not any(v for k,v in vars(a).items() if k.endswith('_profile') and k!='signed_peripheral_profile'),'One explicit profile');a.combined200_profile=True
  if a.followup231_profile:
   require(not any((a.gpu378_diagnostic_profile,a.gpu378_keypad_profile,a.gpu377_output_profile,a.gpu375_combined_profile,a.gpu373_client_profile,a.gpu371_output_profile,a.gpu369_timing_profile,a.combined202_profile,a.combined200_profile)),'followup231 explicit only');a.combined200_profile=True
  if a.gpu378_diagnostic_profile:
@@ -173,8 +183,13 @@ def main():
   require(not a.combined200_profile,'Select exactly one capture profile');a.combined200_profile=True
  require(not a.stage_only or a.combined200_profile,'Stage-only is limited to GPU368')
  if a.combined200_profile:
-  require(sum(bool(v) for k,v in vars(a).items() if k.endswith('_profile'))==1+int(a.combined202_profile)+int(a.gpu369_timing_profile)+int(a.gpu371_output_profile)+int(a.gpu373_client_profile)+int(a.gpu375_combined_profile)+int(a.gpu377_output_profile)+int(a.gpu378_keypad_profile)+int(a.gpu378_diagnostic_profile)+int(a.followup231_profile),'Profiles mutually exclusive')
-  if a.followup231_profile:
+  require(sum(bool(v) for k,v in vars(a).items() if k.endswith('_profile'))==1+int(a.combined202_profile)+int(a.gpu369_timing_profile)+int(a.gpu371_output_profile)+int(a.gpu373_client_profile)+int(a.gpu375_combined_profile)+int(a.gpu377_output_profile)+int(a.gpu378_keypad_profile)+int(a.gpu378_diagnostic_profile)+int(a.followup231_profile)+int(a.signed_peripheral_profile),'Profiles mutually exclusive')
+  if a.signed_peripheral_profile:
+   import importlib.util
+   ts=importlib.util.spec_from_file_location('peripherals',here.parents[0]/'recovery/peripheral-signed-updates.py');tm=importlib.util.module_from_spec(ts);ts.loader.exec_module(tm)
+   spec=tm.read(rooted(root,a.map));tm.configure(spec,root)
+   load_map,generate,PROFILE,SERVICE,DIRECTORY,generate_paths,assert_paths=tm.load_map,tm.generate,tm.PROFILE,tm.SERVICE,tm.DIRECTORY,tm.paths,tm.assert_paths
+  elif a.followup231_profile:
    import importlib.util
    ts=importlib.util.spec_from_file_location('followup231',here.parents[0]/'recovery/prepare-followup231-inputs.py');tm=importlib.util.module_from_spec(ts);ts.loader.exec_module(tm)
    load_map,generate,PROFILE,SERVICE,DIRECTORY,generate_paths,assert_paths=tm.load_map,tm.generate,tm.PROFILE,tm.SERVICE,tm.DIRECTORY,tm.paths,tm.assert_paths
@@ -295,7 +310,7 @@ def main():
  require(a.enable_peripheral_batch,'専用profile明示opt-inが必要');require(re.fullmatch('[0-9a-f]{40}',a.source_commit),'固定source必須')
  require(subprocess.check_output(['git','-C',str(repo),'rev-parse','HEAD'],text=True).strip()==a.source_commit and not subprocess.check_output(['git','-C',str(repo),'status','--porcelain'],text=True).strip(),'clean固定source必須')
  p=load_map(a.map,root)
- if a.followup231_profile or a.gpu378_keypad_profile or a.gpu377_output_profile or a.gpu369_timing_profile or a.gpu371_output_profile or a.gpu373_client_profile:require(p.get('main_execution_approved') is True,'GPU369 media generation requires main approval')
+ if a.signed_peripheral_profile or a.followup231_profile or a.gpu378_keypad_profile or a.gpu377_output_profile or a.gpu369_timing_profile or a.gpu371_output_profile or a.gpu373_client_profile:require(p.get('main_execution_approved') is True,'GPU369 media generation requires main approval')
  service=rooted(root,a.service_package);sm=json.loads((service/'peripheral-service-manifest.json').read_text(encoding='utf-8-sig'))
  import sys
  sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'recovery'))
@@ -303,6 +318,9 @@ def main():
  cfg=policy_config(p)
  require(bool(sm.get('collection_reboot'))==bool(cfg),'service/profile collection mode mismatch')
  if cfg:require(sm['collection_reboot']==dict(schema='MT8167_COLLECTION_REBOOT_COMPILE_V1',config=cfg,headers=source_closure(repo),macros=compile_macros(p)),'actual collection source/compile closure')
+ if a.signed_peripheral_profile:
+  cl=sm['compile_closure']
+  require(cl['source']['sha256']==sm['source_sha256']==sha(repo/'tools/winpe/mt8167-peripheral-update.c') and cl['keypad_checkpoint']['sha256']==sha(repo/'tools/winpe/keypad13-checkpoint-policy.h') and cl['profile_macros']==['A04_KEYPAD13_CHECKPOINT=1','A04_KEYPAD14_CHECKPOINT=1'] and cl['GPU_diagnostics']==0,'Signed peripheral SCM source/header/macros')
  signed_source=a.service_source_commit or a.source_commit
  require(re.fullmatch('[0-9a-f]{40}',signed_source),'署名source pin必須')
  if a.followup231_profile or a.gpu377_output_profile or a.gpu378_keypad_profile:

@@ -24,6 +24,11 @@ known={
  'GPU371_RUN213_MAIN_SEAL_V1':('combined-run213','MT8167CombinedFollowup212'),
  'GPU369_RUN209_MAIN_SEAL_V1':('combined-run209','MT8167CombinedFollowup208'),
 }
+match=re.fullmatch(r'SIGNED_PERIPHERALS_RUN([0-9]{3,4})_MAIN_SEAL_V1',c['schema'])
+if match:
+ run=int(match[1]);assert 205<=run<=1000
+ assert c['diagnostic_client_count']==0 and c['GPU_client_index'] is None and c['globaldiag_client_index'] is None and c['planned_windows_reboots']==1 and c['boot_write_required'] is False
+ known[c['schema']]=('combined-run'+str(run),'MT8167CombinedFollowup'+str(run-1))
 assert c['schema'] in known
 transaction,service=known[c['schema']]
 assert c['status']=='validated-main-seal' and c['transaction']==transaction and s['transaction']==transaction

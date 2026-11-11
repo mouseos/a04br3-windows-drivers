@@ -102,16 +102,20 @@ def build_policy(root,spec):
  if TIMING:TIMING.validate_capture_contract(c,pin)
  values=inventory_contract(c,n,prior)
  post=n['post_ownership_policy360'];require(post['controlset']=='ControlSet001' and post['name']=='DisableAutoAcpiPostDeivce' and post['raw']=='00000000','POST0実値保持')
- gm=pin(spec['GPU368_manifest']);hand=pin(spec['GPU368_handoff'])
- if TIMING:TIMING.validate_manifest(gm,hand,spec)
+ retained_gpu=bool(TIMING and getattr(TIMING,'retained_gpu',False))
+ if retained_gpu:
+  gm=hand=None;hashes={}
  else:
-  require(spec['GPU368_manifest']['sha256']==MANIFEST,'署名済368 manifest pin');validate_gpu368_manifest(gm)
-  require(hand['status']=='signed-artifact-verified-not-hardware' and hand['manifest_sha256']==MANIFEST and hand['compiled_source']==SOURCE and hand['hardware_verified'] is False,'main独立署名review')
- gp=Path(spec['GPU368_manifest']['path']).parent;hashes={x['name']:x['sha256'] for x in gm['outputs']}
- for name,h in hashes.items():
-  q=rooted(root,gp/name);require(sha(q)==h,'署名済368出力');pins[q.relative_to(root).as_posix()]=h
- if TIMING:TIMING.validate_output_review(hand,hashes)
- else:require(hashes['ge8300-render.sys']==hand['SYS_sha256'] and hashes['ge8300-umd.dll']==hand['UMD_sha256'],'SYS/UMD同manifest')
+  gm=pin(spec['GPU368_manifest']);hand=pin(spec['GPU368_handoff'])
+  if TIMING:TIMING.validate_manifest(gm,hand,spec)
+  else:
+   require(spec['GPU368_manifest']['sha256']==MANIFEST,'署名済368 manifest pin');validate_gpu368_manifest(gm)
+   require(hand['status']=='signed-artifact-verified-not-hardware' and hand['manifest_sha256']==MANIFEST and hand['compiled_source']==SOURCE and hand['hardware_verified'] is False,'main独立署名review')
+  gp=Path(spec['GPU368_manifest']['path']).parent;hashes={x['name']:x['sha256'] for x in gm['outputs']}
+  for name,h in hashes.items():
+   q=rooted(root,gp/name);require(sha(q)==h,'署名済368出力');pins[q.relative_to(root).as_posix()]=h
+  if TIMING:TIMING.validate_output_review(hand,hashes)
+  else:require(hashes['ge8300-render.sys']==hand['SYS_sha256'] and hashes['ge8300-umd.dll']==hand['UMD_sha256'],'SYS/UMD同manifest')
  rows=pin(spec['actual_package_rows']);require(set(rows)==set(ROLES),'全13実package行必須')
  if TIMING:rows=TIMING.package_rows(rows,pin)
  baselines={};packages={};preserved={};sources={};witnesses={}
@@ -160,22 +164,26 @@ def build_policy(root,spec):
   if name.startswith('Windows/System32/') and name not in witnesses and name not in ({'Windows/System32/Drivers/'+TARGETS[r][3] for r in INSTALL} if TIMING else {'Windows/System32/Drivers/ge8300-render.sys'}):
    if name.startswith('Windows/System32/Drivers/') or name.endswith(('.exe','.dll','.fw')):
     preserved[name]=f['sha256'];sources[name]=origin_sources[name]
- if TIMING and hasattr(TIMING,'client'):
-  client=TIMING.client(prior,originals,origin_sources,preserved,sources,witnesses,pin_file=None)
-  for entry in [client]+client['dependencies']:
-   q=rooted(root,Path(client['directory'])/entry['exe']);require(sha(q)==entry['sha256'],'Signed373 pair file');pins[q.relative_to(root).as_posix()]=sha(q)
+ no_gpu_diagnostics=bool(TIMING and getattr(TIMING,'disable_gpu_diagnostics',False))
+ if no_gpu_diagnostics:
+  client=diag=None
  else:
-  client=copy.deepcopy(prior['diagnostic_clients'][0]);require(client['name']=='gpu_present' and client['exe']=='mt8167-dxgi-console-launch363.exe' and client['sha256']==PRESENT and client['dependencies']==[dict(exe='mt8167-dxgi-present356.exe',sha256=PRESENTER)],'Present363/356固定')
-  client['phase']=1
-  for a in [client]+client['dependencies']:
-   q=rooted(root,Path(client['directory'])/a['exe']);require(sha(q)==a['sha256'],'Present署名済実byte');pins[q.relative_to(root).as_posix()]=sha(q)
-   require(originals['Windows/System32/'+a['exe']]['sha256']==a['sha256'],'Present assetsもfresh200で同byte確認')
- helper=pin(spec['globaldiag_manifest']);proof=pin(spec['globaldiag_import_proof']);directory=Path(spec['globaldiag_manifest']['path']).parent;exe='dxg-global-diag198.exe';q=rooted(root,directory/exe)
- require(spec['globaldiag_manifest']['sha256']=='1dcacdd1c70dacdc69a2e08e1294188d7805a2fbab77f9a24a73bcd28b1e28e6' and spec['globaldiag_import_proof']['sha256']=='896137838e17694cc3cedc506ae31aa9b25e1fffd228f4094e2ca6145f7d3828','実globaldiag署名/proof pin')
- require(helper['source_commit']=='a5d8048c3e1572015d09bd308e4304333d9a53f4' and helper['schema']=='DXG_GLOBAL_DIAG198_BUILD_V1' and helper['API_Type']==9 and helper['raw_capacity']==262144 and helper['executed'] is False and helper['compiled_TUs']==1 and helper['signer']==THUMB and helper['exe_sha256']==sha(q)=='9be80b8176696302a0e4408e6871d41792c780a37bcf6caca817c817b97061ac','実署名helper source/byte')
- require(proof['candidate_sha256']==sha(q) and proof['missing']==[] and proof['hardware_verified'] is False and proof['machine']=='ARMNT' and proof['subsystem']==[6,3] and len(proof['imports'])==14 and all(x['validation']['status']=='present' for x in proof['imports']),'実RT81の14imports解決')
- pins[q.relative_to(root).as_posix()]=sha(q)
- diag=dict(name='gpu_globaldiag',exe=exe,directory=directory.as_posix(),relative_directory='.',sha256=sha(q),dependencies=[],arguments=['"C:\\Windows\\System32\\'+SERVICE+'\\logs\\global-diag368"'],timeout_ms=60000,phase=1)
+  if TIMING and hasattr(TIMING,'client'):
+   client=TIMING.client(prior,originals,origin_sources,preserved,sources,witnesses,pin_file=None)
+   for entry in [client]+client['dependencies']:
+    q=rooted(root,Path(client['directory'])/entry['exe']);require(sha(q)==entry['sha256'],'Signed373 pair file');pins[q.relative_to(root).as_posix()]=sha(q)
+  else:
+   client=copy.deepcopy(prior['diagnostic_clients'][0]);require(client['name']=='gpu_present' and client['exe']=='mt8167-dxgi-console-launch363.exe' and client['sha256']==PRESENT and client['dependencies']==[dict(exe='mt8167-dxgi-present356.exe',sha256=PRESENTER)],'Present363/356固定')
+   client['phase']=1
+   for a in [client]+client['dependencies']:
+    q=rooted(root,Path(client['directory'])/a['exe']);require(sha(q)==a['sha256'],'Present署名済実byte');pins[q.relative_to(root).as_posix()]=sha(q)
+    require(originals['Windows/System32/'+a['exe']]['sha256']==a['sha256'],'Present assetsもfresh200で同byte確認')
+  helper=pin(spec['globaldiag_manifest']);proof=pin(spec['globaldiag_import_proof']);directory=Path(spec['globaldiag_manifest']['path']).parent;exe='dxg-global-diag198.exe';q=rooted(root,directory/exe)
+  require(spec['globaldiag_manifest']['sha256']=='1dcacdd1c70dacdc69a2e08e1294188d7805a2fbab77f9a24a73bcd28b1e28e6' and spec['globaldiag_import_proof']['sha256']=='896137838e17694cc3cedc506ae31aa9b25e1fffd228f4094e2ca6145f7d3828','実globaldiag署名/proof pin')
+  require(helper['source_commit']=='a5d8048c3e1572015d09bd308e4304333d9a53f4' and helper['schema']=='DXG_GLOBAL_DIAG198_BUILD_V1' and helper['API_Type']==9 and helper['raw_capacity']==262144 and helper['executed'] is False and helper['compiled_TUs']==1 and helper['signer']==THUMB and helper['exe_sha256']==sha(q)=='9be80b8176696302a0e4408e6871d41792c780a37bcf6caca817c817b97061ac','実署名helper source/byte')
+  require(proof['candidate_sha256']==sha(q) and proof['missing']==[] and proof['hardware_verified'] is False and proof['machine']=='ARMNT' and proof['subsystem']==[6,3] and len(proof['imports'])==14 and all(x['validation']['status']=='present' for x in proof['imports']),'実RT81の14imports解決')
+  pins[q.relative_to(root).as_posix()]=sha(q)
+  diag=dict(name='gpu_globaldiag',exe=exe,directory=directory.as_posix(),relative_directory='.',sha256=sha(q),dependencies=[],arguments=['"C:\\Windows\\System32\\'+SERVICE+'\\logs\\global-diag368"'],timeout_ms=60000,phase=1)
  boot=pin(spec['boot_witness']);transition=copy.deepcopy(prior['boot_transition'])
  def pin_file(ref):
   q=rooted(root,ref['path']);require(sha(q)==ref['sha256'],'保持host artifact SHA不一致');pins[q.relative_to(root).as_posix()]=ref['sha256']
@@ -187,11 +195,11 @@ def build_policy(root,spec):
  p=copy.deepcopy(prior)
  for k in list(p):
   if re.match(r'GPU\d+_|baseline\d+_|previous_combined\d+_',k):p.pop(k)
- p.update(profile=PROFILE,service=SERVICE,data_directory=SERVICE,draft=False,normal_install_allowed=True,backup_manifest=spec['fresh']['path'],backup_manifest_sha256=spec['fresh']['sha256'],recovery_boot_id=fm['recovery_boot_id'],capture_selection=dict(schema=1,profile=PROFILE,capture_number=CAPTURE,manifest_sha256=spec['fresh']['sha256'],recovery_boot_id=fm['recovery_boot_id'],gpu_policy_sha256=n['policy_sha256'],unchanged_since_capture=True),source_files={name:{k:originals['Windows/System32/config/'+name][k] for k in ('bytes','sha256')} for name in ('SYSTEM','SYSTEM.LOG1','SYSTEM.LOG2')},packages=packages,baselines=baselines,service_preservation=n['old_services'],captured_registry_values=values,preserved_files=preserved,preserved_sources=sources,baseline_witnesses=witnesses,install_targets=INSTALL,diagnostic_clients=[client,diag],gpu_client_execute=True,gpu_client_count=2,diagnostic_only=False,driver_updates=True,planned_reboots=1,boot_transition=transition,first_install_mask=0,deferred_unbound_mask=0,GPU368_manifest=spec['GPU368_manifest'],GPU368_handoff=spec['GPU368_handoff'],capture_contract=spec['capture_contract'],fresh200_inventory=dict(service_names=c['service_names'],named_value_ids=c['named_value_ids'],service_count=len(c['service_names']),named_value_count=len(values),file_count=len(originals)),baseline200_module_identity_reference_only=n['module_identity'],post_ownership_policy_retained=post,rootfix_claim=False)
+ p.update(profile=PROFILE,service=SERVICE,data_directory=SERVICE,draft=False,normal_install_allowed=True,backup_manifest=spec['fresh']['path'],backup_manifest_sha256=spec['fresh']['sha256'],recovery_boot_id=fm['recovery_boot_id'],capture_selection=dict(schema=1,profile=PROFILE,capture_number=CAPTURE,manifest_sha256=spec['fresh']['sha256'],recovery_boot_id=fm['recovery_boot_id'],gpu_policy_sha256=n['policy_sha256'],unchanged_since_capture=True),source_files={name:{k:originals['Windows/System32/config/'+name][k] for k in ('bytes','sha256')} for name in ('SYSTEM','SYSTEM.LOG1','SYSTEM.LOG2')},packages=packages,baselines=baselines,service_preservation=n['old_services'],captured_registry_values=values,preserved_files=preserved,preserved_sources=sources,baseline_witnesses=witnesses,install_targets=INSTALL,diagnostic_clients=[client,diag],gpu_client_execute=True,gpu_client_count=2,diagnostic_only=False,driver_updates=True,planned_reboots=1,boot_transition=transition,first_install_mask=0,deferred_unbound_mask=0,GPU368_manifest=spec.get('GPU368_manifest'),GPU368_handoff=spec.get('GPU368_handoff'),capture_contract=spec['capture_contract'],fresh200_inventory=dict(service_names=c['service_names'],named_value_ids=c['named_value_ids'],service_count=len(c['service_names']),named_value_count=len(values),file_count=len(originals)),baseline200_module_identity_reference_only=n['module_identity'],post_ownership_policy_retained=post,rootfix_claim=False)
  p['mutable_diagnostic_logs'].update(files=ml,baseline=spec['mutable_baseline']);p['service_baseline_generation']['source']=spec['native'];p['observer_contract'].update(fresh_basis=CAPTURE,planned_reboots=1,GPU_client_index=0,globaldiag_client_index=1,diagnostic_clients=2,GPU_timeout_ms=900000,absolute_batch_timeout_seconds=1140)
- p['standard_present_contract'].update(diagnostic_clients=2,execution_index=0,driver_package_source_commit=SOURCE,driver_signed_manifest_sha256=MANIFEST)
+ if not no_gpu_diagnostics:p['standard_present_contract'].update(diagnostic_clients=2,execution_index=0,driver_package_source_commit=SOURCE,driver_signed_manifest_sha256=MANIFEST)
  p['display_transition']['DIF_order']=['render'];p['display_transition']['old_DOD_retirement']='historical177; transport357 retained; GPU368 render only'
- p['globaldiag_contract']=dict(Present_existing_readiness_gate_retained=True,Present_skipped_if_GPU_not_ready=True,read_only_diag_runs_even_if_Present_skipped=True,execution_index=1,same_boot_as_present=True,maximum_invocations=1,prefix=diag['arguments'][0],result_files=['-response.bin','-raw.bin','-records.txt'],helper_manifest=spec['globaldiag_manifest'],helper_import_proof=spec['globaldiag_import_proof'],hardware_success_inferred=False)
+ if not no_gpu_diagnostics:p['globaldiag_contract']=dict(Present_existing_readiness_gate_retained=True,Present_skipped_if_GPU_not_ready=True,read_only_diag_runs_even_if_Present_skipped=True,execution_index=1,same_boot_as_present=True,maximum_invocations=1,prefix=diag['arguments'][0],result_files=['-response.bin','-raw.bin','-records.txt'],helper_manifest=spec['globaldiag_manifest'],helper_import_proof=spec['globaldiag_import_proof'],hardware_success_inferred=False)
  p['boot_witness']=spec['boot_witness'];p['boot_witness_evidence']=boot_evidence;p['physical_read_this_capture']=boot_evidence['physical_read_this_capture']
  if CAPTURE!=200:
   p[f'fresh{CAPTURE}_inventory']=p.pop('fresh200_inventory')
@@ -208,6 +216,9 @@ def build_policy(root,spec):
  p['input_pins']=[dict(path=k,sha256=v) for k,v in sorted(pins.items())];return p
 
 def generate(p):
+ if p.get('peripheral_status_only') is True:
+  from filter_root_transition import generate as filter_root_header
+  return filter_root_header(p.get('filter_root_transitions',[]))+base.generate(p)
  require([x['name'] for x in p['diagnostic_clients']]==['gpu_present','gpu_globaldiag'] and all(x['phase']==1 for x in p['diagnostic_clients']),'同boot各1回')
  q=copy.deepcopy(p);q['gpu_client_count']=1
  # Keep the runtime command-line quoting; escape it in this profile's C emitter.
