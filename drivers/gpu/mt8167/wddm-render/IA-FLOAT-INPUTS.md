@@ -65,3 +65,5 @@ python tools/ci/relink-ge8300-ia-float-umd.py `
 `relink-receipt.json` は旧26compiled ace、新2compiled323a、PCO compiled30cb、relink recipe HEADを個別記録し、原manifestsをprovenanceへbyte保存する。入力を変更せず、失敗時は完了object/archive/DLL/logを保持し自動再試行しない。
 
 この処理は厳密な旧環境全証明ではない。旧UMDの実効全argvや環境header全snapshotは保存不足であり、旧source recipeのflags・現source/実object/hash・新2TUの実依存に基づく限定候補である。`strict_cache_qualified=false`、`historical_environment_header_snapshot_complete=false` を維持し、元PCO receipt/current_source等を現sourceへ改名しない。source実装時はread-only admission/parseのみ、実archive/link/署名/実機は未実行。
+
+PS1 recipeのcompiled/current Git blobは完全一致を要求する。workingtreeはLF/CRLF改行変換だけを許容し、canonical blob SHAと実checkout SHAをreceiptへ別々に記録する。runtime `.c/.h`やobjectのbyte hashは正規化せず、従来どおり厳密照合する。

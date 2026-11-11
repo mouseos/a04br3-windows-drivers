@@ -22,6 +22,11 @@ def git(*args):return subprocess.check_output(['git','-C',str(ROOT),*args])
 def arm(p):require(struct.unpack_from('<H',p.read_bytes())[0]==0x1c4,'ARMNT object: '+str(p))
 def name(p):return PureWindowsPath(p).name
 
+def recipe_identity(checkout,compiled_blob,current_blob):
+ require(compiled_blob==current_blob,'Original/current UMD recipe Git blobs differ')
+ require(checkout.replace(b'\r\n',b'\n')==current_blob.replace(b'\r\n',b'\n'),'UMD recipe checkout differs beyond LF/CRLF conversion')
+ return dict(compiled_git_blob_sha256=hashlib.sha256(compiled_blob).hexdigest(),current_git_blob_sha256=hashlib.sha256(current_blob).hexdigest(),checkout_sha256=hashlib.sha256(checkout).hexdigest(),checkout_difference_limited_to_LF_CRLF=True)
+
 def admit(stage,newdir,compiler,new_sha):
  locks={}
  def bind(p,h=None):
@@ -40,7 +45,7 @@ def admit(stage,newdir,compiler,new_sha):
  require({x['source'] for x in new['units']}==CHANGED,'Exactly two replacement TUs')
  recipe=bind(ROOT/RECIPE);text=recipe.read_text()
  oldrecipe=git('show',BASE+':'+RECIPE)
- require(recipe.read_bytes()==oldrecipe,'Original UMD source recipe/flags/order unchanged')
+ recipe_proof=recipe_identity(recipe.read_bytes(),oldrecipe,git('show','HEAD:'+RECIPE))
  units=re.findall("'([^']+)'",re.search(r'(?m)^ \$units=@\(([^\r\n]+)\)$',text)[1])
  require(len(units)==28 and [x['unit'] for x in old['compiled']]==units,'Original28 unit order')
  skip=['umd/typed_entry','umd/entry','testclient/memory','testclient/d3d-clear','testclient/d3d-texture','testclient/d3d-texture-boundary','testclient/d3d-ui-texture','testclient/dxgi-present356']
@@ -91,7 +96,7 @@ def admit(stage,newdir,compiler,new_sha):
   libs.append(bind(compiler/name(row['path']),row['sha256']))
  require(len(libs)==10 and len({p.name for p in libs})==10,'Original ordered10 link libraries')
  pair_obj=bind(compiler/'pco_pair.obj',pair['object_sha256']);arm(pair_obj)
- receipt=dict(schema='ge8300-ia-float-UMD-only-relink-v1',source_commit=git('rev-parse','HEAD').decode().strip(),baseline_compiled_source_commit=BASE,new_objects_compiled_source_commit=NEW,PCO_compiled_source_commit=PCO,baseline_manifest_sha256=BASE_SHA,broad451_recorded_source_commit=broad['source_commit'],broad451_manifest_sha256=BROAD_SHA,new_compile_manifest_sha256=new_sha,compiler_manifest_sha256=sha(cm_path),pair_manifest_sha256=sha(pm_path),objects=records,original_archive_member_order=[n for n,b in oldmembers],archive_command_order=leaves,library_order=[dict(path=str(p),sha256=sha(p)) for p in libs],pco_pair_sha256=sha(pair_obj),compile_count=0,archive_count=0,link_count=0,sign_count=0,native67_used=False,native_cache_guard_called=False,KMD_rebuilt=False,SDK_setup=False,PCO_rebuilt=False,strict_cache_qualified=False,historical_environment_header_snapshot_complete=False,qualification='Explicit retained candidate; broad451 current source+PCO605 and actual objects verified, not a proof of every historical environment/header input',signed=False,hardware_verified=False,success=False,steps={})
+ receipt=dict(schema='ge8300-ia-float-UMD-only-relink-v1',source_commit=git('rev-parse','HEAD').decode().strip(),original_UMD_recipe_identity=recipe_proof,baseline_compiled_source_commit=BASE,new_objects_compiled_source_commit=NEW,PCO_compiled_source_commit=PCO,baseline_manifest_sha256=BASE_SHA,broad451_recorded_source_commit=broad['source_commit'],broad451_manifest_sha256=BROAD_SHA,new_compile_manifest_sha256=new_sha,compiler_manifest_sha256=sha(cm_path),pair_manifest_sha256=sha(pm_path),objects=records,original_archive_member_order=[n for n,b in oldmembers],archive_command_order=leaves,library_order=[dict(path=str(p),sha256=sha(p)) for p in libs],pco_pair_sha256=sha(pair_obj),compile_count=0,archive_count=0,link_count=0,sign_count=0,native67_used=False,native_cache_guard_called=False,KMD_rebuilt=False,SDK_setup=False,PCO_rebuilt=False,strict_cache_qualified=False,historical_environment_header_snapshot_complete=False,qualification='Explicit retained candidate; broad451 current source+PCO605 and actual objects verified, not a proof of every historical environment/header input',signed=False,hardware_verified=False,success=False,steps={})
  return receipt,locks,objects,leaves,oldmembers,libs,pair_obj
 
 def main():
