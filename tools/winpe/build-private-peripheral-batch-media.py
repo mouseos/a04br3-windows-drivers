@@ -299,10 +299,10 @@ def main():
  service=rooted(root,a.service_package);sm=json.loads((service/'peripheral-service-manifest.json').read_text(encoding='utf-8-sig'))
  import sys
  sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'recovery'))
- from collection_reboot import policy_config,source_closure
+ from collection_reboot import policy_config,source_closure,compile_macros
  cfg=policy_config(p)
  require(bool(sm.get('collection_reboot'))==bool(cfg),'service/profile collection mode mismatch')
- if cfg:require(sm['collection_reboot']==dict(schema='MT8167_COLLECTION_REBOOT_COMPILE_V1',config=cfg,headers=source_closure(repo),macros=['A04_COLLECTION_REBOOT=1','A04_COLLECTION_REBOOT_PROFILE=1']),'actual collection source/compile closure')
+ if cfg:require(sm['collection_reboot']==dict(schema='MT8167_COLLECTION_REBOOT_COMPILE_V1',config=cfg,headers=source_closure(repo),macros=compile_macros(p)),'actual collection source/compile closure')
  signed_source=a.service_source_commit or a.source_commit
  require(re.fullmatch('[0-9a-f]{40}',signed_source),'署名source pin必須')
  if a.followup231_profile or a.gpu377_output_profile or a.gpu378_keypad_profile:

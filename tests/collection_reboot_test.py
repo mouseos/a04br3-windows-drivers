@@ -33,6 +33,8 @@ class CollectionTest(unittest.TestCase):
   # Synthetic unit fixture, never an actual capture/profile output.
   p=dict(profile='test-fixture',capture_number=999,draft=False,main_execution_approved=True,service='TEST',data_directory='TEST',first_install_mask=0,deferred_unbound_mask=0,diagnostic_clients=[dict(name=x,phase=1) for x in ('gpu_present','gpu_globaldiag')])
   q=cr.enable_next_profile(p);self.assertEqual(len(cr.macros(q)),2)
+  snapshot=cr.enable_next_profile(p,vidpn_uart_snapshot=True);self.assertEqual(len(cr.macros(snapshot)),3);self.assertIn('A04_VIDPN_UART_SNAPSHOT=1',cr.compile_macros(snapshot))
+  self.assertTrue({'tools/winpe/vidpn-uart-snapshot.h','tools/winpe/collection-vidpn-uart.h'}.issubset(cr.SOURCE_PATHS))
   self.assertEqual(cr.admit(dict(collection_reboot=cr.CONFIG),q,True),cr.CONFIG)
   with self.assertRaises(ValueError):cr.admit({},q,True)
   closure=cr.source_closure(REPO);sm=dict(collection_reboot=dict(schema='MT8167_COLLECTION_REBOOT_COMPILE_V1',config=cr.CONFIG,headers=closure,macros=['A04_COLLECTION_REBOOT=1','A04_COLLECTION_REBOOT_PROFILE=1']))
@@ -60,6 +62,17 @@ class CollectionTest(unittest.TestCase):
    if len(calls)==1:raise subprocess.TimeoutExpired(args,kw['timeout'])
    return subprocess.CompletedProcess(args,0)
   r=cr.wait_fastboot(self.out,c,self.out,self.terminal(),uart,0,lambda x:x,run,engine.BOUNDED_DEVICE_SHELL,clock,sleep);self.assertFalse(r['hardware_success']);self.assertEqual(len(calls),2)
+  uart.write_bytes(b'');r=cr.wait_fastboot(self.out,c,self.out,self.terminal(),uart,0,lambda x:x,run,engine.BOUNDED_DEVICE_SHELL,clock,sleep)
+  self.assertIsNone(r['Windows_shutdown_API_return0']);self.assertFalse(r['UART_shutdown_proof_complete']);self.assertEqual(r['collection_transport_status'],'fastboot-observed-shutdown-unproven')
+  uart.write_bytes(b'A04WIN BUGCHECK\n'+self.uart().replace(b'000002D1 00000000',b'000002D1 00000005'))
+  r=cr.wait_fastboot(self.out,c,self.out,self.terminal(),uart,0,lambda x:x,run,engine.BOUNDED_DEVICE_SHELL,clock,sleep)
+  self.assertIsNone(r['Windows_shutdown_API_return0']);self.assertTrue(r['runtime_fault_observed']);self.assertIsNotNone(r['UART_proof_validation_error']);self.assertFalse(r['hardware_success'])
+  c['vidpn_uart_snapshot']=cr.SNAPSHOT_CONFIG
+  observed_snapshot=cr.save_vu_snapshot(c,self.out,self.terminal(),b'no VU snapshot\n')
+  self.assertFalse(observed_snapshot['transport_complete']);self.assertTrue(observed_snapshot['current_boot_unproven']);self.assertFalse(observed_snapshot['hardware_success'])
+  self.assertTrue((self.out/'vidpn-vu-snapshot.json').exists())
+  uart.write_bytes(self.uart())
+
   def absent(*a,**kw):now[0]+=60;raise subprocess.TimeoutExpired(a,1)
   with self.assertRaises(RuntimeError):cr.wait_fastboot(self.out,c,self.out,self.terminal(),uart,0,lambda x:x,absent,engine.BOUNDED_DEVICE_SHELL,clock,sleep)
  def test_process_group_timeout_reaps_descendant(self):

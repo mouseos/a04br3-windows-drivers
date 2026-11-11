@@ -51,6 +51,9 @@ struct diagnostic_client {const WCHAR *exe,*arguments,*name,*relative_directory;
 #if A04_COLLECTION_REBOOT && !A04_COLLECTION_REBOOT_PROFILE
 #error Collection reboot requires a new explicit generated profile opt-in
 #endif
+#ifndef A04_VIDPN_UART_SNAPSHOT
+#define A04_VIDPN_UART_SNAPSHOT 0
+#endif
 #include "rotation-job-contract.h"
 #ifndef A04_CANDIDATE_EXTRA_COUNT
 #define A04_CANDIDATE_EXTRA_COUNT 0u
@@ -421,6 +424,7 @@ static struct combined_client_result combined_clients[8];
 static DWORD combined_gpu_node_ready,combined_diagnostic;
 typedef char combined_client_schema2_unchanged[(sizeof(struct combined_client_result)==36)?1:-1];
 #include "collection-reboot.h"
+#include "collection-vidpn-uart.h"
 static DWORD combined_snapshot(const WCHAR *phase,DWORD result,int include_volume){
  HKEY key=NULL;WCHAR name[256],policy_hash[65];DWORD at;DWORD e=0,nodes=PERIPHERAL_TARGET_COUNT,clients=(DWORD)A04_DIAGNOSTIC_CLIENT_COUNT,schema=2,complete=0;
  if(clients>8)return ERROR_INVALID_DATA;
@@ -654,11 +658,18 @@ static void WINAPI service_main(DWORD argc,WCHAR **argv)
  (void)argc;(void)argv;stop_event=CreateEventW(NULL,TRUE,FALSE,NULL);event_error=stop_event?0:GetLastError();
  status_handle=RegisterServiceCtrlHandlerW(service_name,control);if(!status_handle)return;
  memset(&service_status,0,sizeof(service_status));service_status.dwServiceType=SERVICE_WIN32_OWN_PROCESS;service_status.dwCurrentState=SERVICE_RUNNING;service_status.dwControlsAccepted=SERVICE_ACCEPT_STOP;SetServiceStatus(status_handle,&service_status);
- e=event_error?event_error:once();final_error=combined_finalize(e);if(final_error&&(e==0||e==ERROR_SUCCESS_REBOOT_REQUIRED))e=final_error;
+ e=event_error?event_error:once();
+#if A04_VIDPN_UART_SNAPSHOT
+ collection_vidpn_uart_snapshot();
+#endif
+ /* An earlier UART owner may still hold its packet after failed cancellation.
+  * Never promote that uncertainty to a safe collection restart. */
+ if(uart_quarantined)collection_latch_io(2,ERROR_IO_INCOMPLETE);
+ final_error=combined_finalize(e);if(final_error&&(e==0||e==ERROR_SUCCESS_REBOOT_REQUIRED))e=final_error;
  if(!A04_DIAGNOSTIC_ONLY&&e==ERROR_SUCCESS_REBOOT_REQUIRED){DWORD w=deferred_start_waiter();if(w){(void)disable_self();e=w;}}
  if(e&&e!=ERROR_SUCCESS_REBOOT_REQUIRED)(void)disable_self();record(0,0x207,e);
  if(logfile!=INVALID_HANDLE_VALUE){log_flush=FlushFileBuffers(logfile)?0:collection_error();if(log_flush&&!e)e=ERROR_WRITE_FAULT;log_close=CloseHandle(logfile)?0:collection_error();logfile=INVALID_HANDLE_VALUE;}else log_close=ERROR_INVALID_HANDLE;
- memset(&proof,0,sizeof(proof));proof.magic=A04_CR_MAGIC;proof.version=1;proof.bytes=sizeof(proof);proof.run_id=combined_run_id;proof.service_pid=combined_service_pid;proof.result=e;proof.diagnostic_complete=combined_diagnostic?collection_diagnostic_complete:0;proof.finalize_error=final_error;proof.log_flush_error=log_flush;proof.log_close_error=log_close;proof.readonly_uncertain=!!readonly_uncertain;proof.cancelled=!stop_event||WaitForSingleObject(stop_event,0)!=WAIT_TIMEOUT;proof.client_count=(DWORD)A04_DIAGNOSTIC_CLIENT_COUNT;proof.io_error=collection_io_error?collection_io_error:log_error;
+ memset(&proof,0,sizeof(proof));proof.magic=A04_CR_MAGIC;proof.version=1;proof.bytes=sizeof(proof);proof.run_id=combined_run_id;proof.service_pid=combined_service_pid;proof.result=e;proof.diagnostic_complete=combined_diagnostic?collection_diagnostic_complete:0;proof.finalize_error=final_error;proof.log_flush_error=log_flush;proof.log_close_error=log_close;proof.readonly_uncertain=!!readonly_uncertain;proof.cancelled=!stop_event||WaitForSingleObject(stop_event,0)!=WAIT_TIMEOUT;proof.client_count=(DWORD)A04_DIAGNOSTIC_CLIENT_COUNT;proof.io_error=collection_io_error?collection_io_error:(uart_quarantined?ERROR_IO_INCOMPLETE:log_error);
  memcpy(proof.policy,deferred_token,64);
  for(i=0;i<2&&i<A04_DIAGNOSTIC_CLIENT_COUNT;i++){memcpy(&proof.clients[i],&combined_clients[i],sizeof(combined_clients[i]));proof.clients[i].io_error=collection_client_io[i];}
  /* Complete proof and permanent once claim precede waiter startup. Neither

@@ -70,9 +70,36 @@ a04_vut_uart_emitは VU event packet-ordinal word-offset word-count words... の
 logical packet全体を既存uart_recordの96B storageへ直接渡さない。VUは既存PB制御eventと別。
 ownerはzero初期化したa04_vut_uartを1回使いsend callbackを既存uart_recordへ接続する。
 そのcallbackで累積deadline（例30秒）/cancel/quarantine所有権を維持する。
-このsend callbackとservice callsiteは本変更に含まれない。
-将来呼出しは全client終了後/terminal log close前のuser-modeで1回だけ。
+`collection-vidpn-uart.h`のsend callbackとservice callsiteへ統合済み。
+futureprofileの明示opt-in時だけ両client終了後/combined_finalize・terminal log close前に1回呼ぶ。
 既存診断結果、cleanup/finalize/STOPPED/reboot契約と既schemaは変えない。
 
 host fixtureはmissing/shape/epoch不一致/未完了/torn/最大出力/送信失敗を検証する。
-Windows adapter・実UART・host decoder統合は未検証。helper単独の追加実機試験/buildは要求しない。
+Windows SCM compileは統合後に確認する。実UART/実機は未検証。host decoderは394cをhost waitへ接続する。
+
+## collection future sourceへの統合
+
+`enable_next_profile(p, vidpn_uart_snapshot=True)`が固定snapshot CONFIGとmacroを生成する。
+実actual233未回収のため新正式profile/媒体は生成しない。e769/run232は変更しない。
+recipeは新header2件を含むsourceclosureと実macro3個をmanifestに結合し、media/sealでも照合する。
+
+送信は既uart_recordをそのまま使い、adapterで1chunk<=94Bを必須化。
+既関数は同期copy後、overlapped待ち/取消確認。取消不能ならpacket/eventを保持しquarantineする。
+別thread・早期freeは追加しない。cancel/quarantineを各read/submit前後に検査し、エラー後は送信しない。
+全体deadline30秒は開始時一度だけ設定。各submit前に4秒以上の残予算を必須にする。
+既busy2秒＋最後のpending/cancel約1.25秒＋success150msを保守的に収める。
+OS scheduling・同期registry APIのhard realtime保証ではなく、API境界で期限を再確認する。
+結果はservice.logのPB3deへlocal-onlyで保存し、期限後の追加UART submitを避ける。
+transport/cancel/deadline errorは独立I/O latchへ渡し、元diagnostic result/eを変えない。
+terminal recordで後からquarantineした場合もproof gateがreadyを拒否する。
+
+bindingは既PB run/PIDだけ。既installed_sysの実file guardとselected metadataがともに0の場合だけ
+実target SYS hashをlittle-endian DWORDへcopyしsys_verified=1を宣言する。
+これは配置fileの照合でありロード済memory/今回bootの証明ではない。
+取得不能ならSYS zero/unknown、writer sourceは常にunknown。seal値はSCM/runtimeに埋め込まない。
+raw epochは8715のままcurrent_boot_unprovenを維持する。
+
+hostはUART proofと独立に対象serial/productをbounded probeする。
+fastbootを観測すればproof欠落でもRSTなしread-only回収へ進めるが、
+Windows_shutdown_API_return0=Noneとshutdown-unprovenを記録する。
+panic/manual resetの可能性を成功へ変換せず、元terminal結果・fault観測・proof検証errorを保持する。

@@ -5,16 +5,16 @@ actual233未回収のため、正式次profile・SCM署名品・実機投入の�
 新captureの値やRecoveryを仮置きせず、既known-profile whitelistは拡張しない。
 
 次のactual-profile adapterは、通常の全baseline/候補検証後、policy hash計算前に
-`enable_next_profile(p)`を呼ぶ。`draft=false`、main承認、`capture_number>231`を
+`enable_next_profile(p, vidpn_uart_snapshot=True)`を呼ぶ。`draft=false`、main承認、`capture_number>231`を
 要求し、profileへ`-collection-reboot-v1`と固定CONFIGを付す。pendingは拒否する。
 そのactual生成入口・host contract whitelistはactual233取得後に一度だけ正式化する。
-共通header generatorはこのCONFIGから2macroを生成する。
+共通header generatorはcollection2macroとsnapshot1macroを生成する。snapshotは既定OFF。
 
 正式buildは既recipeの `-CollectionReboot` を明示し、通常variantの期待profile名に
 上記suffixを加えた正確な一致とCONFIG検査をcompile前に要求する。
 新headers・Python helper/decoderはcompile前後hashをmanifestへ保存する。
 mediaも同closureと生成headerを比較し、実service manifest参照を出力する。
-main sealにはcollection CONFIG、service manifest、`source_closure(repo)`の全leafを
+main sealにはcollection CONFIG、snapshot CONFIG（有効時）、service manifest、`source_closure(repo)`の全leafを
 workspace相対pathでpinする。hostはrepo相対refをroot内実体へ正規化して照合する。
 `--collection-reboot`がなければopt-in profileは拒否する。既profileへflagだけ追加も拒否する。
 
@@ -32,11 +32,15 @@ waiterは実親終了・exit・SCM停止結果・同run/PID/policy・永続once�
 collectorは `logs/collection-reboot-proof-v1.bin` をexact216Bで回収する。
 
 waiterは既InitiateSystemShutdownExW経路を一度だけ呼ぶ。
-hostは同run/PID/policy/result/API0のUART proof後、専用process groupとforeground timeoutで
-対象serialのfastbootを最大180秒待つ。外側probe timeoutは未検出として同deadline内で継続。
+hostは専用process groupとforeground timeoutで対象serialのfastbootを最大180秒待つ。
+同run/PID/policy/result/API0のUART proofは独立に検証し、欠落/不一致ならAPI0未証明(None)を保持する。
+fastboot確認だけでもRSTなしread-only回収へ進めるが、panic/manual resetやGPU成功を推測しない。外側probe timeoutは未検出として同deadline内で継続。
 異常・期限終了時はRST/retryせず履歴を保存。collection経路のrecovery commandには
 UART reset命令を含めない。v1は初回実行から自動回収までの経路のみで、旧collect-onlyと併用しない。
 
 検証: `python3 -B tests/collection_reboot_test.py`。
 root内ログのWindows compileはテスト専用headerコピーでSCM1TUのみ。
 正式profile/署名品ではなく、link/sign/deviceは0。実機shutdown成功は未検証。
+
+VU decoder394cはhost waitのfastboot確認時/期限終了時へ接続し、`vidpn-vu-snapshot.json`を保存する。
+欠落・破損は未観測/未証明として記録し、read-only回収を妨げない。decoderもsourceclosureへpinする。
