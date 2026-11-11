@@ -346,7 +346,7 @@ for ((i=0;i<30;i++)); do [ "$(adb shell id -u 2>/dev/null | tr -d '\\r')" = 0 ] 
 '''+MOUNT_GUARD,name,(root/c['reset_script'],),flash=True)
  def deploy(image,digest,name,initial=False):
   require(sha(image)==digest,'ESP変更検出');offset=uart.stat().st_size
-  gate=('python3 -B "$2" verify --serial "$rt_target_serial" --manifest "$3" --manifest-sha256 '+c['fresh_manifest_sha256']+'\n') if initial else ''
+  gate=('python3 -B "$2" verify --serial "$rt_target_serial" --manifest "$3" --manifest-sha256 '+live_c['fresh_manifest_sha256']+'\n') if initial else ''
   command('''[ "$(adb get-state)" = recovery ]
 '''+MOUNT_GUARD+gate+'''esp_tmp=/tmp/gpu"$6"-esp.img
 adb push "$4" "$esp_tmp"
@@ -354,7 +354,7 @@ adb push "$4" "$esp_tmp"
 adb shell 'set -e; test "$(id -u)" = 0; test "$(readlink -f /dev/block/by-name/EFI)" = /dev/block/mmcblk0p18; test "$(cat /sys/class/block/mmcblk0p18/start)" = 360448; test "$(cat /sys/class/block/mmcblk0p18/size)" = 524288'
 '''+MOUNT_GUARD+'''adb shell "test -b /dev/block/by-name/EFI && dd if=$esp_tmp of=/dev/block/by-name/EFI bs=4M conv=fsync && sync && rm $esp_tmp"
 adb reboot
-''',name,(root/c['capture_tool'],root/c['fresh_manifest'],image,digest,k['run']),flash=True)
+''',name,(root/c['capture_tool'],root/(live_c['fresh_manifest'] if initial else c['fresh_manifest']),image,digest,k['run']),flash=True)
   return offset
  def matched_boot():
   # Same Recovery, already verified before claiming the execution latch.
