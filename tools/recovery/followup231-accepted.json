@@ -1,0 +1,10 @@
+{
+  "schema": "FOLLOWUP231_ACCEPTED_CANDIDATES_V1",
+  "status": "pending-hegel-signed-candidates",
+  "adapter_id": null,
+  "mode": null,
+  "GPU_candidate": null,
+  "client_pair": null,
+  "main_review": null,
+  "filter_root_transitions": []
+}

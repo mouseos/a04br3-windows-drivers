@@ -7,6 +7,7 @@ PROFILE='combined-features-fresh200-gpu368-v1'
 SERVICE='MT8167CombinedFollowup200'
 # 実行条件は既知の二組だけ。任意profile/run/serviceへの転用は許可しない。
 KNOWN_PROFILES={
+ 'run232':dict(run=232,fresh=231,capture=233,profile='combined-features-fresh231-reviewed-followup-v1',service='MT8167CombinedFollowup231',followup231=True),
  'run230':dict(run=230,fresh=229,capture=231,profile='combined-features-fresh229-gpu378-keypad13-diagnostic-only-v1',service='MT8167CombinedFollowup229',output378=True,diagnostic378=True),
  'run228':dict(run=228,fresh=227,capture=229,profile='combined-features-fresh227-gpu378-keypad13-client375-v1',service='MT8167CombinedFollowup227',output378=True),
  'run201':dict(run=201,fresh=200,capture=202,profile=PROFILE,service=SERVICE),
@@ -41,9 +42,9 @@ test "$rows" -gt 0'
 def contract(name):
  require(name in KNOWN_PROFILES,'未知のcontroller profile')
  k=dict(KNOWN_PROFILES[name]);k.update(
-  schema=('GPU378_DIAGNOSTIC' if k.get('diagnostic378') else 'GPU378' if k.get('output378') else 'GPU377' if k.get('output377') else 'GPU375_COMBINED' if k.get('combined375') else ('GPU%d'%k.get('client_version',373)) if k.get('client373') else 'GPU371' if k.get('output371') else 'GPU369' if k.get('timing') else 'GPU368')+'_RUN%d_MAIN_SEAL_V1'%k['run'],transaction='combined-run%d'%k['run'],
+  schema=('FOLLOWUP231' if k.get('followup231') else 'GPU378_DIAGNOSTIC' if k.get('diagnostic378') else 'GPU378' if k.get('output378') else 'GPU377' if k.get('output377') else 'GPU375_COMBINED' if k.get('combined375') else ('GPU%d'%k.get('client_version',373)) if k.get('client373') else 'GPU371' if k.get('output371') else 'GPU369' if k.get('timing') else 'GPU368')+'_RUN%d_MAIN_SEAL_V1'%k['run'],transaction='combined-run%d'%k['run'],
   capture_output='port/xnu/out/private-windows-rt-prebackup-run%d'%k['capture'],
-  diagnostics_output='port/xnu/out/private-windows-rt-%s-run%d-diagnostics'%('gpu378' if k.get('output378') else 'gpu377' if k.get('output377') else ('gpu%d'%k.get('client_version',373)) if k.get('client373') else 'gpu371' if k.get('output371') else 'gpu369' if k.get('timing') else 'gpu368',k['run']),
+  diagnostics_output='port/xnu/out/private-windows-rt-%s-run%d-diagnostics'%('followup231' if k.get('followup231') else 'gpu378' if k.get('output378') else 'gpu377' if k.get('output377') else ('gpu%d'%k.get('client_version',373)) if k.get('client373') else 'gpu371' if k.get('output371') else 'gpu369' if k.get('timing') else 'gpu368',k['run']),
   runtime_output='port/gsi/logs/ios-feasibility/windows-rt-combined-run%d-runtime'%k['run'])
  return k
 
@@ -102,7 +103,7 @@ def validate_seal(root,path,digest,known_profile="run201",entrypoint=None):
  require(c['target_tools']=='port/gsi/logs/ios-feasibility/windows-rt-target-tools.sh' and c['reset_script']=='unixnu/UniXNU-a04br3/scripts/a04br3-reset.sh','既target/reset実装のみ')
  require(c['boot_written'] is False and c['gpt_written'] is False and c['hardware_success_claimed'] is False,'sealは実行前状態、GPT変更/成功主張は禁止')
  require(c['service_name']==c['data_directory']==service and re.fullmatch('[A-Za-z0-9_-]{1,100}',c['gpu_log_directory']),'service/data directory不一致')
- require(c['planned_windows_reboots'] in ((0,) if k.get('diagnostic378') else (0,1) if k.get('client373') else (1,)) and c['GPU_client_index']==0 and c['globaldiag_client_index']==1 and c['diagnostic_client_count']==2,'render install/reboot1＋Present1/helper1のみ')
+ require(c['planned_windows_reboots'] in ((0,1) if k.get('followup231') else (0,) if k.get('diagnostic378') else (0,1) if k.get('client373') else (1,)) and c['GPU_client_index']==0 and c['globaldiag_client_index']==1 and c['diagnostic_client_count']==2,'render install/reboot1＋Present1/helper1のみ')
  require(c['install_timeout_seconds']==900 and c['diagnostic_boot_wait_seconds']==180 and c['diagnostic_timeout_seconds']==1140 and c['terminal_settle_seconds'] in range(3,46),'固定timeout契約不一致')
  pins={}
  for row in c['pinned_files']:
@@ -111,7 +112,7 @@ def validate_seal(root,path,digest,known_profile="run201",entrypoint=None):
   p=rooted(root,c[key]);require(p.relative_to(root).as_posix() in pins,'sealに必要tool/input pinがない: '+key);return p
  for key in ('capture_tool','crc_decoder','diagnostics_collector','ntfs3g','reset_script','target_tools','fresh_manifest','normal_esp','controller_path'):pinned(key)
  require(pinned('controller_path')==Path(entrypoint or __file__).resolve(),'別controllerのseal')
- if known_profile in ('run203','run209','run213','run216','run219','run222','run222-combined','run226','run228','run230'):
+ if known_profile in ('run203','run209','run213','run216','run219','run222','run222-combined','run226','run228','run230','run232'):
   require(pinned('controller_engine')==Path(__file__).resolve(),'共通controller engine pin不一致')
   require(pinned('collector_present_helper')==Path(__file__).resolve().with_name('collect-present356.py'),'collector helper pin不一致')
  require(type(c.get('gpu_runtime_assets',False)) is bool,'Explicit optional runtime collection flag')
@@ -120,10 +121,17 @@ def validate_seal(root,path,digest,known_profile="run201",entrypoint=None):
  require((media/'manifest.json').relative_to(root).as_posix() in pins and sha(media/'manifest.json')==c['media_manifest_sha256'],'media manifest pin不一致')
  require(sha(media/'update.wim')==m['wim_sha256']==c['wim_sha256'],'WIM pin不一致')
  require(sha(media/'update-esp.img')==m['esp_sha256']==c['esp_sha256'] and sha(pinned('normal_esp'))==c['normal_esp_sha256'],'ESP pin不一致')
- expected_targets=[] if k.get('diagnostic378') else ['render','keypad'] if k.get('output378') else ['display','render','wifi','battery'] if k.get('combined375') else (['wifi'] if c.get('wifi_activation') is True else []) if k.get('client373') else ['render'] if k.get('output371') else (['display','render','wifi'] if c.get('wifi_activation') is True else ['display','render']) if k.get('timing') else ['render']
+ expected_targets=p['install_targets'] if k.get('followup231') else [] if k.get('diagnostic378') else ['render','keypad'] if k.get('output378') else ['display','render','wifi','battery'] if k.get('combined375') else (['wifi'] if c.get('wifi_activation') is True else []) if k.get('client373') else ['render'] if k.get('output371') else (['display','render','wifi'] if c.get('wifi_activation') is True else ['display','render']) if k.get('timing') else ['render']
  require(p['profile']==k['profile'] and p['service']==p['data_directory']==service and p['install_targets']==expected_targets and p['planned_reboots']==c['planned_windows_reboots'],'既知freshと更新対象の結合必須')
  require(p['backup_manifest_sha256']==c['fresh_manifest_sha256'] and p['capture_selection']['capture_number']==k['fresh'],'選択fresh結合不一致')
- if k.get('output378'):
+ if k.get('followup231'):
+  ms=importlib.util.spec_from_file_location('followup231',Path(__file__).with_name('prepare-followup231-inputs.py'));variant=importlib.util.module_from_spec(ms);ms.loader.exec_module(variant)
+  require(pinned('generator_path')==Path(__file__).resolve().with_name('prepare-followup231-inputs.py'),'fixed followup231 generator')
+  variant.validate_runtime_policy(root,p)
+  for ref in p['input_pins']:require(pins.get(ref['path'])==ref['sha256'],'actual231 closure seal pin')
+  require(p['followup231_contract']['input']['path']==c['private_map'] and pins.get(c['private_map'])==p['followup231_contract']['input']['sha256'],'actual231 map binding')
+  require(c['boot_write_required'] is False and c['matched_boot_sha256']==MATCHED_BOOT and not c.get('wifi_activation',False),'retained boot/GPT/no WiFi DIF')
+ elif k.get('output378'):
   generator='prepare-gpu378-diagnostic229-inputs.py' if k.get('diagnostic378') else 'prepare-gpu378-keypad13-inputs.py'
   ms=importlib.util.spec_from_file_location('output378',Path(__file__).with_name(generator));variant=importlib.util.module_from_spec(ms);ms.loader.exec_module(variant)
   require(pinned('generator_path')==Path(__file__).resolve().with_name(generator),'378 generator pin')
@@ -329,7 +337,7 @@ def main(known_profile="run201",entrypoint=None,argv=None):
  require(out.is_relative_to(root),'root内のログ出力必須')
  require(not (root/c['capture_output']).exists() and not (root/c['diagnostics_output']).exists(),'既存capture/diagnosticsを上書きしない')
  if (k.get('output378') or k.get('output377') or k.get('timing') or k.get('output371') or k.get('client373')) and not a.collect_only:stage_preflight(root,live_c,out,a.seal_sha256)
- latches=root/('port/gsi/logs/ios-feasibility/%s-run%d-executions'%('gpu378' if k.get('output378') else 'gpu377' if k.get('output377') else ('gpu%d'%k.get('client_version',373)) if k.get('client373') else 'gpu371' if k.get('output371') else 'gpu369' if k.get('timing') else 'gpu368',k['run']));latch=latches/(k['transaction']+('-resume'+str(resume_number) if a.resume_baseline_reject else '')+'.json')
+ latches=root/('port/gsi/logs/ios-feasibility/%s-run%d-executions'%('followup231' if k.get('followup231') else 'gpu378' if k.get('output378') else 'gpu377' if k.get('output377') else ('gpu%d'%k.get('client_version',373)) if k.get('client373') else 'gpu371' if k.get('output371') else 'gpu369' if k.get('timing') else 'gpu368',k['run']));latch=latches/(k['transaction']+('-resume'+str(resume_number) if a.resume_baseline_reject else '')+'.json')
  if a.collect_only:
   require(out.is_dir(),'既存held runtime出力必須')
   held_out=out;st=verify_collection(out,c,a.seal_sha256,k,latch)
@@ -397,7 +405,7 @@ adb shell 'set -e; test "$(id -u)" = 0; test "$(readlink -f /dev/block/by-name/b
   if not a.collect_only:
    save()
    if k.get('timing'):matched_boot()
-   offset=deploy(root/c['media_directory']/'update-esp.img',c['esp_sha256'],'prepare-write.log',not (k.get('output377') or k.get('timing') or k.get('output371') or k.get('client373')));st.update(status='prepare-observing',prepare_uart_offset=offset);save()
+   offset=deploy(root/c['media_directory']/'update-esp.img',c['esp_sha256'],'prepare-write.log',not (k.get('followup231') or k.get('output378') or k.get('output377') or k.get('timing') or k.get('output371') or k.get('client373')));st.update(status='prepare-observing',prepare_uart_offset=offset);save()
    spec=importlib.util.spec_from_file_location('gpu%d_crc'%k['run'],root/c['crc_decoder']);decoder=importlib.util.module_from_spec(spec);spec.loader.exec_module(decoder)
    report=None;deadline=time.monotonic()+900
    with uart.open('rb') as f:
