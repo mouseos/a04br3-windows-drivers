@@ -13,3 +13,9 @@ python -B tools/ci/build-mt8167-keypad14-incremental.py --expected-source-commit
 現clang20/MSVC14.29 linker/llvm-readobjは実hashで確認する。新wdf_keys.c 1TUだけcompileし、元2objと実WDK/WDF6libsでMSVC link1回。CCC/include環境を拒否し、新compileは明示no-default-config、MDで実依存を記録する。source/headerをprehashし実depの一致をcompile後・link後に確認する。compile済obj/compile-manifest/state/logを先に保存し、後段失敗時も削除や再compileをしない。失敗後の全recipe再実行は禁止し、保存された成功境界から個別に続行する。
 
 成果物はunsigned SYS/INF、3obj、全実dep/全header index、tool/lib/source/argv/outputs hashとmap/log。CAT/署名/配備/押下試験は行わない。既a13 source review/ARM fixtureを再利用し、追加host fixture列やGPU buildを起動しない。候補versionを付けても入力動作成功や配備可署名済みを意味しない。
+
+## 実初回compile後のlink再開
+
+source39966436の実1TUはARMNT compile0で成功した。MDにはVC14.44のstdint.hが1件追加で現れ、事前indexから漏れていたためlink前に停止した。object/hashとMD/state/全argvを保全している。修正版はこのheaderを明示pinし、通常の将来compileでは事前照合する。
+
+今回だけの`--resume-from OLD_BUILD --native-admission-receipt SAME_RUN_NATIVE_RECEIPT`は、成功objの固定SHA/compiled source39966436/原argv/原source/header/INF/原prehashを厳密照合し、compileを呼ばずlinkへ進む。追加stdintは元compileのrecipe内ではprehashされていないことを保持し、同runnerで先に受理されたnative input snapshot cb4442d1のVC全root一致receiptと実stdintの固定hashで補強する。過去の未記録値を捏造しない。新unsigned manifestはcompiled source39966436と修正版recipe sourceを別々に保存する。保持成功objを捨てず、2回目compileをしない。

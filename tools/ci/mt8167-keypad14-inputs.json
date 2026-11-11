@@ -56,5 +56,16 @@
   },
   "version": "0.0.1.4",
   "driverver": "11/11/2026,0.0.1.4",
-  "historical_resource_headers_hash_recorded": false
+  "historical_resource_headers_hash_recorded": false,
+  "additional_headers": [
+    {
+      "path": "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/14.44.35207/include/stdint.h",
+      "bytes": 4114,
+      "sha256": "29fb6d4ba5e311e06877609c20a1bc49c6cdfb730f56dd0f9c53a6241c40ab5c",
+      "origin": "actual-VC1444-stdlib; snapshot cb4442d1 and prior same-runner native admission"
+    }
+  ],
+  "resume_compiled_source": "39966436b4dc65c28386b02ba5481ce9513a894e",
+  "resume_object_sha256": "7ac496f946edf9dc99883817c36c159e203ace9da4486261c076c16ad03b130d",
+  "resume_native_admission_source": "ace651ba4e8bc9eee2c4f2f7a5e7faafa0c596a6"
 }
