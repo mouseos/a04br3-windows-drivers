@@ -305,6 +305,15 @@ def main():
  token=hashlib.sha256(json.dumps(p,sort_keys=True,separators=(',',':')).encode()).hexdigest()
  runtime_policy_token=gpu368_media_contract(p,(service/'peripheral-batch-policy.h').read_text(),(service/(SERVICE+'.exe')).read_bytes(),root) if a.combined200_profile else token
  (stage/'payload/boot-transition-authorized.bin').write_bytes(runtime_policy_token.encode()+b'\0');files['payload/boot-transition-authorized.bin']=sha(stage/'payload/boot-transition-authorized.bin')
+ # Candidate client hashes are post-copy invariants; only old witnesses may
+ # guard these admitted replacements before copying either new client leaf.
+ client_replacements={}
+ if a.gpu375_combined_profile:client_replacements=p['baseline221_client_transition_reference_only']['client_replacements']
+ elif a.gpu373_client_profile:client_replacements=p['gpu373_client_contract']['client_replacements']
+ if a.gpu375_combined_profile or a.gpu373_client_profile:
+  require(set(client_replacements)=={'Windows/System32/mt8167-dxgi-console-launch363.exe','Windows/System32/mt8167-dxgi-present356.exe'},'Only the admitted client pair may replace preserved leaves')
+  for name,row in client_replacements.items():
+   require(p['baseline_witnesses'].get(name)==row['baseline'] and p['preserved_files'].get(name)==row['candidate']['sha256'] and p['preserved_sources'].get(name)==row['candidate']['path'],'Client old witness/new preserved binding mismatch')
  prepare=[]
  for i,e in enumerate(x for x in b['files'] if x['source_path'] in {'Windows/System32/config/'+n+s for n in ('SYSTEM','DRIVERS') for s in ('','.LOG1','.LOG2')}):
   copy(backup.parent/e['backup_path'],'fresh-input/'+str(i)+'.bin')
@@ -312,7 +321,7 @@ def main():
  require(len(prepare)==12,'SYSTEM/DRIVERSの実trio各3必須')
  # Preserve exact current GPU/Engine/other bytes before arming SYSTEM.
  for i,(name,want) in enumerate(p['preserved_files'].items()):
-  if a.gpu373_client_profile and name in p['gpu373_client_contract']['client_replacements']:continue
+  if name in client_replacements:continue
   witness=rooted(root,p['preserved_sources'][name]);require(sha(witness)==want,'保持capture witness hash不一致')
   copy(witness,'preserved-proof/'+str(i)+'.bin')
   prepare+=['X:\\a04br3\\compare-files.exe X:\\a04br3\\preserved-proof\\'+str(i)+'.bin "C:\\'+name.replace('/','\\')+'" >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto baselinefail']
@@ -377,7 +386,7 @@ def main():
   for client in p['diagnostic_clients']:
    for name in [client['exe']]+[d['exe'] for d in client['dependencies']]:
     src=sep.join(('X:','a04br3','payload','clients',name));dst=system+client['relative_directory']+sep+name
-    prepare+=['copy /b '+('/y ' if ((rotation or reuse_rotation) and client['name']=='rotation') or (a.gpu373_client_profile and 'Windows/System32/'+name in p['gpu373_client_contract']['client_replacements']) else '')+src+' '+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail',sep.join(('X:','a04br3','compare-files.exe'))+' '+src+' '+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
+    prepare+=['copy /b '+('/y ' if ((rotation or reuse_rotation) and client['name']=='rotation') or ('Windows/System32/'+name in client_replacements) else '')+src+' '+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail',sep.join(('X:','a04br3','compare-files.exe'))+' '+src+' '+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
  for name,dst in [('boot-transition-authorized.bin',DIRECTORY+'\\boot-transition-authorized.bin'),(SERVICE+'.exe',SERVICE+'.exe')]:
   prepare+=['copy /b X:\\a04br3\\payload\\'+name+' C:\\Windows\\System32\\'+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail','X:\\a04br3\\compare-files.exe X:\\a04br3\\payload\\'+name+' C:\\Windows\\System32\\'+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
  # Last mutation only: main-selected capture-derived clean SYSTEM containing the one new service.
