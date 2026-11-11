@@ -3,7 +3,7 @@
 slot0/per-vertex、連続した最大2 input registerという既存profileで、
 `R32_FLOAT`、`R32G32_FLOAT`、`R32G32B32_FLOAT`、`R32G32B32A32_FLOAT`
 を受け付ける。format照会ではこの4形式にvertex-buffer supportだけを返す。
-既存BGRA/RGBA能力、native ABI、packet/private float4 packing、MP flagsは変更しない。
+既存BGRA/RGBAのshader-sample/RT能力、native ABI、packet/private float4 packing、MP flagsは変更しない。
 
 Microsoft [D3D11.3 Functional Specification](https://microsoft.github.io/DirectX-Specs/d3d/archive/D3D11_3_FunctionalSpec.htm)
 19.1.3.3は欠け成分についてRGB=0、A=1（FLOATでは1.0f）を規定する。
@@ -67,3 +67,32 @@ python tools/ci/relink-ge8300-ia-float-umd.py `
 この処理は厳密な旧環境全証明ではない。旧UMDの実効全argvや環境header全snapshotは保存不足であり、旧source recipeのflags・現source/実object/hash・新2TUの実依存に基づく限定候補である。`strict_cache_qualified=false`、`historical_environment_header_snapshot_complete=false` を維持し、元PCO receipt/current_source等を現sourceへ改名しない。source実装時はread-only admission/parseのみ、実archive/link/署名/実機は未実行。
 
 PS1 recipeのcompiled/current Git blobは完全一致を要求する。workingtreeはLF/CRLF改行変換だけを許容し、canonical blob SHAと実checkout SHAをreceiptへ別々に記録する。runtime `.c/.h`やobjectのbyte hashは正規化せず、従来どおり厳密照合する。
+
+
+## R8G8B8A8_UNORM頂点入力
+
+R8G8B8A8_UNORMの4 bytesをR/G/B/A順に読み、それぞれを`(FLOAT)byte / 255.0f`
+で既存canonical float4へ展開する。B8、SRGB、整数形式は追加しない。
+既存RGBA shader-sample flagを保ち、同形式だけにvertex-buffer flagを追加する。
+FLOAT1〜4経路は従来のmemcpyのままで、NaN/Inf/負のゼロを再解釈しない。
+layout内部のregister別formatは、同じ4-byte幅のR32_FLOATとUNORM8を区別する。
+実resource readerの4-byte範囲検査・map/unmap失敗伝播、stride0、slot0/最大2registerを維持する。
+
+一次仕様は上記Microsoft Functional Specificationの3.2.3.5 UNORM -> FLOAT
+（n-bit値をfloatへ変換後、2^n-1で除算）と3.2.3.2 Integer Conversion Precision
+（float演算を伴う変換はIEEE精度、無限精度結果から1/2 ULP）。0は正の0.0f、255は1.0fとなる。
+丸めた1/255の乗算に置換せず直接除算を使う。sRGB変換やclampは行わない。
+Mesa一次実装`util_format_r8g8b8a8_unorm_unpack_rgba_float`はRGBA順と4-byte消費を確認できる。
+同snapshotの`util/u_math.h:ubyte_to_float`は丸めたreciprocal乗算を使うため、
+その全bit列との同一性を仕様の精度保証と混同しない。本実装のhost検査は独立の整数有理数oracleで行う。
+
+既存IA fixtureの同じ1バッチに、RGBA各channelの全256値をexact binary32
+round-to-nearest-even期待値へ照合するcaseを追加する。期待値はfloat除算を使わず
+整数商・剰余から構成し、端点・単調性、float/UNORMを両register順へ混在させた
+非indexed/R16/R32 indexed、offset/padding/末尾4 bytes・1 byte不足を確認する。
+以前のFLOAT1〜4/stride0/overlap/OOB/bit保存caseも同バッチで維持する。
+ARM/Windowsでの生成命令・実描画はこのhost検査では未確認。
+
+変更TUは引き続きUMD typed_draw/typed_entryの2つ。native67/KMD/PCO/MPflags/EDKは不変。
+optional relink toolのNEW=323a固定を変更しない。新candidateとの接続は別途判断が必要であり、
+実行中b2234 recipeや通常cold入口を変更しない。既native cache guardも変更しない。

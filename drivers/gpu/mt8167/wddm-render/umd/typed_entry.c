@@ -105,7 +105,7 @@ static void APIENTRY check_format(D3D10DDI_HDEVICE h,DXGI_FORMAT format,UINT *su
  if(!support){geo_typed_error(h,E_INVALIDARG);return;}*support=0;
  if(format==DXGI_FORMAT_R32_FLOAT||format==DXGI_FORMAT_R32G32_FLOAT||format==DXGI_FORMAT_R32G32B32_FLOAT||format==DXGI_FORMAT_R32G32B32A32_FLOAT)*support=D3D11_1DDI_FORMAT_SUPPORT_VERTEX_BUFFER;
  if(format==DXGI_FORMAT_B8G8R8A8_UNORM)*support=D3D10_DDI_FORMAT_SUPPORT_RENDERTARGET|D3D10_DDI_FORMAT_SUPPORT_SHADER_SAMPLE;
- if(format==DXGI_FORMAT_R8G8B8A8_UNORM)*support=D3D10_DDI_FORMAT_SUPPORT_SHADER_SAMPLE;
+ if(format==DXGI_FORMAT_R8G8B8A8_UNORM)*support=D3D10_DDI_FORMAT_SUPPORT_SHADER_SAMPLE|D3D11_1DDI_FORMAT_SUPPORT_VERTEX_BUFFER;
  /* BGRA8/RGBA8 have a real noncomparison SMP path for all regular filters and
   * anisotropy. No comparison/gather/load/blend/depth/MIP claims are added. */
 }

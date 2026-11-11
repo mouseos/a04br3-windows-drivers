@@ -6,7 +6,7 @@
 void geo_typed_device_trace(struct geo_typed_device *,const char *,UINT);
 #include "../memory.h"
 #include "../frontend/texture_draw_abi.h"
-struct geo_typed_layout {struct geo_typed_layout *next;struct geo_typed_device *device;UINT refs,deleted,offset[2],width[2],elements;};
+struct geo_typed_layout {struct geo_typed_layout *next;struct geo_typed_device *device;UINT refs,deleted,offset[2],width[2],format[2],elements;};
 static void layout_unref(struct geo_typed_layout *v) {
  struct geo_typed_layout **p;if(!v||!v->refs||--v->refs)return;
  for(p=&v->device->layouts;*p&&*p!=v;p=&(*p)->next){}if(!*p)return;*p=v->next;HeapFree(GetProcessHeap(),0,v);
@@ -19,6 +19,7 @@ static struct geo_typed_layout *layout(D3D10DDI_HDEVICE h,D3D10DDI_HELEMENTLAYOU
  * missing A=1.0f. Width is independent of the buffer stride, including zero. */
 static UINT layout_width(DXGI_FORMAT format) {
  switch(format){
+ case DXGI_FORMAT_R8G8B8A8_UNORM:return 4;
  case DXGI_FORMAT_R32_FLOAT:return 4;
  case DXGI_FORMAT_R32G32_FLOAT:return 8;
  case DXGI_FORMAT_R32G32B32_FLOAT:return 12;
@@ -42,7 +43,7 @@ static void APIENTRY create_layout(D3D10DDI_HDEVICE h,const D3D10DDIARG_CREATEEL
  if(!d||!handle.pDrvPrivate){geo_typed_error(h,E_INVALIDARG);return;}((struct geo_typed_handle *)handle.pDrvPrivate)->object=NULL;
  hr=layout_desc(p);if(FAILED(hr)){geo_typed_error(h,hr);return;}
  v=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*v));if(!v){geo_typed_error(h,E_OUTOFMEMORY);return;}
- v->refs=1;v->device=d;v->elements=p->NumElements;for(i=0;i<p->NumElements;i++){UINT reg=p->pVertexElements[i].InputRegister;v->offset[reg]=p->pVertexElements[i].AlignedByteOffset;v->width[reg]=layout_width(p->pVertexElements[i].Format);}v->next=d->layouts;d->layouts=v;((struct geo_typed_handle *)handle.pDrvPrivate)->object=v;
+ v->refs=1;v->device=d;v->elements=p->NumElements;for(i=0;i<p->NumElements;i++){UINT reg=p->pVertexElements[i].InputRegister;v->offset[reg]=p->pVertexElements[i].AlignedByteOffset;v->width[reg]=layout_width(p->pVertexElements[i].Format);v->format[reg]=p->pVertexElements[i].Format;}v->next=d->layouts;d->layouts=v;((struct geo_typed_handle *)handle.pDrvPrivate)->object=v;
 }
 static void APIENTRY set_layout(D3D10DDI_HDEVICE h,D3D10DDI_HELEMENTLAYOUT handle) {
  struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_layout *v=NULL,*old;
@@ -166,7 +167,12 @@ static HRESULT read_vertex(struct geo_typed_device *d,UINT vertex,UINT reg,FLOAT
   * then maps/unmaps through the existing synchronization/ownership path. */
  hr=geo_typed_read_resource(d->vertex,(UINT)offset,d->layout->width[reg],bits);
  if(FAILED(hr))return hr;
- memcpy(result,bits,sizeof(bits)); /* preserve signed zero/NaN/Inf payload bits */
+ if(d->layout->format[reg]==DXGI_FORMAT_R8G8B8A8_UNORM){
+  const BYTE *rgba=(const BYTE *)bits;UINT i;
+  /* D3D11 3.2.3.2/3.2.3.5: each byte / 255 with full IEEE precision.
+   * Do not use a rounded reciprocal multiply or apply an sRGB transform. */
+  for(i=0;i<4;i++)result[i]=(FLOAT)rgba[i]/255.0f;
+ }else memcpy(result,bits,sizeof(bits)); /* FLOAT component bits are unchanged */
  return S_OK;
 }
 static void draw(D3D10DDI_HDEVICE h,UINT count,UINT start,INT base,UINT indexed) {
