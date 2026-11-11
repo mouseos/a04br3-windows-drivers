@@ -542,3 +542,25 @@ pathsは実インストール先を指定する。WDF headersは `WdfRoot/Includ
 2026-11-11に固定source `8d492fb0350aa8fccad582b852869e26ba73aeee` の上記入口をWindowsで実行し、clang 20・MSVC 14.29 ARM LINK・既存WDK8.1/WDF1.13で43TUすべてのcompileとSYS linkが完了した。過去のdriver objectの使用は0。43 ARMNT object、実INF版 `2026.11.11.1033`、実compileの依存197ファイルの一覧、source/object/tool/libraryのhashを回収して照合した。回収したunsigned SYSのSHA256は `c9e4d1f1f2a56708acbf4a5c1667dff605f0a9cd77667e6079c5d5abaa4cb661`。これはこの構成でのビルド確認であり、異なるtoolchainでのbyte同一性、署名済packageとの同一性、Wi-Fi接続動作を保証しない。
 
 この実行ではclangの標準include探索により、上記明示SDKに加えてMSVC `14.44.35207/include` とWindows SDK `10.0.26100.0/ucrt` のheadersも使用した。LINKの版14.29とheaderの版14.44は別であり、WDK8.1だけで完結したとは扱わない。標準CRT headersを含むVisual Studio/Windows SDK環境も必要。明示include rootsだけでは全依存を表さないため、異なる環境では各objectの実 `-MD` dependency fileも確認する。
+
+
+### 公開cold出力の署名（増分baseline不要）
+
+`tools/ci/sign-mt6630-public-cold.py` はcold全output（`unsigned-manifest.json`、`obj/provider/*.obj` と `.obj.d`、`package/provider`）を入力とする。元cold manifestの期待SHAと実compile commitを明示し、旧compile sourceを署名recipe HEADへ改名しない。入力packageはunsigned SYS/INFだけでなければ拒否する。公開planの43TU順序、source/hash、ARMNT object/hash/size、実dependency file/hash、共通flags/全44argv、5WDK libsと2compile toolsの公開hash、INF版/実bytes、unsigned ARMNT payloadを検査する。compile時/署名時のruntime source treeも一致させる。`actual-dependencies.json` が回収済みoutputに存在する場合は、schema/source/43TU順序とrepository依存hashを追加検証し、原byte/hashをprovenanceへ保持する。外部header hashはcompile後の観測として区別し、precompile時の全環境証明へ昇格させない。SDK本体やprivate driver baseline・旧signed packageは署名入力に不要。公開1032 input specはtool/lib hashの参照にだけ使い、増分signerは変更しない。
+
+まず `--execute` を付けずにread-only検証できる。全履歴のあるclean署名source checkoutを使用する（指定compile commitのGit blobsが必要）。outputは署名checkout内の未作成directoryで、cold inputsとは分離する。
+
+```powershell
+python tools/ci/sign-mt6630-public-cold.py `
+  --cold-directory C:/task/cold-output `
+  --manifest-sha256 <元unsigned-manifest.jsonの実SHA256> `
+  --compiled-source-commit <元manifestの実40桁commit> `
+  --output build/wifi1033-cold-signed `
+  --thumbprint BCBF6C456C6F0DD0818434763B189488FBF13570
+```
+
+独立レビュー後の署名実行時だけ、上記に `--execute --signtool <既存signtool.exe実path> --inf2cat <既存Inf2Cat.exe実path>` を追加する。toolsは公開固定hashと照合する。証明書は既存 `Cert:CurrentUser/My/BCBF...` の有効な秘密鍵付き証明書に限定し、SignTool `/s My /sha1` で選択する。新鍵作成・export・PFX・password・別certへのfallbackを行わない。OS側の既存trustはWindows verifyで検証し、この入口はtrust storeを変更しない。
+
+SYS署名、Inf2Cat（6_3_ARM）、CAT署名、Windows verify（SYS/CAT）、CAT membership（SYS/INF）、thumbprint/trustを順に検査する。既存 `ge8300_panel_signing_common.unchanged_signed_payload` でSYSの署名以外のbytes保持を確認し、INFは完全byte保持する。入力を上書きせず、原manifestを `provenance/unsigned-manifest.json` にbyte保存する。新 `signing-receipt.json` と `package/provider/signed-manifest.json` は `compiled_source_commit` と `signing_recipe_commit` を分離し、元43TU情報・flags・tools/libs・原manifest SHA・全step/署名/検証log hashを結合する。失敗時は完了品とreceiptを保持し、自動再試行はしない。
+
+この入口の実装時点ではparseと既回収cold出力のread-only検証のみ。署名実行/Windows verifyは未実施。cold compile/link成功・署名成立・接続成功は別の判定であり、過去の増分signed1033とのbyte同一性を主張しない。
