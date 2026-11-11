@@ -24,6 +24,11 @@ known={
  'GPU371_RUN213_MAIN_SEAL_V1':('combined-run213','MT8167CombinedFollowup212'),
  'GPU369_RUN209_MAIN_SEAL_V1':('combined-run209','MT8167CombinedFollowup208'),
 }
+render=re.fullmatch(r'SIGNED_RENDER_RUN([0-9]{3,4})_MAIN_SEAL_V1',c['schema'])
+if render:
+ run=int(render[1]);assert 236<=run<=1000
+ assert c['diagnostic_client_count']==2 and c['GPU_client_index']==0 and c['globaldiag_client_index']==1 and c['planned_windows_reboots']==1 and c['boot_write_required'] is False
+ known[c['schema']]=('combined-run'+str(run),'MT8167CombinedFollowup'+str(run-1))
 match=re.fullmatch(r'SIGNED_PERIPHERALS_RUN([0-9]{3,4})_MAIN_SEAL_V1',c['schema'])
 if match:
  run=int(match[1]);assert 205<=run<=1000

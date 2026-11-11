@@ -1,0 +1,23 @@
+{
+  "schema": "SIGNED_RENDER_CAPTURE_ACCEPTED_V1",
+  "status": "actual-signed-package-main-reviewed",
+  "GPU_candidate": {
+    "path": "port/xnu/out/windows-rt-runtime380-candidate/recovered/build/package380/signed-manifest.json",
+    "sha256": "a838b2d43b325dc01f9ee9beb4b36da847e8b79bc6341a7a376af39bd9d0e90c"
+  },
+  "main_review": {
+    "path": "port/gsi/logs/ios-feasibility/windows-rt-peripheral233-main/main-gpu380-artifact-review.json",
+    "sha256": "938e4a2725ea31e5fc92cfa50380f79bac010791221c83993b8e5c69fd7496ac"
+  },
+  "certificates": {
+    "path": "port/xnu/out/windows-rt-runtime380-candidate/recovered/build/certificate-report.json",
+    "sha256": "bd09ca9ab0fba00689d8108fcab0fae73180ff605a68b666ca0aa6c44ee6ff79"
+  },
+  "source_commit": "f80b5b7cb79666995defbe02f2a2b662dc7f29bd",
+  "driver_version": "0.0.3.80",
+  "driver_date": "11/11/2026",
+  "SYS_sha256": "a5b3e674719a46a0852eb0da0668bc131858c422d6cb68d68375a95e0135bb33",
+  "UMD_sha256": "c6fc067afb26e9778579269e487b6af8201a1dbb6f96ee9b7eebabd8bc981b6e",
+  "execution_approved": false,
+  "hardware_verified": false
+}

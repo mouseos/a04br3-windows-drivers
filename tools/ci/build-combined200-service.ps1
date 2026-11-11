@@ -1,19 +1,21 @@
 ﻿# One SCM TU and (separately) the corrected capture client TU; no driver rebuild.
-param([switch]$SignedPeripherals,[switch]$CollectionReboot,[int]$CaptureNumber=200,[switch]$Gpu369Timing,[switch]$Gpu371Output,[switch]$Gpu375Combined,[switch]$Gpu377Output,[switch]$Gpu378Keypad,[switch]$Gpu378Diagnostic,[switch]$Followup231,[Alias('Gpu374Client','Gpu375Client')][switch]$Gpu373Client,[Parameter(Mandatory=$true)][ValidateSet('CaptureClient','Service')][string]$Mode,
+param([switch]$SignedRenderUpdate,[switch]$SignedPeripherals,[switch]$CollectionReboot,[int]$CaptureNumber=200,[switch]$Gpu369Timing,[switch]$Gpu371Output,[switch]$Gpu375Combined,[switch]$Gpu377Output,[switch]$Gpu378Keypad,[switch]$Gpu378Diagnostic,[switch]$Followup231,[Alias('Gpu374Client','Gpu375Client')][switch]$Gpu373Client,[Parameter(Mandatory=$true)][ValidateSet('CaptureClient','Service')][string]$Mode,
  [Parameter(Mandatory=$true)][string]$Workspace,[string]$PackageMap,[Parameter(Mandatory=$true)][string]$OutputDirectory,
  [Parameter(Mandatory=$true)][string]$KitHeaderRoot,[Parameter(Mandatory=$true)][string]$LibraryRoot,[Parameter(Mandatory=$true)][string]$SigntoolPath)
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 if($Gpu378Diagnostic){if($Gpu378Keypad){throw 'Select diagnostic or update, not both'};$Gpu378Keypad=$true}
 $gpu378Generator=if($Gpu378Diagnostic){'prepare-gpu378-diagnostic229-inputs.py'}else{'prepare-gpu378-keypad13-inputs.py'}
-if(@($Gpu369Timing,$Gpu371Output,$Gpu373Client,$Gpu375Combined,$Gpu377Output,$Gpu378Keypad,$Followup231,$SignedPeripherals|Where-Object {$_}).Count -gt 1){throw 'Select one GPU variant'}
-if($SignedPeripherals){if($CaptureNumber -lt 204 -or $CaptureNumber -gt 999 -or $CollectionReboot){throw 'Signed peripherals requires actual204..999 and terminal hold'}}elseif($Followup231){if($CaptureNumber -ne 231){throw 'Followup231 requires actual231'}}elseif($Gpu378Keypad){if($CaptureNumber -ne $(if($Gpu378Diagnostic){229}else{227})){throw 'GPU378 requires actual fresh227'}}elseif($Gpu377Output){if($CaptureNumber -ne 225){throw 'GPU377 requires actual fresh225'}}elseif($Gpu375Combined){if($CaptureNumber -ne 221){throw 'Combined375 requires actual221'}}elseif($Gpu373Client){if($CaptureNumber -notin @(215,218,221)){throw 'Known client capture215/218 required'}}elseif($Gpu371Output){if($CaptureNumber -ne 212){throw 'GPU371 requires actual212'}}elseif($Gpu369Timing){if($CaptureNumber -lt 204 -or $CaptureNumber -gt 999){throw 'Actual timing capture204..999 required'}}elseif($CaptureNumber -notin @(200,202)){throw 'Legacy200/202 only without Gpu369Timing'}
+if(@($Gpu369Timing,$Gpu371Output,$Gpu373Client,$Gpu375Combined,$Gpu377Output,$Gpu378Keypad,$Followup231,$SignedPeripherals,$SignedRenderUpdate|Where-Object {$_}).Count -gt 1){throw 'Select one GPU variant'}
+if($SignedRenderUpdate){if($CaptureNumber -lt 235 -or $CaptureNumber -gt 999 -or $CollectionReboot){throw 'Signed render requires actual235..999 and terminal hold'}}elseif($SignedPeripherals){if($CaptureNumber -lt 204 -or $CaptureNumber -gt 999 -or $CollectionReboot){throw 'Signed peripherals requires actual204..999 and terminal hold'}}elseif($Followup231){if($CaptureNumber -ne 231){throw 'Followup231 requires actual231'}}elseif($Gpu378Keypad){if($CaptureNumber -ne $(if($Gpu378Diagnostic){229}else{227})){throw 'GPU378 requires actual fresh227'}}elseif($Gpu377Output){if($CaptureNumber -ne 225){throw 'GPU377 requires actual fresh225'}}elseif($Gpu375Combined){if($CaptureNumber -ne 221){throw 'Combined375 requires actual221'}}elseif($Gpu373Client){if($CaptureNumber -notin @(215,218,221)){throw 'Known client capture215/218 required'}}elseif($Gpu371Output){if($CaptureNumber -ne 212){throw 'GPU371 requires actual212'}}elseif($Gpu369Timing){if($CaptureNumber -lt 204 -or $CaptureNumber -gt 999){throw 'Actual timing capture204..999 required'}}elseif($CaptureNumber -notin @(200,202)){throw 'Legacy200/202 only without Gpu369Timing'}
 $clientVersion=if($CaptureNumber -eq 221){375}elseif($CaptureNumber -eq 218){374}else{373}
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'));$out=[IO.Path]::GetFullPath($OutputDirectory);$thumb='BCBF6C456C6F0DD0818434763B189488FBF13570'
 if(@(& git -C $root status --porcelain).Count -or (Test-Path $out) -or !$out.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Clean checkout/new checkout-local output required'}
 $inc=[IO.Path]::GetFullPath($KitHeaderRoot);$lib=[IO.Path]::GetFullPath($LibraryRoot);$sign=[IO.Path]::GetFullPath($SigntoolPath)
 $cert=Get-Item "Cert:\CurrentUser\My\$thumb";if(!$cert.HasPrivateKey){throw 'Existing BCBF private identity required'}
 if($Mode -ne 'Service' -or !$PackageMap){throw 'Combined service-only final map required'}
-if($SignedPeripherals){
+if($SignedRenderUpdate){
+ & python -B "$root\tools\recovery\render-signed-capture.py" --workspace $Workspace --map $PackageMap --out $out --finalize
+}elseif($SignedPeripherals){
  & python -B "$root\tools\recovery\peripheral-signed-updates.py" --workspace $Workspace --map $PackageMap --out $out --finalize
 }elseif($Followup231){
  & python -B "$root\tools\recovery\prepare-followup231-inputs.py" --workspace $Workspace --map $PackageMap --out $out --finalize
@@ -35,7 +37,7 @@ if($SignedPeripherals){
 if($LASTEXITCODE){throw 'Final combined contract rejected'}
 $name="MT8167CombinedFollowup$CaptureNumber";$source="$root\tools\winpe\mt8167-peripheral-update.c"
 $policy=Get-Content "$out\peripheral-policy.json" -Raw|ConvertFrom-Json
-$expectedProfile=if($SignedPeripherals){"combined-features-fresh$CaptureNumber-signed-peripherals-v1"}elseif($Followup231){"combined-features-fresh231-reviewed-followup-v1"}elseif($Gpu378Diagnostic){"combined-features-fresh229-gpu378-keypad13-diagnostic-only-v1"}elseif($Gpu378Keypad){"combined-features-fresh227-gpu378-keypad13-client375-v1"}elseif($Gpu377Output){"combined-features-fresh225-gpu377-output-client375-v1"}elseif($Gpu375Combined){"combined-features-fresh221-gpu376-battery18-wifi1031-client375-v1"}elseif($Gpu373Client){"combined-features-fresh$CaptureNumber-gpu$clientVersion-clients-v1"}elseif($Gpu371Output){"combined-features-fresh212-gpu371-output-v1"}elseif($Gpu369Timing){"combined-features-fresh$CaptureNumber-gpu369-timing-v1"}else{"combined-features-fresh$CaptureNumber-gpu368-v1"}
+$expectedProfile=if($SignedRenderUpdate){"combined-features-fresh$CaptureNumber-signed-render-v1"}elseif($SignedPeripherals){"combined-features-fresh$CaptureNumber-signed-peripherals-v1"}elseif($Followup231){"combined-features-fresh231-reviewed-followup-v1"}elseif($Gpu378Diagnostic){"combined-features-fresh229-gpu378-keypad13-diagnostic-only-v1"}elseif($Gpu378Keypad){"combined-features-fresh227-gpu378-keypad13-client375-v1"}elseif($Gpu377Output){"combined-features-fresh225-gpu377-output-client375-v1"}elseif($Gpu375Combined){"combined-features-fresh221-gpu376-battery18-wifi1031-client375-v1"}elseif($Gpu373Client){"combined-features-fresh$CaptureNumber-gpu$clientVersion-clients-v1"}elseif($Gpu371Output){"combined-features-fresh212-gpu371-output-v1"}elseif($Gpu369Timing){"combined-features-fresh$CaptureNumber-gpu369-timing-v1"}else{"combined-features-fresh$CaptureNumber-gpu368-v1"}
 if($CollectionReboot){$expectedProfile+='-collection-reboot-v1'}
 if($policy.service -cne $name -or $policy.data_directory -cne $name -or $policy.profile -cne $expectedProfile){throw 'Generated policy identity mismatch'}
 $collectionArgs=@();if($CollectionReboot){$collectionArgs=@('--explicit')}
@@ -48,15 +50,15 @@ try{
  $developmentFlags=@();$displayHeader=$null
  $filterRootHeader="$root\tools\winpe\filter-root-transition.h"
  $filterRootHeaderHash=(Get-FileHash $filterRootHeader -Algorithm SHA256).Hash.ToLowerInvariant()
- if($Gpu377Output -or $Gpu378Keypad -or $Followup231){
+ if($Gpu377Output -or $Gpu378Keypad -or $Followup231 -or $SignedRenderUpdate){
   $developmentFlags=@('-DA04_DEVELOPMENT_DISPLAY_ON=1')
   $displayHeader="$root\tools\winpe\display-idle-policy.h"
   if(!(Test-Path $displayHeader)){throw 'Actual power helper header required'}
   $displayHeaderHash=(Get-FileHash $displayHeader -Algorithm SHA256).Hash.ToLowerInvariant()
-  if($Gpu378Keypad -or $Followup231){$keypadHeader="$root\tools\winpe\keypad13-checkpoint-policy.h";$keypadHeaderHash=(Get-FileHash $keypadHeader -Algorithm SHA256).Hash.ToLowerInvariant()}
+  if($Gpu378Keypad -or $Followup231 -or $SignedRenderUpdate){$keypadHeader="$root\tools\winpe\keypad13-checkpoint-policy.h";$keypadHeaderHash=(Get-FileHash $keypadHeader -Algorithm SHA256).Hash.ToLowerInvariant()}
  }
  if($SignedPeripherals){$keypadHeader="$root\tools\winpe\keypad13-checkpoint-policy.h";$keypadHeaderHash=(Get-FileHash $keypadHeader -Algorithm SHA256).Hash.ToLowerInvariant()}
- if($Followup231){$vidpnHeader="$root\tools\winpe\vidpn-callback-trace-policy.h";$vidpnHeaderHash=(Get-FileHash $vidpnHeader -Algorithm SHA256).Hash.ToLowerInvariant()}
+ if($Followup231 -or $SignedRenderUpdate){$vidpnHeader="$root\tools\winpe\vidpn-callback-trace-policy.h";$vidpnHeaderHash=(Get-FileHash $vidpnHeader -Algorithm SHA256).Hash.ToLowerInvariant()}
  & clang @developmentFlags --target=thumbv7-pc-windows-msvc -O2 -ffreestanding -fno-builtin -fno-stack-protector -w -fms-extensions -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 -DNTDDI_VERSION=0x06030000 -DA04_PERIPHERAL_BATCH=1 -DA04_PERIPHERAL_NEXT_PROFILE=1 "-I$inc\um" "-I$inc\shared" "-I$out" -c $source -o "$out\$name.obj"
  if($LASTEXITCODE){throw 'Actual ARM TU compile failed'}
  if($collectionClosure){foreach($r in $collectionClosure.headers){if((Get-FileHash (Join-Path $root $r.path) -Algorithm SHA256).Hash.ToLowerInvariant() -cne $r.sha256){throw 'Collection source changed during compile'}}}
@@ -67,7 +69,9 @@ try{
  & $sign sign /fd SHA256 /s My /sha1 $thumb "$out\$name.exe";if($LASTEXITCODE){throw 'BCBF signing failed'}
  $sig=Get-AuthenticodeSignature "$out\$name.exe";if($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Thumbprint -cne $thumb){throw 'Signed EXE identity/trust mismatch'}
  $isCapture=if($Mode -eq 'CaptureClient'){'True'}else{'False'}
- if($SignedPeripherals){
+ if($SignedRenderUpdate){
+  & python -B -c "import importlib.util,sys;from pathlib import Path;s=importlib.util.spec_from_file_location('render_capture',Path(sys.argv[1]));m=importlib.util.module_from_spec(s);s.loader.exec_module(m);m.assert_paths(Path(sys.argv[2]))" "$root\tools\recovery\render-signed-capture.py" "$out\$name.exe"
+ }elseif($SignedPeripherals){
   & python -B -c "import importlib.util,sys;from pathlib import Path;s=importlib.util.spec_from_file_location('peripherals',Path(sys.argv[1]));m=importlib.util.module_from_spec(s);s.loader.exec_module(m);m.assert_paths(Path(sys.argv[2]))" "$root\tools\recovery\peripheral-signed-updates.py" "$out\$name.exe"
  }elseif($Followup231){
   & python -B -c "import importlib.util,sys;from pathlib import Path;s=importlib.util.spec_from_file_location('followup231',Path(sys.argv[1]));m=importlib.util.module_from_spec(s);s.loader.exec_module(m);m.assert_paths(Path(sys.argv[2]))" "$root\tools\recovery\prepare-followup231-inputs.py" "$out\$name.exe"
@@ -93,11 +97,11 @@ try{
  if((Get-FileHash $filterRootHeader -Algorithm SHA256).Hash.ToLowerInvariant() -cne $filterRootHeaderHash){throw 'Filter root header changed during build'}
  if($collectionClosure){$m.collection_reboot=$collectionClosure}
  $m.filter_root_header=@{path='tools/winpe/filter-root-transition.h';sha256=$filterRootHeaderHash;enabled=($null -ne $policy.filter_root_transitions -and @($policy.filter_root_transitions).Count -gt 0)}
- if($Gpu377Output -or $Gpu378Keypad -or $Followup231){
+ if($Gpu377Output -or $Gpu378Keypad -or $Followup231 -or $SignedRenderUpdate){
   if((Get-FileHash $displayHeader -Algorithm SHA256).Hash.ToLowerInvariant() -cne $displayHeaderHash){throw 'Power header changed during build'}
   $m.development_display_on=1
   $m.compile_closure=@{source=@{path='tools/winpe/mt8167-peripheral-update.c';sha256=$m.source_sha256};display_idle_policy=@{path='tools/winpe/display-idle-policy.h';sha256=$displayHeaderHash};macro='A04_DEVELOPMENT_DISPLAY_ON=1';target_execution_verified=$false}
-  if($Gpu378Keypad -or $Followup231){
+  if($Gpu378Keypad -or $Followup231 -or $SignedRenderUpdate){
    if((Get-FileHash $keypadHeader -Algorithm SHA256).Hash.ToLowerInvariant() -cne $keypadHeaderHash){throw 'Keypad checkpoint header changed during build'}
    $m.compile_closure.keypad_checkpoint=@{path='tools/winpe/keypad13-checkpoint-policy.h';sha256=$keypadHeaderHash}
    $m.compile_closure.profile_macros=@('A04_KEYPAD13_CHECKPOINT=1','A04_DISPLAY_IDLE_BEFORE_CLIENTS=1')
@@ -107,11 +111,12 @@ try{
   if((Get-FileHash $keypadHeader -Algorithm SHA256).Hash.ToLowerInvariant() -cne $keypadHeaderHash){throw 'Keypad header changed during compile'}
   $m.compile_closure=@{source=@{path='tools/winpe/mt8167-peripheral-update.c';sha256=$m.source_sha256};keypad_checkpoint=@{path='tools/winpe/keypad13-checkpoint-policy.h';sha256=$keypadHeaderHash};profile_macros=@('A04_KEYPAD13_CHECKPOINT=1','A04_KEYPAD14_CHECKPOINT=1');GPU_diagnostics=0;target_execution_verified=$false}
  }
- if($Followup231){
+ if($Followup231 -or $SignedRenderUpdate){
   if((Get-FileHash $vidpnHeader -Algorithm SHA256).Hash.ToLowerInvariant() -cne $vidpnHeaderHash){throw 'VidPn trace policy header changed during build'}
   $m.compile_closure.vidpn_callback_trace=@{path='tools/winpe/vidpn-callback-trace-policy.h';sha256=$vidpnHeaderHash;writer_source='b9fb91571b587ab98c01ed1a118c847b634b21ca';reader_sha256=(Get-FileHash "$root\tools\recovery\read-vidpn-callback-trace.ps1" -Algorithm SHA256).Hash.ToLowerInvariant()}
   $m.compile_closure.profile_macros+=@('A04_VIDPN_CALLBACK_TRACE=1')
  }
+ if($SignedRenderUpdate){$m.compile_closure.profile_macros+=@('A04_KEYPAD14_CHECKPOINT=1')}
  if($Mode -eq 'Service'){
   $m.profile=$policy.profile
   foreach($p in $policy.packages.PSObject.Properties.Value){$d=Join-Path $Workspace $p.directory;foreach($n in (@($p.names.inf,$p.names.sys)+@($p.extra_members|Where-Object {$_ -and $_.name}|ForEach-Object {$_.name}))){& $sign verify /pa /c (Join-Path $d $p.names.cat) (Join-Path $d $n);if($LASTEXITCODE){throw 'Candidate CAT membership failed'}};$cs=Get-AuthenticodeSignature (Join-Path $d $p.names.cat);if($cs.Status -ne 'Valid' -or $cs.SignerCertificate.Thumbprint -cne $thumb){throw 'Candidate CAT signer mismatch'}}

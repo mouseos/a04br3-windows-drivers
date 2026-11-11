@@ -84,16 +84,20 @@ done < /proc/self/mountinfo
 test "$rows" -gt 0'
 """
 def contract(name):
+ render=re.fullmatch(r'render-update-([0-9]{3})',name)
  match=re.fullmatch(r'peripheral-updates-([0-9]{3})',name)
- if match:
+ if render:
+  capture=int(render[1]);require(235<=capture<=999,'Actual render capture235..999 only')
+  k=dict(run=capture+1,fresh=capture,capture=capture+2,profile='combined-features-fresh%d-signed-render-v1'%capture,service='MT8167CombinedFollowup%d'%capture,signed_render=True)
+ elif match:
   capture=int(match[1]);require(204<=capture<=999,'Capture204..999 only')
   k=dict(run=capture+1,fresh=capture,capture=capture+2,profile='combined-features-fresh%d-signed-peripherals-v1'%capture,service='MT8167CombinedFollowup%d'%capture,signed_peripherals=True)
  else:
   require(name in KNOWN_PROFILES,'未知のcontroller profile');k=dict(KNOWN_PROFILES[name])
  k.update(
-  schema=('SIGNED_PERIPHERALS' if k.get('signed_peripherals') else 'FOLLOWUP231' if k.get('followup231') else 'GPU378_DIAGNOSTIC' if k.get('diagnostic378') else 'GPU378' if k.get('output378') else 'GPU377' if k.get('output377') else 'GPU375_COMBINED' if k.get('combined375') else ('GPU%d'%k.get('client_version',373)) if k.get('client373') else 'GPU371' if k.get('output371') else 'GPU369' if k.get('timing') else 'GPU368')+'_RUN%d_MAIN_SEAL_V1'%k['run'],transaction='combined-run%d'%k['run'],
+  schema=('SIGNED_RENDER' if k.get('signed_render') else 'SIGNED_PERIPHERALS' if k.get('signed_peripherals') else 'FOLLOWUP231' if k.get('followup231') else 'GPU378_DIAGNOSTIC' if k.get('diagnostic378') else 'GPU378' if k.get('output378') else 'GPU377' if k.get('output377') else 'GPU375_COMBINED' if k.get('combined375') else ('GPU%d'%k.get('client_version',373)) if k.get('client373') else 'GPU371' if k.get('output371') else 'GPU369' if k.get('timing') else 'GPU368')+'_RUN%d_MAIN_SEAL_V1'%k['run'],transaction='combined-run%d'%k['run'],
   capture_output='port/xnu/out/private-windows-rt-prebackup-run%d'%k['capture'],
-  diagnostics_output='port/xnu/out/private-windows-rt-%s-run%d-diagnostics'%('peripherals' if k.get('signed_peripherals') else 'followup231' if k.get('followup231') else 'gpu378' if k.get('output378') else 'gpu377' if k.get('output377') else ('gpu%d'%k.get('client_version',373)) if k.get('client373') else 'gpu371' if k.get('output371') else 'gpu369' if k.get('timing') else 'gpu368',k['run']),
+  diagnostics_output='port/xnu/out/private-windows-rt-%s-run%d-diagnostics'%('signed-render' if k.get('signed_render') else 'peripherals' if k.get('signed_peripherals') else 'followup231' if k.get('followup231') else 'gpu378' if k.get('output378') else 'gpu377' if k.get('output377') else ('gpu%d'%k.get('client_version',373)) if k.get('client373') else 'gpu371' if k.get('output371') else 'gpu369' if k.get('timing') else 'gpu368',k['run']),
   runtime_output='port/gsi/logs/ios-feasibility/windows-rt-combined-run%d-runtime'%k['run'])
  return k
 
@@ -161,7 +165,7 @@ def validate_seal(root,path,digest,known_profile="run201",entrypoint=None):
   p=rooted(root,c[key]);require(p.relative_to(root).as_posix() in pins,'sealに必要tool/input pinがない: '+key);return p
  for key in ('capture_tool','crc_decoder','diagnostics_collector','ntfs3g','reset_script','target_tools','fresh_manifest','normal_esp','controller_path'):pinned(key)
  require(pinned('controller_path')==Path(entrypoint or __file__).resolve(),'別controllerのseal')
- if k.get('signed_peripherals') or known_profile in ('run203','run209','run213','run216','run219','run222','run222-combined','run226','run228','run230','run232'):
+ if k.get('signed_render') or k.get('signed_peripherals') or known_profile in ('run203','run209','run213','run216','run219','run222','run222-combined','run226','run228','run230','run232'):
   require(pinned('controller_engine')==Path(__file__).resolve(),'共通controller engine pin不一致')
   require(pinned('collector_present_helper')==Path(__file__).resolve().with_name('collect-present356.py'),'collector helper pin不一致')
  require(type(c.get('gpu_runtime_assets',False)) is bool,'Explicit optional runtime collection flag')
@@ -173,7 +177,14 @@ def validate_seal(root,path,digest,known_profile="run201",entrypoint=None):
  expected_targets=['wifi','keypad'] if k.get('signed_peripherals') else p['install_targets'] if k.get('followup231') else [] if k.get('diagnostic378') else ['render','keypad'] if k.get('output378') else ['display','render','wifi','battery'] if k.get('combined375') else (['wifi'] if c.get('wifi_activation') is True else []) if k.get('client373') else ['render'] if k.get('output371') else (['display','render','wifi'] if c.get('wifi_activation') is True else ['display','render']) if k.get('timing') else ['render']
  require(p['profile']==k['profile'] and p['service']==p['data_directory']==service and p['install_targets']==expected_targets and p['planned_reboots']==c['planned_windows_reboots'],'既知freshと更新対象の結合必須')
  require(p['backup_manifest_sha256']==c['fresh_manifest_sha256'] and p['capture_selection']['capture_number']==k['fresh'],'選択fresh結合不一致')
- if k.get('signed_peripherals'):
+ if k.get('signed_render'):
+  ms=importlib.util.spec_from_file_location('render_capture',Path(__file__).with_name('render-signed-capture.py'));variant=importlib.util.module_from_spec(ms);ms.loader.exec_module(variant)
+  require(pinned('generator_path')==Path(__file__).resolve().with_name('render-signed-capture.py'),'Signed render generator pin')
+  variant.validate_runtime_policy(root,p)
+  for ref in p['input_pins']:require(pins.get(ref['path'])==ref['sha256'],'Complete render input closure pin')
+  require(c['boot_write_required'] is False and c['matched_boot_sha256']==p['boot_transition']['boot_sha256'] and not c.get('wifi_activation',False),'Retained boot; render only')
+  require(p['signed_render_contract']['input']['path']==c['private_map'] and pins.get(c['private_map'])==p['signed_render_contract']['input']['sha256'],'Actual finalized render map pin')
+ elif k.get('signed_peripherals'):
   ms=importlib.util.spec_from_file_location('peripherals',Path(__file__).with_name('peripheral-signed-updates.py'));variant=importlib.util.module_from_spec(ms);ms.loader.exec_module(variant)
   require(pinned('generator_path')==Path(__file__).resolve().with_name('peripheral-signed-updates.py'),'Signed peripheral generator pin')
   variant.validate_runtime_policy(root,p)
@@ -390,7 +401,9 @@ def verify_collection(out,c,digest,k,latch):
  return st
 
 def main(known_profile="run201",entrypoint=None,argv=None):
- ap=argparse.ArgumentParser();ap.add_argument('--signed-peripheral-capture',type=int,help='Actual capture number; WiFi/keypad-only profile');ap.add_argument('--resume-baseline-reject',action='store_true',help='固定223 rebind sidecar付きsealによる未arm拒否だけの1回resume');ap.add_argument('--workspace',type=Path,required=True);ap.add_argument('--seal',type=Path,required=True);ap.add_argument('--seal-sha256',required=True);ap.add_argument('--output',type=Path,required=True);ap.add_argument('--validate-only',action='store_true');ap.add_argument('--collection-reboot',action='store_true',help='new opt-in profile only; wait for Windows shutdown/fastboot without UART reset');ap.add_argument('--collect-only','--resume-collect',dest='collect_only',action='store_true',help='held terminalから回収のみ。install/診断を再実行しない');a=ap.parse_args(argv)
+ ap=argparse.ArgumentParser();ap.add_argument('--signed-render-capture',type=int);ap.add_argument('--signed-peripheral-capture',type=int,help='Actual capture number; WiFi/keypad-only profile');ap.add_argument('--resume-baseline-reject',action='store_true',help='固定223 rebind sidecar付きsealによる未arm拒否だけの1回resume');ap.add_argument('--workspace',type=Path,required=True);ap.add_argument('--seal',type=Path,required=True);ap.add_argument('--seal-sha256',required=True);ap.add_argument('--output',type=Path,required=True);ap.add_argument('--validate-only',action='store_true');ap.add_argument('--collection-reboot',action='store_true',help='new opt-in profile only; wait for Windows shutdown/fastboot without UART reset');ap.add_argument('--collect-only','--resume-collect',dest='collect_only',action='store_true',help='held terminalから回収のみ。install/診断を再実行しない');a=ap.parse_args(argv)
+ if a.signed_render_capture is not None:
+  require(known_profile=='run201' and entrypoint is None and a.signed_peripheral_capture is None,'One generic render entrypoint only');known_profile='render-update-%d'%a.signed_render_capture
  if a.signed_peripheral_capture is not None:
   require(known_profile=='run201' and entrypoint is None,'Generic engine entrypoint only');known_profile='peripheral-updates-%d'%a.signed_peripheral_capture
  k=contract(known_profile)
@@ -407,8 +420,8 @@ def main(known_profile="run201",entrypoint=None,argv=None):
  if a.validate_only and not a.collect_only:print('GPU%d_SEAL_VALIDATED_NO_DEVICE_OPERATION'%k['run']);return
  require(out.is_relative_to(root),'root内のログ出力必須')
  require(not (root/c['capture_output']).exists() and not (root/c['diagnostics_output']).exists(),'既存capture/diagnosticsを上書きしない')
- if (k.get('signed_peripherals') or k.get('followup231') or k.get('output378') or k.get('output377') or k.get('timing') or k.get('output371') or k.get('client373')) and not a.collect_only:stage_preflight(root,live_c,out,a.seal_sha256)
- latches=root/('port/gsi/logs/ios-feasibility/%s-run%d-executions'%('peripherals' if k.get('signed_peripherals') else 'followup231' if k.get('followup231') else 'gpu378' if k.get('output378') else 'gpu377' if k.get('output377') else ('gpu%d'%k.get('client_version',373)) if k.get('client373') else 'gpu371' if k.get('output371') else 'gpu369' if k.get('timing') else 'gpu368',k['run']));latch=latches/(k['transaction']+('-resume'+str(resume_number) if a.resume_baseline_reject else '')+'.json')
+ if (k.get('signed_render') or k.get('signed_peripherals') or k.get('followup231') or k.get('output378') or k.get('output377') or k.get('timing') or k.get('output371') or k.get('client373')) and not a.collect_only:stage_preflight(root,live_c,out,a.seal_sha256)
+ latches=root/('port/gsi/logs/ios-feasibility/%s-run%d-executions'%('signed-render' if k.get('signed_render') else 'peripherals' if k.get('signed_peripherals') else 'followup231' if k.get('followup231') else 'gpu378' if k.get('output378') else 'gpu377' if k.get('output377') else ('gpu%d'%k.get('client_version',373)) if k.get('client373') else 'gpu371' if k.get('output371') else 'gpu369' if k.get('timing') else 'gpu368',k['run']));latch=latches/(k['transaction']+('-resume'+str(resume_number) if a.resume_baseline_reject else '')+'.json')
  if a.collect_only:
   require(out.is_dir(),'既存held runtime出力必須')
   held_out=out;st=verify_collection(out,c,a.seal_sha256,k,latch)
@@ -482,7 +495,7 @@ adb shell 'set -e; test "$(id -u)" = 0; test "$(readlink -f /dev/block/by-name/b
   if not a.collect_only:
    save()
    if k.get('timing'):matched_boot()
-   offset=deploy(root/c['media_directory']/'update-esp.img',c['esp_sha256'],'prepare-write.log',not (k.get('signed_peripherals') or k.get('followup231') or k.get('output378') or k.get('output377') or k.get('timing') or k.get('output371') or k.get('client373')));st.update(status='prepare-observing',prepare_uart_offset=offset);save()
+   offset=deploy(root/c['media_directory']/'update-esp.img',c['esp_sha256'],'prepare-write.log',not (k.get('signed_render') or k.get('signed_peripherals') or k.get('followup231') or k.get('output378') or k.get('output377') or k.get('timing') or k.get('output371') or k.get('client373')));st.update(status='prepare-observing',prepare_uart_offset=offset);save()
    spec=importlib.util.spec_from_file_location('gpu%d_crc'%k['run'],root/c['crc_decoder']);decoder=importlib.util.module_from_spec(spec);spec.loader.exec_module(decoder)
    report=None;deadline=time.monotonic()+900
    with uart.open('rb') as f:

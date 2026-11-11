@@ -1,0 +1,46 @@
+{
+  "schema": "SIGNED_RENDER_CAPTURE_PENDING_V1",
+  "capture_number": null,
+  "hardware_owner": "main",
+  "main_execution_approved": false,
+  "fresh": null,
+  "native": null,
+  "supplement": null,
+  "capture_contract": null,
+  "template_policy": null,
+  "actual_package_rows": null,
+  "mutable_baseline": null,
+  "boot_witness": null,
+  "last_boot_seal": null,
+  "last_run_result": null,
+  "additional_service_names": null,
+  "GPU_candidate": {
+    "path": "port/xnu/out/windows-rt-runtime380-candidate/recovered/build/package380/signed-manifest.json",
+    "sha256": "a838b2d43b325dc01f9ee9beb4b36da847e8b79bc6341a7a376af39bd9d0e90c"
+  },
+  "main_review": {
+    "path": "port/gsi/logs/ios-feasibility/windows-rt-peripheral233-main/main-gpu380-artifact-review.json",
+    "sha256": "938e4a2725ea31e5fc92cfa50380f79bac010791221c83993b8e5c69fd7496ac"
+  },
+  "retained_client_policy": {
+    "path": "port/xnu/out/windows-rt-followup231/profile231/peripheral-policy.json",
+    "sha256": "d1e1e8885628ac05b808e6f01d4cc4c2fc128023bcb9220e5f90ebdc3610514a"
+  },
+  "client_pair": {
+    "path": "port/xnu/out/windows-rt-vidpn-callback-candidate/launcher42965825010/pair-signed-manifest.json",
+    "sha256": "8682c4b9232643c7de5c85644687946f54d9096733f9806b4348b1d2bd502f05"
+  },
+  "globaldiag_manifest": {
+    "path": "port/xnu/out/windows-rt-globaldiag198-signed/signed-manifest.json",
+    "sha256": "1dcacdd1c70dacdc69a2e08e1294188d7805a2fbab77f9a24a73bcd28b1e28e6"
+  },
+  "globaldiag_import_proof": {
+    "path": "port/xnu/out/windows-rt-globaldiag198-signed/main-rt81-import-proof.json",
+    "sha256": "896137838e17694cc3cedc506ae31aa9b25e1fffd228f4094e2ca6145f7d3828"
+  },
+  "install_targets": [
+    "render"
+  ],
+  "planned_reboots": 1,
+  "filter_root_transitions": []
+}
