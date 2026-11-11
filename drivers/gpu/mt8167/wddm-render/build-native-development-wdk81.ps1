@@ -63,7 +63,7 @@ try {
  $inc="${env:ProgramFiles(x86)}\Windows Kits\8.1\Include";$lib="${env:ProgramFiles(x86)}\Windows Kits\8.1\Lib\winv6.3\um\arm"
  $common=@('--target=thumbv7-pc-windows-msvc','-std=c11','-fms-extensions','-ffreestanding','-fno-builtin','-fno-stack-protector','-O2','-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access','-D_ARM_','-DARM','-D_WIN32_WINNT=0x0603','-DNTDDI_VERSION=0x06030000','-DD3D_UMD_INTERFACE_VERSION=0x4002','-DDXGKDDI_INTERFACE_VERSION=0x4002',"-I$inc\shared","-I$inc\um","-I$inc\km",'-D__ldrexd=__geo_typed_wdk81_ldrexd_declaration')
  if($UnifiedDisplay){$common+='-DA04_GE8300_UNIFIED_DISPLAY356=1'}
- $units=@('clear_protocol','frontend/draw_protocol','frontend/draw_link_protocol','frontend/texture_draw_protocol','frontend/shader_draw_protocol','umd/clear_ddi','umd/bootstrap','umd/frontend','umd/shader_state','umd/tokenized_shader','compiler/sm2','umd/typed_state','umd/typed_texture','umd/typed_resource','umd/typed_view','umd/typed_shader','umd/typed_draw','umd/typed_pair','umd/typed_runtime','umd/typed_dxgi','umd/typed_entry','umd/entry','testclient/memory','testclient/d3d-clear','testclient/d3d-texture','testclient/d3d-texture-boundary','testclient/d3d-ui-texture')
+ $units=@('clear_protocol','frontend/draw_protocol','frontend/draw_link_protocol','frontend/texture_draw_protocol','frontend/shader_draw_protocol','umd/clear_ddi','umd/bootstrap','umd/frontend','umd/shader_state','umd/tokenized_shader','compiler/sm2','umd/typed_state','umd/typed_texture','umd/typed_resource','umd/typed_view','umd/typed_shader','umd/typed_draw','umd/typed_pair','umd/typed_runtime','umd/typed_dxgi','umd/typed_entry','umd/entry','testclient/memory','testclient/d3d-clear','testclient/d3d-texture','testclient/d3d-texture-boundary','testclient/d3d-ui-texture','testclient/dxgi-present356')
  $objects=@();$compiled=@()
  foreach($u in $units){
   $flags=@($common);$obj=($u -replace '/','_')+'.obj'
@@ -74,7 +74,7 @@ try {
   & clang @flags -Werror=implicit-function-declaration -Werror=incompatible-pointer-types -c (Join-Path $PSScriptRoot ($u+'.c')) -o (Join-Path $out $obj)
   if($LASTEXITCODE){throw "ARM32 compile failed: $u"}
   $compiled+=@{unit=$u;source_sha256=(Get-FileHash (Join-Path $PSScriptRoot ($u+'.c')) -Algorithm SHA256).Hash;object_sha256=(Get-FileHash (Join-Path $out $obj) -Algorithm SHA256).Hash}
-  if($u -notin @('umd/typed_entry','umd/entry','testclient/memory','testclient/d3d-clear','testclient/d3d-texture','testclient/d3d-texture-boundary','testclient/d3d-ui-texture')){$objects+=Join-Path $out $obj}
+  if($u -notin @('umd/typed_entry','umd/entry','testclient/memory','testclient/d3d-clear','testclient/d3d-texture','testclient/d3d-texture-boundary','testclient/d3d-ui-texture','testclient/dxgi-present356')){$objects+=Join-Path $out $obj}
  }
  & llvm-lib /machine:arm "/out:$out\ge8300-native-umd.lib" @objects
  if($LASTEXITCODE){throw 'UMD archive failed'}
@@ -88,7 +88,9 @@ try {
  if($LASTEXITCODE){throw 'Boundary client link failed'}
  & lld-link /subsystem:console,6.03 /machine:arm /entry:mainCRTStartup /nodefaultlib "$out\testclient_d3d-ui-texture.obj" "$out\testclient_memory.obj" "$lib\kernel32.lib" "$lib\setupapi.lib" "$lib\dxgi.lib" "$lib\d3d11.lib" "/out:$out\ge8300-d3d-ui-texture.exe"
  if($LASTEXITCODE){throw 'UI update client link failed'}
- foreach($name in @('ge8300-umd.dll','ge8300-d3d-clear.exe','ge8300-d3d-texture.exe','ge8300-d3d-texture-boundary.exe','ge8300-d3d-ui-texture.exe')){
+ & lld-link /subsystem:console,6.03 /machine:arm /entry:mainCRTStartup /nodefaultlib "$out\testclient_dxgi-present356.obj" "$out\testclient_memory.obj" "$lib\kernel32.lib" "$lib\user32.lib" "$lib\d3d11.lib" "$lib\dxgi.lib" "$lib\setupapi.lib" "/out:$out\mt8167-dxgi-present356.exe"
+ if($LASTEXITCODE){throw 'Public settle client link failed'}
+ foreach($name in @('ge8300-umd.dll','ge8300-d3d-clear.exe','ge8300-d3d-texture.exe','ge8300-d3d-texture-boundary.exe','ge8300-d3d-ui-texture.exe','mt8167-dxgi-present356.exe')){
   $pe=@(& llvm-readobj --file-headers --coff-exports --coff-imports "$out\$name")
   if($LASTEXITCODE -or !($pe -match 'IMAGE_FILE_MACHINE_ARMNT')){throw 'Not ARMNT'}
   if($name -eq 'ge8300-umd.dll' -and !($pe -match 'Name: OpenAdapter10_2')){throw 'Missing runtime export'}

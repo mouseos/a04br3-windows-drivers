@@ -162,8 +162,157 @@ static HRESULT scanout(LUID id,UINT pass){
  hr=S_OK;
  done:if(f!=INVALID_HANDLE_VALUE)CloseHandle(f);if(o)HeapFree(GetProcessHeap(),0,o);FreeLibrary(gdi);return hr;
 }
+static void factory_current(IDXGIFactory *factory,const char *key){
+ IDXGIFactory1 *version1=NULL;HRESULT hr;
+ hr=IDXGIFactory_QueryInterface(factory,&IID_IDXGIFactory1,(void **)&version1);
+ line("FACTORY1_QUERY_HRESULT",hr);
+ if(SUCCEEDED(hr)){line(key,IDXGIFactory1_IsCurrent(version1));IDXGIFactory1_Release(version1);}
+}
+/* Public CCD state from this session, not the registry's saved topology.
+ * A bounded observation cannot block the functional probe or expose names. */
+static void live_paths(UINT phase,LUID id){
+ static DISPLAYCONFIG_PATH_INFO paths[16];
+ static DISPLAYCONFIG_MODE_INFO modes[64];
+ for(UINT kind=0;kind<2;kind++){
+  UINT32 flags=kind?QDC_ALL_PATHS:QDC_ONLY_ACTIVE_PATHS,pc=0,mc=0;LONG status;
+  line("CCD_PHASE",phase);line("CCD_QUERY_FLAGS",flags);
+  status=GetDisplayConfigBufferSizes(flags,&pc,&mc);line("CCD_SIZE_STATUS",status);
+  line("CCD_REQUIRED_PATHS",pc);line("CCD_REQUIRED_MODES",mc);
+  if(status!=ERROR_SUCCESS||pc>16||mc>64)continue;
+  pc=16;mc=64;
+  status=QueryDisplayConfig(flags,&pc,paths,&mc,modes,NULL);line("CCD_QUERY_STATUS",status);
+  if(status!=ERROR_SUCCESS)continue;
+  line("CCD_PATH_COUNT",pc);line("CCD_MODE_COUNT",mc);
+  for(UINT i=0;i<pc;i++){
+   const DISPLAYCONFIG_PATH_INFO *p=&paths[i];
+   line("CCD_PATH_INDEX",i);line("CCD_PATH_FLAGS",p->flags);
+   line("CCD_SOURCE_LUID_HIGH",p->sourceInfo.adapterId.HighPart);line("CCD_SOURCE_LUID_LOW",p->sourceInfo.adapterId.LowPart);
+   line("CCD_SOURCE_MATCH",p->sourceInfo.adapterId.HighPart==id.HighPart&&p->sourceInfo.adapterId.LowPart==id.LowPart);
+   line("CCD_SOURCE_ID",p->sourceInfo.id);line("CCD_SOURCE_STATUS",p->sourceInfo.statusFlags);
+   line("CCD_TARGET_LUID_HIGH",p->targetInfo.adapterId.HighPart);line("CCD_TARGET_LUID_LOW",p->targetInfo.adapterId.LowPart);
+   line("CCD_TARGET_ID",p->targetInfo.id);line("CCD_TARGET_STATUS",p->targetInfo.statusFlags);
+   line("CCD_TARGET_AVAILABLE",p->targetInfo.targetAvailable);
+   line("CCD_ROTATION",p->targetInfo.rotation);line("CCD_SCALING",p->targetInfo.scaling);
+   line("CCD_REFRESH_NUMERATOR",p->targetInfo.refreshRate.Numerator);line("CCD_REFRESH_DENOMINATOR",p->targetInfo.refreshRate.Denominator);
+  }
+ }
+}
+static int same_luid(LUID a,LUID b){return a.HighPart==b.HighPart&&a.LowPart==b.LowPart;}
+/* Select only the already available physical target of this hardware adapter.
+ * Let CCD choose target timing through the advertised mode set. Do not invent
+ * signal timing or alter the persistent topology database for this probe. */
+/* Read-only post-apply observation. A retry never changes topology again.
+ * Five seconds is a diagnostic budget, not an OS completion guarantee. */
+#define GEO_ACTIVE_SETTLE_MS 5000u
+#define GEO_ACTIVE_POLL_MS 100u
+#define GEO_ACTIVE_MAX_QUERIES 64u
+static UINT active_path_mismatch(LUID id,const DISPLAYCONFIG_PATH_INFO *paths,UINT32 pc,
+                                const DISPLAYCONFIG_MODE_INFO *modes,UINT32 mc){
+ if(pc!=1)return 1u;
+ const DISPLAYCONFIG_PATH_INFO *p=&paths[0];UINT32 si=p->sourceInfo.modeInfoIdx,ti=p->targetInfo.modeInfoIdx;
+ if(!(p->flags&DISPLAYCONFIG_PATH_ACTIVE))return 2u;
+ if(!same_luid(p->sourceInfo.adapterId,id)||!same_luid(p->targetInfo.adapterId,id))return 3u;
+ if(p->sourceInfo.id||p->targetInfo.id||!p->targetInfo.targetAvailable)return 4u;
+ if(si>=mc||ti>=mc)return 5u;
+ if(modes[si].infoType!=DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE||modes[ti].infoType!=DISPLAYCONFIG_MODE_INFO_TYPE_TARGET)return 6u;
+ if(!same_luid(modes[si].adapterId,id)||!same_luid(modes[ti].adapterId,id)||modes[si].id||modes[ti].id)return 7u;
+ if(modes[si].sourceMode.width!=800||modes[si].sourceMode.height!=1280||modes[si].sourceMode.pixelFormat!=DISPLAYCONFIG_PIXELFORMAT_32BPP)return 8u;
+ if(p->targetInfo.rotation!=DISPLAYCONFIG_ROTATION_IDENTITY)return 9u;
+ if(modes[ti].targetMode.targetVideoSignalInfo.activeSize.cx!=800||modes[ti].targetMode.targetVideoSignalInfo.activeSize.cy!=1280)return 10u;
+ return 0;
+}
+static HRESULT activate_display_path(LUID id){
+ static DISPLAYCONFIG_PATH_INFO paths[16];
+ static DISPLAYCONFIG_MODE_INFO modes[64];
+ DISPLAYCONFIG_PATH_INFO chosen;DISPLAYCONFIG_MODE_INFO source={0};UINT32 pc=16,mc=64;UINT matches=0,active=0;LONG status;
+ status=QueryDisplayConfig(QDC_ALL_PATHS,&pc,paths,&mc,modes,NULL);
+ line("ACTIVATION_QUERY_ALL_STATUS",status);if(status!=ERROR_SUCCESS)return HRESULT_FROM_WIN32(status);
+ for(UINT i=0;i<pc;i++){
+  DISPLAYCONFIG_PATH_INFO *p=&paths[i];int match=same_luid(p->sourceInfo.adapterId,id)&&same_luid(p->targetInfo.adapterId,id)&&p->sourceInfo.id==0&&p->targetInfo.id==0&&p->targetInfo.targetAvailable;
+  if(match){matches++;chosen=*p;}
+  if(p->flags&DISPLAYCONFIG_PATH_ACTIVE){active++;if(!match){line("ACTIVATION_OTHER_ACTIVE_PATH",1);return E_UNEXPECTED;}}
+ }
+ line("ACTIVATION_MATCH_COUNT",matches);line("ACTIVATION_EXISTING_ACTIVE",active);
+ if(matches!=1||active>1)return E_UNEXPECTED;
+ if(!active){
+  chosen.flags|=DISPLAYCONFIG_PATH_ACTIVE;
+  /* Pin the measured native source geometry. Target signal timing remains
+   * unspecified and must come from the driver's advertised target modes. */
+  source.infoType=DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE;source.id=chosen.sourceInfo.id;source.adapterId=id;
+  source.sourceMode.width=800;source.sourceMode.height=1280;
+  source.sourceMode.pixelFormat=DISPLAYCONFIG_PIXELFORMAT_32BPP;
+  source.sourceMode.position.x=source.sourceMode.position.y=0;
+  chosen.sourceInfo.modeInfoIdx=0;
+  chosen.targetInfo.modeInfoIdx=DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+  if(!chosen.targetInfo.refreshRate.Numerator&&!chosen.targetInfo.refreshRate.Denominator)
+   chosen.targetInfo.scanLineOrdering=DISPLAYCONFIG_SCANLINE_ORDERING_UNSPECIFIED;
+  else if(!chosen.targetInfo.refreshRate.Denominator)return E_UNEXPECTED;
+  line("ACTIVATION_SUPPLIED_SOURCE_WIDTH",source.sourceMode.width);line("ACTIVATION_SUPPLIED_SOURCE_HEIGHT",source.sourceMode.height);line("ACTIVATION_SUPPLIED_SOURCE_FORMAT",source.sourceMode.pixelFormat);
+  line("ACTIVATION_VALIDATE_FLAGS",SDC_VALIDATE|SDC_USE_SUPPLIED_DISPLAY_CONFIG);
+  status=SetDisplayConfig(1,&chosen,1,&source,SDC_VALIDATE|SDC_USE_SUPPLIED_DISPLAY_CONFIG);
+  line("ACTIVATION_VALIDATE_STATUS",status);if(status!=ERROR_SUCCESS)return HRESULT_FROM_WIN32(status);
+  /* Documented APPLY modifier forces the mode change down to the driver;
+   * API success in run219 did not establish an active display path. */
+  line("ACTIVATION_APPLY_FLAGS",SDC_APPLY|SDC_USE_SUPPLIED_DISPLAY_CONFIG|SDC_NO_OPTIMIZATION);
+  status=SetDisplayConfig(1,&chosen,1,&source,SDC_APPLY|SDC_USE_SUPPLIED_DISPLAY_CONFIG|SDC_NO_OPTIMIZATION);
+  line("ACTIVATION_APPLY_STATUS",status);if(status!=ERROR_SUCCESS)return HRESULT_FROM_WIN32(status);
+ }
+ {DWORD begin=GetTickCount(),rounds=0,changes=0,last=0xffffffffu;UINT reason;MSG msg;
+  line("ACTIVATION_OBSERVER_VERSION",1);line("ACTIVATION_SETTLE_BUDGET_MS",GEO_ACTIVE_SETTLE_MS);line("ACTIVATION_MAX_QUERIES",GEO_ACTIVE_MAX_QUERIES);
+  for(;;){
+   pc=16;mc=64;status=QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS,&pc,paths,&mc,modes,NULL);rounds++;
+   if(status!=ERROR_SUCCESS){line("ACTIVATION_QUERY_ACTIVE_STATUS",status);return HRESULT_FROM_WIN32(status);}
+   reason=active_path_mismatch(id,paths,pc,modes,mc);
+   if(reason!=last){line("ACTIVATION_QUERY_ACTIVE_STATUS",status);line("ACTIVATION_ACTIVE_COUNT",pc);line("ACTIVATION_MODE_COUNT",mc);line("ACTIVATION_MISMATCH_REASON",reason);last=reason;}
+   if(!reason){line("ACTIVATION_SETTLE_ROUNDS",rounds);line("ACTIVATION_SETTLE_ELAPSED_MS",GetTickCount()-begin);line("ACTIVATION_DISPLAYCHANGE_COUNT",changes);break;}
+   if(rounds>=GEO_ACTIVE_MAX_QUERIES||(DWORD)(GetTickCount()-begin)>=GEO_ACTIVE_SETTLE_MS){line("ACTIVATION_SETTLE_ROUNDS",rounds);line("ACTIVATION_SETTLE_ELAPSED_MS",GetTickCount()-begin);line("ACTIVATION_DISPLAYCHANGE_COUNT",changes);line("ACTIVATION_SETTLE_TIMEOUT",1);return HRESULT_FROM_WIN32(ERROR_TIMEOUT);}
+   /* Bound each pump too: queued messages cannot turn this into an endless loop. */
+   for(UINT pumped=0;pumped<32&&PeekMessageW(&msg,NULL,0,0,PM_REMOVE);pumped++){
+    if(msg.message==WM_QUIT)return HRESULT_FROM_WIN32(ERROR_CANCELLED);
+    if(msg.message==WM_DISPLAYCHANGE)changes++;
+    TranslateMessage(&msg);DispatchMessageW(&msg);
+   }
+   DWORD elapsed=GetTickCount()-begin;
+   if(elapsed<GEO_ACTIVE_SETTLE_MS){DWORD remaining=GEO_ACTIVE_SETTLE_MS-elapsed;
+    DWORD wait=MsgWaitForMultipleObjectsEx(0,NULL,remaining<GEO_ACTIVE_POLL_MS?remaining:GEO_ACTIVE_POLL_MS,QS_ALLINPUT,MWMO_INPUTAVAILABLE);
+    if(wait==WAIT_FAILED)return HRESULT_FROM_WIN32(GetLastError());
+   }
+  }
+ }
+ if(pc!=1||!(paths[0].flags&DISPLAYCONFIG_PATH_ACTIVE)||!same_luid(paths[0].sourceInfo.adapterId,id)||!same_luid(paths[0].targetInfo.adapterId,id)||paths[0].sourceInfo.id||paths[0].targetInfo.id||!paths[0].targetInfo.targetAvailable)return E_UNEXPECTED;
+ UINT32 si=paths[0].sourceInfo.modeInfoIdx,ti=paths[0].targetInfo.modeInfoIdx;
+ if(si>=mc||ti>=mc||modes[si].infoType!=DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE||modes[ti].infoType!=DISPLAYCONFIG_MODE_INFO_TYPE_TARGET||!same_luid(modes[si].adapterId,id)||!same_luid(modes[ti].adapterId,id)||modes[si].id||modes[ti].id)return E_UNEXPECTED;
+ line("ACTIVATION_SOURCE_WIDTH",modes[si].sourceMode.width);line("ACTIVATION_SOURCE_HEIGHT",modes[si].sourceMode.height);line("ACTIVATION_TARGET_ROTATION",paths[0].targetInfo.rotation);
+ line("ACTIVATION_SOURCE_FORMAT",modes[si].sourceMode.pixelFormat);
+ if(modes[si].sourceMode.width!=800||modes[si].sourceMode.height!=1280||modes[si].sourceMode.pixelFormat!=DISPLAYCONFIG_PIXELFORMAT_32BPP||paths[0].targetInfo.rotation!=DISPLAYCONFIG_ROTATION_IDENTITY)return E_UNEXPECTED;
+ line("ACTIVATION_TARGET_WIDTH",modes[ti].targetMode.targetVideoSignalInfo.activeSize.cx);
+ line("ACTIVATION_TARGET_HEIGHT",modes[ti].targetMode.targetVideoSignalInfo.activeSize.cy);
+ line("ACTIVATION_TARGET_SCALING",paths[0].targetInfo.scaling);
+ /* Equal source/target geometry is required; do not confuse the configured
+  * scaling policy with effective scaling. Present still needs pixel proof. */
+ if(modes[ti].targetMode.targetVideoSignalInfo.activeSize.cx!=800||modes[ti].targetMode.targetVideoSignalInfo.activeSize.cy!=1280)return E_UNEXPECTED;
+ return S_OK;
+}
+/* A factory owns a topology snapshot. Creating a new factory alone does not
+ * refresh adapters retained from the old one; join the same hardware LUID. */
+static HRESULT refreshed_adapter(LUID id,IDXGIFactory **factory,IDXGIAdapter **chosen){
+ HRESULT hr;UINT matches=0;*factory=NULL;*chosen=NULL;
+ hr=CreateDXGIFactory(&IID_IDXGIFactory,(void **)factory);
+ line("REFRESH_FACTORY_HRESULT",hr);if(FAILED(hr))return hr;
+ for(UINT i=0;;i++){IDXGIAdapter *a=NULL;DXGI_ADAPTER_DESC desc;
+  hr=IDXGIFactory_EnumAdapters(*factory,i,&a);
+  if(hr==DXGI_ERROR_NOT_FOUND){hr=S_OK;break;}if(FAILED(hr))return hr;
+  hr=IDXGIAdapter_GetDesc(a,&desc);if(FAILED(hr)){IDXGIAdapter_Release(a);return hr;}
+  if(desc.AdapterLuid.HighPart==id.HighPart&&desc.AdapterLuid.LowPart==id.LowPart){
+   matches++;if(!*chosen)*chosen=a;else IDXGIAdapter_Release(a);
+  }else IDXGIAdapter_Release(a);
+ }
+ line("REFRESH_SAME_LUID_MATCH_COUNT",matches);
+ return matches==1?S_OK:E_UNEXPECTED;
+}
 static HRESULT run_swapchain(IDXGIFactory *factory,IDXGIAdapter *adapter,LUID id){
- ID3D11Device *dev=NULL;ID3D11DeviceContext *ctx=NULL;IDXGISwapChain *swap=NULL;IDXGIOutput *output=NULL;
+ IDXGIFactory *fresh_factory=NULL;IDXGIAdapter *fresh_adapter=NULL;
+ ID3D11Device *dev=NULL,*warm_dev=NULL;ID3D11DeviceContext *ctx=NULL,*warm_ctx=NULL;IDXGISwapChain *swap=NULL;IDXGIOutput *output=NULL;
  ID3D11Texture2D *back=NULL;ID3D11RenderTargetView *view=NULL;D3D_FEATURE_LEVEL fl,wanted=D3D_FEATURE_LEVEL_10_0;
  WNDCLASSW wc={0};HWND window=NULL;DXGI_SWAP_CHAIN_DESC q={0};HRESULT hr;MSG msg;UINT pass;
  const FLOAT colors[2][4]={{1,0,1,1},{0,1,0,1}};
@@ -172,26 +321,46 @@ static HRESULT run_swapchain(IDXGIFactory *factory,IDXGIAdapter *adapter,LUID id
  window=CreateWindowExW(0,wc.lpszClassName,L"MT8167 GPU Present356",WS_POPUP,0,0,800,1280,NULL,NULL,wc.hInstance,NULL);
  if(!window){hr=HRESULT_FROM_WIN32(GetLastError());goto done;}
  ShowWindow(window,SW_SHOW);UpdateWindow(window);
+ factory_current(factory,"FACTORY_CURRENT_BEFORE_DEVICE");
+ live_paths(0,id);
  hr=D3D11CreateDevice(adapter,D3D_DRIVER_TYPE_UNKNOWN,NULL,D3D11_CREATE_DEVICE_BGRA_SUPPORT,&wanted,1,D3D11_SDK_VERSION,&dev,&fl,&ctx);
- line("CREATE_DEVICE_HRESULT",hr);if(FAILED(hr)||fl!=wanted)goto done;
- hr=IDXGIAdapter_EnumOutputs(adapter,0,&output);line("ENUM_SAME_ADAPTER_OUTPUT_HRESULT",hr);if(FAILED(hr))goto done;
+ line("CREATE_DEVICE_HRESULT",hr);if(FAILED(hr))goto done;
+ line("DEVICE_FEATURE_LEVEL",fl);if(fl!=wanted){hr=E_UNEXPECTED;goto done;}
+ factory_current(factory,"FACTORY_CURRENT_AFTER_DEVICE");
+ live_paths(1,id);
+ hr=IDXGIAdapter_EnumOutputs(adapter,0,&output);line("ENUM_SAME_ADAPTER_OUTPUT_HRESULT",hr);
+ if(FAILED(hr)&&hr!=DXGI_ERROR_NOT_FOUND)goto done;
+ if(output){IDXGIOutput_Release(output);output=NULL;}
+ hr=activate_display_path(id);line("DISPLAY_PATH_ACTIVATION_HRESULT",hr);live_paths(2,id);if(FAILED(hr))goto done;
+ /* Keep the real hardware device alive while taking the new snapshot. No
+  * software fallback and no private command changes topology for this probe. */
+ hr=refreshed_adapter(id,&fresh_factory,&fresh_adapter);if(FAILED(hr))goto done;
+ factory_current(fresh_factory,"REFRESH_FACTORY_CURRENT");
+ hr=IDXGIAdapter_EnumOutputs(fresh_adapter,0,&output);line("ENUM_REFRESHED_ADAPTER_OUTPUT_HRESULT",hr);if(FAILED(hr))goto done;
+ /* Keep the warm device alive, but present with one coherent fresh factory. */
+ warm_dev=dev;warm_ctx=ctx;dev=NULL;ctx=NULL;
+ hr=D3D11CreateDevice(fresh_adapter,D3D_DRIVER_TYPE_UNKNOWN,NULL,D3D11_CREATE_DEVICE_BGRA_SUPPORT,&wanted,1,D3D11_SDK_VERSION,&dev,&fl,&ctx);
+ line("REFRESH_CREATE_DEVICE_HRESULT",hr);if(FAILED(hr))goto done;
+ line("REFRESH_DEVICE_FEATURE_LEVEL",fl);if(fl!=wanted){hr=E_UNEXPECTED;goto done;}
  q.BufferDesc.Width=800;q.BufferDesc.Height=1280;q.BufferDesc.Format=DXGI_FORMAT_B8G8R8A8_UNORM;
  q.SampleDesc.Count=1;q.BufferUsage=DXGI_USAGE_RENDER_TARGET_OUTPUT;q.BufferCount=1;q.OutputWindow=window;q.Windowed=TRUE;
  q.SwapEffect=DXGI_SWAP_EFFECT_DISCARD; /* no unimplemented flip-model cap */
- hr=IDXGIFactory_CreateSwapChain(factory,(IUnknown *)dev,&q,&swap);line("CREATE_SWAPCHAIN_HRESULT",hr);if(FAILED(hr))goto done;
+ hr=IDXGIFactory_CreateSwapChain(fresh_factory,(IUnknown *)dev,&q,&swap);line("CREATE_SWAPCHAIN_HRESULT",hr);if(FAILED(hr))goto done;
  hr=IDXGISwapChain_SetFullscreenState(swap,TRUE,output);line("FULLSCREEN_HRESULT",hr);if(FAILED(hr))goto done;
  hr=IDXGISwapChain_GetBuffer(swap,0,&IID_ID3D11Texture2D,(void **)&back);line("SWAPCHAIN_BUFFER_HRESULT",hr);if(FAILED(hr))goto done;
  hr=ID3D11Device_CreateRenderTargetView(dev,(ID3D11Resource *)back,NULL,&view);line("SWAPCHAIN_VIEW_HRESULT",hr);if(FAILED(hr))goto done;
  for(pass=0;pass<2;pass++){
   while(PeekMessageW(&msg,NULL,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}
   line("FRAME_BEGIN",pass);ID3D11DeviceContext_ClearRenderTargetView(ctx,view,colors[pass]);
-  line("STANDARD_PRESENT_BEFORE",pass);hr=IDXGISwapChain_Present(swap,0,0);line("STANDARD_PRESENT_HRESULT",hr);if(hr!=S_OK)goto done;
+  line("STANDARD_PRESENT_BEFORE",pass);hr=IDXGISwapChain_Present(swap,0,0);line("STANDARD_PRESENT_HRESULT",hr);if(hr!=S_OK){if(SUCCEEDED(hr))hr=E_FAIL;goto done;}
   hr=scanout(id,pass);line("REAL_SCANOUT_OBSERVATION_HRESULT",hr);if(FAILED(hr))goto done;
  }
  hr=ID3D11Device_GetDeviceRemovedReason(dev);line("DEVICE_REMOVED_REASON",hr);
  done:if(view)ID3D11RenderTargetView_Release(view);if(back)ID3D11Texture2D_Release(back);
  if(swap){HRESULT restored=IDXGISwapChain_SetFullscreenState(swap,FALSE,NULL);line("LEAVE_FULLSCREEN_HRESULT",restored);if(SUCCEEDED(hr)&&FAILED(restored))hr=restored;IDXGISwapChain_Release(swap);}
  if(output)IDXGIOutput_Release(output);if(ctx)ID3D11DeviceContext_Release(ctx);if(dev)ID3D11Device_Release(dev);
+ if(warm_ctx)ID3D11DeviceContext_Release(warm_ctx);if(warm_dev)ID3D11Device_Release(warm_dev);
+ if(fresh_adapter)IDXGIAdapter_Release(fresh_adapter);if(fresh_factory)IDXGIFactory_Release(fresh_factory);
  if(window)DestroyWindow(window);UnregisterClassW(wc.lpszClassName,wc.hInstance);return hr;
 }
 void mainCRTStartup(void){
@@ -205,7 +374,7 @@ void mainCRTStartup(void){
  /* Keep one exact frame digit index; no command line supplies an output path. */
  logpath[base++]=L'.';logpath[base++]=L'l';logpath[base++]=L'o';logpath[base++]=L'g';logpath[base]=0;
  disk=CreateFileW(logpath,GENERIC_WRITE,FILE_SHARE_READ,NULL,CREATE_NEW,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,NULL);if(disk==INVALID_HANDLE_VALUE)ExitProcess(2);
- line("PID",pid);line("TICK",tick);line("CLIENT_VERSION",356);hr=hardware_luid(&id);if(FAILED(hr))goto done;
+ line("PID",pid);line("TICK",tick);line("CLIENT_VERSION",375);hr=hardware_luid(&id);if(FAILED(hr))goto done;
  hr=CreateDXGIFactory(&IID_IDXGIFactory,(void **)&factory);if(FAILED(hr))goto done;
  for(UINT i=0;;i++){IDXGIAdapter *a=NULL;DXGI_ADAPTER_DESC desc;
   hr=IDXGIFactory_EnumAdapters(factory,i,&a);if(hr==DXGI_ERROR_NOT_FOUND){hr=S_OK;break;}if(FAILED(hr))goto done;

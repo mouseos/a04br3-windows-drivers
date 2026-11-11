@@ -77,7 +77,9 @@ origfile.write_text(json.dumps(origins))
 # The main POST366 origin is a separate parent and must survive the merge.
 changed_orig=json.loads(json.dumps(origins))
 for row in changed_orig['files']:
- if row['path'].endswith('/miniport.c'):row['previous_origins'][1]['role']='main diagnostic history silently relabelled'
+ if row['path'].endswith('/miniport.c'):
+  while len(row.get('previous_origins',[]))==1:row=row['previous_origins'][0]
+  row['previous_origins'][1]['role']='main diagnostic history silently relabelled'
 origfile.write_text(json.dumps(changed_orig));run('alter preserved main POST366 merge-parent history',False)
 origfile.write_text(json.dumps(origins))
 changed=json.loads(json.dumps(native))
@@ -104,6 +106,10 @@ run('route display/MDL compile back to PCO VC',False)
 fullrecipefile.write_text(original_full.replace('-MicrosoftLinker $scKernelLink','-MicrosoftLinker $scCl'))
 run('route SYS links away from independent kernel VC',False)
 fullrecipefile.write_text(original_full)
+
+changed_orig=json.loads(json.dumps(origins));changed_orig['public_runtime379_integration']['runtime_source_commit']='0'*40
+origfile.write_text(json.dumps(changed_orig));run('misattribute exact current379 integration source',False)
+origfile.write_text(json.dumps(origins));run('restored exact379 source closure',True)
 
 receipt={'schema':'ge8300-fullsource-map-regression-v1','production_source_modified':False,'driver_cache_used':False,'hardware_operations':False,'cases':records}
 (out/'receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
