@@ -3,7 +3,7 @@
 > 後述の「None/0を返す」は当時の状態であり、現在の実装の説明ではない。
 > 実HFP PCM/latency/drain資格の未確定と、標準radio列挙の成否は区別する。
 > 公開Wi-Fi1033系の2018 READ完了修正の同期については
-> [source同期の根拠](../../../../docs/mt6630-bthx2018-source-sync.md)を参照。
+> [source同期の根拠](../../../docs/mt6630-bthx2018-source-sync.md)を参照。
 
 # MT6630 SDIO/STP共存broker候補
 
