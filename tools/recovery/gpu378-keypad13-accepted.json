@@ -1,0 +1,29 @@
+{
+  "schema": "GPU378_KEYPAD13_ACCEPTED_V1",
+  "status": "actual-signed-manifests-main-reviewed",
+  "gpu378": {
+    "manifest": {
+      "path": "port/xnu/out/windows-rt-wire378/recovered/package378/signed-manifest.json",
+      "sha256": "6ff34226b405bf876055038d8634d72647d3db13033c100a41d269cf7820c99e"
+    },
+    "main_review": {
+      "path": "port/xnu/out/windows-rt-wire378/main-independent-review.json",
+      "sha256": "183f03921b8686dc9391b91580082d2c3e5b9e8e71283dd30d583a760c286154"
+    },
+    "source_commit": "e215c7015f8040ffe8731bb97adc05519d3e1028",
+    "sys_sha256": "d91a5ab410ccfc784e5e54629d42ce9ca73fe691e0903ac6883407b473147679",
+    "umd_sha256": "c901e6509d944c10389a733736e8a48e76bc8a2580b289a30b7949c73d555525"
+  },
+  "keypad13": {
+    "manifest": {
+      "path": "port/xnu/out/mt8167-keypad13/signed-manifest.json",
+      "sha256": "c2a7c929bc34370d56448ef18275c2226320918f471857e82ef82725d51cb586"
+    },
+    "main_review": {
+      "path": "port/xnu/out/mt8167-keypad13/main-independent-seal.json",
+      "sha256": "1d151adc2c9512158ea995adde62a1882fa3075a50f64c55d8587ce924ee1574"
+    },
+    "source_commit": "3414de13b08f64a54e9dd350f306da7023a44f47",
+    "sys_sha256": "ec33b15c401f4aecd27fe2f4ed5f69f6a731b6b950c420f030a72e598e2e6a61"
+  }
+}

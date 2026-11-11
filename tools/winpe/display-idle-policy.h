@@ -7,7 +7,9 @@
 #define A04_DEVELOPMENT_DISPLAY_ON 0
 #endif
 #if A04_DEVELOPMENT_DISPLAY_ON
-static DWORD development_display_idle(void)
+static GUID development_display_scheme;
+static int development_display_applied;
+static DWORD development_display_idle_policy(int verify_only)
 {
  typedef DWORD (WINAPI *GetScheme)(HKEY,GUID **);
  typedef DWORD (WINAPI *ReadIndex)(HKEY,const GUID *,const GUID *,const GUID *,LPDWORD);
@@ -29,6 +31,7 @@ static DWORD development_display_idle(void)
  activate=(SetScheme)GetProcAddress(mod,"PowerSetActiveScheme");
  if(!get||!read_ac||!read_dc||!write_ac||!write_dc||!activate){e=ERROR_PROC_NOT_FOUND;goto done;}
  e=get(NULL,&scheme);if(e)goto done;if(!scheme){e=ERROR_INVALID_DATA;goto done;}
+ if(verify_only){if(!development_display_applied){e=ERROR_NOT_READY;goto done;}if(memcmp(scheme,&development_display_scheme,sizeof(*scheme))){e=ERROR_RETRY;goto done;}goto readback;}
  before.scheme=*scheme;e=read_ac(NULL,scheme,&video,&timeout,&before.ac);if(e)goto done;
  e=read_dc(NULL,scheme,&video,&timeout,&before.dc);if(e)goto done;
  e=save_blob(L"display-idle-before.bin",&before,sizeof(before));if(e)goto done;
@@ -38,10 +41,12 @@ static DWORD development_display_idle(void)
  e=write_dc(NULL,scheme,&video,&timeout,0);if(e)goto done;
  e=get(NULL,&current);if(e)goto done;if(!current||memcmp(current,scheme,sizeof(*scheme))){e=ERROR_RETRY;goto done;}
  LocalFree(current);current=NULL;e=activate(NULL,scheme);if(e)goto done;
+ readback:
  e=read_ac(NULL,scheme,&video,&timeout,&ac);if(e)goto done;observed|=1;
  e=read_dc(NULL,scheme,&video,&timeout,&dc);if(e)goto done;observed|=2;
  if(ac||dc){e=ERROR_INVALID_DATA;goto done;}
  e=get(NULL,&current);if(e)goto done;if(!current||memcmp(current,scheme,sizeof(*scheme)))e=ERROR_RETRY;
+ if(!e&&!verify_only){development_display_scheme=*scheme;development_display_applied=1;}
  done:
  if(current){LocalFree(current);current=NULL;}
  if(e&&attempted){
@@ -54,4 +59,8 @@ static DWORD development_display_idle(void)
  record(0,0x2b0,e);record(0,0x2b6,observed);record(0,0x2b2,ac);record(0,0x2b3,dc);
  if(current)LocalFree(current);if(scheme)LocalFree(scheme);if(mod)FreeLibrary(mod);return e;
 }
+static DWORD development_display_idle(void){return development_display_idle_policy(0);}
+#if A04_DISPLAY_IDLE_BEFORE_CLIENTS
+static DWORD development_display_idle_readback(void){return development_display_idle_policy(1);}
+#endif
 #endif

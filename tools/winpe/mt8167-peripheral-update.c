@@ -180,9 +180,13 @@ static DWORD captured_registry_values(void){
  return 0;
 }
 #endif
+#include "keypad13-checkpoint-policy.h"
 static DWORD preserved(void){WCHAR sys[MAX_PATH],full[MAX_PATH];HANDLE h;DWORD i,e;if(!GetSystemDirectoryW(sys,MAX_PATH))return GetLastError();for(i=0;i<sizeof(preserved_files)/sizeof(preserved_files[0]);i++){h=INVALID_HANDLE_VALUE;if(A04_FEATURE148&&preserved_files[i].name[0]==L'\\'){full[0]=sys[0];full[1]=L':';lstrcpyW(full+2,preserved_files[i].name);e=0;}else e=path(full,sys,preserved_files[i].name);if(!e)e=deferred_file(full,preserved_files[i].hash,&h);if(h!=INVALID_HANDLE_VALUE)CloseHandle(h);if(e)return e;}e=old_services();
 #if A04_FEATURE148
  if(!e)e=captured_registry_values();
+#if A04_KEYPAD13_CHECKPOINT
+ if(!e)e=keypad13_checkpoint();
+#endif
 #endif
  return e;}
 static DWORD property(HDEVINFO set,SP_DEVINFO_DATA *dev,DWORD code,const WCHAR *expected){WCHAR b[256];DWORD t,n;if(!SetupDiGetDeviceRegistryPropertyW(set,dev,code,&t,(BYTE *)b,sizeof(b),&n))return GetLastError();if(t!=REG_SZ||n<2||n>sizeof(b)||(n&1)||b[n/2-1]||lstrcmpiW(b,expected))return ERROR_REVISION_MISMATCH;return 0;}
@@ -530,13 +534,33 @@ static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_CO
  #if A04_FEATURE144
  if(A04_RUN_BT_READ){e=bt_readonly_status();if(e&&!first)first=e;}
 #endif
+#if A04_KEYPAD13_CHECKPOINT
+ {SP_DEVINFO_DATA keypad;DWORD find=deferred_find(7,set,&keypad);e=find?find:keypad_hid_bindings(keypad.DevInst);record(7,0x267,e);if(e&&!first)first=e;}
+#endif
+#if A04_DEVELOPMENT_DISPLAY_ON && A04_DISPLAY_IDLE_BEFORE_CLIENTS
+ /* Captured-file/root/named guards and installed identity checks precede power writes.
+  * Node readiness failures (e.g. battery Code10) remain independent observations. */
+ e=preserved();if(e)goto done;
+ {DWORD identity=0;for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){
+#if A04_USB_PC_ROLE_OPTIONAL_LEGACY_NODE
+  if(i==2&&combined_nodes[i].discovery_error==ERROR_NOT_FOUND)continue;
+#endif
+  if(!combined_nodes[i].observed||combined_nodes[i].discovery_error||combined_nodes[i].metadata_error||combined_nodes[i].sys_error)identity=ERROR_REVISION_MISMATCH;
+ }record(0,0x2b8,identity);if(!identity){record(0,0x2b7,0);(void)development_display_idle();}}
+#endif
  e=run_clients(first);if(e&&!first)first=e;
 #endif
  e=preserved();if(e&&!first)first=e;
 #if A04_DEVELOPMENT_DISPLAY_ON
  /* All immutable baseline guards have passed. Keep optional power policy
   * separate from GPU success, and do not change it after a guard failure. */
- if(!e)(void)development_display_idle();
+ if(!e){
+#if A04_DISPLAY_IDLE_BEFORE_CLIENTS
+  record(0,0x2b7,1);(void)development_display_idle_readback();
+#else
+  (void)development_display_idle();
+#endif
+ }
 #endif
  e=first;goto done;}
  /* Only generated explicit install bits receive DIF; retained nodes are never reinstalled. */

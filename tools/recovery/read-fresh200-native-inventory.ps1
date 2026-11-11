@@ -4,7 +4,7 @@ param([Parameter(Mandatory=$true)][string]$WorkspaceRoot,
  [Parameter(Mandatory=$true)][string]$SourceDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,
  [Parameter(Mandatory=$true)][string]$PolicyPath,[Parameter(Mandatory=$true)][string]$ExpectedPolicyFileSha256,
  [string]$ExpectedPolicySha256,[ValidatePattern('^MT8167CombinedFollowup[0-9]{3}$')][string]$NewServiceName='MT8167CombinedFollowup200',
- [string[]]$AdditionalServiceNames=@(),[int]$TimingCaptureNumber=0,[ValidateSet('resume224')][string]$CaptureSuffix,[switch]$IncludeWifiCheckpoint,[switch]$IncludeGraphicsTopologyCache,[switch]$IncludeDisplayDeviceBindings,[switch]$IncludeBatteryFirstFailure)
+ [string[]]$AdditionalServiceNames=@(),[int]$TimingCaptureNumber=0,[ValidateSet('resume224')][string]$CaptureSuffix,[switch]$IncludeWifiCheckpoint,[switch]$IncludeGraphicsTopologyCache,[switch]$IncludeDisplayDeviceBindings,[switch]$IncludeBatteryFirstFailure,[switch]$IncludeButtonsDeviceBindings,[switch]$IncludeKeypadCheckpoint)
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 function Hash($p){(Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant()}
 $w=[IO.Path]::GetFullPath($WorkspaceRoot).TrimEnd('\')
@@ -96,6 +96,8 @@ if($IncludeWifiCheckpoint){$r.source_recipe_files['read-mt6630-checkpoint-loaded
 if($IncludeGraphicsTopologyCache){$r.source_recipe_files['read-graphics-topology-cache.ps1']=Hash (Join-Path $PSScriptRoot 'read-graphics-topology-cache.ps1')}
 if($IncludeDisplayDeviceBindings){$r.source_recipe_files['read-display-device-bindings.ps1']=Hash (Join-Path $PSScriptRoot 'read-display-device-bindings.ps1')}
 if($IncludeBatteryFirstFailure){$r.source_recipe_files['read-lc709203f-first-failure.ps1']=Hash (Join-Path $PSScriptRoot 'read-lc709203f-first-failure.ps1')}
+if($IncludeButtonsDeviceBindings){$r.source_recipe_files['read-buttons-device-bindings.ps1']=Hash (Join-Path $PSScriptRoot 'read-buttons-device-bindings.ps1')}
+if($IncludeKeypadCheckpoint){$r.source_recipe_files['read-keypad13-checkpoint-loaded.ps1']=Hash (Join-Path $PSScriptRoot 'read-keypad13-checkpoint-loaded.ps1')}
 $wifiCheckpoint=$null
 $mount='MT8167OfflineSYSTEM_'+[Guid]::NewGuid().ToString('N');$root=$null;$priv=$null;$loaded=$false
 try{
@@ -150,6 +152,11 @@ try{
  }
  if($r.missing_named_values.Count){throw 'Required template names are missing in actual fresh200; keep receipt, do not synthesize values'}
  $r.keypad_wdf_runtime=Keypad-WdfRuntimeObservation $root
+ if($IncludeKeypadCheckpoint){
+  . (Join-Path $PSScriptRoot 'read-keypad13-checkpoint-loaded.ps1')
+  $r.keypad_checkpoint=Read-Keypad13Checkpoint $root $cs
+ }
+
  $failed=[MT8167OfflineHive.Native]::OpenPath($root,"$cs\Services\MT8167CombinedFollowup148",$false)
  if($failed){$failed.Dispose();throw 'Rejected149 service unexpectedly exists'};$r.rejected149_service_absent=$true
  $svc=[MT8167OfflineHive.Native]::OpenPath($root,"$cs\Services\$NewServiceName",$false)
@@ -221,6 +228,11 @@ try{
  if($IncludeBatteryFirstFailure){
   . (Join-Path $PSScriptRoot 'read-lc709203f-first-failure.ps1')
   $r.battery_first_failure=Read-Lc709203fFirstFailure $root $cs
+ }
+ if($IncludeButtonsDeviceBindings){
+  . (Join-Path $PSScriptRoot 'read-buttons-device-bindings.ps1')
+  $r.buttons_device_bindings=Read-ButtonsDeviceBindings $root $cs
+  if($r.buttons_device_bindings.errors.Count){$r.errors+=@('Bounded button/HID observation failed; see buttons_device_bindings.errors')}
  }
  if($r.new_service.present){throw 'NewServiceName200 is actually present; do not arm or mislabel it absent'}
 }catch{$r.errors+=@($_.Exception.Message)}finally{

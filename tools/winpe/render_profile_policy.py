@@ -38,6 +38,10 @@ def package(root,entry,role,repo,render_color=False):
  require(set(entry)=={'directory','manifest_sha256','source_commit'},'component field不一致: '+role)
  d=rooted(root,entry['directory']);p=d/'signed-manifest.json';require(sha(p)==hexpin(entry['manifest_sha256']),'署名manifest pin不一致')
  m=jsonfile(p);source=hexpin(entry['source_commit'],40)
+ native378=False
+ if role=='render' and m.get('schema')=='ge8300-wire378-three-tu-v1':
+  lock=jsonfile(Path(__file__).resolve().parents[1]/'recovery/gpu378-keypad13-accepted.json')
+  g=lock.get('gpu378');require(lock['status']=='actual-signed-manifests-main-reviewed' and isinstance(g,dict) and g['manifest']==dict(path=p.relative_to(root).as_posix(),sha256=entry['manifest_sha256']) and source==g['source_commit']==m['source_commit'] and m['signed'] is True and m['success'] is True and m['signer_thumbprint']==SIGNER,'exact reviewed378 role only');native378=True
  native371=(role=='render' and entry['manifest_sha256']=='649612e1b5facd4b0992fea6b2c7c2a37cd2ea47d0570bcbf97b28c871b8655b')
  if native371:
   require(m['schema']=='GE8300_VIDPN371_RELINK_SIGN_V1' and m['recipe_source_commit']==source=='9d941f9873c1e7d8c166aa04e743a31eb99218dd' and m['runtime_source_commit']=='b63827d7c45e099d5844e2c694804a1df047ed10' and m['compiled_source_commit']=='91f14b4c6c04e43e947822cc2b8fef9dc4be8082' and m['signed'] is True and m['success'] is True and m['signer_thumbprint']==SIGNER,'固定371 render実出自/署名のみ')
@@ -46,8 +50,8 @@ def package(root,entry,role,repo,render_color=False):
  entries=m.get('files',m.get('outputs'));require(isinstance(entries,list),'固定file manifestが必要')
  files={}
  for e in entries:
-  n=e.get('path',e.get('name'));require(isinstance(n,str) and re.fullmatch(r'(?:display-transport/)?[A-Za-z0-9_.-]+' if native371 else r'[A-Za-z0-9_.-]+',n) and n not in files,'flat固定fileのみ')
-  f=rooted(root,d/n);require((f.parent==d or (native371 and f.parent==d/'display-transport')) and f.is_file() and 0<f.stat().st_size<=16777216,'package file範囲不正')
+  n=e.get('path',e.get('name'));require(isinstance(n,str) and re.fullmatch(r'(?:display-transport/)?[A-Za-z0-9_.-]+' if (native371 or native378) else r'[A-Za-z0-9_.-]+',n) and n not in files,'flat固定fileのみ')
+  f=rooted(root,d/n);require((f.parent==d or ((native371 or native378) and f.parent==d/'display-transport')) and f.is_file() and 0<f.stat().st_size<=16777216,'package file範囲不正')
   require(sha(f)==hexpin(e['sha256']),'package hash不一致: '+n);files[n]=sha(f)
  names=TARGETS[role][3];require(set(names).issubset(files) and 'mt8167-development.cer' in files,'固定package不足')
  require(hashlib.sha1((d/'mt8167-development.cer').read_bytes()).hexdigest().upper()==SIGNER,'固定private入力cert不一致')
@@ -71,6 +75,8 @@ def package(root,entry,role,repo,render_color=False):
  require(not re.search(r'(?i)\b(CoInstallers32|RegisterDlls|UnregisterDlls|RunPreSetupCommands|RunPostSetupCommands)\b',inf),'実行性INF拡張拒否')
  if native371:
   require(v=='11/10/2026,0.0.3.71' and files[names[1]]=='202f0f3fd7d4325df20dd8570d88299f008fae421bff16cccf99589282a19ded' and files['ge8300-mips.fw']==FW,'実371 INF/SYS/FWだけ');flags={}
+ elif native378:
+  require(v=='11/11/2026,0.0.3.78' and files[names[1]]==g['sys_sha256'] and files['ge8300-umd.dll']==g['umd_sha256'] and files['ge8300-mips.fw']==FW,'exact378 tuple only');flags={}
  elif role=='parent':
   require(source==PARENT and v=='11/07/2026,2026.11.7.1014','固定SD1/SPM親1014以外拒否')
   cap=jsonfile(d/'parent-manifest.json');require('parent-manifest.json' in files,'親capability非hash')

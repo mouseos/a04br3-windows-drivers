@@ -133,6 +133,11 @@ def build_policy(root,spec):
    baselines[role]=dict(mode='selected' if (role in INSTALL if TIMING else role=='render') else 'retained',version_u64=old['version_u64'],date_filetime=old['date_filetime'],sys_sha256=sysfile['sha256'],inf=sel['InfPath']['value'])
   if TIMING and role in INSTALL:
    old=TIMING.adopt(role,old,originals,hashes)
+   if role=='render':
+    for x in old.get('extra_members',[]):
+     name='Windows/System32/'+x['installed'].replace('\\','/');f=originals[name]
+     require(x['baseline_sha256']==f['sha256'] and x['sha256']==hashes[x['name']],'explicit GPU extra baseline/candidate binding')
+     if x['sha256']!=f['sha256']:witnesses[name]=dict(path=origin_sources[name],sha256=f['sha256'])
    if role=='wifi':
     for name in old['names'].values():
      q=rooted(root,Path(old['directory'])/name);pins[q.relative_to(root).as_posix()]=sha(q)
