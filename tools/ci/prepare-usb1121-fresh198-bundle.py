@@ -28,7 +28,74 @@ def below(root, path):
     require(result.is_relative_to(root), '作業root外の入力')
     return result
 
-def prepare(root, output, *, fresh_manifest=None, fresh_sha256=None, native_receipt=None, native_sha256=None):
+
+def compare_preservation(receipt, policy):
+    """取得済み生値を比較する。receiptの未実施比較フラグは変更しない。"""
+    require(receipt.get('full_service_capture_complete') is True,
+            '全Services取得完了が必要')
+    require(receipt.get('missing_named_values') == [] and
+            receipt.get('registry_write_requested') is False,
+            '欠落のないread-only native取得が必要')
+    services = receipt['old_services']
+    require(services and services == policy['service_preservation'],
+            '全旧Servicesのroot/subtree指紋が最終policyと不一致')
+    for value in services.values():
+        require(value.get('present') is True and
+                all(isinstance(value.get(k), str) and
+                    len(value[k]) == 64 and all(c in '0123456789abcdef' for c in value[k])
+                    for k in ('root_sha256', 'subtree_sha256')), 'Services指紋不完全')
+    actual = receipt['captured_named_values']
+    expected = {}
+    for value in policy['captured_registry_values']:
+        name = value['key'] + '\\' + value['name']
+        require(name not in expected, 'policyの名前付き値重複')
+        expected[name] = value
+    require(actual and actual.keys() == expected.keys(), '名前付き値集合が最終policyと不一致')
+    for name, value in actual.items():
+        target = expected[name]
+        raw = value.get('raw_hex')
+        require(value.get('present') is True and type(value.get('type')) is int and
+                type(target.get('type')) is int and value['type'] == target['type'] and isinstance(raw, str) and
+                raw == target['raw_hex'] and len(raw) % 2 == 0 and
+                all(c in '0123456789abcdef' for c in raw) and
+                type(value.get('bytes')) is int and value['bytes'] == len(raw) // 2,
+                '名前付き値のtype/raw/byte長不一致: ' + name)
+    require(receipt['observed_counts']['old_services'] == len(services) and
+            receipt['observed_counts']['named_values'] == len(actual), 'native取得件数不一致')
+    return dict(schema='USB1121_POLICY_PRESERVATION_COMPARISON_V1',
+                service_count=len(services), named_value_count=len(actual),
+                service_preservation_equal=True, captured_registry_values_equal=True,
+                native_full_service_preservation_equal=receipt.get('full_service_preservation_equal'),
+                scope='read-only capture versus policy; not post-install preservation proof')
+
+def admit_native(root, fresh_path, fresh_pin, receipt_path, native_pin, policy):
+    fresh, receipt = read(fresh_path), read(receipt_path)
+    require(sha(fresh_path) == fresh_pin and sha(receipt_path) == native_pin,
+            'fresh/native pin drift')
+    require(fresh.get('status') == 'captured-unmounted' and
+            fresh.get('read_only') is True and fresh.get('unmounted') is True and
+            fresh.get('errors') == [], '実fresh read-only原本が必要')
+    require(receipt.get('source_manifest_sha256') == fresh_pin and
+            receipt.get('recovery_boot_id') == fresh['recovery_boot_id'] and
+            receipt.get('originals_unchanged') is True and receipt.get('errors') == [] and
+            receipt.get('load_rc') == 0 and receipt.get('unload_rc') == 0,
+            '同一freshの不変native receiptが必要')
+    require(policy.get('draft') is False and policy.get('normal_install_allowed') is True and
+            policy.get('backup_manifest_sha256') == fresh_pin and
+            policy.get('recovery_boot_id') == fresh['recovery_boot_id'],
+            '同一freshの確定policyが必要')
+    original = {f['source_path']: f for f in fresh['files']}
+    require(len(original) == len(fresh['files']), 'fresh source重複')
+    for f in fresh['files']:
+        require(sha(below(root, fresh_path.parent / f['backup_path'])) == f['sha256'],
+                'fresh原本byte不一致')
+    for name in ('SYSTEM', 'SYSTEM.LOG1', 'SYSTEM.LOG2'):
+        require(receipt['source_files'][name] == original['Windows/System32/config/' + name]['sha256'],
+                'native SYSTEM trioの出自不一致')
+    require(receipt['post_ownership_policy360']['raw'] == '00000000', 'actual POST0 required')
+    return compare_preservation(receipt, policy)
+
+def prepare(root, output, *, fresh_manifest=None, fresh_sha256=None, native_receipt=None, native_sha256=None, final_policy=None, final_policy_sha256=None):
     root = root.resolve(strict=True)
     output = output.resolve()
     require(output.is_relative_to(root) and not output.exists(), 'root内の新規出力が必要')
@@ -46,8 +113,13 @@ def prepare(root, output, *, fresh_manifest=None, fresh_sha256=None, native_rece
         require(sha(below(root, fresh_path.parent / f['backup_path'])) == f['sha256'], 'SYSTEM原本変更')
     receipt_path = below(root, native_receipt or 'port/xnu/out/private-windows-rt-combined-run197-registry-post/receipt.json')
     receipt = read(receipt_path)
+    if rebound:
+        require(final_policy and final_policy_sha256, '最終policy pinが必要')
+        policy_path = below(root, final_policy)
+        require(sha(policy_path) == final_policy_sha256, '最終policy drift')
+        admit_native(root, fresh_path, fresh_pin, receipt_path, native_sha256, read(policy_path))
     require(sha(receipt_path) == (native_sha256 if rebound else NATIVE) and receipt['source_manifest_sha256'] == fresh_pin and receipt['originals_unchanged'] and
-            receipt['full_service_preservation_equal'] and not receipt['errors'], 'native198 receipt不一致')
+            (rebound or receipt['full_service_preservation_equal'] is True) and not receipt['errors'], 'native198 receipt不一致')
     require(receipt['post_ownership_policy360']['raw'] == '00000000', 'actual POST0 required')
     if not rebound:
         require(receipt['nodes']['ACPI\\MOU0006']['instances'][0]['selected']['DriverVersion']['value'] == '0.0.3.67', 'historical GPU367 required')
@@ -133,6 +205,12 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--workspace', type=Path, required=True)
     ap.add_argument('--out', type=Path, required=True)
+    for n in ('fresh-manifest', 'native-receipt', 'final-policy'):
+        ap.add_argument('--' + n, type=Path)
+    for n in ('fresh-sha256', 'native-sha256', 'final-policy-sha256'):
+        ap.add_argument('--' + n)
     a = ap.parse_args()
-    prepare(a.workspace, a.out)
+    values = {k: v for k, v in vars(a).items() if k not in ('workspace', 'out')}
+    require(not any(values.values()) or all(values.values()), '再結合入力6項目は全指定必須')
+    prepare(a.workspace, a.out, **values)
     print('USB_ABI3_BUNDLE_VERIFIED_NO_INSTALLATION')
