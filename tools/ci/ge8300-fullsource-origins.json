@@ -2927,33 +2927,41 @@
     },
     {
       "path": "tools/ci/build-ge8300-from-source.ps1",
-      "source_commit": "75d292cd8381256174ee200d8997e6598215bca9",
-      "sha256": "c54685fbf89a985866a79903106b25b7f328168d5dfe1f5c43518286ddb29305",
-      "role": "Live native cache Clang effective argv/default-config rejection; cold path unchanged",
+      "source_commit": "fed800894b58e099b9334790a69d8e5fa887ea82",
+      "sha256": "78f414bec9deec13c0afc1438db47ef64cf2f7a59e64413f2ef9ecb92c8d441c",
+      "role": "Default-off KernelOnly skips unused module UMD/prototypes only; kernel/unified codegen unchanged",
       "previous_origins": [
         {
           "path": "tools/ci/build-ge8300-from-source.ps1",
-          "source_commit": "3a6da08a7cd7d096df1871ef7848b7f9e3a41bdf",
-          "sha256": "9d605c96249f2a79e39389bca7752b308255cc707b7cfc3944ac56e6524b0a6e",
-          "role": "Default-off verified native compile-stage cache admission; no driver/SDK changes",
+          "source_commit": "75d292cd8381256174ee200d8997e6598215bca9",
+          "sha256": "c54685fbf89a985866a79903106b25b7f328168d5dfe1f5c43518286ddb29305",
+          "role": "Live native cache Clang effective argv/default-config rejection; cold path unchanged",
           "previous_origins": [
             {
               "path": "tools/ci/build-ge8300-from-source.ps1",
-              "source_commit": "48c4488351b49aa1dec39357bd63bd26077fdb32",
-              "sha256": "74b65d15b9b80fc037a33f2627946bbd2e939df5f3eecebf1cce0b8ed5208aff",
-              "role": "Explicit strict-parent/adapter-only compiler cache derivation; no Mesa-core/SDK rebuild",
+              "source_commit": "3a6da08a7cd7d096df1871ef7848b7f9e3a41bdf",
+              "sha256": "9d605c96249f2a79e39389bca7752b308255cc707b7cfc3944ac56e6524b0a6e",
+              "role": "Default-off verified native compile-stage cache admission; no driver/SDK changes",
               "previous_origins": [
                 {
                   "path": "tools/ci/build-ge8300-from-source.ps1",
-                  "source_commit": "19e557e37c073003e29ad55d79adb0bb5fcbedb2",
-                  "sha256": "6ad1169099eabe726ebd5ac21e7455eeaad8296aac17cf1b201cf437da078b42",
+                  "source_commit": "48c4488351b49aa1dec39357bd63bd26077fdb32",
+                  "sha256": "74b65d15b9b80fc037a33f2627946bbd2e939df5f3eecebf1cce0b8ed5208aff",
                   "role": "Explicit strict-parent/adapter-only compiler cache derivation; no Mesa-core/SDK rebuild",
                   "previous_origins": [
                     {
                       "path": "tools/ci/build-ge8300-from-source.ps1",
-                      "source_commit": "19bf34d5aef7e027489803e0a454fb9d8dd35bc2",
-                      "sha256": "e91d8e35924138b0688dce94120ebd92c3e1c0ae6ad5d58514a04671c61672ce",
-                      "role": "Premultiplied ONE/INV_SRC_ALPHA ADD BGRA8; source-only DWM contract"
+                      "source_commit": "19e557e37c073003e29ad55d79adb0bb5fcbedb2",
+                      "sha256": "6ad1169099eabe726ebd5ac21e7455eeaad8296aac17cf1b201cf437da078b42",
+                      "role": "Explicit strict-parent/adapter-only compiler cache derivation; no Mesa-core/SDK rebuild",
+                      "previous_origins": [
+                        {
+                          "path": "tools/ci/build-ge8300-from-source.ps1",
+                          "source_commit": "19bf34d5aef7e027489803e0a454fb9d8dd35bc2",
+                          "sha256": "e91d8e35924138b0688dce94120ebd92c3e1c0ae6ad5d58514a04671c61672ce",
+                          "role": "Premultiplied ONE/INV_SRC_ALPHA ADD BGRA8; source-only DWM contract"
+                        }
+                      ]
                     }
                   ]
                 }
@@ -3120,9 +3128,28 @@
     },
     {
       "path": "tools/ci/verify-ge8300-fullsource.py",
-      "source_commit": "3a6da08a7cd7d096df1871ef7848b7f9e3a41bdf",
-      "sha256": "6ad7ed4e77df18f9c81fa70810d7df1a7e91606da48538b1e5ebc1c8dc4d5a61",
-      "role": "Default-off verified native compile-stage cache admission; no driver/SDK changes"
+      "source_commit": "fed800894b58e099b9334790a69d8e5fa887ea82",
+      "sha256": "7b7e0f4c055883a8a6b6c1b1ab94a55c3b3bdcae92e0a0f7c5ae53253e893b11",
+      "role": "Default-off KernelOnly skips unused module UMD/prototypes only; kernel/unified codegen unchanged",
+      "previous_origins": [
+        {
+          "path": "tools/ci/verify-ge8300-fullsource.py",
+          "source_commit": "3a6da08a7cd7d096df1871ef7848b7f9e3a41bdf",
+          "sha256": "6ad7ed4e77df18f9c81fa70810d7df1a7e91606da48538b1e5ebc1c8dc4d5a61",
+          "role": "Default-off verified native compile-stage cache admission; no driver/SDK changes"
+        }
+      ]
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/build-wdk81.ps1",
+      "source_commit": "fed800894b58e099b9334790a69d8e5fa887ea82",
+      "sha256": "ca521d08640a4240173b5d05ad77e2971196f466f7bafb909a749e945b8963e8",
+      "role": "Default-off KernelOnly skips unused module UMD/prototypes only; kernel/unified codegen unchanged",
+      "previous_untracked_source": {
+        "source_commit": "ace651ba4e8bc9eee2c4f2f7a5e7faafa0c596a6",
+        "sha256": "561b6f1ba7539e413a5f187b6839ac10f31d2430a08839797e2a290ad10a667c",
+        "registered_in_origins": false
+      }
     }
   ],
   "legacy_files_preserved": [
@@ -5963,5 +5990,26 @@
         "tools/ci/verify-ge8300-fullsource.py"
       ]
     }
+  },
+  "kernel_only_modules_integration": {
+    "schema": "kernel-only-modules-source-v1",
+    "base_source_commit": "ace651ba4e8bc9eee2c4f2f7a5e7faafa0c596a6",
+    "implementation_source_commit": "fed800894b58e099b9334790a69d8e5fa887ea82",
+    "default_enabled": false,
+    "normal_entry_enabled": true,
+    "kernel_archive_inputs_changed": false,
+    "legacy_reuse_combination_rejected": true,
+    "skipped_module_TUs": 10,
+    "standalone_compile_units": 22,
+    "kernel_only_clang_compile_units": 12,
+    "standalone_default_products_unchanged": true,
+    "final_public_output_count_unified": 8,
+    "runtime_C_headers_changed": false,
+    "Windows_build_executed": false,
+    "files": [
+      "drivers/gpu/mt8167/wddm-render/build-wdk81.ps1",
+      "tools/ci/build-ge8300-from-source.ps1",
+      "tools/ci/verify-ge8300-fullsource.py"
+    ]
   }
 }
