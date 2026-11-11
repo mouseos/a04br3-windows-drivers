@@ -1,0 +1,17 @@
+{
+  "schema": "MT6630_PROVIDER1033_INPUT_PINS_V1",
+  "runtime_fix_source": "c197afd2de09019df76d562fd1980298ebfc1dae",
+  "baseline_source": "0a8e8567b5d3bdee44d74a6435f08b7b7c7b6c71",
+  "baseline1032_manifest_sha256": "ed27e28acfc840b5c736eb070583ff32c71ff3cefaac46436050c9a4d3d023fa",
+  "inherited_input_spec_sha256": "5690b5da5769c1dbe80a86cc5a59dd96fc253333b2a8810cb44bf81adf7c0acb",
+  "changed_TUs": [
+    "drivers/network/mt6630/native_control.c",
+    "drivers/network/mt6630/native_security.c"
+  ],
+  "runtime_files": {
+    "drivers/network/mt6630/native_control.c": "b7c5feb00b17ed3e5e363476f967e54b78e6a77fb7ba6c3ef53184a7a0d2c8d5",
+    "drivers/network/mt6630/native_security.c": "98bb2098dc96f23f441b0affc987bbbb639526ab32b8a01289bb7a59e31261da",
+    "drivers/network/mt6630/native_privacy.h": "88b8399ff200c818197f4958377b2b72d849c24f6c986db98c599829df90bb24",
+    "drivers/network/mt6630/native_receive.c": "715cf0b4ffc83e31b8d0de8c597bb1c1fcb2476c3c2cda692a7424dd97ab8b66"
+  }
+}
