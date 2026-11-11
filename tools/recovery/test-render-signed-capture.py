@@ -37,6 +37,12 @@ lock=m.read(m.LOCK)
 row,leaves,manifest,review=m.candidate(root,lock)
 assert row['driver_version']=='0.0.3.80' and len(leaves)==15 and leaves['ge8300-render.sys']==lock['SYS_sha256']
 assert {x['name']:x['sha256'] for x in row['extra_members']}=={n:leaves[n] for n in ('ge8300-umd.dll','ge8300-mips.fw')}
+assert {x['name']:x['installed'] for x in row['extra_members']}=={'ge8300-umd.dll':'ge8300-umd.dll','ge8300-mips.fw':'Drivers\\ge8300-mips.fw'}
+captured=m.read(root/'port/xnu/out/private-windows-rt-prebackup-run233-gpu-assets/manifest.json')
+primary=m.read(root/'port/xnu/out/private-windows-rt-prebackup-run233/manifest.json')
+old={x['source_path']:x['sha256'] for x in captured['files']+primary['files']}
+assert old['Windows/System32/Drivers/ge8300-mips.fw']==leaves['ge8300-mips.fw']
+checks.append('firmware destination matches INF dir12 and actual captured runtime file')
 checks.append('actual380 candidate fifteen leaves/INF/six saved signatures/main review/UMD-FW extras')
 reject('changed candidate review ref',lambda:m.candidate(root,dict(lock,main_review=dict(lock['main_review'],sha256='1'*64))))
 # The old controller functions are run, not reimplemented. No main()/device path.

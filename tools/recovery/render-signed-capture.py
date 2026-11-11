@@ -52,7 +52,9 @@ def candidate(root,spec):
   name=x['path'].replace('\\','/').rsplit('/package380/',1)[-1]
   require(name in expected and name not in seen and x['sha256']==files[name] and x['status']=='Valid' and x['signer_thumbprint']==SIGNER,'Certificate result bound to exact final bytes');seen.add(name)
  require(seen==expected and files['ge8300-render.sys']==review['SYS_sha256']==lock['SYS_sha256'] and files['ge8300-umd.dll']==review['UMD_sha256']==lock['UMD_sha256'],'Actual SYS/UMD identity')
- row['extra_members']=[dict(name=name,installed=name,sha256=files[name]) for name in ('ge8300-umd.dll','ge8300-mips.fw')]
+ inf=shared.base.inftext(rooted(root,Path(row['directory'])/row['names']['inf']))
+ require(re.search(r'^\s*UserFiles\s*=\s*11\s*$',inf,re.M|re.I) and re.search(r'^\s*FirmwareFiles\s*=\s*12\s*$',inf,re.M|re.I),'Actual INF UMD/System32 and firmware/Drivers destinations')
+ row['extra_members']=[dict(name=name,installed=installed,sha256=files[name]) for name,installed in (('ge8300-umd.dll','ge8300-umd.dll'),('ge8300-mips.fw','Drivers\\ge8300-mips.fw'))]
  return shared.base.package(root,row,'render'),files,m,review
 
 def validate_baseline(root,spec):
@@ -133,7 +135,7 @@ def configure(spec,root):
    for q in (Path(__file__),LOCK,READER,HERE.parent/'winpe/keypad13-checkpoint-policy.h',HERE.parent/'winpe/vidpn-callback-trace-policy.h',HERE.parent/'winpe/display-idle-policy.h'):
     pin_file(dict(path=q.resolve().relative_to(root).as_posix(),sha256=sha(q)))
    for x in p['packages']['render']['extra_members']:
-    name='Windows/System32/'+x['installed'];q=rooted(root,Path(p['packages']['render']['directory'])/x['name'])
+    name='Windows/System32/'+x['installed'].replace('\\','/');q=rooted(root,Path(p['packages']['render']['directory'])/x['name'])
     pin_file(dict(path=q.relative_to(root).as_posix(),sha256=x['sha256']))
     # Pre-copy baseline stays in witnesses; preserved() must test NEW bytes
     # AFTER installation even for extras which changed from the capture.
