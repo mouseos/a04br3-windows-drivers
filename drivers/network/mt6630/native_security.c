@@ -3,6 +3,7 @@
  * MT6630 gen3: CMD_802_11_KEY/CID7, EVENT_ID_ADD_PKEY_DONE/0x24;
  * wlan_oid.c wlanoidSetAddKey/RemoveKey, nic_rx.c, nic_tx.c. */
 #include "ndis_runtime.h"
+#include "native_privacy.h"
 #include "sha256.h"
 #include "native_tx.h"
 #include "native_frame.h"
@@ -16,7 +17,7 @@ static unsigned exemption(struct a04_os_security *s,unsigned ethertype,unsigned 
 {
  for(unsigned i=0;i<s->exemption_count;i++){
   DOT11_PRIVACY_EXEMPTION *e=&s->exemptions[i];
-  if(e->usEtherType==ethertype&&(e->usExemptionPacketType==DOT11_EXEMPT_BOTH||e->usExemptionPacketType==(group?DOT11_EXEMPT_MULTICAST:DOT11_EXEMPT_UNICAST)))return e->usExemptionActionType;
+  if(a04_native_privacy_protocol(&e->usEtherType)==ethertype&&(e->usExemptionPacketType==DOT11_EXEMPT_BOTH||e->usExemptionPacketType==(group?DOT11_EXEMPT_MULTICAST:DOT11_EXEMPT_UNICAST)))return e->usExemptionActionType;
  }
  return DOT11_EXEMPT_NO_EXEMPTION;
 }

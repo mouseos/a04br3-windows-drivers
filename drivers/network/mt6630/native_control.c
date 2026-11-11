@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "ndis_runtime.h"
+#include "native_privacy.h"
 #include "rsn_policy.h"
 #define CP(a,stage,phase,kind,raw,detail) (void)a04_cp_emit((a)->checkpoint,stage,phase,kind,(ULONG)(raw),(ULONG)(detail))
 #define HDR(v,t,rev) do{(v).Header.Type=NDIS_OBJECT_TYPE_DEFAULT;(v).Header.Revision=(rev);(v).Header.Size=sizeof(t);}while(0)
@@ -308,7 +309,7 @@ static NDIS_STATUS control_impl(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
    if(n<base)return NDIS_STATUS_INVALID_LENGTH;NdisZeroMemory(&v,sizeof(v));NdisMoveMemory(&v,p,base);
    if(!list_header(p,n,sizeof(DOT11_PRIVACY_EXEMPTION_LIST))||v.uNumOfEntries>4||v.uTotalNumOfEntries<v.uNumOfEntries||v.uNumOfEntries>(n-base)/sizeof(entries[0]))return NDIS_STATUS_INVALID_DATA;
    NdisMoveMemory(entries,p+base,v.uNumOfEntries*sizeof(entries[0]));
-   for(unsigned i=0;i<v.uNumOfEntries;i++)if(entries[i].usEtherType!=0x888e||(entries[i].usExemptionActionType!=1&&entries[i].usExemptionActionType!=2)||entries[i].usExemptionPacketType<1||entries[i].usExemptionPacketType>3)return NDIS_STATUS_NOT_SUPPORTED;
+   for(unsigned i=0;i<v.uNumOfEntries;i++)if(a04_native_privacy_protocol(&entries[i].usEtherType)!=0x888e||(entries[i].usExemptionActionType!=1&&entries[i].usExemptionActionType!=2)||entries[i].usExemptionPacketType<1||entries[i].usExemptionPacketType>3)return NDIS_STATUS_NOT_SUPPORTED;
    a->os_security.exemption_count=v.uNumOfEntries;NdisMoveMemory(a->os_security.exemptions,entries,v.uNumOfEntries*sizeof(entries[0]));
   }
   else if(oid==OID_DOT11_DESIRED_COUNTRY_OR_REGION_STRING){if(n!=3)return NDIS_STATUS_INVALID_LENGTH;if(p[0]||p[1]||p[2])return NDIS_STATUS_NOT_SUPPORTED;}

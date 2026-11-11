@@ -6,7 +6,7 @@ import subprocess
 root = Path(__file__).resolve().parents[1]
 source = (root / 'drivers/network/mt6630/native_security.c').read_text()
 
-def function(signature):
+def function(signature, source=source):
     start = source.index(signature)
     opening = source.index('{', start)
     depth, end = 1, opening + 1
@@ -18,9 +18,21 @@ def function(signature):
 body = '\n'.join(function(s) for s in (
     'static int same(', 'static int cipher_active(', 'static unsigned exemption(',
     'static NDIS_STATUS security_receive_impl(', 'NDIS_STATUS a04_os_security_receive('))
+control = (root / 'drivers/network/mt6630/native_control.c').read_text()
+# Exercise the actual SET branch and its unchanged real header validator.
+set_start = control.index('else if(oid==OID_DOT11_PRIVACY_EXEMPTION_LIST){')
+set_end = control.index('else if(oid==OID_DOT11_DESIRED_COUNTRY_OR_REGION_STRING)', set_start)
+set_body = control[control.index('{', set_start) + 1:set_end].rstrip()
+assert set_body.endswith('}')
+set_body = set_body[:-1]
+set_wrapper = function('static int list_header(', control) + '\n' + (
+    'static NDIS_STATUS set_privacy(struct a04_ndis_runtime *a,const void *p,ULONG n){' +
+    set_body + 'return NDIS_STATUS_SUCCESS;}')
 fixture = r'''
 #include <assert.h>
 #include <stdio.h>
+#include <stddef.h>
+#include "native_privacy.h"
 #include "native_hif_rx.h"
 #include "native_limits.h"
 #include "checkpoint_wire.h"
@@ -34,6 +46,8 @@ static void a04_ndis_connection_trace(void *p,unsigned s,unsigned ph,unsigned k,
 #define DOT11_EXEMPT_MULTICAST 2
 #define DOT11_EXEMPT_BOTH 3
 typedef struct {USHORT usEtherType,usExemptionActionType,usExemptionPacketType;} DOT11_PRIVACY_EXEMPTION;
+typedef struct {NDIS_OBJECT_HEADER Header;ULONG uNumOfEntries,uTotalNumOfEntries;DOT11_PRIVACY_EXEMPTION PrivacyExemptionEntries[1];} DOT11_PRIVACY_EXEMPTION_LIST;
+#define FIELD_OFFSET(t,f) offsetof(t,f)
 #include "native_security.h"
 struct bridge {struct {unsigned permitted;} regulatory;};
 struct a04_ndis_runtime {struct a04_os_security os_security;
@@ -44,7 +58,7 @@ int a04_ndis_rate_lookup(void *c,unsigned mode,unsigned raw,ULONG *phy,UCHAR *ra
 {(void)c;if(mode!=1||raw!=11)return -1;*phy=0;*rate=12;return 0;}
 NDIS_STATUS a04_native_indicate_mpdu(NDIS_HANDLE a,PNET_BUFFER_LIST n,const uint8_t *p,ULONG l,const struct a04_native_rx_info *i)
 {(void)a;(void)n;(void)p;(void)l;(void)i;assert(0);return 0;}
-''' + body + r'''
+''' + body + '\n' + set_wrapper + r'''
 int main(void)
 {
  struct bridge b={{1u<<6}};struct a04_ndis_runtime a={0};struct a04_native_hif_rx rx;
@@ -72,8 +86,38 @@ int main(void)
  p[16]=8;p[17]=2;memcpy(p+18,ap,6);p[32]=11;p[33]=0x10;p[41]=124;
  memcpy(p+56,local,6);memcpy(p+62,ap,6);p[68]=0x88;p[69]=0x8e;
  a.os_security.port_open=0;assert(a04_os_security_receive(&a,p,n,&rx));
- a.os_security.exemption_count=1;a.os_security.exemptions[0]=(DOT11_PRIVACY_EXEMPTION){0x888e,1,3};
+ DOT11_PRIVACY_EXEMPTION_LIST list={0};
+ list.Header=(NDIS_OBJECT_HEADER){NDIS_OBJECT_TYPE_DEFAULT,1,sizeof(list)};
+ list.uNumOfEntries=list.uTotalNumOfEntries=1;
+ DOT11_PRIVACY_EXEMPTION *entry=&list.PrivacyExemptionEntries[0];
+ unsigned char *wire=(unsigned char *)&entry->usEtherType;
+ wire[0]=0x88;wire[1]=0x8e;entry->usExemptionActionType=1;entry->usExemptionPacketType=3;
+ assert(a04_native_privacy_protocol(&entry->usEtherType)==0x888e);
+ assert(set_privacy(&a,&list,sizeof(list))==NDIS_STATUS_SUCCESS);
+ assert(!memcmp(&a.os_security.exemptions[0],entry,sizeof(*entry))); /* raw query/storage unchanged */
+ assert(exemption(&a.os_security,0x888e,0)==1);
+ wire[0]=0x8e;wire[1]=0x88;
+ assert(set_privacy(&a,&list,sizeof(list))==NDIS_STATUS_NOT_SUPPORTED);
+ /* Even if injected into storage, swapped raw bytes never match EAPOL. */
+ memcpy(&a.os_security.exemptions[0],entry,sizeof(*entry));
+ assert(exemption(&a.os_security,0x888e,0)==DOT11_EXEMPT_NO_EXEMPTION);
+ assert(a04_os_security_receive(&a,p,n,&rx));
+ wire[0]=0x88;wire[1]=0x8e;
+ assert(set_privacy(&a,&list,sizeof(list))==NDIS_STATUS_SUCCESS);
+ for(unsigned action=0;action<=3;action++)for(unsigned packet=0;packet<=4;packet++){
+  entry->usExemptionActionType=action;entry->usExemptionPacketType=packet;
+  NDIS_STATUS expected=(action>=1&&action<=2&&packet>=1&&packet<=3)?NDIS_STATUS_SUCCESS:NDIS_STATUS_NOT_SUPPORTED;
+  assert(set_privacy(&a,&list,sizeof(list))==expected);
+ }
+ entry->usExemptionActionType=1;entry->usExemptionPacketType=3;
+ assert(set_privacy(&a,&list,FIELD_OFFSET(DOT11_PRIVACY_EXEMPTION_LIST,PrivacyExemptionEntries)-1)==NDIS_STATUS_INVALID_LENGTH);
+ assert(set_privacy(&a,&list,FIELD_OFFSET(DOT11_PRIVACY_EXEMPTION_LIST,PrivacyExemptionEntries)+sizeof(*entry)-1)==NDIS_STATUS_INVALID_DATA);
+ list.uNumOfEntries=5;assert(set_privacy(&a,&list,sizeof(list))==NDIS_STATUS_INVALID_DATA);list.uNumOfEntries=1;
+ list.Header.Revision=2;assert(set_privacy(&a,&list,sizeof(list))==NDIS_STATUS_INVALID_DATA);list.Header.Revision=1;
+ wire[0]=8;wire[1]=0;assert(set_privacy(&a,&list,sizeof(list))==NDIS_STATUS_NOT_SUPPORTED);
+ wire[0]=0x88;wire[1]=0x8e;assert(set_privacy(&a,&list,sizeof(list))==NDIS_STATUS_SUCCESS);
  assert(!a04_os_security_receive(&a,p,n,&rx));p[62]^=1;assert(a04_os_security_receive(&a,p,n,&rx));
+ puts("PASS actual SET/RX network EtherType: 88 8e accepted, 8e 88 rejected; length/action/packet/header/non-EAPOL guards unchanged");
  puts("PASS actual security RX: translated PTK/GTK, WTBL, PN, closed port, ICV, AP-only EAPOL exemptions; no NDIS/hardware execution");
 }
 '''
