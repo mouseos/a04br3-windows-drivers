@@ -4,7 +4,9 @@
 #include <ndis.h>
 #include <stdint.h>
 /* Values must be obtained from the same actual received MPDU and mapped to
- * Windows PHY/data-rate identifiers by an independently verified table. */
+ * Windows PHY/data-rate identifiers by an independently verified table.
+ * frequency is in kHz, as produced by native_hif_rx.c; the indication
+ * boundary converts to DOT11_EXTSTA_RECV_CONTEXT MHz without rounding. */
 #define A04_RX_OBS_PHY 1u
 #define A04_RX_OBS_FREQUENCY 2u
 #define A04_RX_OBS_FRAGMENTS 4u
