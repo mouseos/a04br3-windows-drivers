@@ -940,6 +940,11 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StopDeviceAndReleasePostDisplayOwnership(_In_  D3
     if(!NT_SUCCESS(status))return status;
 
     *pDisplayInfo = m_CurrentModes[SourceId].DispInfo;
+    // This adapter exposes exactly one output (QueryChildRelations: ChildUid
+    // zero, AcpiUid zero). POST acquisition may leave its TargetId unset; that
+    // is allowed at Start, but release must identify the display kept active.
+    pDisplayInfo->TargetId = 0;
+    pDisplayInfo->AcpiId = 0;
 
     m_Flags.DriverStarted = FALSE;
     CleanUp();
