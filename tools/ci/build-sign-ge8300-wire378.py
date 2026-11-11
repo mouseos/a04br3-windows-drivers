@@ -36,7 +36,7 @@ def main():
  plan=dict(schema='ge8300-wire378-three-tu-v1',source_commit=commit,candidate_version=378,driver_version='0.0.3.78',driver_date='11/11/2026',baseline377_manifest_sha256=sha(child('package377/signed-manifest.json')),retained_UMD_source_commit=compiler['source_commit'],compile_TUs=spec['sources'],SDK_rebuild=0,PCO_rebuild=0,native_owner_rebuild=0,SYS_links=1,UMD_links=1,hardware_verified=False)
  if not a.execute:print(json.dumps(dict(plan,executed=False),indent=2));return
  require(os.name=='nt','Windows build only');require(a.resume==out.exists(),'Explicit resume for existing output; never overwrite')
- out.mkdir(exist_ok=True);(out/'logs').mkdir(exist_ok=True);(out/'objects').mkdir(exist_ok=True)
+ out.mkdir(parents=True,exist_ok=True);(out/'logs').mkdir(exist_ok=True);(out/'objects').mkdir(exist_ok=True)
  state_path=out/'build-sign-receipt.json';state=read(state_path) if state_path.exists() else dict(plan,steps={},compiled=[],success=False)
  require(state['source_commit']==commit and state['baseline377_manifest_sha256']==plan['baseline377_manifest_sha256'],'Resume source/input identity drift')
  def save():state_path.write_text(json.dumps(state,indent=2)+'\n')
