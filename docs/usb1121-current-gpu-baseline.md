@@ -32,7 +32,14 @@ GPUのSYS・UMD・FWとtransport SYSは、実取得ファイル・nativeの選�
 更新しない他roleのtrioも取得SYS・保持ファイルの実byteへ結合する。
 
 出力policyとそのhashを既component生成器の `--final-policy` /
-`--final-policy-sha256` に渡す。USB bundle/helper/driverの検査、1TUの署名、
+`--final-policy-sha256` に渡し、`--retain-current-gpu` を指定する。
+GPU補足を取得している場合は同じ実 `--gpu-capture-manifest` /
+`--gpu-capture-sha256` も渡す。profileは `standalone-retained-gpu` となる。
+USB bundle/helper/driverの検査、1TUの署名、
 既存サービスの明示rearm、媒体のbaseline比較、U198の同run/PIDに結合した
 SCM停止・flush・terminal確認はそれぞれ既入口で実施する。
 このpolicy生成だけをPnP、USB host列挙、給電の成功と扱わない。
+
+既serviceの再有効化と媒体は [既存service rearm手順](usb1121-current-existing-rearm.md)
+へ接続する。旧サービス全体の保持検査を外さず、既存Startだけを4から2へ変更する。
+GPUのrender-only transactionの末尾にUSBの自動再起動を混ぜない。
