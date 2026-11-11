@@ -2927,21 +2927,29 @@
     },
     {
       "path": "tools/ci/build-ge8300-from-source.ps1",
-      "source_commit": "48c4488351b49aa1dec39357bd63bd26077fdb32",
-      "sha256": "74b65d15b9b80fc037a33f2627946bbd2e939df5f3eecebf1cce0b8ed5208aff",
-      "role": "Explicit strict-parent/adapter-only compiler cache derivation; no Mesa-core/SDK rebuild",
+      "source_commit": "3a6da08a7cd7d096df1871ef7848b7f9e3a41bdf",
+      "sha256": "9d605c96249f2a79e39389bca7752b308255cc707b7cfc3944ac56e6524b0a6e",
+      "role": "Default-off verified native compile-stage cache admission; no driver/SDK changes",
       "previous_origins": [
         {
           "path": "tools/ci/build-ge8300-from-source.ps1",
-          "source_commit": "19e557e37c073003e29ad55d79adb0bb5fcbedb2",
-          "sha256": "6ad1169099eabe726ebd5ac21e7455eeaad8296aac17cf1b201cf437da078b42",
+          "source_commit": "48c4488351b49aa1dec39357bd63bd26077fdb32",
+          "sha256": "74b65d15b9b80fc037a33f2627946bbd2e939df5f3eecebf1cce0b8ed5208aff",
           "role": "Explicit strict-parent/adapter-only compiler cache derivation; no Mesa-core/SDK rebuild",
           "previous_origins": [
             {
               "path": "tools/ci/build-ge8300-from-source.ps1",
-              "source_commit": "19bf34d5aef7e027489803e0a454fb9d8dd35bc2",
-              "sha256": "e91d8e35924138b0688dce94120ebd92c3e1c0ae6ad5d58514a04671c61672ce",
-              "role": "Premultiplied ONE/INV_SRC_ALPHA ADD BGRA8; source-only DWM contract"
+              "source_commit": "19e557e37c073003e29ad55d79adb0bb5fcbedb2",
+              "sha256": "6ad1169099eabe726ebd5ac21e7455eeaad8296aac17cf1b201cf437da078b42",
+              "role": "Explicit strict-parent/adapter-only compiler cache derivation; no Mesa-core/SDK rebuild",
+              "previous_origins": [
+                {
+                  "path": "tools/ci/build-ge8300-from-source.ps1",
+                  "source_commit": "19bf34d5aef7e027489803e0a454fb9d8dd35bc2",
+                  "sha256": "e91d8e35924138b0688dce94120ebd92c3e1c0ae6ad5d58514a04671c61672ce",
+                  "role": "Premultiplied ONE/INV_SRC_ALPHA ADD BGRA8; source-only DWM contract"
+                }
+              ]
             }
           ]
         }
@@ -3073,6 +3081,24 @@
       "source_commit": "605562c958a7c2f9fb08b920e55edb38785d6cde",
       "sha256": "9f30c4f26bd3af51319304f426144adb58623dc3dc95c304f8d4c9ff120f4657",
       "role": "Exact public source build entry"
+    },
+    {
+      "path": "tools/ci/ge8300_native_compile_cache.py",
+      "source_commit": "3a6da08a7cd7d096df1871ef7848b7f9e3a41bdf",
+      "sha256": "39aef5aea187a9abdf3a76a4f14c2918e723a3f9121e4389422c6e1ae1ab7838",
+      "role": "Default-off verified native compile-stage cache admission; no driver/SDK changes"
+    },
+    {
+      "path": "tools/ci/README-native-compile-cache.md",
+      "source_commit": "3a6da08a7cd7d096df1871ef7848b7f9e3a41bdf",
+      "sha256": "0397c00560fc847b75e007bd4112fafad287fa38468f715063e29646e4acfa07",
+      "role": "Default-off verified native compile-stage cache admission; no driver/SDK changes"
+    },
+    {
+      "path": "tools/ci/verify-ge8300-fullsource.py",
+      "source_commit": "3a6da08a7cd7d096df1871ef7848b7f9e3a41bdf",
+      "sha256": "6ad7ed4e77df18f9c81fa70810d7df1a7e91606da48538b1e5ebc1c8dc4d5a61",
+      "role": "Default-off verified native compile-stage cache admission; no driver/SDK changes"
     }
   ],
   "legacy_files_preserved": [
@@ -5882,5 +5908,20 @@
     "native_TU_map_changed": false,
     "private_signed_package_required": false,
     "hardware_verified": false
+  },
+  "native_compile_cache_integration": {
+    "schema": "verified-native-compile-cache-source-v1",
+    "implementation_source_commit": "3a6da08a7cd7d096df1871ef7848b7f9e3a41bdf",
+    "base_source_commit": "ed36055b81847f8e596b1472c16a654f736b775e",
+    "default_enabled": false,
+    "KMD_UMD_reused": false,
+    "legacy_ReuseVerifiedDirectory_LinkCheck_changed": false,
+    "Windows_live_executed": false,
+    "files": [
+      "tools/ci/build-ge8300-from-source.ps1",
+      "tools/ci/ge8300_native_compile_cache.py",
+      "tools/ci/README-native-compile-cache.md",
+      "tools/ci/verify-ge8300-fullsource.py"
+    ]
   }
 }
