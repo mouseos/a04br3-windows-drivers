@@ -6,7 +6,7 @@
 void geo_typed_device_trace(struct geo_typed_device *,const char *,UINT);
 #include "../memory.h"
 #include "../frontend/texture_draw_abi.h"
-struct geo_typed_layout {struct geo_typed_layout *next;struct geo_typed_device *device;UINT refs,deleted,offset[2],elements;};
+struct geo_typed_layout {struct geo_typed_layout *next;struct geo_typed_device *device;UINT refs,deleted,offset[2],width[2],elements;};
 static void layout_unref(struct geo_typed_layout *v) {
  struct geo_typed_layout **p;if(!v||!v->refs||--v->refs)return;
  for(p=&v->device->layouts;*p&&*p!=v;p=&(*p)->next){}if(!*p)return;*p=v->next;HeapFree(GetProcessHeap(),0,v);
@@ -15,12 +15,23 @@ static struct geo_typed_layout *layout(D3D10DDI_HDEVICE h,D3D10DDI_HELEMENTLAYOU
  struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_layout *v,*want=handle.pDrvPrivate?((struct geo_typed_handle *)handle.pDrvPrivate)->object:NULL;
  if(!d||!want)return NULL;for(v=d->layouts;v&&v!=want;v=v->next){}return v&&!v->deleted?v:NULL;
 }
+/* IA format defaults (D3D11 functional spec 19.1.3.3): missing RGB=0,
+ * missing A=1.0f. Width is independent of the buffer stride, including zero. */
+static UINT layout_width(DXGI_FORMAT format) {
+ switch(format){
+ case DXGI_FORMAT_R32_FLOAT:return 4;
+ case DXGI_FORMAT_R32G32_FLOAT:return 8;
+ case DXGI_FORMAT_R32G32B32_FLOAT:return 12;
+ case DXGI_FORMAT_R32G32B32A32_FLOAT:return 16;
+ default:return 0;
+ }
+}
 static HRESULT layout_desc(const D3D10DDIARG_CREATEELEMENTLAYOUT *p) {
- const D3D10DDIARG_INPUT_ELEMENT_DESC *e;UINT i,mask=0;
+ const D3D10DDIARG_INPUT_ELEMENT_DESC *e;UINT i,mask=0,width;
  if(!p||!p->NumElements||p->NumElements>2||!p->pVertexElements)return E_NOTIMPL;
  for(i=0;i<p->NumElements;i++){
-  e=p->pVertexElements+i;
-  if(e->InputSlot||e->InputRegister>=p->NumElements||(mask&(1u<<e->InputRegister))||e->Format!=DXGI_FORMAT_R32G32B32A32_FLOAT||e->InputSlotClass!=D3D10_DDI_INPUT_PER_VERTEX_DATA||e->InstanceDataStepRate||e->AlignedByteOffset>65520u)return E_NOTIMPL;
+  e=p->pVertexElements+i;width=layout_width(e->Format);
+  if(e->InputSlot||e->InputRegister>=p->NumElements||(mask&(1u<<e->InputRegister))||!width||e->InputSlotClass!=D3D10_DDI_INPUT_PER_VERTEX_DATA||e->InstanceDataStepRate||e->AlignedByteOffset>65536u-width)return E_NOTIMPL;
   mask|=1u<<e->InputRegister;
  }
  return S_OK;
@@ -31,7 +42,7 @@ static void APIENTRY create_layout(D3D10DDI_HDEVICE h,const D3D10DDIARG_CREATEEL
  if(!d||!handle.pDrvPrivate){geo_typed_error(h,E_INVALIDARG);return;}((struct geo_typed_handle *)handle.pDrvPrivate)->object=NULL;
  hr=layout_desc(p);if(FAILED(hr)){geo_typed_error(h,hr);return;}
  v=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*v));if(!v){geo_typed_error(h,E_OUTOFMEMORY);return;}
- v->refs=1;v->device=d;v->elements=p->NumElements;for(i=0;i<p->NumElements;i++)v->offset[p->pVertexElements[i].InputRegister]=p->pVertexElements[i].AlignedByteOffset;v->next=d->layouts;d->layouts=v;((struct geo_typed_handle *)handle.pDrvPrivate)->object=v;
+ v->refs=1;v->device=d;v->elements=p->NumElements;for(i=0;i<p->NumElements;i++){UINT reg=p->pVertexElements[i].InputRegister;v->offset[reg]=p->pVertexElements[i].AlignedByteOffset;v->width[reg]=layout_width(p->pVertexElements[i].Format);}v->next=d->layouts;d->layouts=v;((struct geo_typed_handle *)handle.pDrvPrivate)->object=v;
 }
 static void APIENTRY set_layout(D3D10DDI_HDEVICE h,D3D10DDI_HELEMENTLAYOUT handle) {
  struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_layout *v=NULL,*old;
@@ -55,7 +66,7 @@ static void APIENTRY set_vertices(D3D10DDI_HDEVICE h,UINT start,UINT count,const
   * non-NULL unsupported slot after partially applying a preceding update. */
  for(i=0;i<count;i++)if(start+i&&handles[i].pDrvPrivate){geo_typed_error(h,E_NOTIMPL);return;}
  if(start)return; /* all addressed slots were already genuinely unbound */
- if(handles[0].pDrvPrivate){v=geo_typed_resource(h,handles[0]);if(!v||!(v->bind&D3D10_DDI_BIND_VERTEX_BUFFER)||strides[0]<16u||strides[0]>65536u||offsets[0]>v->bytes){geo_typed_error(h,E_INVALIDARG);return;}}
+ if(handles[0].pDrvPrivate){v=geo_typed_resource(h,handles[0]);if(!v||!(v->bind&D3D10_DDI_BIND_VERTEX_BUFFER)||strides[0]>65536u||offsets[0]>v->bytes){geo_typed_error(h,E_INVALIDARG);return;}}
  if(v)geo_typed_resource_ref(v);old=d->vertex;d->vertex=v;d->vertex_stride=v?strides[0]:0;d->vertex_offset=v?offsets[0]:0;
  if(old){hr=geo_typed_resource_unref(old);if(FAILED(hr))geo_typed_error(h,hr);}
 }
@@ -147,6 +158,17 @@ HRESULT geo_typed_submit_draw(D3D10DDI_HDEVICE h,const FLOAT vertices[3][4]) {
  if(SUCCEEDED(hr)){d->pending=1;d->backend.commands=q.pNewCommandBuffer;d->backend.command_bytes=q.NewCommandBufferSize;d->backend.allocations=q.pNewAllocationList;d->backend.allocation_count=q.NewAllocationListSize;d->backend.patches=q.pNewPatchLocationList;d->backend.patch_count=q.NewPatchLocationListSize;}
  return hr;
 }
+static HRESULT read_vertex(struct geo_typed_device *d,UINT vertex,UINT reg,FLOAT result[4]) {
+ uint32_t bits[4]={0,0,0,0x3f800000u};HRESULT hr;
+ uint64_t offset=(uint64_t)d->vertex_offset+(uint64_t)vertex*d->vertex_stride+d->layout->offset[reg];
+ if(offset>UINT32_MAX)return E_INVALIDARG;
+ /* The existing reader checks width against resource bytes by subtraction,
+  * then maps/unmaps through the existing synchronization/ownership path. */
+ hr=geo_typed_read_resource(d->vertex,(UINT)offset,d->layout->width[reg],bits);
+ if(FAILED(hr))return hr;
+ memcpy(result,bits,sizeof(bits)); /* preserve signed zero/NaN/Inf payload bits */
+ return S_OK;
+}
 static void draw(D3D10DDI_HDEVICE h,UINT count,UINT start,INT base,UINT indexed) {
  struct geo_typed_device *d=geo_typed_device(h);UINT triangles,j,k;FLOAT v[3][4],cv[3][8];HRESULT hr;UINT pair;
  if(!d||!d->layout||!d->vertex||(indexed&&!d->index)){geo_typed_error(h,E_INVALIDARG);return;}
@@ -169,14 +191,8 @@ static void draw(D3D10DDI_HDEVICE h,UINT count,UINT start,INT base,UINT indexed)
     if(d->index_stride==2){USHORT s;memcpy(&s,raw,2);n=s;}else memcpy(&n,raw,4);vertex=(int64_t)n+base;
    }else vertex=(int64_t)index;
    if(vertex<0||vertex>65534){geo_typed_error(h,E_INVALIDARG);return;}
-   offset=(uint64_t)d->vertex_offset+(uint64_t)vertex*d->vertex_stride+d->layout->offset[0];
-   if(offset>UINT32_MAX){geo_typed_error(h,E_INVALIDARG);return;}
-   hr=geo_typed_read_resource(d->vertex,(UINT)offset,16,pair?cv[k]:v[k]);if(FAILED(hr)){geo_typed_error(h,hr);return;}
-   if(pair){
-    offset=(uint64_t)d->vertex_offset+(uint64_t)vertex*d->vertex_stride+d->layout->offset[1];
-    if(offset>UINT32_MAX){geo_typed_error(h,E_INVALIDARG);return;}
-    hr=geo_typed_read_resource(d->vertex,(UINT)offset,16,cv[k]+4);if(FAILED(hr)){geo_typed_error(h,hr);return;}
-   }
+   hr=read_vertex(d,(UINT)vertex,0,pair?cv[k]:v[k]);if(FAILED(hr)){geo_typed_error(h,hr);return;}
+   if(pair){hr=read_vertex(d,(UINT)vertex,1,cv[k]+4);if(FAILED(hr)){geo_typed_error(h,hr);return;}}
   }
   hr=pair?geo_typed_submit_pair(h,cv):geo_typed_submit_draw(h,v);if(FAILED(hr)){geo_typed_error(h,hr);return;}
  }
