@@ -1,0 +1,60 @@
+{
+  "schema": "mt8167-keypad14-incremental-inputs-v1",
+  "observation_source": "a13bf4745a9498ea4e8e549bc8bf6af2829a0ab9",
+  "baseline_source": "3414de13b08f64a54e9dd350f306da7023a44f47",
+  "signed13_manifest_sha256": "c2a7c929bc34370d56448ef18275c2226320918f471857e82ef82725d51cb586",
+  "signed13_SYS_sha256": "ec33b15c401f4aecd27fe2f4ed5f69f6a731b6b950c420f030a72e598e2e6a61",
+  "baseline12_manifest_sha256": "fd8157f5421728acc807c5d76d5d64db3ac07ce3961b6b707363c54735fdf7e9",
+  "small_inputs_sha256": "513c4f86e2642683ca87b71eefad584b0f90498a3691d808d8fc3dde78ecca2b",
+  "header_index_sha256": "32d60afceb8844205ad838b6b73d6db411695e58fbf261ef84333766d76091f6",
+  "repo_inputs": [
+    {
+      "path": "drivers/input/mt8167-keypad/wdf_keys.c",
+      "sha256": "c0fc7587987da033185e2bb75b3a04afe03a42339c8e43dbbd8b86f5eed0a114"
+    },
+    {
+      "path": "drivers/input/mt8167-keypad/checkpoint.h",
+      "sha256": "6dfd3fcf20a33a957105da036705ab1a866dbbb60c57ce5ba50054bd22f4ebd9"
+    },
+    {
+      "path": "drivers/input/mt8167-keypad/state.h",
+      "sha256": "6293366f073d61031e1dff8890a85ed29521cf1d543210215291e6379589aabd"
+    },
+    {
+      "path": "drivers/input/mt8167-keypad/mt8167-keypad.inf",
+      "sha256": "5bd471ba9651f790e78cd0bb8415d1f19fa03a3c2bb6624fd20304ce647e9a83"
+    },
+    {
+      "path": "drivers/input/a04br3-buttons/button_state.c",
+      "sha256": "d204555899d74f14bf452dffe7a7d7f6b6b89ef57cc3cf88903bebb62bf32914"
+    },
+    {
+      "path": "drivers/input/a04br3-buttons/button_state.h",
+      "sha256": "e2d2550c092d8b93bff39715a429f3991cf72d2446a519efc43c0f1b026e06c7"
+    },
+    {
+      "path": "drivers/input/a04br3-buttons/button_pipeline.c",
+      "sha256": "b136c897985372e48f5b482eb4098a1c18820994557bbc0712c380b9a496e2b3"
+    },
+    {
+      "path": "drivers/input/a04br3-buttons/button_pipeline.h",
+      "sha256": "3181ebd4d111e67098afc164ca9490bea104e525b830425cea75850023a9507e"
+    },
+    {
+      "path": "drivers/input/a04br3-buttons/shared_parent_contract.h",
+      "sha256": "60aa41f3b5b88cf6c80b1d36b792ac66f5b1d4dfc8da55df5e66c70b81c967c6"
+    },
+    {
+      "path": "drivers/bus/mt8167-shared/client_interface.h",
+      "sha256": "834f95464996e6fb4e33f3ad568d7ae3c04bf44059372ba1ff3f647b396f5477"
+    }
+  ],
+  "tools": {
+    "clang": "57e32b1ea2456f12f97bf802453171bbff12d56b2c486b4eca0c75343c0cda2c",
+    "llvm-readobj": "9c6b8adcaf1fea2889105e1d97f5b319b7d600f053069baa817ce462b611805a",
+    "link": "f8b2e9c5341419525f915b61b87d1bc8aa307adca6e1e022071175912e965938"
+  },
+  "version": "0.0.1.4",
+  "driverver": "11/11/2026,0.0.1.4",
+  "historical_resource_headers_hash_recorded": false
+}
