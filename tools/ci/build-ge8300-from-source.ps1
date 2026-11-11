@@ -9,6 +9,7 @@ param([switch]$EnableCandidate,[switch]$RunHostTests,[switch]$UnifiedDisplay,[st
 $ErrorActionPreference='Stop'
 if(!$EnableCandidate){throw 'Explicit limited development source build required'}
 if($VerifiedNativeCompileCache){
+ if($env:CCC_OVERRIDE_OPTIONS){throw 'Native cache refuses nonempty CCC_OVERRIDE_OPTIONS before driver queries'}
  if(!$UnifiedDisplay -or !$NativeCompileInputSnapshot -or $ExpectedNativeCompileCacheSha256 -notmatch '^[a-fA-F0-9]{64}$' -or $ExpectedNativeInputSnapshotSha256 -notmatch '^[a-fA-F0-9]{64}$'){throw 'Native cache requires unified profile, both archives and explicit SHA256 pins'}
 }elseif($NativeCompileInputSnapshot -or $ExpectedNativeCompileCacheSha256 -or $ExpectedNativeInputSnapshotSha256){throw 'Native cache parameters require explicit VerifiedNativeCompileCache'}
 $scRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
@@ -99,7 +100,7 @@ try{
  $scCodecFlags=@();foreach($a in ($scPlan.units|Where-Object{$_.source -ceq 'drivers/gpu/mt8167/wddm-render/compiler/pco_sm2.c'}).arguments){$scCodecFlags+=([string]$a).Replace('${REPO}',$scRoot.Replace('\','/')).Replace('${VC_INCLUDE}',($scVc+'\include').Replace('\','/')).Replace('${UCRT_INCLUDE}',($scKit10+'\Include\'+$WindowsKit10Version+'\ucrt').Replace('\','/')).Replace('${SDK_SHARED}',($scKit81+'\Include\shared').Replace('\','/')).Replace('${SDK_UM}',($scKit81+'\Include\um').Replace('\','/'))}
  $scNativeReuseReceipt=$null;$scNativeReuseReceiptHash=$null;$scNativeObjectsReused=0;$scNativeCompiledCommit=$scCommit
  if($VerifiedNativeCompileCache){
-  $scResource=(& clang -print-resource-dir);if($LASTEXITCODE){throw 'Cannot resolve current clang resource root'}
+  $scResource=(& clang --no-default-config -print-resource-dir);if($LASTEXITCODE){throw 'Cannot resolve current clang resource root'}
   $scNativeConfig="$scOut/native-cache-configuration.json"
   @{unified_display=$UnifiedDisplay.IsPresent;roots=@{'clang-resource20'="$scResource/include";'wdk81-km'="$scKit81/Include/km";'wdk81-shared'="$scKit81/Include/shared";'wdk81-um'="$scKit81/Include/um";'msvc1444'="$scVc/include";'ucrt22621'="$scKit10/Include/$WindowsKit10Version/ucrt"};tools=@{clang=(Get-Command clang).Source;'llvm-lib'=(Get-Command llvm-lib).Source;'llvm-readobj'=(Get-Command llvm-readobj).Source}}|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 $scNativeConfig
   $scNativeReuseReceipt="$scOut/native-compile-cache-receipt.json"

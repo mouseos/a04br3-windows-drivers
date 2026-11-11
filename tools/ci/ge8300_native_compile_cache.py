@@ -1,4 +1,4 @@
-"""Opt-in admission of an intact native compile checkpoint; never invokes a compiler.
+"""Opt-in admission of an intact native compile checkpoint; never performs codegen.
 Offline audit deliberately cannot produce an admission receipt or reusable outputs.
 """
 import argparse
@@ -11,6 +11,7 @@ import stat
 import struct
 import subprocess
 import sys
+import uuid
 import zipfile
 
 SCHEMA = 'ge8300-verified-native-compile-cache-v1'
@@ -120,6 +121,70 @@ def tree(path):
             require(rel.lower() not in {x.lower() for x in result}, 'Case-colliding include path')
             result[rel] = (p.stat().st_size, sha(p))
     return result
+
+
+def verify_clang_configuration(clang, commands, environ=None, runner=None):
+    """No codegen: discover LLVM20's actual system/user/executable cfg search.
+
+    Explicit missing --config plus --no-default-config emits the driver's own
+    searched-directory diagnostics without loading existing default cfg contents.
+    Both recorded targets are probed. Unrecognized diagnostics fail closed.
+    """
+    environ = os.environ if environ is None else environ
+    runner = subprocess.run if runner is None else runner
+    require(not environ.get('CCC_OVERRIDE_OPTIONS'), 'Nonempty CCC_OVERRIDE_OPTIONS changes effective argv')
+    require(not any(environ.get(v) for v in ('CPATH', 'C_INCLUDE_PATH', 'CPLUS_INCLUDE_PATH',
+                'OBJC_INCLUDE_PATH')), 'Unrecorded include environment in current process')
+    for command in commands:
+        require(not any(a.startswith(('--config', '--no-default-config', '--driver-mode', '@'))
+                        for a in command['arguments']), 'Config-dir/config/driver/response override in recorded argv')
+    targets = sorted({a for c in commands for a in c['arguments'] if a.startswith('--target=')})
+    require(targets == ['--target=armv7-w64-windows-gnu', '--target=thumbv7-pc-windows-msvc'],
+            'Exact common/codec targets required for config discovery')
+    evidence = []
+    for target in targets:
+        missing = '__a04_native_cache_missing_' + uuid.uuid4().hex + '.cfg'
+        command = [str(clang), target, '--no-default-config', '--config='+missing,
+                   '-fno-color-diagnostics', '-###', '-x', 'c', '-c', '-']
+        result = runner(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE, text=True, timeout=20)
+        expected_error = "configuration file '" + missing + "' cannot be found"
+        errors = [line for line in result.stderr.splitlines() if 'error:' in line]
+        require(result.returncode != 0 and len(errors) == 1 and expected_error in errors[0],
+                'LLVM20 config discovery did not report the explicit missing config')
+        directories = re.findall(r'^.*note: was searched for in the directory: (.+)$',
+                                 result.stderr, re.M)
+        require(1 <= len(directories) <= 3 and '\x1b' not in result.stderr,
+                'LLVM20 config search directories not discoverable')
+        require(win(Path(clang).parent) in {win(p) for p in directories},
+                'Executable config search directory missing from LLVM20 discovery')
+        checked = []
+        for directory in directories:
+            path = Path(directory)
+            require(path.is_absolute(), 'Relative LLVM20 config search directory')
+            try:
+                path.stat()
+            except FileNotFoundError:
+                checked.append({'path':directory, 'present':False})
+                continue
+            require(path.is_dir(), 'Config search path is not a directory')
+            # All direct .cfg names are rejected, covering target, mode and
+            # target-mode combinations (including LLVM triple-version fallback).
+            with os.scandir(path) as entries:
+                count = 0
+                for entry in entries:
+                    count += 1
+                    require(count <= 4096, 'Config directory entry bound')
+                    require(not entry.name.lower().endswith('.cfg'),
+                            'Clang default .cfg present in search directory: '+str(path))
+            checked.append({'path':directory, 'resolved':str(path.resolve()),
+                            'present':True, 'default_cfg_absent':True})
+        evidence.append({'target':target, 'search_directories':checked,
+                         'discovery_no_codegen':True, 'config_dir_overrides':False})
+    return {'CCC_OVERRIDE_OPTIONS_empty':True, 'targets':evidence,
+            'CLANG_NO_DEFAULT_CONFIG_current_nonempty':bool(environ.get('CLANG_NO_DEFAULT_CONFIG')),
+            'default_cfg_policy':'reject-all-direct-cfg-in-LLVM-reported-search-directories',
+            'historical_config_or_environment_absence_claimed':False}
 
 
 def verify(args):
@@ -290,7 +355,8 @@ def verify(args):
               'native_library_sha256': digest(native.read('ge8300-native-owner-core.lib')),
               'compile_complete': True, 'linkcheck_requested': False, 'linkcheck_completed': False,
               'after_compile_snapshot': True, 'past_wrapper_environment_captured': False,
-              'historical_per_TU_include_closure_claimed': False, 'new_compiler_invocations': 0,
+              'historical_per_TU_include_closure_claimed': False, 'new_codegen_invocations': 0,
+              'clang_driver_queries': 0,
               'verified_native_objects': 67, 'objects_reused': 0, 'hardware_verified': False,
               'verified_source_files': 451, 'verified_mesa_plan_files': 605,
               'per_unit_flags_verified': True, 'library_member_order': 'reverse-manifest',
@@ -308,10 +374,9 @@ def verify(args):
     require(win(args.output) == win(roots['generated-native']['path'].rsplit('\\', 1)[0]), 'Native output path changed')
     require(set(cfg['roots']) == set(ROOTS)-{'generated-native'} and set(cfg['tools']) == set(tools),
             'Current root/tool configuration incomplete')
-    # Reject hidden include search paths rather than invent the old environment.
-    require(not any(os.environ.get(v) for v in ('CPATH', 'C_INCLUDE_PATH', 'CPLUS_INCLUDE_PATH',
-                'OBJC_INCLUDE_PATH', 'CLANG_CONFIG_FILE_SYSTEM_DIR', 'CLANG_CONFIG_FILE_USER_DIR')),
-            'Unrecorded include/config environment in current process')
+    # This check applies only to the opt-in live cache path. Never erase env or
+    # alter historical argv to pretend that the old environment was captured.
+    require(not os.environ.get('CCC_OVERRIDE_OPTIONS'), 'Nonempty CCC_OVERRIDE_OPTIONS changes effective argv')
     for tag, path in cfg['roots'].items():
         require(win(path) == win(roots[tag]['path']), 'Include search root relocated: ' + tag)
         targets = roots[tag]['root_target']
@@ -325,6 +390,7 @@ def verify(args):
                 'Current tool changed: ' + name)
     for row in si['libraries']:
         require(sha(row['path']) == row['sha256'].lower(), 'Current kernel library changed')
+    config_evidence = verify_clang_configuration(cfg['tools']['clang'], commands)
     require(not subprocess.check_output(['git', '-C', str(repo), 'status', '--porcelain'], text=True).strip(),
             'Current checkout must be clean')
     dest = Path(args.output)
@@ -340,7 +406,8 @@ def verify(args):
     (dest/'generated').mkdir()
     (dest/'generated/a04_copy_usc_asset.h').write_bytes(generated)
     report.update(admitted=True, objects_reused=67,
-                  native_output_directory=str(dest.resolve()), current_inputs_verified=True)
+                  native_output_directory=str(dest.resolve()), current_inputs_verified=True,
+                  effective_clang_configuration=config_evidence, clang_driver_queries=2)
     return report
 
 

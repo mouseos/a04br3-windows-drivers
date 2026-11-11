@@ -13,7 +13,7 @@
 
 ## admission
 
-`ge8300_native_compile_cache.py`はcompilerを起動せず、2archiveの明示SHA、CRC、安全なpath、全indexのsize/hash/file集合を検査する。旧451source（native builder含む）、Mesa source plan605file、map/source-plan/asset、67unit/source/order/実flags、ARMNT67objとlibrary67memberの逆順を照合する。witness_codec/infoの2TUはGNU targetを含むsource-plan由来のflagsを別に検査し、共通65TUのflagsで代用しない。
+`ge8300_native_compile_cache.py`はcodegenを行わず、2archiveの明示SHA、CRC、安全なpath、全indexのsize/hash/file集合を検査する。旧451source（native builder含む）、Mesa source plan605file、map/source-plan/asset、67unit/source/order/実flags、ARMNT67objとlibrary67memberの逆順を照合する。witness_codec/infoの2TUはGNU targetを含むsource-plan由来のflagsを別に検査し、共通65TUのflagsで代用しない。
 
 live admissionでは現在の6外部include rootをsnapshotと相対path集合/size/hash全一致で比較し、rootの実target、nested reparse拒否、tool3exe、WDK4lib/ntddk、source cleanを検証する。7番目のgenerated rootは固定asset JSONとrecipeから決定的なheader bytesを求めてsnapshotと照合し、そのbytesだけを新native出力へ復元する。C/header/ABIを変更する経路はない。
 
@@ -28,3 +28,15 @@ wrapperはguard exit0かつlive receiptのadmitted/current source/closure/67を�
 証拠種別は固定taskの展開起源＋before-nativeの正式PCO gate＋aftercompileの全root snapshotである。native各TUのcompile時dependencyや過去wrapper envを新たに証明するものではない。旧crt archiveとのUCRT差は実22621 snapshotを正本として扱い、別版へ置換しない。LinkCheck未実行を成功へ昇格せず、描画・実機動作とも分離する。
 
 `--audit-only`は手元のarchive/source/static flags/ARMNT/member順のみ検証する。live Windows root/tool/libs検証・object復元は行わず、receiptは必ず`admitted=false/objects_reused=0`。通常wrapperはこれを受理しない。Windows実行とPowerShell5でのlive動作は未検証。Linuxで実native＋snapshotの正例とMesa header不一致拒否、PowerShell parserを確認した。
+
+## LLVM20の実効argv/config検査
+
+live admissionでは非空`CCC_OVERRIDE_OPTIONS`を拒否する。wrapperもopt-in入口でdriver照会より先に拒否し、環境を消去して通すことはしない。resource-dir照会だけに`--no-default-config`を付け、既recorded compile argvやcold compileは変更しない。
+
+guardはtool hash確認後、両実targetに対して`--no-default-config --config=<ランダムな不存在名> -### -x c -c -`を最大20秒ずつ照会する。LLVM20の`loadConfigFiles`が出力する実user/system/executable探索directoryの診断を使う。errorが期待した「指定config不存在」でない場合、探索先を解決できない場合、executable directoryが含まれない場合は停止する。codegen/リンクは実行しない。
+
+探索先の全direct `.cfg`を拒否する（target/mode/target-mode/版fallbackの各候補を包含し、無関係な名前でも保守的に拒否）。directoryは各4096entry上限。明示`--config*`、`--no-default-config`、`--driver-mode`、response-fileをrecorded argvへ追加して通すことも拒否する。`CLANG_CONFIG_FILE_SYSTEM_DIR`/`USER_DIR`はLLVMのcompile-time macroなので、同名の環境変数検査で探索先確認を代用しない。`CLANG_NO_DEFAULT_CONFIG`が現在非空でも、過去の不在証明にはせず、上記の実探索先検査は行う。
+
+receiptは現在の両target/実探索先/`.cfg`不在とdriver照会2回を保存する。過去env/config不在や元cacheの完全な全環境証明は主張しない。aftercompile snapshot・固定task起源・明示引数・全include roots一致という限定admissionを維持する。この検査の追加を理由に67TUの再compileを要求しない。
+
+一次sourceはLLVM release/20.xの`clang/tools/driver/driver.cpp`（CCC override）、`clang/lib/Driver/Driver.cpp`（compiled-in config directory/default探索）、`clang/include/clang/Basic/DiagnosticDriverKinds.td`（探索診断）。Windows live実行は未検証。hostでは実cache肯定と制御された探索診断fixtureによるoverride/config拒否のみ確認した。
