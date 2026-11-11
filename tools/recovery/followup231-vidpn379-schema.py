@@ -6,6 +6,7 @@ from pathlib import Path
 SCHEMA='GE8300_VIDPN379_SINGLE_TU_V1'
 ADAPTER_ID='vidpn379-single-tu-client-settle-v1'
 TRACE='b9fb91571b587ab98c01ed1a118c847b634b21ca'
+RECIPE='8d2d4b77d1f10f0a4a4f03043ed27a0fc0507cd5'
 BASE='e215c7015f8040ffe8731bb97adc05519d3e1028'
 CLIENT='bdc6e061ddbaf22121286c81528159ccb55293c0'
 EVALUATOR='c6fb3f43c530288473fc243d986d8c843a49468c425d48d090dd44d518b244b4'
@@ -30,7 +31,7 @@ def validate(root,manifest,lock):
  for key in ('main_review','client_pair'):
   r=lock[key];require(set(r)=={'path','sha256'} and sha(path(root,r['path']))==r['sha256'],'actual379 review/client pair ref')
  m=read(manifest)
- require(m['schema']==SCHEMA and re.fullmatch('[0-9a-f]{40}',m['source_commit']) and m['trace_source_commit']==TRACE and m['baseline_source_commit']==BASE and m['client_source_commit']==CLIENT,'exact379 source family')
+ require(m['schema']==SCHEMA and m['source_commit']==RECIPE and m['trace_source_commit']==TRACE and m['baseline_source_commit']==BASE and m['client_source_commit']==CLIENT,'exact379 source family')
  require(m['success'] is True and m['signed'] is True and m['signer_thumbprint']==SIGNER and m['candidate_version']==379 and m['runtime_build_id_retained_from378'] is True and m['hardware_verified'] is False,'actual379 signed result only')
  require(all(m[k] is False for k in ('SDK_rebuilt','PCO_rebuilt','UMD_rebuilt','native_owner_rebuilt')) and m['native_owner_sha256']==NATIVE,'retained378 inputs only')
  tus=m['compiled_TUs'];require(len(tus)==1 and tus[0]['source']=='drivers/gpu/mt8167/wddm-display/unified_display.cxx' and tus[0]['object']=='display_unified_display.obj' and re.fullmatch('[0-9a-f]{64}',tus[0]['sha256']),'one bridge TU only')
