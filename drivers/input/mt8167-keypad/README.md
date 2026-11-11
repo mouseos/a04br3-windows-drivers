@@ -54,3 +54,7 @@ host decode/debounce試験と署名buildは実キー入力の成功証拠では�
 旧候補のConsumer AC Homeはブラウザ系のHomeであり、Windowsキーのusageではない。第4reportだけGeneric Desktop Keyboard collection内のKeyboard Left GUIへ変更する。report ID4、1bit状態＋7bit padding、全2byte、既存Power/Volumeの3reportとdebounce/PMIC/MMIO/停止処理は保持する。
 
 一次資料：[Microsoft Keyboard Input Overview](https://learn.microsoft.com/en-us/windows/win32/inputdev/about-keyboard-input)はKeyboard Left GUIをpage0x07/usage0xe3、Scan1 E05Bへ対応させる。[ACPI button device](https://learn.microsoft.com/en-us/windows-hardware/drivers/hid/acpi-button-device)もWindows/Homeに同usageを使用するが、後者はWindows10用ACPI例であり、RT8.1へACPI0011やHidinterrupt.sysを持ち込む根拠にはしない。既存mshidkmdfと標準kbdhidへ通常のkeyboard HID collectionを公開する。実機のkbdhid結合/キー入力/Startの動作確認までは未検証。
+
+## 最小lifecycle観測（未build）
+
+[固定schema・stage・1TU再利用条件](CHECKPOINT.md)を参照。実227の静的結合だけではstartedを断定できないため、既受理条件を維持して最初の到達点/失敗だけ記録する。実機での入力改善は未確認。
