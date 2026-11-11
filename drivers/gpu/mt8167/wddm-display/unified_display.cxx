@@ -15,7 +15,8 @@
 #if A04_GE8300_WDDM_DIRECT_EXPERIMENT || A04_GE8300_WDDM_SHARED_AUTOSTART || A04_GE8300_WDDM_VENDOR_TILE || A04_GE8300_WDDM_COPY
 #error Disable legacy DOD GPU-provider experiments for unified display
 #endif
-struct geo_display { BASIC_DISPLAY_DRIVER *bdd;BOOLEAN started;UINT read_rundown_closed;EX_RUNDOWN_REF read_operations; };
+#include "vidpn_callback_trace.h"
+struct geo_display { geo_vidpn_trace_state trace;BASIC_DISPLAY_DRIVER *bdd;BOOLEAN started;UINT read_rundown_closed;EX_RUNDOWN_REF read_operations; };
 static geo_display *state(void *p){return static_cast<geo_display *>(p);}
 static BASIC_DISPLAY_DRIVER *bdd(void *p){geo_display *s=state(p);return s&&s->started?s->bdd:NULL;}
 static BASIC_DISPLAY_DRIVER *from_adapter(HANDLE p){return bdd(GeoUnifiedDisplayContext(p));}
@@ -31,7 +32,9 @@ extern "C" NTSTATUS GeoDisplayStart(void *handle,DXGK_START_INFO *start,DXGKRNL_
  geo_display *s=state(handle);ULONG v=0,c=0;NTSTATUS status;
  if(!s||s->started||!start||!dxgk||!sources||!children||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  *sources=0;*children=0;
+ GeoVidPnTraceEpoch(&s->trace,STATUS_PENDING,FALSE);
  status=s->bdd->StartDevice(start,dxgk,&v,&c);
+ GeoVidPnTraceEpoch(&s->trace,status,TRUE);
  if(!NT_SUCCESS(status))return status;
  if(s->read_rundown_closed){ExReInitializeRundownProtection(&s->read_operations);s->read_rundown_closed=0;}
  s->started=TRUE;
@@ -82,18 +85,58 @@ extern "C" NTSTATUS GeoDisplayPower(void *h,ULONG id,DEVICE_POWER_STATE p,POWER_
 }
 #define GEO_WRAP(name,type,method) static NTSTATUS name(HANDLE h,type *arg){BASIC_DISPLAY_DRIVER *d=from_adapter(h);return d?d->method(arg):STATUS_DEVICE_NOT_READY;}
 #define GEO_WRAP_CONST(name,type,method) static NTSTATUS name(HANDLE h,const type *arg){BASIC_DISPLAY_DRIVER *d=from_adapter(h);return d?d->method(arg):STATUS_DEVICE_NOT_READY;}
-GEO_WRAP(supported,DXGKARG_ISSUPPORTEDVIDPN,IsSupportedVidPn)
-GEO_WRAP_CONST(recommend,DXGKARG_RECOMMENDFUNCTIONALVIDPN,RecommendFunctionalVidPn)
-GEO_WRAP_CONST(enum_modes,DXGKARG_ENUMVIDPNCOFUNCMODALITY,EnumVidPnCofuncModality)
+static geo_display *trace_begin(HANDLE h,ULONG kind,geo_vidpn_trace_record *r){
+ geo_display *s=state(GeoUnifiedDisplayContext(h));GeoVidPnTraceBegin(s?&s->trace:NULL,kind,r);GeoVidPnTraceMode(r,bdd(s),0);return s;
+}
+static NTSTATUS trace_end(geo_display *s,geo_vidpn_trace_record *r,NTSTATUS status){
+ GeoVidPnTraceMode(r,bdd(s),12);return GeoVidPnTraceEnd(s?&s->trace:NULL,r,status);
+}
+static NTSTATUS supported(HANDLE h,DXGKARG_ISSUPPORTEDVIDPN *p){
+ geo_vidpn_trace_record r;geo_display *s=trace_begin(h,1,&r);BASIC_DISPLAY_DRIVER *d=bdd(s);
+ r.data[24]=p!=NULL;r.data[25]=p&&p->hDesiredVidPn!=0;
+ GeoVidPnTraceModes(&r,d,p?p->hDesiredVidPn:0,32);GeoVidPnTraceEntry(&r);
+ NTSTATUS status=d?d->IsSupportedVidPn(p):STATUS_DEVICE_NOT_READY;r.data[31]=d&&p&&NT_SUCCESS(status)?(ULONG)p->IsVidPnSupported:MAXULONG;
+ GeoVidPnTraceModes(&r,d,p?p->hDesiredVidPn:0,60);return trace_end(s,&r,status);
+}
+static NTSTATUS recommend(HANDLE h,const DXGKARG_RECOMMENDFUNCTIONALVIDPN *p){
+ geo_vidpn_trace_record r;geo_display *s=trace_begin(h,7,&r);BASIC_DISPLAY_DRIVER *d=bdd(s);
+ if(p){r.data[24]=p->NumberOfVidPnTargets;r.data[25]=(ULONG)p->RequestReason;}
+ GeoVidPnTraceModes(&r,d,p?p->hRecommendedFunctionalVidPn:0,32);GeoVidPnTraceEntry(&r);
+ NTSTATUS status=d?d->RecommendFunctionalVidPn(p):STATUS_DEVICE_NOT_READY;
+ GeoVidPnTraceModes(&r,d,p?p->hRecommendedFunctionalVidPn:0,60);return trace_end(s,&r,status);
+}
+static NTSTATUS enum_modes(HANDLE h,const DXGKARG_ENUMVIDPNCOFUNCMODALITY *p){
+ geo_vidpn_trace_record r;geo_display *s=trace_begin(h,2,&r);BASIC_DISPLAY_DRIVER *d=bdd(s);
+ if(p){r.data[24]=(ULONG)p->EnumPivotType;r.data[25]=p->EnumPivot.VidPnSourceId;r.data[26]=p->EnumPivot.VidPnTargetId;}
+ GeoVidPnTraceModes(&r,d,p?p->hConstrainingVidPn:0,32);GeoVidPnTraceEntry(&r);
+ NTSTATUS status=d?d->EnumVidPnCofuncModality(p):STATUS_DEVICE_NOT_READY;
+ GeoVidPnTraceModes(&r,d,p?p->hConstrainingVidPn:0,60);return trace_end(s,&r,status);
+}
 extern "C" NTSTATUS GeoDisplay356Visibility(HANDLE,const DXGKARG_SETVIDPNSOURCEVISIBILITY *);
 static NTSTATUS visibility(HANDLE h,const DXGKARG_SETVIDPNSOURCEVISIBILITY *p){
- BASIC_DISPLAY_DRIVER *d=from_adapter(h);if(!d||!p)return STATUS_DEVICE_NOT_READY;
- NTSTATUS status=d->SetVidPnSourceVisibility(p);if(status!=STATUS_SUCCESS)return status;
- return GeoDisplay356Visibility(h,p);
+ geo_vidpn_trace_record r;geo_display *s=trace_begin(h,6,&r);BASIC_DISPLAY_DRIVER *d=bdd(s);
+ if(p){r.data[24]=p->VidPnSourceId;r.data[25]=p->Visible;}GeoVidPnTraceEntry(&r);
+ NTSTATUS status=(!d||!p)?STATUS_DEVICE_NOT_READY:d->SetVidPnSourceVisibility(p);
+ if(status==STATUS_SUCCESS)status=GeoDisplay356Visibility(h,p);return trace_end(s,&r,status);
 }
-GEO_WRAP_CONST(commit,DXGKARG_COMMITVIDPN,CommitVidPn)
-GEO_WRAP_CONST(update,DXGKARG_UPDATEACTIVEVIDPNPRESENTPATH,UpdateActiveVidPnPresentPath)
-GEO_WRAP_CONST(monitor,DXGKARG_RECOMMENDMONITORMODES,RecommendMonitorModes)
+static NTSTATUS commit(HANDLE h,const DXGKARG_COMMITVIDPN *p){
+ geo_vidpn_trace_record r;geo_display *s=trace_begin(h,4,&r);BASIC_DISPLAY_DRIVER *d=bdd(s);
+ if(p){r.data[24]=p->AffectedVidPnSourceId;r.data[25]=p->Flags.PathPowerTransition;r.data[26]=p->Flags.PathPoweredOff;r.data[27]=(ULONG)p->MonitorConnectivityChecks;r.data[28]=p->hPrimaryAllocation!=NULL;}
+ GeoVidPnTraceModes(&r,d,p?p->hFunctionalVidPn:0,32);GeoVidPnTraceEntry(&r);
+ NTSTATUS status=d?d->CommitVidPn(p):STATUS_DEVICE_NOT_READY;
+ GeoVidPnTraceModes(&r,d,p?p->hFunctionalVidPn:0,60);return trace_end(s,&r,status);
+}
+static NTSTATUS update(HANDLE h,const DXGKARG_UPDATEACTIVEVIDPNPRESENTPATH *p){
+ geo_vidpn_trace_record r;geo_display *s=trace_begin(h,5,&r);BASIC_DISPLAY_DRIVER *d=bdd(s);
+ if(p){r.data[24]=p->VidPnPresentPathInfo.VidPnSourceId;r.data[25]=p->VidPnPresentPathInfo.VidPnTargetId;r.data[26]=(ULONG)p->VidPnPresentPathInfo.ContentTransformation.Rotation;r.data[27]=(ULONG)p->VidPnPresentPathInfo.ContentTransformation.Scaling;}
+ GeoVidPnTraceEntry(&r);NTSTATUS status=d?d->UpdateActiveVidPnPresentPath(p):STATUS_DEVICE_NOT_READY;return trace_end(s,&r,status);
+}
+static NTSTATUS monitor(HANDLE h,const DXGKARG_RECOMMENDMONITORMODES *p){
+ geo_vidpn_trace_record r;geo_display *s=trace_begin(h,3,&r);BASIC_DISPLAY_DRIVER *d=bdd(s);
+ if(p)r.data[24]=p->VideoPresentTargetId;GeoVidPnTraceMonitor(&r,p,32);GeoVidPnTraceEntry(&r);
+ NTSTATUS status=d?d->RecommendMonitorModes(p):STATUS_DEVICE_NOT_READY;
+ GeoVidPnTraceMonitor(&r,p,60);return trace_end(s,&r,status);
+}
 GEO_WRAP(hwcap,DXGKARG_QUERYVIDPNHWCAPABILITY,QueryVidPnHWCapability)
 GEO_WRAP_CONST(pointer_pos,DXGKARG_SETPOINTERPOSITION,SetPointerPosition)
 GEO_WRAP_CONST(pointer_shape,DXGKARG_SETPOINTERSHAPE,SetPointerShape)
