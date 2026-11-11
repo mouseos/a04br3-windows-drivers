@@ -63,3 +63,11 @@ tools/ci/ge8300_dwm372_dependencies.py text eol=lf
 tools/ci/ge8300-dwm372-incremental-pins.json text eol=lf
 tools/ci/sign-ge8300-dwm372.py text eol=lf
 docs/ge8300-dwm372-integration.md text eol=lf
+
+# Canonical LF blobs also used by the broad451 runtime/header witness.
+# Keep these bytes stable under Windows core.autocrlf=true checkouts.
+drivers/gpu/mt8167/*.[ch] text eol=lf
+drivers/gpu/mt8167/compat/**/*.[ch] text eol=lf
+drivers/gpu/mt8167/fwif/*.[ch] text eol=lf
+drivers/gpu/mt8167/gce/*.[ch] text eol=lf
+tools/ci/build-ge8300-native-owner-core.ps1 text eol=lf
