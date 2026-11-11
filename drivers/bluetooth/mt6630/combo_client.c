@@ -106,19 +106,30 @@ static void RecordBrokerOpen(CLIENT *c,NTSTATUS actual_open_status)
  /* Unknown/old provider or failed observation never changes the real OPEN. */
  RtlSecureZeroMemory(&receipt,sizeof(receipt));
 }
+/* Caller owns c->lock. BthMini can synchronously reissue READ (and call
+ * BTHPORT) from its completion routine. Detach/copy the packet before dropping
+ * the lock; never complete a request while holding the client wait lock. */
 static void deliver(CLIENT *c)
 {
- for(unsigned i=0;i<c->count;){
-  struct a04_bt_broker_packet *p=&c->packets[i];WDFREQUEST r;PVOID out;size_t bytes;
+ unsigned completed=0,i=0;
+ while(i<c->count && completed<32u){
+  struct a04_bt_broker_packet *p=&c->packets[i];WDFREQUEST r;PVOID out;size_t bytes;ULONG_PTR used=0;
   if(!NT_SUCCESS(WdfIoQueueRetrieveNextRequest(c->reads[p->type==4?0:1],&r))){i++;continue;}
   NTSTATUS s=WdfRequestRetrieveOutputBuffer(r,CONTEXT_BYTES+p->length,&out,&bytes);
-  if(!NT_SUCCESS(s)){WdfRequestComplete(r,s);continue;}
-  PBTHX_HCI_READ_WRITE_CONTEXT h=out;h->Type=(UCHAR)p->type;h->DataLen=p->length;RtlCopyMemory(h->Data,p->data,p->length);
-  WdfRequestCompleteWithInformation(r,STATUS_SUCCESS,CONTEXT_BYTES+p->length);
-  for(unsigned j=i+1;j<c->count;j++)c->packets[j-1]=c->packets[j];
-  RtlSecureZeroMemory(&c->packets[--c->count],sizeof(*p));
+  if(NT_SUCCESS(s)){
+   PBTHX_HCI_READ_WRITE_CONTEXT h=out;h->Type=(UCHAR)p->type;h->DataLen=p->length;RtlCopyMemory(h->Data,p->data,p->length);
+   used=CONTEXT_BYTES+p->length;
+   /* Completion may immediately reenter deliver and consume another packet.
+    * The current packet must already be removed, and no packet pointer or
+    * queue index may be reused across the unlocked completion. */
+   for(unsigned j=i+1;j<c->count;j++)c->packets[j-1]=c->packets[j];
+   RtlSecureZeroMemory(&c->packets[--c->count],sizeof(*p));
+  }
+  unlock(c);WdfRequestCompleteWithInformation(r,s,used);lock(c);
+  completed++;i=0;
  }
 }
+
 struct RX_DRAIN {CLIENT *client;NTSTATUS status;};
 static void RxDeliver(void *p){deliver(((struct RX_DRAIN*)p)->client);}
 static int RxRoom(void *p){return ((struct RX_DRAIN*)p)->client->count<32;}

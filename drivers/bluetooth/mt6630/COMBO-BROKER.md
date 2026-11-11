@@ -1,3 +1,10 @@
+> 以下は初期combo broker候補の履歴。現在のclient2018は実transport predicateに
+> 基づくBTHX capabilityとnamespace/admission限定の有界待機を持つ。
+> 後述の「None/0を返す」は当時の状態であり、現在の実装の説明ではない。
+> 実HFP PCM/latency/drain資格の未確定と、標準radio列挙の成否は区別する。
+> 公開Wi-Fi1033系の2018 READ完了修正の同期については
+> [source同期の根拠](../../../../docs/mt6630-bthx2018-source-sync.md)を参照。
+
 # MT6630 SDIO/STP共存broker候補
 
 基点はWi-Fi1013 `8fd9b62d`。既存1012成功package/1013署名packageは変更しない。
