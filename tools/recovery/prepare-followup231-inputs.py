@@ -15,8 +15,7 @@ ASSETS_SHA='395c4e3a4296227d392956fcc68e4d03dc56449e87ff3ef45dfe8c9c01b72e04'
 MUTABLE_SHA='909f0046ee93f2aac1fa6f6fa5049d51e75d0d54de6d4cc9d4dd6ec610a2de37'
 NATIVE_SHA='b7f3c0e8dbf51ec2140c33ab91b308ef6e329bb0fd54b972802230ef567c5167'
 ACCEPTED=Path(__file__).with_name('followup231-accepted.json')
-# Register only a source-reviewed adapter for the real Hegel receipt schema.
-# This intentionally stays empty until actual signed GPU/client evidence exists.
+# Source-reviewed adapters register below; only actual signed locks admit them.
 ADAPTERS={}
 
 def accepted(root):
@@ -54,6 +53,11 @@ class Baseline231(old.Diagnostic229):
   p['display_transition'].update(DIF_order=[],old_DOD_retirement='baseline only; future targets unresolved')
   p['service_baseline_generation']=dict(source=spec['native'],raw_Mt6392Keys_snapshot=n['old_services']['Mt6392Keys'],raw_WDF_timestamp=n['keypad_wdf_runtime']['timestamp'],all_retained_full_hashes_strict=True,retained_service_count=len(n['old_services']))
   p['followup231_pending']=dict(schema='FOLLOWUP231_PENDING_V1',run=232,post_capture=233,new_service=SERVICE,GPU_candidate=None,client_pair=None,next_install_targets=None,next_planned_reboots=None,build_allowed=False,native_patch_allowed=False,device_operations_allowed=False)
+
+# Native schema adapter is available; the immutable accepted lock stays pending.
+_adapter_spec=importlib.util.spec_from_file_location('followup231_vidpn379',Path(__file__).with_name('followup231-vidpn379-adapter.py'))
+_adapter_module=importlib.util.module_from_spec(_adapter_spec);_adapter_spec.loader.exec_module(_adapter_module)
+_adapter_id,_adapter=_adapter_module.make(globals());ADAPTERS[_adapter_id]=_adapter
 
 def baseline(path,root):
  spec=read(path)

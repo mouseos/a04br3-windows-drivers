@@ -394,9 +394,10 @@ def main():
  # Candidate client hashes are post-copy invariants; only old witnesses may
  # guard these admitted replacements before copying either new client leaf.
  client_replacements={}
- if a.gpu375_combined_profile:client_replacements=p['baseline221_client_transition_reference_only']['client_replacements']
+ if a.followup231_profile:client_replacements=p['followup231_contract']['client_replacements']
+ elif a.gpu375_combined_profile:client_replacements=p['baseline221_client_transition_reference_only']['client_replacements']
  elif a.gpu373_client_profile:client_replacements=p['gpu373_client_contract']['client_replacements']
- if a.gpu375_combined_profile or a.gpu373_client_profile:
+ if a.followup231_profile or a.gpu375_combined_profile or a.gpu373_client_profile:
   require(set(client_replacements)=={'Windows/System32/mt8167-dxgi-console-launch363.exe','Windows/System32/mt8167-dxgi-present356.exe'},'Only the admitted client pair may replace preserved leaves')
   for name,row in client_replacements.items():
    require(p['baseline_witnesses'].get(name)==row['baseline'] and p['preserved_files'].get(name)==row['candidate']['sha256'] and p['preserved_sources'].get(name)==row['candidate']['path'],'Client old witness/new preserved binding mismatch')

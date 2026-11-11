@@ -6,7 +6,7 @@
 
 `prepare-followup231-inputs.py --prepare-baseline --workspace ROOT --map BASELINE_INPUTS --out NEW_OUT` は共有200/378 generatorをRAM上で再利用し、現在の全13tuple、54service/326named値、同load native、CPの固定schema/epoch、保持boot chainを検証する。出力は `retained-baseline-draft.json` と `finalize-map.pending.json` のみ。baseline内のtargets空/planned0は現状保持の検証用で、次候補の更新計画ではない。次targets/plannedはnull、draft=true、normal_install_allowed=false、headerは出さない。
 
-HegelのGPU/clientは未確定なので `followup231-accepted.json` はpending/nullを維持。actual signed refs・main review・既知native schema adapterが揃うまで、finalize/host seal/SCM/native/mediaは必須拒否する。未確認のschemaを文字列pinだけで汎用受理せず、ADAPTERS/PS knownAdaptersは現在空。実成果物到着後にそのraw schema/source/全出力を狭いsource adapterで結合する。実tuple未着を仮SHA・仮receipt・成功値で埋めない。
+HegelのGPU/clientは未確定なので `followup231-accepted.json` はpending/nullを維持。actual signed refs・main review・既知native schema adapterが揃うまで、finalize/host seal/SCM/native/mediaは必須拒否する。未確認のschemaを文字列pinだけで汎用受理せず、ADAPTERS/PS knownAdaptersには379 single-TU専用adapterだけを接続済み。accepted lockはpendingのまま保持し、実成果物到着後に正式refsを結合する。実tuple未着を仮SHA・仮receipt・成功値で埋めない。
 
 ## 既callchainへの明示入口
 

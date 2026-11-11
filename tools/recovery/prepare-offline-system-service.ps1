@@ -654,7 +654,7 @@ if($ServiceName -cin @('MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167
         if($followup231){
             $lockPath=Join-Path $PSScriptRoot 'followup231-accepted.json';$lock=Get-Content $lockPath -Raw|ConvertFrom-Json
             # Populate only alongside the actual reviewed candidate adapter source.
-            $knownAdapters=@()
+            $knownAdapters=@('vidpn379-single-tu-client-settle-v1')
             if($lock.status -cne 'actual-signed-candidates-main-reviewed' -or !$lock.client_pair -or !$lock.main_review -or $lock.adapter_id -cnotin $knownAdapters){throw 'Actual signed GPU/client adapter pending; native231 patch forbidden'}
             $cc=$peripheralPreserve.followup231_contract
             $targets=if($lock.mode -ceq 'client-only'){''}elseif($lock.mode -ceq 'render-update'){'render'}else{throw 'Known followup231 mode required'}
