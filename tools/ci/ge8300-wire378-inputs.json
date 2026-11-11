@@ -1,0 +1,86 @@
+{
+  "schema": "ge8300-wire378-inputs-v1",
+  "files": {
+    "compiler/ge8300-nir-arm32.lib": "e654c616bf3745a5952d582eae3aa0d605324659bf8bd1b3deed20d5a8b53523",
+    "compiler/libcpmt.lib": "50d17254b6c2d84b283f524eabb59b5c0cf0217f0bdd146c0cb39550b8a9f260",
+    "compiler/ge8300-util-arm32.lib": "7b799918d964e5c066eaa8a08bda4453d671f29e33bfab4c04ad4f3453d822d6",
+    "compiler/libvcruntime.lib": "2048dc1a46e86a2c3e3a512b704c9ebfd936a1ad53bc8502a43057f44d7e0291",
+    "compiler/libucrt.lib": "58a7241ab801978c0ec48646cd7fc46e892d32ce2b623f4e64e40c889d2010ca",
+    "compiler/synchronization.lib": "92b1d52feb6aca972b5914e4ca4397a3f81b4e0616188a852d261447875b27ef",
+    "compiler/pair-manifest.json": "1de0d33c9ebd11c88dadf99b12cd42922f26d238bcfb19c3b3a275612fce6ceb",
+    "compiler/kernel32.lib": "c91612edab9e074a6daa2baafdf5fdf345a551f6bc20ea133782d6423737f61e",
+    "compiler/ge8300-support-arm32.lib": "9eee479f19239e72ae0f401eb4ec4c097e57557cd8b973fe7aaaee9c78366a5d",
+    "compiler/ge8300-pco-arm32.lib": "476f6f79319239a0b869f6743520e09ce654e73033869ae475194cea9e9dfffb",
+    "compiler/libcmt.lib": "0e4658145da9cf02c645df457abab6bc9797f7fd8afc4d442f06a83691576a4a",
+    "compiler/pco_pair.obj": "9a69e359e140f43ad7e0150eac52197670886d959dafebc875c009d46ba7dc9a",
+    "compiler/link-manifest.json": "4cd723a4786393dcabd85bd53ba9d28a2b86a886f3fe9f865089d2b0e65f9f00",
+    "umd30cb/build-manifest.json": "cd61c5d2bcbff8daf4996824eda43d44f07c06fc8d6131dc1c3e127207b97b63",
+    "umd30cb/ge8300-native-umd.lib": "5de010a5192619a295057bf273a951bdd347429f5dd0ec0af0fb3940084f05ec",
+    "umd30cb/umd_entry.obj": "4d53f2824ffd94c51273ca1f4ec83e26c0ec446797753721c51c2311c98e8572",
+    "package377/ge8300-render.inf": "05ef7a85f38f38bcc7aaf92be1ce473c8ab9c092eb7a5edd0d0c1f87bfe0453e",
+    "package377/ge8300-d3d-clear.exe": "1aa85355adb96d827e2224f10361dc56f73a3cfcdaf1dee18eb4c1bf3cb8b081",
+    "package377/ge8300-d3d-ui-texture.exe": "f965f4591b92a2a101cdceacc08476f3386c1ed492add320f21cdff8d49bd3c8",
+    "package377/ge8300-d3d-texture-boundary.exe": "07cca1a73e1ca0dd19083cee2de6490ae8855db3670b1a2c7f1bbcb20d94081e",
+    "package377/signed-manifest.json": "767c1877268042331a0eee5125e080ccc1b2ec0be125f1b6665a9a171dfeff0e",
+    "package377/ge8300-mips.fw": "5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1",
+    "package377/mt8167-development.cer": "33680a69f647193e7f7adcecf137db525262019c3a8f971ab3095d40f894d72a",
+    "package377/ge8300-render.cat": "aa6b8386cae15525f36f66134b9be6e66b84f4ce0161bf00796ba085d4abc8e1",
+    "package377/mt8167-dxgi-present356.exe": "eaa30760ebc38a1955ccb3bbd834ee5c3972ce8842b90e6a58bc5084109ef8d5",
+    "package377/ge8300-umd.dll": "bdc3e258f56b2c44697df020bf4a32fd8b77a2424fe0f167f86ebd39d14c585b",
+    "package377/ge8300-d3d-texture.exe": "ba9429a58ea54359dedbd6adcc3a3cec3db34a53fa95082aa0818e082ed12fa0",
+    "package377/ge8300-render.sys": "b4a2a17f98b377a2767b4daef8d5e4daa9e2110b0b6f9a8a422c04fcf52e29e4",
+    "package377/ge8300-umd.lib": "58a3c45bddbe096f08a980ba53d61d9317b4c8299f08a3b5542fe9455b86112d",
+    "receipts/4bc611cbf72d420bbf05f8b8c4ff0ea7.receipt.json": "fb4c246e5be4b926e0c8f8e117551d23253aa1063c60311d55b9a5a32b362131",
+    "receipts/79c0e75b2f3445fcb7fdd48a6fbac876.receipt.json": "448090644d0878c074cb55d5b3c9c38df36c99cd391d37a796048bf2af5fa0c7",
+    "receipts/fe1fc6bd12a34bdabf8565d0f838b30b.receipt.json": "ae08490b5b782453072aed6c0c74cff778459e49cfdb6c57f60fc8c394cc99df",
+    "baseline377/ge8300-kmd-clear.lib": "896797000a36dad225aca1b712767dc2d0835d618b6ae79151f1a4cde3c480fa",
+    "baseline377/incremental-build-manifest.json": "74edaacfb29011f75bf0b6718ef53accc6da15de400c856f2416f9ef01e85e3f",
+    "baseline377/ge8300-native-owner-core.lib": "c7dcbffb1d3de151e22796c0494c033502570950d0afebb4162a6a2f598fa836",
+    "package377/display-transport/mt8167-display-transport.cat": "f0d4cb228033148f5993d5d3ebfa2a00d7df471fbfbf9233550a40a50824ff67",
+    "package377/display-transport/mt8167-display-transport.inf": "b808ef184550a20cf2b8be53b840e3c026b24a3ed2616c0cbaea7c20743f6ce8",
+    "package377/display-transport/mt8167-display-transport.sys": "e14466efe8e7ae0367f0e791775418d3c06e4e3c4a865552da11f7262bdea7df"
+  },
+  "tools": {
+    "clang": "57e32b1ea2456f12f97bf802453171bbff12d56b2c486b4eca0c75343c0cda2c",
+    "llvm-lib": "ac241b193d1954102c9282caa1fb0f2faf0331c6b3d137bc704a04b0f8763e76",
+    "llvm-readobj": "9c6b8adcaf1fea2889105e1d97f5b319b7d600f053069baa817ce462b611805a",
+    "lld-link": "6590ac0122cd5e11fcd05cc9cd5b7ad01cb89961487b9b81c4330fb59abcb5d9",
+    "kernel-link": "f8b2e9c5341419525f915b61b87d1bc8aa307adca6e1e022071175912e965938",
+    "signtool": "854c356a9d9977fb2ed22ce04b531ab6f4417da06a4dba6e3d3d628b9cfb988c",
+    "inf2cat": "0a51b4d598ecf9ca4eb82cbb13e89d0eee8e477661616cd942cf0ade57ddaf27",
+    "powershell": "38f4384643b3fa0de714d2367b712c2e0fa1c89e2cfd131ae6b831ad962b1033"
+  },
+  "kernel_libraries": {
+    "ntoskrnl.lib": "629C39140F6A222811461EFF7F16DD63CCA1F5D6E8F9EC31ED73ECA2EECD965B",
+    "hal.lib": "F4A9B51C2011636BA55129AE230B829739E9D436BE8DEF3E9EFB882689E8A9B2",
+    "libcntpr.lib": "717E99050A9DF5E6AD20458029A9F95C5F5839540CB0E0F044B307DDA2F7822C",
+    "bufferoverflowfastfailk.lib": "477922667688067B93C85B98DD788713E731C9ED62F867E1B4AA971711D1FA5E",
+    "displib.lib": "dc2b7c25e084277bd52b288c4fb913b1c89d344990f4242751a5ff62deb9e00e"
+  },
+  "sources": [
+    "drivers/gpu/mt8167/wddm-render/query_adapter.c",
+    "drivers/gpu/mt8167/wddm-render/umd/typed_entry.c",
+    "drivers/gpu/mt8167/wddm-render/umd/frontend.c"
+  ],
+  "rows": [
+    {
+      "source": "drivers/gpu/mt8167/wddm-render/query_adapter.c",
+      "object": "query_adapter.obj",
+      "compile_receipt": "receipts/4bc611cbf72d420bbf05f8b8c4ff0ea7.receipt.json"
+    },
+    {
+      "source": "drivers/gpu/mt8167/wddm-render/umd/typed_entry.c",
+      "object": "umd_typed_entry.obj",
+      "compile_receipt": "receipts/79c0e75b2f3445fcb7fdd48a6fbac876.receipt.json"
+    },
+    {
+      "source": "drivers/gpu/mt8167/wddm-render/umd/frontend.c",
+      "object": "umd_frontend.obj",
+      "compile_receipt": "receipts/fe1fc6bd12a34bdabf8565d0f838b30b.receipt.json"
+    }
+  ],
+  "baseline377_SYS_sha256": "b4a2a17f98b377a2767b4daef8d5e4daa9e2110b0b6f9a8a422c04fcf52e29e4",
+  "retained_compiler_manifest_sha256": "4cd723a4786393dcabd85bd53ba9d28a2b86a886f3fe9f865089d2b0e65f9f00",
+  "retained_pair_manifest_sha256": "1de0d33c9ebd11c88dadf99b12cd42922f26d238bcfb19c3b3a275612fce6ceb",
+  "historical_external_header_equality_verified": false
+}
