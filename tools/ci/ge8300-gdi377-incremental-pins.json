@@ -1,0 +1,103 @@
+{
+  "schema": "ge8300-gdi377-two-tu-pins-v1",
+  "candidate_version": 377,
+  "runtime_base": "2f63b0e6b7e4466c89dbc9c48d0f005d91f9069d",
+  "baseline376_manifest_sha256": "7a874c2bd0435ed72aea18bcee744b723a365f80ce0efecf19108d4ba2e7ccb3",
+  "baseline376_archives": {
+    "ge8300-kmd-clear.lib": "e88624cb36d128f80d5f2d0e0155aba147a26c88f2dc9210420a8b07ce5d67cf",
+    "ge8300-native-owner-core.lib": "c7dcbffb1d3de151e22796c0494c033502570950d0afebb4162a6a2f598fa836"
+  },
+  "retained372_source": "4a952787f1befccd5c580e826b109fb9decc9c80",
+  "inputs": {
+    "baseline372/ge8300-kmd-clear.lib": "7fed36a0892a8216c0cb40a05051f231525b5c48bce3ec40e11a4115cdc474ea",
+    "baseline372/ge8300-display-transport.lib": "19e7ee769680e0beb00ec6ace651a4f1db0e30dbcf51b171aab74be5ea6e1cc1",
+    "baseline372/incremental-build-manifest.json": "6e72be0bc94a898b5dd718418fa4e4ab9ded0e0ceaad2dddfd255f3af16aa9bf",
+    "native/ge8300-native-owner-core.lib": "49cafb8991f003dcd31b73d51e29218439a3f76d7db0e7f61147cd9295b3d277",
+    "package372/display-transport/mt8167-display-transport.sys": "e14466efe8e7ae0367f0e791775418d3c06e4e3c4a865552da11f7262bdea7df",
+    "package372/signed-manifest.json": "e987826bdc5a9a8085c31ebeccf6c0680e96cd8bb7ef5ad56748869bc41bccfc"
+  },
+  "LINK_sha256": "f8b2e9c5341419525f915b61b87d1bc8aa307adca6e1e022071175912e965938",
+  "tool_pins": {
+    "clang": "57e32b1ea2456f12f97bf802453171bbff12d56b2c486b4eca0c75343c0cda2c",
+    "llvm-lib": "ac241b193d1954102c9282caa1fb0f2faf0331c6b3d137bc704a04b0f8763e76",
+    "llvm-readobj": "9c6b8adcaf1fea2889105e1d97f5b319b7d600f053069baa817ce462b611805a"
+  },
+  "link_inputs": {
+    "ntoskrnl.lib": "629C39140F6A222811461EFF7F16DD63CCA1F5D6E8F9EC31ED73ECA2EECD965B",
+    "hal.lib": "F4A9B51C2011636BA55129AE230B829739E9D436BE8DEF3E9EFB882689E8A9B2",
+    "libcntpr.lib": "717E99050A9DF5E6AD20458029A9F95C5F5839540CB0E0F044B307DDA2F7822C",
+    "bufferoverflowfastfailk.lib": "477922667688067B93C85B98DD788713E731C9ED62F867E1B4AA971711D1FA5E",
+    "displib.lib": "dc2b7c25e084277bd52b288c4fb913b1c89d344990f4242751a5ff62deb9e00e"
+  },
+  "rows": [
+    {
+      "source": "drivers/gpu/mt8167/wddm-render/kmd_objects.c",
+      "archive": "kmd",
+      "object": "kmd_objects.obj",
+      "arguments": [
+        "--target=thumbv7-pc-windows-msvc",
+        "-std=c11",
+        "-fms-extensions",
+        "-ffreestanding",
+        "-fno-builtin",
+        "-fno-stack-protector",
+        "-O2",
+        "-fno-vectorize",
+        "-fno-slp-vectorize",
+        "-mno-unaligned-access",
+        "-mfpu=none",
+        "-D_ARM_",
+        "-DARM",
+        "-D_WIN32_WINNT=0x0603",
+        "-DNTDDI_VERSION=0x06030000",
+        "-DDXGKDDI_INTERFACE_VERSION=0x4002",
+        "-DD3D_UMD_INTERFACE_VERSION=0x4002",
+        "-IC:\\gpu-gdi376\\inputs\\wdk81\\Include\\shared",
+        "-DA04_GE8300_UNIFIED_DISPLAY356=1",
+        "-DGEO_LINKED_NATIVE_CORE=1",
+        "-D_KERNEL_MODE",
+        "-D__ldrexd=__geo_wdk81_ldrexd_declaration",
+        "-IC:\\Program Files\\LLVM\\lib\\clang\\20\\include",
+        "-IC:\\gpu-gdi376\\inputs\\wdk81\\Include\\km",
+        "-IC:\\gpu-gdi376\\inputs\\wdk81\\Include\\km\\crt"
+      ]
+    },
+    {
+      "source": "drivers/gpu/mt8167/wddm-render/kmd_clear.c",
+      "archive": "kmd",
+      "object": "kmd_clear.obj",
+      "arguments": [
+        "--target=thumbv7-pc-windows-msvc",
+        "-std=c11",
+        "-fms-extensions",
+        "-ffreestanding",
+        "-fno-builtin",
+        "-fno-stack-protector",
+        "-O2",
+        "-fno-vectorize",
+        "-fno-slp-vectorize",
+        "-mno-unaligned-access",
+        "-mfpu=none",
+        "-D_ARM_",
+        "-DARM",
+        "-D_WIN32_WINNT=0x0603",
+        "-DNTDDI_VERSION=0x06030000",
+        "-DDXGKDDI_INTERFACE_VERSION=0x4002",
+        "-DD3D_UMD_INTERFACE_VERSION=0x4002",
+        "-IC:\\gpu-gdi376\\inputs\\wdk81\\Include\\shared",
+        "-DA04_GE8300_UNIFIED_DISPLAY356=1",
+        "-DGEO_LINKED_NATIVE_CORE=1",
+        "-D_KERNEL_MODE",
+        "-D__ldrexd=__geo_wdk81_ldrexd_declaration",
+        "-IC:\\Program Files\\LLVM\\lib\\clang\\20\\include",
+        "-IC:\\gpu-gdi376\\inputs\\wdk81\\Include\\km",
+        "-IC:\\gpu-gdi376\\inputs\\wdk81\\Include\\km\\crt"
+      ]
+    }
+  ],
+  "signing_tools": {
+    "powershell.exe": "38f4384643b3fa0de714d2367b712c2e0fa1c89e2cfd131ae6b831ad962b1033",
+    "signtool.exe": "854c356a9d9977fb2ed22ce04b531ab6f4417da06a4dba6e3d3d628b9cfb988c",
+    "Inf2Cat.exe": "0a51b4d598ecf9ca4eb82cbb13e89d0eee8e477661616cd942cf0ade57ddaf27"
+  }
+}
