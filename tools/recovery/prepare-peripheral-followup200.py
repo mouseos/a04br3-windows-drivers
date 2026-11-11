@@ -138,7 +138,9 @@ def build_policy(root,spec):
      name='Windows/System32/'+x['installed'].replace('\\','/');f=originals[name]
      require(x['baseline_sha256']==f['sha256'] and x['sha256']==hashes[x['name']],'explicit GPU extra baseline/candidate binding')
      if x['sha256']!=f['sha256']:witnesses[name]=dict(path=origin_sources[name],sha256=f['sha256'])
-   if role=='wifi':
+   # Every adopted role uses the same exact candidate trio/manifest closure.
+   if role in INSTALL:
+    q=rooted(root,old['manifest']);pins[q.relative_to(root).as_posix()]=sha(q)
     for name in old['names'].values():
      q=rooted(root,Path(old['directory'])/name);pins[q.relative_to(root).as_posix()]=sha(q)
   elif not TIMING and role=='render':

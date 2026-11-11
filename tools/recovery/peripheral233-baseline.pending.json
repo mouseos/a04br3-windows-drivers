@@ -1,0 +1,17 @@
+{
+  "schema": "SIGNED_PERIPHERAL_UPDATES_BASELINE_INPUTS_V1",
+  "status": "pending-actual-native-GPU-USB-not-finalized",
+  "capture_number": 233,
+  "fresh": null,
+  "native": null,
+  "capture_contract": null,
+  "template_policy": null,
+  "additional_service_names": [
+    "MT8167CombinedFollowup231"
+  ],
+  "GPU": null,
+  "USB": null,
+  "build_allowed": false,
+  "native_patch_allowed": false,
+  "device_operations_allowed": false
+}

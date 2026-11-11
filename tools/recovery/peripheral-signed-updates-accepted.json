@@ -1,0 +1,60 @@
+{
+  "schema": "SIGNED_PERIPHERAL_UPDATES_ACCEPTED_V1",
+  "status": "main-reviewed-signed-candidates-only-not-a-deployment-policy",
+  "packages": {
+    "wifi": {
+      "manifest": {
+        "path": "port/xnu/out/mt6630-provider1033-public-cold-signed/recovered/signed-output/package/provider/signed-manifest.json",
+        "sha256": "21e8f883e4b130c4dd26f90ba476dc65f52551bfa82c2227d310818b4b225509"
+      },
+      "main_review": {
+        "path": "port/xnu/out/mt6630-provider1033-public-cold-signed/main-independent-review.json",
+        "sha256": "89179b11596d596ab2b67b99660e6cedd389b93c9bd2563340b37d23351b0dd0"
+      },
+      "directory": "port/xnu/out/mt6630-provider1033-public-cold-signed/recovered/signed-output/package/provider",
+      "schema": "mt6630-public-cold-signing-v1",
+      "compiled_source_commit": "8d492fb0350aa8fccad582b852869e26ba73aeee",
+      "signing_source_commit": "8bdebbb8e78f4c533d0e0d59d2dad1c092ba212a",
+      "names": {
+        "cat": "mt6630-combo-runtime.cat",
+        "inf": "mt6630-combo-runtime.inf",
+        "sys": "mt6630-combo-runtime.sys"
+      },
+      "hashes": {
+        "cat": "86d437ed8fb376ac8da0159a8654445dcbe872ab1dc163fe428d748fce6b6dfd",
+        "inf": "710c28faece8bf215b0e7c3a463edb96a898026ab5b92c6a3630069adbed0f56",
+        "sys": "82e155daceec35a9e9e8dbb26bd16129a37f687e6296d3ba9e3bfab850613fa7"
+      },
+      "version": "2026.11.11.1033",
+      "date": "11/11/2026"
+    },
+    "keypad": {
+      "manifest": {
+        "path": "port/xnu/out/mt8167-keypad14-signed/signed-manifest.json",
+        "sha256": "71c371e6075908296bfdbd956a3249e4464a7c1f314ed3a67d7f007313166780"
+      },
+      "main_review": {
+        "path": "port/xnu/out/mt8167-keypad14-signed/main-independent-review.json",
+        "sha256": "b3ff4c06356d9f03f4c0f420c16833eff21518a73484f87b13754ae0a6886d35"
+      },
+      "directory": "port/xnu/out/mt8167-keypad14-signed/package",
+      "schema": "mt8167-keypad14-incremental-unsigned-v1",
+      "compiled_source_commit": "39966436b4dc65c28386b02ba5481ce9513a894e",
+      "signing_source_commit": "929113ac75dceba471b1f2b0ed5e75ba26717898",
+      "names": {
+        "cat": "mt8167-keypad.cat",
+        "inf": "mt8167-keypad.inf",
+        "sys": "mt8167-keypad.sys"
+      },
+      "hashes": {
+        "cat": "43b0f0782ba4b69b3917034d3956572c1038436fce9566bc843cdc91fc124f68",
+        "inf": "5bd471ba9651f790e78cd0bb8415d1f19fa03a3c2bb6624fd20304ce647e9a83",
+        "sys": "46bc4d45be601cf813b3e275d77bd63ffcc6d6ab6875462b9e42edc8c80ace37"
+      },
+      "version": "0.0.1.4",
+      "date": "11/11/2026",
+      "metadata_source_commit": "b3e3734761574862483edb7934b58e77fca80a6a",
+      "observation_source": "a13bf4745a9498ea4e8e549bc8bf6af2829a0ab9"
+    }
+  }
+}
