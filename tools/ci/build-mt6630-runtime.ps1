@@ -1,12 +1,12 @@
 # Explicit build, not a runner launcher. Windows WDK8.1 ARM + clang/lld required.
 param([string]$OutputDirectory,[string]$SharedParentDirectory,[switch]$LegacyRuntime,
  [string]$WdkRoot,[string]$WdfRoot,[string]$ClangPath='clang',[string]$LinkPath='link.exe')
+$ErrorActionPreference='Stop'
 if(!$LegacyRuntime){
  if($SharedParentDirectory){throw 'SharedParentDirectory is legacy-only; combo owns its existing broker path'}
  & "$PSScriptRoot\build-mt6630-combo-cold.ps1" -OutputDirectory $OutputDirectory -WdkRoot $WdkRoot -WdfRoot $WdfRoot -ClangPath $ClangPath -LinkPath $LinkPath
  return
 }
-$ErrorActionPreference='Stop'
 $root=Resolve-Path (Join-Path $PSScriptRoot '..\..')
 if(!$OutputDirectory){$OutputDirectory=Join-Path $root 'build\mt6630-runtime'}
 $taskOut=[IO.Path]::GetFullPath($OutputDirectory)
