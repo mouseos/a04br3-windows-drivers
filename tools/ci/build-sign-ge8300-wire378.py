@@ -5,6 +5,7 @@ from pathlib import Path
 HERE=Path(__file__).resolve().parent;ROOT=HERE.parents[1]
 sp=importlib.util.spec_from_file_location('retained',HERE/'build-ge8300-gdi377-incremental.py');old=importlib.util.module_from_spec(sp);sp.loader.exec_module(old)
 from ge8300_panel_signing_common import decode_inf,unchanged_signed_payload
+from ge8300_compiler_cache import parse_make_dependencies
 require,sha,read,pin,members=old.require,old.sha,old.read,old.pin,old.members
 THUMB='BCBF6C456C6F0DD0818434763B189488FBF13570'
 def main():
@@ -38,7 +39,14 @@ def main():
  require(os.name=='nt','Windows build only');require(a.resume==out.exists(),'Explicit resume for existing output; never overwrite')
  out.mkdir(parents=True,exist_ok=True);(out/'logs').mkdir(exist_ok=True);(out/'objects').mkdir(exist_ok=True)
  state_path=out/'build-sign-receipt.json';state=read(state_path) if state_path.exists() else dict(plan,steps={},compiled=[],success=False)
- require(state['source_commit']==commit and state['baseline377_manifest_sha256']==plan['baseline377_manifest_sha256'],'Resume source/input identity drift')
+ require(state['baseline377_manifest_sha256']==plan['baseline377_manifest_sha256'],'Resume input identity drift')
+ if state['source_commit']!=commit:
+  prior=state['source_commit'];subprocess.run(['git','-C',ROOT,'merge-base','--is-ancestor',prior,commit],check=True)
+  changed=set(subprocess.check_output(['git','-C',ROOT,'diff','--name-only',prior,commit],text=True).splitlines())
+  require(a.resume and changed and changed<={'tools/ci/build-sign-ge8300-wire378.py'},'Resume permits recipe-only correction; runtime/headers/INF must be byte-identical')
+  for step in state['steps'].values():step.setdefault('source_commit',prior)
+  state.setdefault('recipe_resume_history',[]).append(dict(previous=prior,current=commit,changed=sorted(changed),runtime_source_changed=False))
+  state['source_commit']=commit
  def save():state_path.write_text(json.dumps(state,indent=2)+'\n')
  env=dict(os.environ,TMP=str(out/'logs'),TEMP=str(out/'logs'),VSLANG='1033')
  def run(name,args,outputs=()):
@@ -64,8 +72,8 @@ def main():
   for row in spec['rows']:
    source=ROOT/row['source'];obj=out/'objects'/row['object'];dep=obj.with_suffix('.d');original=read(child(row['compile_receipt']));args=original['arguments'];cut=args.index('-c');flags=[relocate(x) for x in args[:cut]]
    run('compile-'+obj.stem+'.log',[tools['clang'],*flags,'-MD','-MF',dep,'-MT','wire378','-c',source,'-o',obj],[obj,dep])
-   deps=old.old.reuse.dependencies(dep);closure={str(Path(p).resolve()):sha(Path(p)) for p in deps};require(closure,'Actual dependency file missing')
-   record=dict(source=row['source'],source_sha256=sha(source),object=row['object'],object_sha256=sha(obj),arguments=flags,actual_include_closure=closure,prior_compile_receipt_sha256=sha(child(row['compile_receipt'])))
+   deptext=dep.read_text(encoding='utf-8-sig');require(deptext.startswith('wire378:'),'Exact wire378 dependency target required');deps=parse_make_dependencies('ge8300-unit:'+deptext[len('wire378:'):]);closure={str(Path(p).resolve()):sha(Path(p)) for p in deps};require(closure,'Actual dependency file missing')
+   record=dict(source=row['source'],source_sha256=sha(source),object=row['object'],object_sha256=sha(obj),arguments=flags,actual_include_closure=closure,prior_compile_receipt_sha256=sha(child(row['compile_receipt'])),compile_recipe_commit=state['steps']['compile-'+obj.stem+'.log'].get('source_commit',commit))
    state['compiled']=[r for r in state['compiled'] if r['object']!=obj.name]+[record];save();replacement[obj.name]=obj
   def archive(name,baseline_name,replaced):
    before=members(child(baseline_name));folder=out/(name+'-members');folder.mkdir(exist_ok=True);objects=[];expected={}
