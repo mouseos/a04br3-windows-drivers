@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "query_adapter.h"
 #include "adapter_info.h"
+_Static_assert(GEO_OWNER_OPS_VERSION==GEO_ADAPTER_WIRE_OWNER_OPS_VERSION,"native owner ABI and published wire owner version must agree");
 _Static_assert(FIELD_OFFSET(DXGK_DRIVERCAPS,WDDMVersion)==0x148,"RT8.1 ARM driver caps WDDMVersion offset");
 _Static_assert(DXGKDDI_WDDMv1_2==0x1200,"RT8.1 ARM WDDM1.2 capability model value");
 NTSTATUS GeoConfigureAperture(struct geo_kmd_adapter *a,const struct geo_aperture_config *p) {
@@ -45,8 +46,8 @@ NTSTATUS APIENTRY GeoQueryAdapterInfo(HANDLE handle,const DXGKARG_QUERYADAPTERIN
  case DXGKQAITYPE_QUERYSEGMENT3:status=query_segment3(a,p);break;
  case DXGKQAITYPE_UMDRIVERPRIVATE:
   if(p->OutputDataSize<sizeof(info)){status=STATUS_BUFFER_TOO_SMALL;break;}
-  RtlZeroMemory(&info,sizeof(info));info.size=sizeof(info);info.version=8;info.texture_draw_version=a->draw_v3.version;info.magic=GEO_ADAPTER_INFO_MAGIC;
-  info.owner_ops_version=GEO_OWNER_OPS_VERSION;info.control_version=2;info.format=GEO_FORMAT_A8R8G8B8;
+  RtlZeroMemory(&info,sizeof(info));info.size=GEO_ADAPTER_WIRE_BYTES;info.version=GEO_ADAPTER_WIRE_VERSION;info.texture_draw_version=a->draw_v3.version;info.magic=GEO_ADAPTER_INFO_MAGIC;
+  info.owner_ops_version=GEO_ADAPTER_WIRE_OWNER_OPS_VERSION;info.control_version=GEO_ADAPTER_WIRE_CONTROL_VERSION;info.format=GEO_FORMAT_A8R8G8B8;
   info.max_allocation_bytes=(UINT)(a->aperture.commit_limit<4194304?a->aperture.commit_limit:4194304);
   info.aperture=a->aperture;info.compiler_bvnc=GEO_COMPILER_BVNC;info.draw_version=a->draw.version;info.shader_draw_version=a->draw_v4.version;info.vertex_max_bytes=GEO_VERTEX_MAX_BYTES;RtlCopyMemory(p->pOutputData,&info,sizeof(info));status=STATUS_SUCCESS;break;
  case DXGKQAITYPE_DRIVERCAPS:

@@ -2,6 +2,7 @@
 #include "bootstrap.h"
 #include "shader_state.h"
 #include "../adapter_info.h"
+#include "adapter_info_trace.h"
 #include "../frontend/draw_abi.h"
 #include "../memory.h"
 #include <d3d9caps.h>
@@ -358,8 +359,8 @@ static HRESULT open_adapter(const D3DDDIARG_OPENADAPTER *p,void **out) {
  memset(&q,0,sizeof(q));q.pPrivateDriverData=&a->memory;q.PrivateDriverDataSize=sizeof(a->memory);
  hr=p->pAdapterCallbacks->pfnQueryAdapterInfoCb(p->hAdapter,&q);
  if(FAILED(hr)){HeapFree(GetProcessHeap(),0,a);return hr;}
- if(a->memory.size!=sizeof(a->memory)||a->memory.version!=8u||a->memory.shader_draw_version!=4u||a->memory.texture_draw_version!=3u||a->memory.magic!=GEO_ADAPTER_INFO_MAGIC||
-    a->memory.owner_ops_version!=3u||a->memory.control_version!=2u||a->memory.draw_version!=1u||a->memory.format!=GEO_FORMAT_A8R8G8B8||a->memory.compiler_bvnc!=GEO_COMPILER_BVNC){HeapFree(GetProcessHeap(),0,a);return E_UNEXPECTED;}
+ {uint32_t mismatch=geo_adapter_wire_mismatch(&a->memory);
+  if(mismatch){geo_umd_wire_trace(&a->memory,mismatch);HeapFree(GetProcessHeap(),0,a);return E_UNEXPECTED;}}
  *out=a;return S_OK;
 }
 static HRESULT get_caps(void *context,const D3DDDIARG_GETCAPS *p) {
