@@ -106,18 +106,25 @@ def main():
   for row in plan['compile_units']:
    source=ROOT/row['source'];flags=[relocate(x) for x in row['arguments']];name=row['object'];cpp=row['tool']=='cl'
    if cpp:
-    flags=[f for f in flags if f.lower()!='/c'];output=run('deps-'+name,[tools['cl'],*flags,'/E','/showIncludes',source]);paths=[Path(x.strip()) for x in re.findall(r'^Note: including file:\s*(.+)$',output,re.M)]
+    flags=[f for f in flags if f.lower()!='/c'];output=run('deps-'+name,[tools['cl'],*flags,'/E','/showIncludes',source]);paths=[Path(x.strip()) for x in re.findall(r'Note: including file:\s*(.+)$',output,re.M)]
    else:
     output=run('deps-'+name,[tools['clang'],'--no-default-config',*flags,'-M','-MT','__gpu_dependency_target',source]);paths=[Path(x) for x in dep_parser.make_dependencies(output)]
    deps=closure(paths,source);prepared.append((row,source,flags,deps))
   for row,source,flags,deps in prepared:
    obj=out/'objects'/row['object'];cpp=row['tool']=='cl'
+   completed=spec.get('completed_objects',{}).get(row['object'])
+   if completed:
+    require(completed['source']==row['source'] and completed['arguments']==row['arguments'] and completed['actual_include_closure']==deps and completed['tool_sha256']==spec['tools'][row['tool']]['sha256'],'Completed object source/flags/tool/dependency drift')
+    require(not git('diff','--name-only',completed['compiled_source_commit'],rev,'--',GPU).strip(),'Runtime source changed since completed compile')
+    for proof in completed['proofs']:ref(workspace,proof)
+    prior=ref(workspace,completed['file']);shutil.copyfile(prior,obj)
+    receipt['compiled_TUs'].append(dict(row,object_sha256=sha(obj),actual_include_closure=deps,compiled_source_commit=completed['compiled_source_commit'],codegen_reused_this_attempt=True,completed_object_proofs=completed['proofs']));save();continue
    if cpp:
-    output=run('compile-'+obj.name,[tools['cl'],*flags,'/c','/showIncludes','/Fo'+str(obj),source]);actual=closure([Path(x.strip()) for x in re.findall(r'^Note: including file:\s*(.+)$',output,re.M)],source)
+    output=run('compile-'+obj.name,[tools['cl'],*flags,'/c','/showIncludes','/Fo'+str(obj),source]);actual=closure([Path(x.strip()) for x in re.findall(r'Note: including file:\s*(.+)$',output,re.M)],source)
    else:
     dep=obj.with_suffix('.d');run('compile-'+obj.name,[tools['clang'],'--no-default-config',*flags,'-MD','-MF',dep,'-MT','__gpu_dependency_target','-c',source,'-o',obj]);actual=closure([Path(x) for x in dep_parser.make_dependencies(dep.read_text())],source)
    require(actual==deps,'Actual compile dependency closure changed after admission')
-   pe=run('ARMNT-'+obj.name,[tools['readobj'],'--file-headers',obj]);require('IMAGE_FILE_MACHINE_ARMNT' in pe,'New object is not ARMNT');receipt['compiled_TUs'].append(dict(row,object_sha256=sha(obj),actual_include_closure=actual));save()
+   pe=run('ARMNT-'+obj.name,[tools['readobj'],'--file-headers',obj]);require('IMAGE_FILE_MACHINE_ARMNT' in pe,'New object is not ARMNT');receipt['compiled_TUs'].append(dict(row,object_sha256=sha(obj),actual_include_closure=actual,compiled_source_commit=rev,codegen_reused_this_attempt=False));save()
   libraries={}
   for kind,archive in parsed.items():
    folder=out/('members-'+kind);folder.mkdir();objects=[];expected={};replace={x['object'] for x in plan['compile_units'] if x['archive']==kind}
