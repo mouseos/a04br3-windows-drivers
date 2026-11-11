@@ -35,7 +35,12 @@ def validate(root,manifest,lock):
  require(m['success'] is True and m['signed'] is True and m['signer_thumbprint']==SIGNER and m['candidate_version']==379 and m['runtime_build_id_retained_from378'] is True and m['hardware_verified'] is False,'actual379 signed result only')
  require(all(m[k] is False for k in ('SDK_rebuilt','PCO_rebuilt','UMD_rebuilt','native_owner_rebuilt')) and m['native_owner_sha256']==NATIVE,'retained378 inputs only')
  tus=m['compiled_TUs'];require(len(tus)==1 and tus[0]['source']=='drivers/gpu/mt8167/wddm-display/unified_display.cxx' and tus[0]['object']=='display_unified_display.obj' and re.fullmatch('[0-9a-f]{64}',tus[0]['sha256']),'one bridge TU only')
- closure=tus[0]['include_closure'];require(len(closure)>10 and any(n.replace('\\','/').endswith('/vidpn_callback_trace.h') for n in closure),'actual trace header closure')
+ closure=tus[0]['include_closure'];require(len(closure)>10,'actual trace include closure')
+ for suffix,digest in (
+  ('/drivers/gpu/mt8167/wddm-display/unified_display.cxx','4393a26b5b5faaa328ca8a5b3c2c3e8c6bcdcebfa36a7f367d22641a609b6ba4'),
+  ('/drivers/gpu/mt8167/wddm-display/vidpn_callback_trace.h','0fba97d0ff2ac4dcdf0b3c769d9f2ede4d6967b09c7395945e05b088ea2f24a6')):
+  found=[h for n,h in closure.items() if n.replace('\\','/').endswith(suffix)]
+  require(found==[digest],'exact b9fb trace source/header in real compile closure')
  required={'compile-bridge','archive','kernel-link','pe','sign-sys','catalog','sign-cat','certificates'}|{'trust-'+str(i) for i in range(6)}|{'catalog-'+n for n in ('ge8300-render.sys','ge8300-render.inf','ge8300-umd.dll','ge8300-mips.fw')}
  require(set(m['steps'])==required and all(s['exit_code']==0 and re.fullmatch('[0-9a-f]{64}',s['log_sha256']) for s in m['steps'].values()),'all exact379 steps must complete once')
  archive=m['archive'];require(archive['baseline_sha256']==BASE_ARCHIVE and archive['replacement']=='display_unified_display.obj' and archive['members']['display_unified_display.obj']==tus[0]['sha256'],'retained378 archive replacement')
