@@ -1,8 +1,8 @@
 {
   "schema": "FOLLOWUP231_ACCEPTED_CANDIDATES_V1",
-  "status": "pending-hegel-signed-candidates",
-  "adapter_id": null,
-  "mode": null,
+  "status": "actual-signed-candidates-main-reviewed",
+  "adapter_id": "vidpn379-single-tu-client-settle-v1",
+  "mode": "render-update",
   "GPU_candidate": {
     "path": "port/xnu/out/windows-rt-vidpn-callback-candidate/kernel379/build/package379/signed-manifest.json",
     "sha256": "2046d42b7da6c5c3401a87786ff45b3ff4f02ae49804ecf9f3c5fb62cada6aa9"
@@ -11,6 +11,9 @@
     "path": "port/xnu/out/windows-rt-vidpn-callback-candidate/launcher42965825010/pair-signed-manifest.json",
     "sha256": "8682c4b9232643c7de5c85644687946f54d9096733f9806b4348b1d2bd502f05"
   },
-  "main_review": null,
+  "main_review": {
+    "path": "port/xnu/out/windows-rt-followup231/main-approved-reviews231.json",
+    "sha256": "d5e0b6a3160e969ae4bb4b33e8b7d14a6e613c668f62f4d0eb7f517cf464de64"
+  },
   "filter_root_transitions": []
 }

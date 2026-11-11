@@ -32,6 +32,10 @@ def validate(root,manifest,lock):
  # Both independent review and finalized client/launcher pair are mandatory.
  for key in ('main_review','client_pair'):
   r=lock[key];require(set(r)=={'path','sha256'} and sha(path(root,r['path']))==r['sha256'],'actual379 review/client pair ref')
+ reviews=read(path(root,lock['main_review']['path']))
+ require(reviews['schema']=='FOLLOWUP231_MAIN_APPROVED_REVIEWS_V1' and reviews['main_execution_approved'] is True and reviews['hardware_verified'] is False,'explicit main review scope')
+ for key,digest in (('kernel','9d119216625952f4064b8f4410875ddef639c8c73e01b27bb8ab700a7c148ac9'),('pair','303d7b1df9bb3382287aa246d723258fde0120a247faa213c5a6a1b8e8fc9e0c')):
+  ref=reviews[key];require(ref['sha256']==digest and sha(path(root,ref['path']))==digest,'exact independent main '+key+' review')
  return inspect_signed_manifest(root,manifest)
 
 def inspect_signed_manifest(root,manifest):

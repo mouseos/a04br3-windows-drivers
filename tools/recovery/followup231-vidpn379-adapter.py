@@ -56,6 +56,8 @@ def make(owner):
    p['followup231_contract']=dict(schema='FOLLOWUP231_TRANSITION_V1',input=spec['_input_ref'],mode='render-update',fresh=231,run=232,post_capture=233,install_mask=1024,accepted_lock_sha256=sha(f['ACCEPTED']),terminal_windows_hold=True,hardware_success_claimed=False,client_replacements=self.replacements,trace_schema='GE8300_VIDPN_CALLBACK_TRACE_V1')
    p['followup231_contract']['compile_header_evidence']=dict(recorded_in=self.lock['GPU_candidate'],recorded_entries=92,repo_trace_blobs_verified=True,main_review=self.lock['main_review'],current_runner_recheck_is_separate_from_historical_comparison=True,historical_external_header_equality_verified=False,VC14_29_vcruntime_matches_generic_old_CRT_cache=False,old_CRT_cache_version_bound=False,recompile_required=False)
    for key in ('GPU_candidate','main_review','client_pair'):pin(self.lock[key])
+   for ref in read(rooted(self.root,self.lock['main_review']['path'])).values():
+    if isinstance(ref,dict) and set(ref)=={'path','sha256'}:pin(ref)
  class Adapter:
   @staticmethod
   def load_map(path,root,lock):
