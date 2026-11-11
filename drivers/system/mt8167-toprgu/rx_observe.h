@@ -51,7 +51,7 @@ static int a04_rx_can_tx(const struct a04_rx_observe *s)
 {return s->lsr_valid && !(s->lcr&128u) && (s->lsr&32u);}
 static void a04_rx_queue(struct a04_rx_observe *s,uint64_t now,uint32_t matched,int screen_idle)
 {
- uint32_t words[A04_RX_WORDS],i,j,at=7u,key;int changed;uint64_t elapsed;
+ uint32_t words[A04_RX_WORDS]={0},i,j,at=7u,key;int changed;uint64_t elapsed;
  static const char hex[]="0123456789ABCDEF";
  s->matched=matched;
  if(s->length || s->records>=A04_RX_MAX_RECORDS)return;
@@ -76,6 +76,7 @@ static void a04_rx_queue(struct a04_rx_observe *s,uint64_t now,uint32_t matched,
  words[9]=s->dr;words[10]=s->overrun;words[11]=s->bytes;words[12]=s->parser_calls;
  words[13]=s->advance;words[14]=s->mismatch;words[15]=s->hits;
  words[16]=s->matched;words[17]=s->saturated;words[18]=s->deferred;words[19]=(A04_RX_MAX_RECORDS<<16)|(s->idle_records<<8)|s->event_records;
+ words[20]=s->dlab;words[21]=s->lcr_changes;
  s->line[0]='A';s->line[1]='0';s->line[2]='4';s->line[3]='R';s->line[4]='X';s->line[5]='1';s->line[6]=' ';
  for(i=0;i<A04_RX_WORDS;i++){
   for(j=0;j<8;j++)s->line[at++]=hex[(words[i]>>(28u-4u*j))&15u];

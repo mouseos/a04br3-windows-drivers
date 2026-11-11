@@ -7,6 +7,13 @@ repo=Path(__file__).resolve().parents[1];out=a.output.resolve()
 if not out.is_relative_to(repo.parent.parent.resolve()) or out.exists():raise ValueError('New project-root output required')
 out.mkdir(parents=True);driver=repo/'drivers/system/mt8167-toprgu';src=(driver/'wdf_toprgu.c').read_text()
 resource.setrlimit(resource.RLIMIT_CORE,(0,0));env={**os.environ,'TMPDIR':str(out)}
+# Require an explicit source assignment for EVERY emitted word, not merely a
+# zero-filled array which could silently hide a missing diagnostic field.
+header=(driver/'rx_observe.h').read_text()
+word_count=int(re.search(r'#define A04_RX_WORDS (\d+)u',header)[1])
+assigned=[int(n) for n in re.findall(r'words\[(\d+)\]\s*=',header)]
+assert word_count==22 and sorted(assigned)==list(range(word_count))
+
 
 def fn(name,occurrence=0):
  starts=list(re.finditer(r'^(?:static )?(?:VOID|void|NTSTATUS) '+name+r'\(',src,re.M));start=starts[occurrence].start();b=src.index('{',start);level=1;i=b+1
@@ -98,6 +105,26 @@ main=r'''
 #if A04_TOPRGU_RX_OBSERVE
 static void sent_all(struct a04_rx_observe *s){while(s->length)a04_rx_sent(s);}
 static void helper_tests(void){
+ /* Every field has an independent expected value, including nonzero tails.
+  * Also check every separator and every hex digit; length-only missed tails. */
+ struct a04_rx_observe encoded={0};
+ encoded.d0=0x11;encoded.lsr_valid=1;encoded.lcr=3;encoded.lsr=0x23;
+ encoded.polls=0x22;encoded.lcr_reads=0x33;encoded.lsr_reads=0x44;
+ encoded.dr=0x55;encoded.overrun=0x66;encoded.bytes=0x77;encoded.parser_calls=0x88;
+ encoded.advance=0x99;encoded.mismatch=0xaa;encoded.hits=0xbb;
+ encoded.saturated=0x123;encoded.deferred=0xcc;encoded.dlab=0x13243546;encoded.lcr_changes=0x5768798a;
+ memset(encoded.line,0xa5,sizeof(encoded.line));
+ a04_rx_queue(&encoded,UINT64_C(0x12345678)*10000u,5,1);
+ const uint32_t expected[22]={1,0x11,0x12345678,1,3,0x23,0x22,0x33,0x44,0x55,0x66,0x77,0x88,0x99,0xaa,0xbb,5,0x123,0xcc,0x00180100,0x13243546,0x5768798a};
+ assert(encoded.length==205&&!memcmp(encoded.line,"A04RX1 ",7));
+ for(unsigned f=0;f<22;f++){
+  uint32_t v=0;
+  for(unsigned j=0;j<8;j++){
+   char ch=encoded.line[7+9*f+j];assert((ch>='0'&&ch<='9')||(ch>='A'&&ch<='F'));
+   v=(v<<4)|(uint32_t)(ch<='9'?ch-'0':ch-'A'+10);
+  }
+  assert(v==expected[f]);assert(encoded.line[7+9*f+8]==(f==21?'\n':' '));
+ }
  struct {uint32_t before;struct a04_rx_observe s;uint32_t after;} guard={0xdeadbeef,{0},0xaabbccdd};struct a04_rx_observe *s=&guard.s;
  a04_rx_d0(s);a04_rx_begin(s);a04_rx_lcr(s,3);a04_rx_lsr(s,32);a04_rx_queue(s,0,0,1);
  assert(s->length==205&&s->records==1&&s->idle_records==1&&!memcmp(s->line,"A04RX1 ",7)&&s->line[204]=='\n');sent_all(s);
@@ -182,5 +209,5 @@ with (out/'host.log').open('w') as log:
   b=subprocess.check_output(cmd+[str(before)],env=env,text=True);n=subprocess.check_output(cmd+[str(driver/'wdf_toprgu.c')],env=env,text=True)
   assert tokens(b)==tokens(n),'macro OFF differs from original source'
   comparisons.append(dict(handoff=handoff,screen=screen,thermal=thermal,identical=True))
-(out/'result.json').write_text(json.dumps(dict(actual_poll_and_parser_executed=True,actual_formatter_executed=True,ASan_UBSan=True,variants=4,macro_off_whole_source_token_comparisons=comparisons,rx_no_extra_LSR_LCR_RBR_reads=True,counts_saturate=True,parser_progress_mismatch_match_checked=True,one_byte_per_poll_from_existing_THRE=True,screen_pending_no_trace=True,observation_pending_screen_BUSY=True,max_records=24,idle_records_max=4,reserved_state_records=20,bytes_per_record=205,max_observation_UART_bytes=4920,minimum_record_spacing_seconds=10,idle_spacing_seconds=60,budget_survives_D0=True,private_context_only=True,source_sha256={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in (driver/'wdf_toprgu.c',driver/'rx_observe.h',driver/'reset_command.c')},Windows_WDK_compiled=False,device_verified=False),indent=2)+'\n')
+(out/'result.json').write_text(json.dumps(dict(actual_poll_and_parser_executed=True,actual_formatter_executed=True,all_22_words_explicitly_assigned=True,all_22_emitted_values_and_separators_checked=True,nonzero_DLAB_LCR_change_tails_checked=True,ASan_UBSan=True,variants=4,macro_off_whole_source_token_comparisons=comparisons,rx_no_extra_LSR_LCR_RBR_reads=True,counts_saturate=True,parser_progress_mismatch_match_checked=True,one_byte_per_poll_from_existing_THRE=True,screen_pending_no_trace=True,observation_pending_screen_BUSY=True,max_records=24,idle_records_max=4,reserved_state_records=20,bytes_per_record=205,max_observation_UART_bytes=4920,minimum_record_spacing_seconds=10,idle_spacing_seconds=60,budget_survives_D0=True,private_context_only=True,source_sha256={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in (driver/'wdf_toprgu.c',driver/'rx_observe.h',driver/'reset_command.c')},Windows_WDK_compiled=False,device_verified=False),indent=2)+'\n')
 print('TOPRGU_RX_OBSERVE_HOST_BATCH_PASS')
