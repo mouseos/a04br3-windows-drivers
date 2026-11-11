@@ -30,13 +30,16 @@ enum a04_vut_error { A04_VUT_OK, A04_VUT_MISSING, A04_VUT_SHAPE,
  A04_VUT_IO, A04_VUT_TRANSPORT };
 struct a04_vut_value { uint32_t present,type,bytes,w[A04_VUT_WORDS]; };
 struct a04_vut_snapshot { struct a04_vut_value value[A04_VUT_VALUES]; };
-/* Caller must obtain epoch independently from THIS boot/start witness; never
- * copy the registry epoch into expected[] merely to pass validation.
- * sys_verified means existing preserved-file hash/identity guard succeeded.
- * Source SHA1, deployed SYS SHA256 and final seal SHA256 are separate facts.
+/* Current379 has no independent current-start witness available here.
+ * Always emit current_boot_proven=0. Raw epoch only joins the records below;
+ * host boot fence + later recovery must establish freshness externally.
+ * run/pid are the EXISTING PB runtime identity, not a new startup witness.
+ * Declared source/SYS digests are optional; zero means unknown. sys_verified
+ * may be 1 only after the existing preserved/identity guard actually passed.
+ * Final seal is host-only and MUST NOT be embedded into its own SCM payload.
  */
 struct a04_vut_binding {
- uint32_t run,pid,sys_verified,sequence,epoch[4],source_sha1[5],sys_sha256[8],seal_sha256[8];
+ uint32_t run,pid,sys_verified,source_sha1[5],sys_sha256[8];
 };
 typedef int (*a04_vut_emit)(void *,uint32_t,const uint32_t *,uint32_t);
 typedef unsigned (*a04_vut_read)(void *,struct a04_vut_snapshot *);
@@ -73,15 +76,14 @@ static int a04_vut_uart_emit(void *context,uint32_t event,const uint32_t *words,
 static int a04_vut_nonzero(const uint32_t *w,unsigned n) {
  uint32_t v=0;unsigned i;for(i=0;i<n;i++)v|=w[i];return v!=0;
 }
-static int a04_vut_current(const uint32_t *r,const uint32_t *e) {
+static int a04_vut_same_epoch(const uint32_t *r,const uint32_t *e) {
  return r[6]==e[6]&&!memcmp(r+8,e+8,4*sizeof(uint32_t));
 }
 static unsigned a04_vut_validate(const struct a04_vut_snapshot *s,
  const struct a04_vut_binding *b,uint32_t summary[16]) {
  unsigned i;const uint32_t *e=s->value[0].w;
- if(!b||!b->run||!b->pid||b->sys_verified!=1||!b->sequence||
-    !a04_vut_nonzero(b->epoch+2,2)||!a04_vut_nonzero(b->source_sha1,5)||
-    !a04_vut_nonzero(b->sys_sha256,8)||!a04_vut_nonzero(b->seal_sha256,8))return A04_VUT_UNBOUND;
+ if(!b||!b->pid||b->sys_verified>1||
+    (b->sys_verified&&!a04_vut_nonzero(b->sys_sha256,8)))return A04_VUT_UNBOUND;
  memset(summary,0,16*sizeof(uint32_t));summary[0]=1;summary[1]=432;
  for(i=0;i<A04_VUT_VALUES;i++) {
   const struct a04_vut_value *v=s->value+i;const uint32_t *w=v->w;unsigned kind,category;
@@ -99,11 +101,9 @@ static unsigned a04_vut_validate(const struct a04_vut_snapshot *s,
   }
  }
  if(!s->value[0].present)return A04_VUT_MISSING;
- if(e[6]!=b->sequence||memcmp(e+8,b->epoch,sizeof(b->epoch)))return A04_VUT_EPOCH;
- if(e[4]!=1||e[5])return A04_VUT_START_INCOMPLETE;
  for(i=1;i<A04_VUT_VALUES;i++)if(s->value[i].present) {
   const uint32_t *w=s->value[i].w;
-  if(!a04_vut_current(w,e)){summary[4]++;continue;}
+  if(!a04_vut_same_epoch(w,e)){summary[4]++;continue;}
   summary[3]++;
   if(!w[4])summary[5]++;
   if(w[4]&&w[5]>=0x80000000u)summary[6]++;
@@ -125,14 +125,15 @@ static unsigned a04_vut_collect(a04_vut_read read,void *read_context,
  if(!e&&memcmp(first,second,sizeof(*first)))e=A04_VUT_CHANGED;
  if(!e)e=a04_vut_validate(first,binding,summary);
  if(e){uint32_t error[4]={1,e,0,0};return emit(emit_context,A04_VUT_ERROR,error,4)?A04_VUT_TRANSPORT:e;}
- bind[0]=1;bind[1]=binding->run;bind[2]=binding->pid;bind[3]=binding->sequence;
- memcpy(bind+4,binding->epoch,16);memcpy(bind+8,binding->source_sha1,20);
- memcpy(bind+13,binding->sys_sha256,32);memcpy(bind+21,binding->seal_sha256,32);
- bind[29]=1; /* caller verified SYS; cryptographic binding remains in seal */
+ bind[0]=1;bind[1]=binding->run;bind[2]=binding->pid;bind[3]=0; /* current_boot_unproven */
+ memcpy(bind+4,first->value[0].w+8,16);memcpy(bind+8,binding->source_sha1,20);
+ memcpy(bind+13,binding->sys_sha256,32);bind[21]=first->value[0].w[6];
+ bind[22]=a04_vut_nonzero(binding->source_sha1,5);bind[23]=a04_vut_nonzero(binding->sys_sha256,8);
+ bind[24]=binding->sys_verified; /* guarded file, not loaded-memory or epoch proof */
  if(emit(emit_context,A04_VUT_BIND,bind,32)||emit(emit_context,A04_VUT_SUMMARY,summary,16))return A04_VUT_TRANSPORT;
  packets=2;
  for(i=1;i<A04_VUT_VALUES;i++)if((i==43||(i-1)%6>=4)&&first->value[i].present&&
-     a04_vut_current(first->value[i].w,first->value[0].w)) {
+     a04_vut_same_epoch(first->value[i].w,first->value[0].w)) {
   /* Numeric selection only. No inferred success from unpinned/unknown words.
    * Raw-word indices are defined by b9fb writer and documented alongside this.
    */
