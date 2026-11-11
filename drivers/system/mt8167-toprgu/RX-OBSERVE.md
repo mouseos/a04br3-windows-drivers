@@ -70,7 +70,7 @@ The fields, zero based:
 |---|---|
 | 0 | queued sequence (1..24) |
 | 1 | device-instance D0 entry count |
-| 2 | queue time: interrupt time in milliseconds, low32 (wraps after ~49.7 days) |
+| 2 | queue time: interrupt-time low32, 100ns units (wraps after 429.4967296 seconds) |
 | 3 | last sampled LSR validity: 0/1 |
 | 4 | last sampled LCR low8 |
 | 5 | last sampled LSR low8; stale/unavailable when field3=0 |

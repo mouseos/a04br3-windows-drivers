@@ -70,7 +70,7 @@ static void a04_rx_queue(struct a04_rx_observe *s,uint64_t now,uint32_t matched,
  s->records++;s->queued_at=now;s->saved_lcr=s->lcr;s->saved_lsr=key;s->saved_matched=matched;
  s->saved_bytes=s->bytes;s->saved_d0=s->d0;s->saved_saturated=s->saturated;
  s->saved_dlab=s->dlab;s->saved_lcr_changes=s->lcr_changes;s->saved_overrun=s->overrun;
- words[0]=s->records;words[1]=s->d0;words[2]=(uint32_t)(now/10000u);
+ words[0]=s->records;words[1]=s->d0;words[2]=(uint32_t)now;
  words[3]=s->lsr_valid;words[4]=s->lcr;words[5]=s->lsr;
  words[6]=s->polls;words[7]=s->lcr_reads;words[8]=s->lsr_reads;
  words[9]=s->dr;words[10]=s->overrun;words[11]=s->bytes;words[12]=s->parser_calls;
