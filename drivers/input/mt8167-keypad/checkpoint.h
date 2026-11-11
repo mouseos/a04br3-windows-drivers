@@ -16,7 +16,9 @@ enum {KEYS_CP_ENTRY=1,KEYS_CP_DRIVER_RESULT=2,KEYS_CP_ADD=3,KEYS_CP_ADD_RESULT=4
  KEYS_CP_PMIC_FAILURE=13,KEYS_CP_KEYPAD_FAILURE=14,KEYS_CP_HID_DESCRIPTOR=15,
  KEYS_CP_REPORT_DESCRIPTOR=16,KEYS_CP_READ_REQUEST=17,KEYS_CP_READ_DELIVERY=18,
  KEYS_CP_D0_EXIT=19,KEYS_CP_RELEASE=20,KEYS_CP_GET_INPUT=21,
- KEYS_CP_ATTRIBUTES=22,KEYS_CP_READ_FAILURE=23,KEYS_CP_FORWARD_FAILURE=24};
+ KEYS_CP_ATTRIBUTES=22,KEYS_CP_READ_FAILURE=23,KEYS_CP_FORWARD_FAILURE=24,
+ KEYS_CP_TIMER_SAMPLE=25,KEYS_CP_PMIC_ARM=26,KEYS_CP_KEYPAD_ARM=27,
+ KEYS_CP_PRESS_ID1=28,KEYS_CP_PRESS_ID2=29,KEYS_CP_PRESS_ID3=30,KEYS_CP_PRESS_ID4=31};
 static NTSTATUS KeysCheckpointValue(PCWSTR label,const ULONG *data,ULONG bytes) {
  OBJECT_ATTRIBUTES oa;UNICODE_STRING name;HANDLE service=NULL,parameters=NULL,key=NULL;NTSTATUS s;
  InitializeObjectAttributes(&oa,&keys_checkpoint_service,OBJ_KERNEL_HANDLE|OBJ_CASE_INSENSITIVE,NULL,NULL);
@@ -41,11 +43,11 @@ static void KeysCheckpointBegin(PUNICODE_STRING path) {
  (void)KeysCheckpointValue(L"LoadEpochV1",epoch,sizeof(epoch));
 }
 static void KeysCheckpoint(ULONG stage,ULONG kind,ULONG status,ULONG a,ULONG b,ULONG c,ULONG d,ULONG e,ULONG f) {
- /* 20 ULONG/80 bytes, no native-struct alignment dependency. Slots B01..B24.
+ /* 20 ULONG/80 bytes, no native-struct alignment dependency. Slots B01..B31.
   * PASSIVE + APC checks precede first claim. All call sites are outside locks.
   * A failed store is not retried by polling; absent/stale records stay unknown. */
  ULONG r[20]={0};WCHAR label[4]={L'B',L'0',L'0',0};LARGE_INTEGER now;
- if(!stage||stage>24||!keys_checkpoint_service.Length||KeGetCurrentIrql()!=PASSIVE_LEVEL||KeAreAllApcsDisabled())return;
+ if(!stage||stage>31||!keys_checkpoint_service.Length||KeGetCurrentIrql()!=PASSIVE_LEVEL||KeAreAllApcsDisabled())return;
  if(InterlockedCompareExchange(&keys_checkpoint_claims[stage],1,0)!=0)return;
  KeQuerySystemTime(&now);r[0]=0x31424b41u;r[1]=1;r[2]=sizeof(r);r[3]=stage;r[4]=kind;r[5]=status;
  r[6]=a;r[7]=b;r[8]=c;r[9]=d;r[10]=e;r[11]=f;

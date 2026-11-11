@@ -34,6 +34,10 @@ static VOID Drain(KEYS_CONTEXT *c) {
   KeysCheckpoint(KEYS_CP_READ_DELIVERY,KEYS_CP_NTSTATUS,(ULONG)s,id,data[1],NT_SUCCESS(s)?sizeof(data):0,0,0,0);
   if(!NT_SUCCESS(s))KeysCheckpoint(KEYS_CP_READ_FAILURE,KEYS_CP_NTSTATUS,(ULONG)s,id,0,0,0,0,0);
   WdfRequestComplete(request,s);
+  /* Complete is VOID: record returned call, not HID/OS consumption. No request
+   * access after completion. B18 keeps its original pre-completion meaning. */
+  if(NT_SUCCESS(s)&&data[1]==1)
+   KeysCheckpoint(KEYS_CP_PRESS_ID1+id-1,KEYS_CP_NTSTATUS,(ULONG)s,id,data[1],sizeof(data),3,0,0);
  }
 }
 static NTSTATUS KeysPrepareCore(WDFDEVICE device,WDFCMRESLIST raw,WDFCMRESLIST translated) {
@@ -100,11 +104,19 @@ NTSTATUS KeysExit(WDFDEVICE device,WDF_POWER_DEVICE_STATE next) {
  WdfWaitLockAcquire(c->lock,NULL);ScanRestore(c);c->state.pmic.value=c->state.keypad.value=0;c->pending=15;WdfWaitLockRelease(c->lock);
  Drain(c);WdfIoQueuePurgeSynchronously(c->reads);KeysCheckpoint(KEYS_CP_D0_EXIT,KEYS_CP_NTSTATUS,STATUS_SUCCESS,next,0,0,0,0,0);return STATUS_SUCCESS;
 }
+/* Domain pack: known[3:0], armed[8], failed[9], value[19:16].
+ * Called under state lock; only numeric copies, no registry/MMIO access. */
+static ULONG KeysDomainSnapshot(const struct mt8167_key_domain *s){
+ return (ULONG)s->samples.known|((ULONG)s->armed<<8)|((ULONG)s->failed<<9)|((ULONG)s->value<<16);
+}
 VOID KeysTimer(WDFTIMER timer) {
  KEYS_CONTEXT *c=Keys((WDFDEVICE)WdfTimerGetParentObject(timer));USHORT raw=0;int rearm=0,valid,pmic_result=0,pmic_first_failure=0,keypad_first_failure=0;
+ ULONG sample[6]={0};int sampled=0,pmic_armed=0,keypad_armed=0;
  WdfWaitLockAcquire(c->lock,NULL);
  if(c->online){
-  USHORT keypad=0xffff;int kpvalid=0;
+  USHORT keypad=0xffff;int kpvalid=0,pmic_attempted=!c->state.pmic.failed;
+  int keypad_eligible=!c->state.keypad.failed&&c->scan_owned;
+  int pa=c->state.pmic.armed,ka=c->state.keypad.armed;
   valid=0;if(!c->state.pmic.failed){pmic_result=c->parent.ButtonPmicRead(c->parent.Context,&raw);valid=pmic_result==0;}
   if(!c->state.keypad.failed&&c->scan_owned){
    kpvalid=KRead(c,0x24)==1&&KRead(c,0x18)==1024;
@@ -117,9 +129,19 @@ VOID KeysTimer(WDFTIMER timer) {
    if(!pf&&c->state.pmic.failed)DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,"MT8167KEYPAD PMIC supplier failure; PMIC reports released/stopped\n");
    if(!kf&&c->state.keypad.failed)DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,"MT8167KEYPAD scan settings changed; keypad reports released/stopped\n");
   }
+  /* Reuse this callback's existing raw values, never perform extra reads. */
+  sample[0]=raw;sample[1]=keypad;
+  sample[2]=(pmic_attempted?1u:0u)|(valid?2u:0u)|(keypad_eligible?4u:0u)|(kpvalid?8u:0u)|16u;
+  sample[3]=(ULONG)pmic_result;
+  sample[4]=KeysDomainSnapshot(&c->state.pmic);sample[5]=KeysDomainSnapshot(&c->state.keypad);
+  sampled=1;pmic_armed=!pa&&c->state.pmic.armed;keypad_armed=!ka&&c->state.keypad.armed;
   rearm=!(c->state.pmic.failed&&c->state.keypad.failed);
  }
  WdfWaitLockRelease(c->lock);
+ /* All persistence remains outside the wait lock; guard also rejects APC/IRQL. */
+ if(sampled)KeysCheckpoint(KEYS_CP_TIMER_SAMPLE,KEYS_CP_UNOBSERVED,0,sample[0],sample[1],sample[2],sample[3],sample[4],sample[5]);
+ if(pmic_armed)KeysCheckpoint(KEYS_CP_PMIC_ARM,KEYS_CP_BOOLEAN,1,sample[0],sample[1],sample[2],sample[3],sample[4],sample[5]);
+ if(keypad_armed)KeysCheckpoint(KEYS_CP_KEYPAD_ARM,KEYS_CP_BOOLEAN,1,sample[0],sample[1],sample[2],sample[3],sample[4],sample[5]);
  if(pmic_first_failure)KeysCheckpoint(KEYS_CP_PMIC_FAILURE,KEYS_CP_BACKEND,(ULONG)pmic_result,0,0,0,0,0,0);
  if(keypad_first_failure)KeysCheckpoint(KEYS_CP_KEYPAD_FAILURE,KEYS_CP_BOOLEAN,0,0,0,0,0,0,0);
  Drain(c);

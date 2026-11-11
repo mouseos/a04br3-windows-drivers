@@ -76,3 +76,35 @@ B06/07は元のcount==1検証を通過した場合だけ記録。count不正時�
 ## 1.3候補の正式増分入口
 
 保持objectはgitignore対象の旧build内で発見し、上記2SHAと一致確認した。先の未確認記録は探索時点の状態として残す。`tools/ci/build-mt8167-keypad13-incremental.py --baseline RETAINED12 --cache RETAINED_WDK --output NEW_OUT` は実1.2manifest固定SHA、2object/source/header、6libを照合し1TU compile/link1回のみ行う。Windows LLVMの実versionと全再結合headerのSHAを記録し、旧Linux compiler/header closureと同一とは主張しない。Windowsのcase-insensitive pathで旧VFS overlayを置換する。既署名入口は1.2を維持して明示schemaの1.3も受理する。INFは日付11/10/2026・版0.0.1.3で識別し、名前/HWID/service/KMDF/LowerFilterは不変。
+
+## 入力境界の有限追加観測（source候補、未build/未配備）
+
+本追記は3414de13の実1.3を基点とする観測のみの候補。B01..24のlayout/kind/意味、LoadEpochV1、80B record、reserved4DWORD=0、first-onlyを保持し、B25..31の7eventだけを追加する。最大31record＋epoch=32値。INF/versionは変更せず、同version別SYSの配備を承認するものではない。動作修正・入力成功とは扱わない。
+
+| Stage | kind/status | 内容 |
+| --- | --- | --- |
+| B25 | 0/0 | online timer内の初回sample後snapshot。timerのentryだけでなく既sampleまで進んだ事実。全系統validという意味ではない |
+| B26 | 2/1 | PMIC domainのarmedが0→1となった初回sample後snapshot |
+| B27 | 2/1 | keypad domainのarmedが0→1となった初回sample後snapshot |
+| B28..31 | 1/Copy実NTSTATUS | 各report ID1..4の値1についてCopy成功、既WdfRequestComplete(request,s)呼出しが復帰した初回だけ |
+
+B25..27は共通aux6である。
+
+| aux index | 数値と適用条件 |
+| --- | --- |
+| 0 | このcallbackで既存ButtonPmicReadが扱ったUSHORT raw。未試行時の初期0は読取値ではない。backend失敗時のrawは有効値ではない |
+| 1 | このcallbackの既MEM1値。kpvalidでなければ初期0xffffで、読取値ではない |
+| 2 | flags: bit0 PMIC呼出し試行、bit1 PMIC結果valid、bit2 keypad読取前eligible（未failedかつscan_owned）、bit3 keypad設定検査通過/MEM1取得、bit4 online。上位0 |
+| 3 | 既PMIC backend int返却値をULONGへ変換した32bit。bit0が0なら初期0で、backend成功ではない。NTSTATUSではない |
+| 4 | sample後PMIC domain pack |
+| 5 | sample後keypad domain pack |
+
+各domain packは`known[3:0] | armed<<8 | failed<<9 | value<<16`。他bit=0。PMIC known/valueはmask9（Power0/VolumeDown3）、keypadはmask6（Home1/VolumeUp2）。knownはdebounceの既知bitであり、armedと分離。初回arm時は当該domainで全既知・release・failed0のためPMIC pack265(0x109)、keypad pack262(0x106)。rawは追加読取りせず既sampleのローカル値だけを使用する。flagsとpackはwait lock内でcopyし、Zw呼出しを含む保存はlock解放後。timer再arm条件/20ms、MMIO/PMIC操作、state/arming/failure latchは不変。
+
+B28..31 auxは`[reportID,1,2,3,0,0]`。aux3のbit0はCopyのNT_SUCCESS、bit1はWdfRequestCompleteの呼出しが復帰した事実。WdfRequestCompleteはVOIDであり独立した完了成功statusは取得できない。statusにはCopy実NTSTATUSだけを入れる。requestへの最後のaccessは元のCompleteであり、その後はlocal id/data/sだけを読む。HIDclass受信・kbdhid・OSによるキー消費は未証明。B18の従来の初期releaseを含む最初の配送試行は別に保持する。
+
+全新eventも既保存関数のPASSIVE_LEVEL/APC有効検査を通り、Interlockedの1回claimで最大1writeだけ。保存失敗のpoll retryやflush追加はない。B26/27はload内初回armのみであり後続D0は上書きしない。欠落/staleから未呼出し・未arm・未押下を断定しない。epoch一致は同loadだけで、今回boot保証には既boot境界との外部結合が必要。
+
+`tools/recovery/read-keypad13-checkpoint-loaded.ps1`は既6687版をこの基点へ追加し、値名B01..31/最大32値、kind、snapshot pack、押下auxを検査する。既80B/epoch検査とV1 schemaは維持。`input_boundary_observation.current_load_stages`はschema validかつ同loadの追加stageだけで、成功stage一覧ではない。B25は無効sampleでも到達し得る。`current_boot_proven`と`OS_input_consumption_proven`は常にfalse。旧1.3データの追加値欠落は正常に読めるが新境界はunknown。このbranchはcallerを追加せず、次の正当な一括更新側の同load callerへreaderを統合する必要がある。
+
+変更TUはwdf_keys.cだけ（checkpoint.h include）。reader/文書はhost側。新driverbuild/sign/採番/配備、追加load・押下依頼なし。次の通常更新に採用する前に固定sourceと1TU最小buildの別承認・artifact確認が必要。
