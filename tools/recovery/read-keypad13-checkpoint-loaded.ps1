@@ -1,8 +1,34 @@
+# Fixed service roots only; same already-loaded clone, no child traversal or writes.
+function Read-Post229ServiceRoots($Root,[string]$ControlSet) {
+ if($ControlSet -cne 'ControlSet001'){throw 'Fixed root controlset required'}
+ $result=[ordered]@{same_loaded_root=$true;scope='all root values of exactly three driver services; no child keys';services=[ordered]@{};errors=@();complete=$false}
+ foreach($name in @('mshidkmdf','Mt6392Keys','GE8300Render')) {
+  $path="$ControlSet\Services\$name";$key=$null
+  $row=[ordered]@{path=$path;present=$false;root_sha256=$null;values=[ordered]@{};complete=$false}
+  try {
+   $key=[MT8167OfflineHive.Native]::OpenPath($Root,$path,$false)
+   if(!$key){$row.complete=$true;continue}
+   $row.present=$true;$names=@($key.GetValueNames());if($names.Count -gt 64){throw 'Fixed service root value bound exceeded'}
+   foreach($vn in @($names|Sort-Object)) {
+    if($vn.Length -gt 255){throw 'Root value name bound exceeded'}
+    $v=[MT8167OfflineHive.Native]::ReadRawValue($key,$vn,65536)
+    if(!$v.Present -or $v.Type -notin @(0,1,2,3,4,7,11)){throw 'Root value changed or unexpected type'}
+    $row.values[$vn]=[ordered]@{type=[int]$v.Type;bytes=$v.Bytes;raw_hex=$v.RawHex}
+   }
+   $row.root_sha256=[MT8167OfflineHive.Native]::ValueFingerprint($key)
+   $row.complete=$true
+  }catch{$result.errors+=@{service=$name;message=$_.Exception.Message}}
+  finally{if($key){$key.Dispose()};$result.services[$name]=$row}
+ }
+ $result.complete=(!$result.errors.Count)
+ return $result
+}
 # Existing loaded private SYSTEM clone only. No load/unload or registry writes.
 function Read-Keypad13Checkpoint($Root,[string]$ControlSet) {
  if($ControlSet -cne 'ControlSet001'){throw 'Fixed keypad checkpoint controlset required'}
  $path="$ControlSet\Services\Mt6392Keys\Parameters\NativeCheckpoint"
  $r=[ordered]@{schema='MT8167_KEYPAD13_CHECKPOINT_V1';path=$path;present=$false;complete=$false;values=[ordered]@{};records=@();errors=@();current_epoch=$null;hardware_success_claimed=$false}
+ $r.service_roots=Read-Post229ServiceRoots $Root $ControlSet
  $k=[MT8167OfflineHive.Native]::OpenPath($Root,$path,$false)
  if(!$k){$r.complete=$true;return $r}
  try {
