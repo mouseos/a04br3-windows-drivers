@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect two fixed OS images inside a main-owned Recovery read-only mount.
+"""Collect fixed OS images inside a main-owned Recovery read-only mount.
 
 No mount, reboot, hive load or device write. The capture manifest remains intact;
 the separate receipt binds the logical copies to its Recovery generation.
@@ -24,15 +24,16 @@ def bounded_stream(serial,remote,size):
         if p.poll() is None:p.kill();p.wait()
         p.stdout.close()
 
-def collect(root,serial,manifest,out,run=subprocess.run,stream=bounded_stream):
+def collect(root,serial,manifest,out,run=subprocess.run,stream=bounded_stream,include_cdd=False):
     root=Path(root).resolve(strict=True);manifest=Path(manifest).resolve(strict=True);out=Path(out).resolve()
     if not manifest.is_relative_to(root) or not out.is_relative_to(root):raise ValueError('Root-local paths required')
     original=manifest.read_bytes();cap=json.loads(original)
+    assets=ASSETS+('Windows/System32/cdd.dll',) if include_cdd else ASSETS
     if not (cap['status']=='captured-unmounted' and cap['read_only'] is True and cap['unmounted'] is True and cap['errors']==[] and cap['serial']==serial):raise ValueError('Completed actual same-serial capture required')
     anchor=next(x for x in cap['files'] if x['source_path']==ANCHOR)
     out.mkdir(parents=True,exist_ok=True)
     receipt=out/'gpu-runtime-assets.json'
-    if receipt.exists() or any((out/'fixed'/x).exists() for x in ASSETS):raise ValueError('Never overwrite runtime evidence')
+    if receipt.exists() or any((out/'fixed'/x).exists() for x in assets):raise ValueError('Never overwrite runtime evidence')
     rows=[];errors=[];before=None;after=None
     def adb(*args):
         return run(['adb','-s',serial,*args],check=True,capture_output=True,timeout=60).stdout.decode().strip()
@@ -50,7 +51,7 @@ def collect(root,serial,manifest,out,run=subprocess.run,stream=bounded_stream):
         return dict(recovery_boot_id=boot,source_partition=device,SYSTEM_sha256=h)
     try:
         before=identity()
-        for name in ASSETS:
+        for name in assets:
             row=dict(source_path=name,status='not-collected');rows.append(row)
             remote=MOUNT+'/'+name
             present=adb('shell','sh','-c',"'if [ -f "+remote+" ] && [ ! -L "+remote+" ]; then echo PRESENT; elif [ ! -e "+remote+" ]; then echo ABSENT; else echo REJECTED; fi'")
@@ -77,12 +78,14 @@ def collect(root,serial,manifest,out,run=subprocess.run,stream=bounded_stream):
         read_only=True,mount_owner='main',mount_modified=False,physical_partition_readback=False,max_file_bytes=MAX_BYTES,
         before=before,after=after,same_recovery_and_SYSTEM_generation=before is not None and before==after,
         files=rows,missing_files=[x for x in rows if x['status']=='missing'],errors=errors,
-        complete=not errors and len(rows)==2 and all(x['status']=='captured' for x in rows),hardware_success_asserted=False)
+        complete=not errors and len(rows)==len(assets) and all(x['status']=='captured' for x in rows),hardware_success_asserted=False)
     receipt.write_text(json.dumps(result,indent=2)+'\n');receipt.chmod(0o600)
     if errors:raise ValueError('; '.join(errors))
     return result
 
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--workspace',type=Path,required=True);p.add_argument('--serial',required=True)
-    p.add_argument('--capture-manifest',type=Path,required=True);p.add_argument('--out',type=Path,required=True);a=p.parse_args()
-    collect(a.workspace,a.serial,a.capture_manifest,a.out)
+    p.add_argument('--capture-manifest',type=Path,required=True);p.add_argument('--out',type=Path,required=True)
+    p.add_argument('--include-cdd',action='store_true',help='Also collect the OS canonical display driver for source-bound analysis')
+    a=p.parse_args()
+    collect(a.workspace,a.serial,a.capture_manifest,a.out,include_cdd=a.include_cdd)
