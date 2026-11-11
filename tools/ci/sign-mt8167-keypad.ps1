@@ -61,7 +61,7 @@ try {
  $m|ConvertTo-Json -Depth 12|Set-Content -Encoding UTF8 "$OutputDirectory\signed-manifest.json"
  $signArchiveInputs=@($p,"$OutputDirectory/signed-manifest.json","$OutputDirectory/unsigned-manifest.json")
  if($keypad14){$signArchiveInputs+="$OutputDirectory/signature-receipt.json"}
- Compress-Archive -Path $signArchiveInputs -DestinationPath "$OutputDirectory/mt8167-keypad-signed.zip
+ Compress-Archive -Path $signArchiveInputs -DestinationPath "$OutputDirectory/mt8167-keypad-signed.zip"
  Get-FileHash "$OutputDirectory\mt8167-keypad-signed.zip" -Algorithm SHA256|Format-List
  Write-Output 'MT8167_KEYPAD_SIGNED_RETRIEVAL_READY_NOT_DEVICE_TESTED'
 } finally {$env:TEMP=$oldTemp;$env:TMP=$oldTmp}
