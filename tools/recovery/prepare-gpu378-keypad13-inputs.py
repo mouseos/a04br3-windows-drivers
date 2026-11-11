@@ -64,6 +64,7 @@ class Fresh227(old.Fresh225):
   require(prior['profile']==old.PROFILE,'actual run226 policy template only')
   ref=self.spec['retained_client_policy'];q=rooted(self.root,ref['path']);require(sha(q)==ref['sha256'],'original signed375 policy ref');ancestral=read(q)
   client=super().client(ancestral,originals,origin_sources,preserved,sources,witnesses)
+  self.client_references=[row[key] for row in ancestral['baseline221_client_transition_reference_only']['client_replacements'].values() for key in ('candidate','manifest','import_proof')]
   require(client==prior['diagnostic_clients'][0],'same actual375 client retained')
   # The shared builder creates UMD pre-copy witness before preserving files.
   require('Windows/System32/ge8300-umd.dll' in witnesses,'explicit UMD old-byte witness')
@@ -81,6 +82,7 @@ class Fresh227(old.Fresh225):
  def finish(self,p,spec,n,pin,pin_file):
   require(n['capture_number']==227 and n['new_service_name']==SERVICE and n['new_service']['present'] is False and n['registry_write_requested'] is False and n['full_service_capture_complete'] is True,'actual same-load227 / new227 absent')
   pin(spec['retained_client_policy'])
+  for ref in self.client_references:pin_file(ref)
   k=accepted()['keypad13'];km=pin(spec['keypad13_manifest']);kr=pin(spec['keypad13_handoff'])
   require(km['schema']=='mt8167-keypad13-incremental-v1' and km['source_commit']==k['source_commit'] and km['version']=='0.0.1.3' and kr['manifest_sha256']==k['manifest']['sha256'] and kr['SYS_sha256']==k['sys_sha256'] and kr['hardware_verified'] is False,'actual keypad1.3 raw receipt and main seal')
   for row in km['outputs']:pin_file(dict(path=(Path(k['manifest']['path']).parent/row['path']).as_posix(),sha256=row['sha256']))
