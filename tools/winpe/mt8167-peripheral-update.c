@@ -498,6 +498,7 @@ static DWORD legacy_usb_node_observation(DWORD discovery){
  e=installed_sys(2,0);proof.retained_sys_result=e;saved=save_blob(L"usb-pc-role.bin",&proof,sizeof(proof));record(2,0x28b,discovery);return e?e:saved;
 }
 #endif
+#include "display-idle-policy.h"
 #include "combined144-bt.h"
 static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_COUNT][5],directory_holds[PERIPHERAL_TARGET_COUNT];static WCHAR paths_[PERIPHERAL_TARGET_COUNT][3][MAX_PATH],extra_paths[2][MAX_PATH],folders[PERIPHERAL_TARGET_COUNT][MAX_PATH];SP_DEVINFO_DATA devs[PERIPHERAL_TARGET_COUNT];HDEVINFO set=INVALID_HANDLE_VALUE;DWORD i,j,pass,e=0,first=0;const WCHAR *members[5];for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){directory_holds[i]=INVALID_HANDLE_VALUE;for(j=0;j<5;j++)held[i][j]=INVALID_HANDLE_VALUE;}
  /* Every candidate trio is held, byte-checked and CAT-verified before staging. */
@@ -531,7 +532,13 @@ static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_CO
 #endif
  e=run_clients(first);if(e&&!first)first=e;
 #endif
- e=preserved();if(e&&!first)first=e;e=first;goto done;}
+ e=preserved();if(e&&!first)first=e;
+#if A04_DEVELOPMENT_DISPLAY_ON
+ /* All immutable baseline guards have passed. Keep optional power policy
+  * separate from GPU success, and do not change it after a guard failure. */
+ if(!e)(void)development_display_idle();
+#endif
+ e=first;goto done;}
  /* Only generated explicit install bits receive DIF; retained nodes are never reinstalled. */
  for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){if(!(A04_PERIPHERAL_INSTALL_MASK&(1u<<i)))continue;e=deferred_find(i,set,&devs[i]);if(!e)e=selected(i,set,&devs[i],0);if(!e&&A04_UNIFIED_DISPLAY177&&(i==5||render_target(i))){WCHAR actual[128];const WCHAR *wanted=i==5?L"ACPI\\MOU0007\\0":L"ACPI\\MOU0006\\0";if(!SetupDiGetDeviceInstanceIdW(set,&devs[i],actual,128,NULL))e=GetLastError();else if(lstrcmpiW(actual,wanted))e=ERROR_REVISION_MISMATCH;}if(!e)e=installed_sys(i,0);if(e)goto done;}
  for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){if(!(A04_PERIPHERAL_DEFERRED_UNBOUND_MASK&(1u<<i)))continue;e=deferred_find(i,set,&devs[i]);if(!e)e=first_keypad_baseline(i,set,&devs[i]);if(!e)e=installed_sys(i,0);if(e)goto done;}
@@ -554,12 +561,31 @@ static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_CO
  done:record(0,0x206,e);if(set!=INVALID_HANDLE_VALUE)SetupDiDestroyDeviceInfoList(set);for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){for(j=0;j<5;j++)if(held[i][j]!=INVALID_HANDLE_VALUE)CloseHandle(held[i][j]);if(directory_holds[i]!=INVALID_HANDLE_VALUE)CloseHandle(directory_holds[i]);}return e;}
 static DWORD batch_once(void){DWORD e;int diagnostic=0;e=local_system();if(e)return e;e=disable_self();if(e)return e;e=paths();if(e)return e;{WCHAR p[MAX_PATH];e=path(p,log_directory,L"service.log");if(e)return e;logfile=CreateFileW(p,GENERIC_WRITE,FILE_SHARE_READ,NULL,OPEN_ALWAYS,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_WRITE_THROUGH,NULL);if(logfile==INVALID_HANDLE_VALUE)return GetLastError();SetFilePointer(logfile,0,NULL,FILE_END);record(0,0x286,combined_run_id);record(0,0x287,combined_service_pid);}
 #if A04_DIAGNOSTIC_ONLY
- combined_diagnostic=1;e=deferred_marker(L"diagnostic-attempted.bin",1);if(!e)e=deferred_boot_fence(1);record(0,0x200,e);if(e)return e;return transaction(1);
+ combined_diagnostic=1;e=deferred_marker(L"diagnostic-attempted.bin",1);if(!e)e=deferred_boot_fence(1);record(0,0x200,e);if(e)return e;
+return transaction(1);
 #else
- e=deferred_marker(L"deferred-pending.bin",0);if(e==ERROR_FILE_NOT_FOUND){e=deferred_marker(L"install-attempted.bin",1);if(!e)e=deferred_boot_fence(1);}else if(!e){e=deferred_boot_fence(0);if(!e)e=deferred_marker(L"diagnostic-attempted.bin",1);diagnostic=1;combined_diagnostic=1;}record(0,0x200,e);if(e)return e;return transaction(diagnostic);
+ e=deferred_marker(L"deferred-pending.bin",0);if(e==ERROR_FILE_NOT_FOUND){e=deferred_marker(L"install-attempted.bin",1);if(!e)e=deferred_boot_fence(1);}else if(!e){e=deferred_boot_fence(0);if(!e)e=deferred_marker(L"diagnostic-attempted.bin",1);diagnostic=1;combined_diagnostic=1;}record(0,0x200,e);if(e)return e;
+return transaction(diagnostic);
 #endif
 }
-static DWORD once(void){REASON_CONTEXT r;HANDLE power;DWORD e=local_system(),cleanup=0;if(e)return e;memset(&r,0,sizeof(r));r.Version=POWER_REQUEST_CONTEXT_VERSION;r.Flags=POWER_REQUEST_CONTEXT_SIMPLE_STRING;r.Reason.SimpleReasonString=L"Fixed peripheral deferred update";power=PowerCreateRequest(&r);if(power==INVALID_HANDLE_VALUE)return GetLastError();if(!PowerSetRequest(power,PowerRequestSystemRequired)){e=GetLastError();CloseHandle(power);return e;}e=batch_once();if(!PowerClearRequest(power,PowerRequestSystemRequired))cleanup=GetLastError();if(!CloseHandle(power)&&!cleanup)cleanup=GetLastError();if(cleanup&&(e==0||e==ERROR_SUCCESS_REBOOT_REQUIRED))e=cleanup;return e;}
+static DWORD once(void){
+ REASON_CONTEXT r;HANDLE power;DWORD e=local_system(),cleanup=0,display_error=0;int display=0;if(e)return e;
+ memset(&r,0,sizeof(r));r.Version=POWER_REQUEST_CONTEXT_VERSION;r.Flags=POWER_REQUEST_CONTEXT_SIMPLE_STRING;
+ r.Reason.SimpleReasonString=L"Fixed peripheral deferred update";power=PowerCreateRequest(&r);
+ if(power==INVALID_HANDLE_VALUE)return GetLastError();
+ if(!PowerSetRequest(power,PowerRequestSystemRequired)){e=GetLastError();CloseHandle(power);return e;}
+#if A04_DEVELOPMENT_DISPLAY_ON
+ if(PowerSetRequest(power,PowerRequestDisplayRequired))display=1;else display_error=GetLastError();
+#endif
+ e=batch_once();
+#if A04_DEVELOPMENT_DISPLAY_ON
+ record(0,0x2b4,display_error);
+#endif
+ if(display){DWORD clear=PowerClearRequest(power,PowerRequestDisplayRequired)?0:GetLastError();record(0,0x2b5,clear);}
+ if(!PowerClearRequest(power,PowerRequestSystemRequired)&&!cleanup)cleanup=GetLastError();
+ if(!CloseHandle(power)&&!cleanup)cleanup=GetLastError();
+ if(cleanup&&(e==0||e==ERROR_SUCCESS_REBOOT_REQUIRED))e=cleanup;return e;
+}
 static void WINAPI control(DWORD c){if(c==SERVICE_CONTROL_STOP&&stop_event)SetEvent(stop_event);}
 static void WINAPI service_main(DWORD argc,WCHAR **argv){DWORD e,event_error;(void)argc;(void)argv;stop_event=CreateEventW(NULL,TRUE,FALSE,NULL);event_error=stop_event?0:GetLastError();status_handle=RegisterServiceCtrlHandlerW(service_name,control);if(!status_handle)return;memset(&service_status,0,sizeof(service_status));service_status.dwServiceType=SERVICE_WIN32_OWN_PROCESS;service_status.dwCurrentState=SERVICE_RUNNING;service_status.dwControlsAccepted=SERVICE_ACCEPT_STOP;SetServiceStatus(status_handle,&service_status);e=event_error?event_error:once();{DWORD final=combined_finalize(e);if(final&&(e==0||e==ERROR_SUCCESS_REBOOT_REQUIRED))e=final;}if(!A04_DIAGNOSTIC_ONLY&&e==ERROR_SUCCESS_REBOOT_REQUIRED){DWORD w=deferred_start_waiter();if(w){(void)disable_self();e=w;}}if(e&&e!=ERROR_SUCCESS_REBOOT_REQUIRED)(void)disable_self();record(0,0x207,e);if(logfile!=INVALID_HANDLE_VALUE){if(!FlushFileBuffers(logfile)&&!e)e=ERROR_WRITE_FAULT;CloseHandle(logfile);logfile=INVALID_HANDLE_VALUE;}service_status.dwCurrentState=SERVICE_STOPPED;service_status.dwControlsAccepted=0;if(e){service_status.dwWin32ExitCode=ERROR_SERVICE_SPECIFIC_ERROR;service_status.dwServiceSpecificExitCode=e;}SetServiceStatus(status_handle,&service_status);if(stop_event)CloseHandle(stop_event);}
 void mainCRTStartup(void){const WCHAR *cmd=GetCommandLineW();DWORD e,i;combined_service_pid=GetCurrentProcessId();combined_run_id=GetTickCount()^combined_service_pid;memset(combined_nodes,0xff,sizeof(combined_nodes));memset(combined_clients,0xff,sizeof(combined_clients));for(i=0;i<PERIPHERAL_TARGET_COUNT;i++)combined_nodes[i].observed=0;for(i=0;i<8;i++)combined_clients[i].observed=0;SetErrorMode(SEM_FAILCRITICALERRORS|SEM_NOOPENFILEERRORBOX);if(*cmd=='"'){cmd++;while(*cmd&&*cmd!='"')cmd++;if(*cmd)cmd++;}else while(*cmd&&*cmd!=' '&&*cmd!='\t')cmd++;while(*cmd==' '||*cmd=='\t')cmd++;if(!lstrcmpW(cmd,L"--reboot-after-stop"))e=deferred_reboot_waiter();else if(*cmd)e=ERROR_INVALID_PARAMETER;else{SERVICE_TABLE_ENTRYW t[2]={{(LPWSTR)service_name,service_main},{NULL,NULL}};e=StartServiceCtrlDispatcherW(t)?0:GetLastError();}if(logfile!=INVALID_HANDLE_VALUE)CloseHandle(logfile);ExitProcess(e);}

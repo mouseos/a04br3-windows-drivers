@@ -11,6 +11,7 @@ import json,re,sys
 r=Path.cwd();d=Path(sys.argv[1]).resolve().parent
 c=json.loads(Path(sys.argv[1]).read_text());s=json.loads(Path(sys.argv[2]).read_text())
 known={
+ 'GPU377_RUN226_MAIN_SEAL_V1':('combined-run226','MT8167CombinedFollowup225'),
  'GPU368_RUN201_MAIN_SEAL_V1':('combined-run201','MT8167CombinedFollowup200'),
  'GPU368_RUN203_MAIN_SEAL_V1':('combined-run203','MT8167CombinedFollowup202'),
  'GPU375_COMBINED_RUN222_MAIN_SEAL_V1':('combined-run222','MT8167CombinedFollowup221'),

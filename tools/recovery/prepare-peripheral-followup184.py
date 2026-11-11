@@ -56,6 +56,9 @@ def package(root,e,role):
   require(pm['recipe_source_commit']=='48b3fd2a001022e1fcd34d17593548875799361d' and pm['runtime_source_commit']==pm['kernel_binary_source_commit']=='2f63b0e6b7e4466c89dbc9c48d0f005d91f9069d' and pm['baseline372_manifest_sha256']=='e987826bdc5a9a8085c31ebeccf6c0680e96cd8bb7ef5ad56748869bc41bccfc' and pm['success'] is True and pm['signed'] is True and pm['signer_thumbprint']=='BCBF6C456C6F0DD0818434763B189488FBF13570','正式376/372 source tupleのみ')
   require(pm['retained_transport372_UMD_FW_clients'] is True and pm['inf_driverver']=='11/10/2026,0.0.3.76' and pm['hardware_verified'] is False,'実376署名を実機成功へ読み替えない')
   package_source=pm['recipe_source_commit']
+ if pm.get('schema')=='ge8300-gdi377-render-sign-only-v1':
+  require(role=='render' and sha(mp)=='767c1877268042331a0eee5125e080ccc1b2ec0be125f1b6665a9a171dfeff0e' and pm['recipe_source_commit']==pm['runtime_source_commit']==pm['kernel_binary_source_commit']=='956008469031c7d0a8872a821250214b43b905b2' and pm['success'] is True and pm['signed'] is True and pm['signer_thumbprint']=='BCBF6C456C6F0DD0818434763B189488FBF13570' and pm['inf_driverver']=='11/11/2026,0.0.3.77' and pm['hardware_verified'] is False,'実377 render schemaだけ')
+  package_source=pm['recipe_source_commit']
  require(package_source==e['source_commit'],'Package source mismatch')
  require(set(e['names'])=={'inf','sys','cat'} and e['names']['sys']==TARGETS[role][3],'Exact role trio required')
  hashes={}
