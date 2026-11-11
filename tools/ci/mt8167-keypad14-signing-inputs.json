@@ -1,0 +1,127 @@
+{
+  "schema": "mt8167-keypad14-strict-signing-v1",
+  "input_zip_sha256": "9604d0c2504635923933f7a13b6ddcf7a08aa69c360e86d6de35366232c79a9d",
+  "files": [
+    {
+      "path": "actual-dependencies.json",
+      "bytes": 21756,
+      "sha256": "f143f9d6a03381da6e7d313443ffaafeecdc1c67b757f8343ee4fc38fcee14b8"
+    },
+    {
+      "path": "baseline13-signed-manifest.json",
+      "bytes": 15657,
+      "sha256": "c2a7c929bc34370d56448ef18275c2226320918f471857e82ef82725d51cb586"
+    },
+    {
+      "path": "commands.json",
+      "bytes": 3585,
+      "sha256": "c070f80fb5b679d11e46c8a816d25ee66025d28e7ddc6d401ab5bd6448b8dc07"
+    },
+    {
+      "path": "compile-manifest.json",
+      "bytes": 25060,
+      "sha256": "e0e4a635e98af6735a0d4bc325d7cc7eae0b9624fcf7136ab9df6fc713a29ca6"
+    },
+    {
+      "path": "header-inputs.json",
+      "bytes": 646531,
+      "sha256": "cc71e676b62abafbd056dfca1bef379443a2c0c4e9fc3bb3fe539c4afe49dff0"
+    },
+    {
+      "path": "obj/button_pipeline.obj",
+      "bytes": 1161,
+      "sha256": "f766eee193c6ba31d9e79b87be476ed0c78c1078bf98b9ff89c54275a416afeb"
+    },
+    {
+      "path": "obj/button_state.obj",
+      "bytes": 580,
+      "sha256": "009405ef821add8eae38712d686bbfa41bf5c9a26d7fa8e720ea56d825e1553b"
+    },
+    {
+      "path": "obj/wdf_keys.obj",
+      "bytes": 9832,
+      "sha256": "7ac496f946edf9dc99883817c36c159e203ace9da4486261c076c16ad03b130d"
+    },
+    {
+      "path": "package/mt8167-keypad.inf",
+      "bytes": 1048,
+      "sha256": "5bd471ba9651f790e78cd0bb8415d1f19fa03a3c2bb6624fd20304ce647e9a83"
+    },
+    {
+      "path": "package/mt8167-keypad.sys",
+      "bytes": 13312,
+      "sha256": "bb86f2926be95aa9a666b7b28225225101c6a1478539bd98349cbfa046eb8bfe"
+    },
+    {
+      "path": "prior-native-admission-receipt.json",
+      "bytes": 2865,
+      "sha256": "4e7665160b824087b75ddd4959912b7aed61a21044d41a074a79bee5fc132cdb"
+    },
+    {
+      "path": "raw-unsigned-manifest.json",
+      "bytes": 35089,
+      "sha256": "36b1f9bf0626c981ed29bd3ee85603d80e1c2b1b59df3606abbe19e2627bf334"
+    },
+    {
+      "path": "unsigned-manifest.json",
+      "bytes": 34655,
+      "sha256": "e549884f5daf5eb0d437e413ea6a5745a11ba4a25f7af5fb3d78959cf3e383f7"
+    }
+  ],
+  "unsigned_manifest_sha256": "e549884f5daf5eb0d437e413ea6a5745a11ba4a25f7af5fb3d78959cf3e383f7",
+  "compiled_source_commit": "39966436b4dc65c28386b02ba5481ce9513a894e",
+  "link_recipe_commit": "e2eb21f55449e2ffcb2af3d2a6d57c0cac4815ac",
+  "metadata_commit": "b3e3734761574862483edb7934b58e77fca80a6a",
+  "observation_commit": "a13bf4745a9498ea4e8e549bc8bf6af2829a0ab9",
+  "baseline_source_commit": "3414de13b08f64a54e9dd350f306da7023a44f47",
+  "baseline13_signed_manifest_sha256": "c2a7c929bc34370d56448ef18275c2226320918f471857e82ef82725d51cb586",
+  "version": "0.0.1.4",
+  "driverver": "11/11/2026,0.0.1.4",
+  "target": "MT6392\\Buttons",
+  "service": "Mt6392Keys",
+  "certificate_thumbprint": "BCBF6C456C6F0DD0818434763B189488FBF13570",
+  "repo_inputs": [
+    {
+      "path": "drivers/input/mt8167-keypad/wdf_keys.c",
+      "sha256": "c0fc7587987da033185e2bb75b3a04afe03a42339c8e43dbbd8b86f5eed0a114"
+    },
+    {
+      "path": "drivers/input/mt8167-keypad/checkpoint.h",
+      "sha256": "6dfd3fcf20a33a957105da036705ab1a866dbbb60c57ce5ba50054bd22f4ebd9"
+    },
+    {
+      "path": "drivers/input/mt8167-keypad/state.h",
+      "sha256": "6293366f073d61031e1dff8890a85ed29521cf1d543210215291e6379589aabd"
+    },
+    {
+      "path": "drivers/input/mt8167-keypad/mt8167-keypad.inf",
+      "sha256": "5bd471ba9651f790e78cd0bb8415d1f19fa03a3c2bb6624fd20304ce647e9a83"
+    },
+    {
+      "path": "drivers/input/a04br3-buttons/button_state.c",
+      "sha256": "d204555899d74f14bf452dffe7a7d7f6b6b89ef57cc3cf88903bebb62bf32914"
+    },
+    {
+      "path": "drivers/input/a04br3-buttons/button_state.h",
+      "sha256": "e2d2550c092d8b93bff39715a429f3991cf72d2446a519efc43c0f1b026e06c7"
+    },
+    {
+      "path": "drivers/input/a04br3-buttons/button_pipeline.c",
+      "sha256": "b136c897985372e48f5b482eb4098a1c18820994557bbc0712c380b9a496e2b3"
+    },
+    {
+      "path": "drivers/input/a04br3-buttons/button_pipeline.h",
+      "sha256": "3181ebd4d111e67098afc164ca9490bea104e525b830425cea75850023a9507e"
+    },
+    {
+      "path": "drivers/input/a04br3-buttons/shared_parent_contract.h",
+      "sha256": "60aa41f3b5b88cf6c80b1d36b792ac66f5b1d4dfc8da55df5e66c70b81c967c6"
+    },
+    {
+      "path": "drivers/bus/mt8167-shared/client_interface.h",
+      "sha256": "834f95464996e6fb4e33f3ad568d7ae3c04bf44059372ba1ff3f647b396f5477"
+    }
+  ],
+  "signtool_sha256": "854c356a9d9977fb2ed22ce04b531ab6f4417da06a4dba6e3d3d628b9cfb988c",
+  "inf2cat_sha256": "0a51b4d598ecf9ca4eb82cbb13e89d0eee8e477661616cd942cf0ade57ddaf27"
+}
