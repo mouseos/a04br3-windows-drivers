@@ -6,8 +6,9 @@ $c=Get-Content "$base\profile.json" -Raw|ConvertFrom-Json
 if($c.schema -ceq 'MT8167_USB1121_FRESH198_SERVICE_V1'){
  if($c.fresh_sha256 -cne '4cfe2edfded6ff752ff145b46c33af910b30370e99079f9c75704cf17e2467a3'){throw 'historical fresh198 pin mismatch'}
 }elseif($c.schema -ceq 'MT8167_USB1121_REBOUND_SERVICE_V2'){
- if($c.fresh_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $c.final_gpu_manifest_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $c.final_policy_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $c.target_gpu_version -cnotmatch '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' -or $c.final_gpu_source_commit -cnotmatch '^[0-9a-f]{40}$' -or $c.integration_phase -cne 'after-final-gpu-before-final-flush' -or $c.preservation_comparison.service_preservation_equal -ne $true -or $c.preservation_comparison.captured_registry_values_equal -ne $true){throw 'final baseline/signed GPU binding required'}
+ if($c.fresh_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $c.final_gpu_manifest_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $c.final_policy_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $c.target_gpu_version -cnotmatch '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' -or $c.final_gpu_source_commit -cnotmatch '^[0-9a-f]{40}$' -or $c.integration_phase -cnotin @('after-final-gpu-before-final-flush','standalone-retained-gpu') -or $c.preservation_comparison.service_preservation_equal -ne $true -or $c.preservation_comparison.captured_registry_values_equal -ne $true){throw 'final baseline/signed GPU binding required'}
 }else{throw 'unsupported exact-pinned USB profile'}
+if($c.integration_phase -ceq 'standalone-retained-gpu' -and ($c.gpu_update -ne $false -or $c.current_gpu_capture_verified -ne $true -or !$c.preserved_gpu_witnesses)){throw 'current captured GPU preservation required'}
 foreach($f in $c.files.PSObject.Properties){
  $p=[IO.Path]::GetFullPath((Join-Path $base $f.Name))
  if(!$p.StartsWith($base+'\',[StringComparison]::OrdinalIgnoreCase) -or (Sha $p) -cne $f.Value){throw 'profile payload drift'}

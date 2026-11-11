@@ -109,3 +109,7 @@ policyへUSBのhashを追記せず、共通media sealから独立したGPU polic
 親/HCD停止証明、rollback、source_ON=false、force_host=false、root PDOなし、
 run/PIDに結合したSCM_STOP/FLUSH/TERMINAL gateは維持する。
 最終入力生成・build/sign・実機検証はmainの合図と最終入力の固定後に実施する。
+
+現在GPUを保持して既存disabled serviceを再有効化する専用経路は
+[既存serviceの再有効化](usb1121-current-existing-rearm.md)を参照する。
+GPU更新同時phaseとの実機併用は未検証であり、同じ媒体へ混在させない。

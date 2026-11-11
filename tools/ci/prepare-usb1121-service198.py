@@ -64,7 +64,25 @@ def bind_gpu(root, policy, manifest_path, manifest_pin):
              final_gpu_source_commit=gm['source_commit']),retained
 
 
-def prepare(root,out,*,fresh_manifest=None,fresh_sha256=None,native_receipt=None,native_sha256=None,final_policy=None,final_policy_sha256=None,gpu_manifest=None,gpu_manifest_sha256=None):
+def captured_gpu_sources(root, fresh_path, fresh_pin, gpu_sources, supplement=None, supplement_pin=None):
+ fm=b.read(fresh_path);captured={x['source_path']:(fresh_path,x) for x in fm['files']}
+ if supplement is not None:
+  sp=b.below(root,supplement);b.require(supplement_pin and b.sha(sp)==supplement_pin,'GPU補足capture pin不一致')
+  extra=b.read(sp)
+  b.require(extra.get('source_manifest_sha256')==fresh_pin and extra.get('recovery_boot_id')==fm['recovery_boot_id'] and extra.get('status')=='captured-unmounted' and extra.get('read_only') is True and extra.get('unmounted') is True and extra.get('errors')==[],'同一freshのGPU補足captureが必要')
+  for x in extra['files']:
+   name=x['source_path']
+   b.require(name not in captured or captured[name][1]['sha256']==x['sha256'],'GPU補足captureの競合')
+   captured[name]=(sp,x)
+ result={}
+ for name,entry in gpu_sources.items():
+  b.require(name in captured,'現在GPUの実capture witness不足: '+name)
+  mp,f=captured[name];q=b.below(root,mp.parent/f['backup_path'])
+  b.require(b.sha(q)==f['sha256']==entry['sha256'],'保持GPUと現在captureのbyte不一致')
+  result[name]=dict(path=q.relative_to(root).as_posix(),sha256=f['sha256'])
+ return result
+
+def prepare(root,out,*,fresh_manifest=None,fresh_sha256=None,native_receipt=None,native_sha256=None,final_policy=None,final_policy_sha256=None,gpu_manifest=None,gpu_manifest_sha256=None,retain_current_gpu=False,gpu_capture_manifest=None,gpu_capture_sha256=None):
  root=root.resolve(strict=True);out=out.resolve();rebound=fresh_manifest is not None
  if rebound:
   b.require(all((fresh_sha256,native_receipt,native_sha256,final_policy,final_policy_sha256,gpu_manifest,gpu_manifest_sha256)),'final実入力の全pinが必要')
@@ -74,6 +92,13 @@ def prepare(root,out,*,fresh_manifest=None,fresh_sha256=None,native_receipt=None
   final=b.read(pp)
   comparison=b.admit_native(root,fp,fresh_sha256,np,native_sha256,final)
   gpu_binding,gpu_retained=bind_gpu(root,final,gp0,gpu_manifest_sha256)
+  if retain_current_gpu:
+   gpu_retained=captured_gpu_sources(root,fp,fresh_sha256,gpu_retained,gpu_capture_manifest,gpu_capture_sha256)
+   original={x['source_path']:x for x in b.read(fp)['files']}
+   b.require('Windows/System32/'+SERVICE+'.exe' in original,'existing USB EXEの実baseline captureが必要')
+   gpu_binding.update(integration_phase='standalone-retained-gpu',gpu_update=False,current_gpu_capture_verified=True,preserved_gpu_witnesses=gpu_retained)
+ b.require(not retain_current_gpu or rebound,'current standaloneには実captureの再結合が必要')
+ b.require(not (gpu_capture_manifest or gpu_capture_sha256) or retain_current_gpu,'GPU補足captureはstandalone専用')
  b.require(out.is_relative_to(root) and not out.exists(),'root内新規出力必須')
  zpath=b.below(root,'port/xnu/out/windows-rt-usb1121-helper42796448681/usb1121-helper-signed.zip');b.require(b.sha(zpath)==ZIP,'signed ZIP drift')
  with zipfile.ZipFile(zpath) as z:
@@ -116,16 +141,23 @@ def prepare(root,out,*,fresh_manifest=None,fresh_sha256=None,native_receipt=None
  (out/'usb1121-service-pins.h').write_text(header)
  for n in ('SYSTEM','SYSTEM.LOG1','SYSTEM.LOG2'):
   f=fresh['Windows/System32/config/'+n];d=out/'fresh-system'/n;d.parent.mkdir(exist_ok=True);shutil.copyfile(b.below(root,fm_path.parent/f['backup_path']),d)
+ if retain_current_gpu:
+  prov=out/'provenance';prov.mkdir()
+  shutil.copyfile(fp,prov/'fresh-manifest.json');shutil.copyfile(np,prov/'native-receipt.json');shutil.copyfile(pp,prov/'final-policy.json')
+  if gpu_capture_manifest:shutil.copyfile(b.below(root,gpu_capture_manifest),prov/'gpu-capture-manifest.json')
  closure={p.relative_to(out).as_posix():b.sha(p) for p in out.rglob('*') if p.is_file()}
- (out/'input-closure.json').write_text(json.dumps(dict(schema='MT8167_USB1121_SERVICE_INPUTS_V1',files=closure,profile_sha256=b.sha(payload/'profile.json'),fresh_sha256=profile['fresh_sha256'],native_sha256=profile['native_receipt_sha256'],binding_schema=profile['schema'],final_policy_sha256=final_policy_sha256,final_gpu_manifest_sha256=gpu_manifest_sha256,integration_phase=profile.get('integration_phase'),target_gpu_version=profile.get('target_gpu_version'),final_gpu_source_commit=profile.get('final_gpu_source_commit'),signed_helper_zip_sha256=ZIP),indent=2)+'\n')
+ (out/'input-closure.json').write_text(json.dumps(dict(schema='MT8167_USB1121_SERVICE_INPUTS_V1',files=closure,profile_sha256=b.sha(payload/'profile.json'),fresh_sha256=profile['fresh_sha256'],native_sha256=profile['native_receipt_sha256'],binding_schema=profile['schema'],final_policy_sha256=final_policy_sha256,final_gpu_manifest_sha256=gpu_manifest_sha256,integration_phase=profile.get('integration_phase'),target_gpu_version=profile.get('target_gpu_version'),final_gpu_source_commit=profile.get('final_gpu_source_commit'),gpu_update=profile.get('gpu_update'),gpu_capture_sha256=gpu_capture_sha256,signed_helper_zip_sha256=ZIP),indent=2)+'\n')
  return profile
 if __name__=='__main__':
  ap=argparse.ArgumentParser();ap.add_argument('--workspace',type=Path,required=True);ap.add_argument('--out',type=Path,required=True)
  for n in ('fresh-manifest','native-receipt','final-policy','gpu-manifest'):ap.add_argument('--'+n,type=Path)
  for n in ('fresh-sha256','native-sha256','final-policy-sha256','gpu-manifest-sha256'):ap.add_argument('--'+n)
+ ap.add_argument('--retain-current-gpu',action='store_true')
+ ap.add_argument('--gpu-capture-manifest',type=Path);ap.add_argument('--gpu-capture-sha256')
  ap.add_argument('--native-admission-only',action='store_true',help='実fresh/nativeと確定policyのみ比較。配備入力を生成しない')
- a=ap.parse_args();values={k:v for k,v in vars(a).items() if k not in ('workspace','out','native_admission_only')}
+ a=ap.parse_args();values={k:v for k,v in vars(a).items() if k not in ('workspace','out','native_admission_only','retain_current_gpu','gpu_capture_manifest','gpu_capture_sha256')}
  if a.native_admission_only:
+  b.require(not a.retain_current_gpu and not a.gpu_capture_manifest and not a.gpu_capture_sha256,'admission-onlyは配備modeと混在不可')
   b.require(all(values[k] for k in ('fresh_manifest','fresh_sha256','native_receipt','native_sha256','final_policy','final_policy_sha256')) and not a.gpu_manifest and not a.gpu_manifest_sha256,'native admissionには6 pinのみ必要')
   root=a.workspace.resolve(strict=True);pp=b.below(root,a.final_policy)
   b.require(b.sha(pp)==a.final_policy_sha256,'policy pin drift')
@@ -135,4 +167,5 @@ if __name__=='__main__':
   out.mkdir(parents=True);(out/'native-admission.json').write_text(json.dumps(result,indent=2)+'\n')
   print('USB1121_NATIVE_POLICY_ADMISSION_ONLY_NO_DEPLOYMENT');raise SystemExit(0)
  b.require(not any(values.values()) or all(values.values()),'再結合入力8項目は全指定必須')
- prepare(a.workspace,a.out,**values);print('USB1121_EXACT_INPUTS_PREPARED_NO_HARDWARE')
+ b.require(bool(a.gpu_capture_manifest)==bool(a.gpu_capture_sha256),'GPU補足captureはpath/hash両方必要')
+ prepare(a.workspace,a.out,**values,retain_current_gpu=a.retain_current_gpu,gpu_capture_manifest=a.gpu_capture_manifest,gpu_capture_sha256=a.gpu_capture_sha256);print('USB1121_EXACT_INPUTS_PREPARED_NO_HARDWARE')

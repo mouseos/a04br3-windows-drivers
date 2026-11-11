@@ -47,6 +47,11 @@ namespace MT8167Usb1121OfflineHive {
             CloseHandle(token);token=IntPtr.Zero;
         }
     }
+    public sealed class RawValue {
+        public uint type { get; set; }
+        public int bytes { get; set; }
+        public string raw_hex { get; set; }
+    }
     public static class Native {
         static readonly HashSet<IntPtr> PrivateRoots = new HashSet<IntPtr>();
         static readonly IntPtr HKLM = new IntPtr(unchecked((int)0x80000002));
@@ -75,7 +80,7 @@ namespace MT8167Usb1121OfflineHive {
         }
         public static RegistryKey OpenPath(RegistryKey root,string path,bool writable) {
             if(!PrivateRoots.Contains(root.Handle.DangerousGetHandle())) throw new ArgumentException("Only our private clone root is allowed");
-            if(path!="Select" && path!="ControlSet001\\Services" && !path.StartsWith("ControlSet001\\Services\\",StringComparison.Ordinal) && path!="ControlSet001\\Control\\GraphicsDrivers") throw new ArgumentException("USB198 private path allowlist");
+            if(path!="Select" && path!="ControlSet001\\Services" && !path.StartsWith("ControlSet001\\Services\\",StringComparison.Ordinal) && path!="ControlSet001\\Control\\GraphicsDrivers" && !path.StartsWith("ControlSet001\\Control\\GraphicsDrivers\\",StringComparison.Ordinal)) throw new ArgumentException("USB198 private path allowlist");
             RegistryKey current=null;
             try {
                 foreach(string part in path.Split('\\')) {
@@ -103,26 +108,60 @@ namespace MT8167Usb1121OfflineHive {
             } finally { if(current!=null) current.Dispose(); }
         }
         static string Hex(byte[] data) { return BitConverter.ToString(data).Replace("-","").ToLowerInvariant(); }
-        // Deliberately shallow: raw values of an explicitly opened related key.
-        // Never enumerate child keys or traverse the full offline SYSTEM hive.
-        public static string ValueFingerprint(RegistryKey key) {
+        [DllImport("advapi32.dll")] static extern int RegGetKeySecurity(IntPtr key,uint information,byte[] descriptor,ref uint bytes);
+        public static string SecurityFingerprint(RegistryKey key) {
+            uint bytes=0;int rc=RegGetKeySecurity(key.Handle.DangerousGetHandle(),7,null,ref bytes);
+            if(rc!=122 || bytes==0 || bytes>1024*1024) throw new Win32Exception(rc);
+            byte[] data=new byte[bytes];rc=RegGetKeySecurity(key.Handle.DangerousGetHandle(),7,data,ref bytes);
+            if(rc!=0) throw new Win32Exception(rc);
+            using(SHA256 hash=SHA256.Create()) return Hex(hash.ComputeHash(data,0,(int)bytes));
+        }
+        public static SortedDictionary<string,RawValue> RawValues(RegistryKey key) {
+            SortedDictionary<string,RawValue> values=new SortedDictionary<string,RawValue>(StringComparer.OrdinalIgnoreCase);
+            for(uint i=0;;++i) {
+                StringBuilder name=new StringBuilder(16384);uint chars=16384,type,bytes=4096;byte[] data=new byte[4096];
+                int rc=RegEnumValue(key.Handle.DangerousGetHandle(),i,name,ref chars,IntPtr.Zero,out type,data,ref bytes);
+                if(rc==259) break;
+                if(rc==234) {
+                    if(bytes>64*1024*1024) throw new InvalidOperationException("Registry value limit");
+                    data=new byte[bytes];chars=16384;name.Length=0;
+                    rc=RegEnumValue(key.Handle.DangerousGetHandle(),i,name,ref chars,IntPtr.Zero,out type,data,ref bytes);
+                }
+                if(rc!=0) throw new Win32Exception(rc);
+                byte[] raw=new byte[bytes];Array.Copy(data,raw,bytes);
+                values.Add(name.ToString(),new RawValue { type=type,bytes=(int)bytes,raw_hex=Hex(raw) });
+            }
+            return values;
+        }
+        static void Expect(IDictionary<string,RawValue> values,string name,uint type,byte[] raw) {
+            RawValue v;
+            if(!values.TryGetValue(name,out v) || v.type!=type || v.bytes!=raw.Length || v.raw_hex!=Hex(raw))
+                throw new InvalidOperationException("USB service raw identity mismatch: "+name);
+        }
+        public static void VerifyServiceIdentity(IDictionary<string,RawValue> values,int start) {
+            Expect(values,"Type",4,BitConverter.GetBytes(16));
+            Expect(values,"Start",4,BitConverter.GetBytes(start));
+            Expect(values,"ErrorControl",4,BitConverter.GetBytes(1));
+            Expect(values,"ImagePath",1,Encoding.Unicode.GetBytes("\"C:\\Windows\\System32\\MT8167Usb1121Install198.exe\"\0"));
+            Expect(values,"ObjectName",1,Encoding.Unicode.GetBytes("LocalSystem\0"));
+            Expect(values,"DisplayName",1,Encoding.Unicode.GetBytes("MediaTek MT8167 USB ABI3 Installation\0"));
+        }
+        // Startの除外はsnapshotの厳密なservice rootでだけ指定する。子キーは除外しない。
+        public static string ValueFingerprint(RegistryKey key) { return FingerprintValues(RawValues(key),null); }
+        public static string ValueFingerprintExceptStart(RegistryKey key) { return FingerprintValues(RawValues(key),"Start"); }
+        public static string FingerprintValues(IDictionary<string,RawValue> raw,string excluded) {
             SortedDictionary<string,string> values=new SortedDictionary<string,string>(StringComparer.OrdinalIgnoreCase);
             using(SHA256 hash=SHA256.Create()) {
-                for(uint i=0;;++i) {
-                    StringBuilder name=new StringBuilder(16384);uint chars=16384,type,bytes=4096;byte[] data=new byte[4096];
-                    int rc=RegEnumValue(key.Handle.DangerousGetHandle(),i,name,ref chars,IntPtr.Zero,out type,data,ref bytes);
-                    if(rc==259) break;
-                    if(rc==234) {
-                        if(bytes>64*1024*1024) throw new InvalidOperationException("Registry value limit");
-                        data=new byte[bytes];chars=16384;name.Length=0;
-                        rc=RegEnumValue(key.Handle.DangerousGetHandle(),i,name,ref chars,IntPtr.Zero,out type,data,ref bytes);
-                    }
-                    if(rc!=0) throw new Win32Exception(rc);
-                    values.Add(name.ToString(),type+":"+bytes+":"+Hex(hash.ComputeHash(data,0,(int)bytes)));
+                foreach(KeyValuePair<string,RawValue> item in raw) {
+                    if(String.Equals(item.Key,excluded,StringComparison.OrdinalIgnoreCase)) continue;
+                    RawValue v=item.Value;byte[] data=new byte[v.bytes];
+                    if(v.raw_hex.Length!=v.bytes*2) throw new InvalidOperationException("Invalid raw length");
+                    for(int i=0;i<data.Length;++i) data[i]=Convert.ToByte(v.raw_hex.Substring(i*2,2),16);
+                    values.Add(item.Key,v.type+":"+v.bytes+":"+Hex(hash.ComputeHash(data)));
                 }
                 foreach(KeyValuePair<string,string> item in values) {
-                    byte[] b=Encoding.UTF8.GetBytes(item.Key.ToUpperInvariant()+"\0"+item.Value+"\n");
-                    hash.TransformBlock(b,0,b.Length,b,0);
+                    byte[] data=Encoding.UTF8.GetBytes(item.Key.ToUpperInvariant()+"\0"+item.Value+"\n");
+                    hash.TransformBlock(data,0,data.Length,data,0);
                 }
                 hash.TransformFinalBlock(new byte[0],0,0);return Hex(hash.Hash);
             }
