@@ -30,7 +30,8 @@ def admit(c,p,explicit):
  require(c.get('vidpn_uart_snapshot')==snapshot_config(p),'seal/profile snapshot opt-in mismatch')
  return cfg
 def proof_events(raw,terminal,policy):
- require(terminal['phase']==1 and terminal['flush']==0 and all(terminal['clients'][i].get('pid',0)>0 and 'result' in terminal['clients'][i] for i in (0,1)),'both clients must finish in the same terminal')
+ clients=terminal.get('clients',{})
+ require(terminal.get('phase')==1 and terminal.get('flush')==0 and all(type(terminal.get(k)) is int for k in ('run','PID','code')) and isinstance(clients,dict) and all(isinstance(clients.get(i),dict) and clients[i].get('pid',0)>0 and 'result' in clients[i] for i in (0,1)),'both clients must finish in the same terminal')
  events=[]
  for line in raw.splitlines():
   hit=re.fullmatch(rb'PB 00000000 (000002[D-E][0-9A-F]) ([0-9A-F]{8})\r?',line)

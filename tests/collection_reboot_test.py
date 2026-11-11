@@ -64,6 +64,8 @@ class CollectionTest(unittest.TestCase):
   r=cr.wait_fastboot(self.out,c,self.out,self.terminal(),uart,0,lambda x:x,run,engine.BOUNDED_DEVICE_SHELL,clock,sleep);self.assertFalse(r['hardware_success']);self.assertEqual(len(calls),2)
   uart.write_bytes(b'');r=cr.wait_fastboot(self.out,c,self.out,self.terminal(),uart,0,lambda x:x,run,engine.BOUNDED_DEVICE_SHELL,clock,sleep)
   self.assertIsNone(r['Windows_shutdown_API_return0']);self.assertFalse(r['UART_shutdown_proof_complete']);self.assertEqual(r['collection_transport_status'],'fastboot-observed-shutdown-unproven')
+  incomplete=self.terminal();incomplete['clients']={}
+  r=cr.wait_fastboot(self.out,c,self.out,incomplete,uart,0,lambda x:x,run,engine.BOUNDED_DEVICE_SHELL,clock,sleep);self.assertIsNone(r['Windows_shutdown_API_return0']);self.assertFalse(r['hardware_success'])
   uart.write_bytes(b'A04WIN BUGCHECK\n'+self.uart().replace(b'000002D1 00000000',b'000002D1 00000005'))
   r=cr.wait_fastboot(self.out,c,self.out,self.terminal(),uart,0,lambda x:x,run,engine.BOUNDED_DEVICE_SHELL,clock,sleep)
   self.assertIsNone(r['Windows_shutdown_API_return0']);self.assertTrue(r['runtime_fault_observed']);self.assertIsNotNone(r['UART_proof_validation_error']);self.assertFalse(r['hardware_success'])
