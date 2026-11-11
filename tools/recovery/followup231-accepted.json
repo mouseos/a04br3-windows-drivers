@@ -7,7 +7,10 @@
     "path": "port/xnu/out/windows-rt-vidpn-callback-candidate/kernel379/build/package379/signed-manifest.json",
     "sha256": "2046d42b7da6c5c3401a87786ff45b3ff4f02ae49804ecf9f3c5fb62cada6aa9"
   },
-  "client_pair": null,
+  "client_pair": {
+    "path": "port/xnu/out/windows-rt-vidpn-callback-candidate/launcher42965825010/pair-signed-manifest.json",
+    "sha256": "8682c4b9232643c7de5c85644687946f54d9096733f9806b4348b1d2bd502f05"
+  },
   "main_review": null,
   "filter_root_transitions": []
 }

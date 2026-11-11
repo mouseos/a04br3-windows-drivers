@@ -26,8 +26,7 @@ def make(owner):
    return row
   def client(self,prior,originals,origin_sources,preserved,sources,witnesses,**unused):
    c=super().client(prior,originals,origin_sources,preserved,sources,witnesses,**unused)
-   ref=self.lock['client_pair'];pair=read(rooted(self.root,ref['path']))
-   require(set(pair)=={'schema','launcher_source_commit','launcher','evaluator'} and pair['schema']=='FOLLOWUP231_SIGNED_CLIENT_PAIR_V1','exact signed settle pair shape')
+   ref=self.lock['client_pair'];pair=native.inspect_signed_pair(self.root,rooted(self.root,ref['path']))
    l=admission._signed_leaf(self.root,pair['launcher']);e=admission._signed_leaf(self.root,pair['evaluator'])
    require(e['phase']=='evaluator' and e['runtime_source_commit']==native.CLIENT and pair['evaluator']['file']['sha256']==native.EVALUATOR,'fixed bdc6 signed evaluator, never recompile')
    require(re.fullmatch('[0-9a-f]{40}',pair['launcher_source_commit']) and l['phase']=='launcher' and l['runtime_source_commit']==pair['launcher_source_commit'] and l['evaluator_source_commit']==native.CLIENT and l['evaluator_sha256']==native.EVALUATOR,'formal exact-evaluator launcher binding')
@@ -42,7 +41,7 @@ def make(owner):
     row=dict(baseline=baseline,candidate=leaf['file'],manifest=leaf['manifest'],import_proof=leaf['import_proof']);self.replacements[installed]=row
     witnesses[installed]=baseline;preserved[installed]=leaf['file']['sha256'];sources[installed]=leaf['file']['path']
     self.client_references.extend(leaf[k] for k in ('file','manifest','import_proof'))
-   self.client_references.append(ref)
+   self.client_references.extend(pair['references']);self.client_references.append(ref)
    return c
   def finish(self,p,spec,n,pin,pin_file):
    super().finish(p,spec,n,pin,pin_file)

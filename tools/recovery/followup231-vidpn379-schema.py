@@ -59,3 +59,29 @@ def inspect_signed_manifest(root,manifest):
   p=path(root,manifest.parent/n);require(p.stat().st_size==r['bytes'] and sha(p)==r['sha256'],'actual379 output hash/size '+n);files[n]=r['sha256']
  require(set(files)==set(prior) and {n for n in files if files[n]!=prior[n]}==CHANGED and files['mt8167-dxgi-present356.exe']==EVALUATOR and files['ge8300-render.sys']==SYS,'only SYS/INF/CAT/settle evaluator changed; UMD/FW/transport retained')
  return m,files
+
+PAIR_MANIFEST='8682c4b9232643c7de5c85644687946f54d9096733f9806b4348b1d2bd502f05'
+LAUNCHER_SOURCE='30cf7ea4ccaeb1ca7b2f742012e2e1c7c920c968'
+LAUNCHER_SHA='7a5b402a6692bb2ce77cc69d2c4d020256f3fe9c99e08de4f2f02112f02f76f1'
+PAIR_RECIPE='483176baa4cd5bfa41707f784b5a8bf5b4434f0f'
+def inspect_signed_pair(root,manifest):
+ # Read exact native handoff schema; normalization is in memory only.
+ root=root.resolve(strict=True);require(sha(manifest)==PAIR_MANIFEST,'exact formal signed settle pair')
+ p=read(manifest)
+ require(p['schema']=='ge8300-client375-active-settle-signed-pair-v1' and p['success'] is True and p['evaluator_source_commit']==CLIENT and p['launcher_source_commit']==p['formal_launcher_expected_commit']==LAUNCHER_SOURCE and p['recipe_source_commit']==PAIR_RECIPE,'exact formal30cf/bdc6 pair schema')
+ require(p['evaluator_sha256']==p['launcher_expected_sha256']==EVALUATOR and p['launcher_sha256']==LAUNCHER_SHA and p['launcher_guard_relaxed'] is False,'formal launcher expected evaluator')
+ require(p['evaluator_recompiled_for_launcher']==p['memory_object_recompiled']==p['GPU_compiles']==p['kernel_compiles']==p['SDK_rebuilds']==p['hardware_operations']==0 and p['launcher_actual_compiles']==1 and p['evaluator_actual_compiles']==1 and p['driver_package_modified'] is False and p['hardware_verified'] is False and p['runtime_verified'] is False and p['non_signature_payload_unchanged'] is True,'no recompile/driver change/runtime-success inference')
+ def pin(ref):
+  f=path(root,ref['path']);require(f.stat().st_size==ref['bytes'] and sha(f)==ref['sha256'],'formal pair hash/size '+ref['path']);return dict(path=ref['path'],sha256=ref['sha256'])
+ require(len(p['outputs'])==2 and len(p['import_proofs'])==2,'exact two leaves/proofs')
+ outputs={Path(r['path']).name:r for r in p['outputs']};proofs={r['phase']:r for r in p['import_proofs']}
+ require(set(outputs)=={'mt8167-dxgi-console-launch363.exe','mt8167-dxgi-present356.exe'} and set(proofs)=={'launcher','evaluator'},'fixed signed pair names')
+ result=dict(launcher_source_commit=LAUNCHER_SOURCE,references=[])
+ for role,name,digest,receipt_digest in (
+  ('launcher','mt8167-dxgi-console-launch363.exe',LAUNCHER_SHA,'8085f1965697a416f48867dc8b356de24901386a16acfc4f68309e909d920210'),
+  ('evaluator','mt8167-dxgi-present356.exe',EVALUATOR,'c25893737ebed2df6deb626b434522926c4eb21b8a603563ecc182c4ca3a9bf2')):
+  require(outputs[name]['sha256']==digest and p[role+'_receipt']['sha256']==receipt_digest,'exact actual pair leaf/receipt')
+  result[role]=dict(file=pin(outputs[name]),manifest=pin(p[role+'_receipt']),import_proof=pin(proofs[role]))
+  signature=p['signatures'][role];require(signature['status']=='Valid' and signature['sha256']==digest and signature['thumbprint']==SIGNER,'pair signer receipt')
+ for k in ('pair_archive','source_archive','source_refs'):result['references'].append(pin(p[k]))
+ return result
