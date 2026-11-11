@@ -540,3 +540,5 @@ pathsは実インストール先を指定する。WDF headersは `WdfRoot/Includ
 既存 `build-sign-mt6630-provider1033.py` は実1032 baselineを厳密再利用する増分/署名入口として変更せず保持する。coldはこれを呼ばず、旧objectも使わない。旧shared-parent型runtime/probeは `build-mt6630-runtime.ps1 -LegacyRuntime` で保持する。以前のNATIVE/RUN文書の同入口はこのlegacy経路の履歴であり、現1033の手順ではない。旧first-playback callerも明示legacy指定を使う。
 
 2026-11-11に固定source `8d492fb0350aa8fccad582b852869e26ba73aeee` の上記入口をWindowsで実行し、clang 20・MSVC 14.29 ARM LINK・既存WDK8.1/WDF1.13で43TUすべてのcompileとSYS linkが完了した。過去のdriver objectの使用は0。43 ARMNT object、実INF版 `2026.11.11.1033`、実compileの依存197ファイルの一覧、source/object/tool/libraryのhashを回収して照合した。回収したunsigned SYSのSHA256は `c9e4d1f1f2a56708acbf4a5c1667dff605f0a9cd77667e6079c5d5abaa4cb661`。これはこの構成でのビルド確認であり、異なるtoolchainでのbyte同一性、署名済packageとの同一性、Wi-Fi接続動作を保証しない。
+
+この実行ではclangの標準include探索により、上記明示SDKに加えてMSVC `14.44.35207/include` とWindows SDK `10.0.26100.0/ucrt` のheadersも使用した。LINKの版14.29とheaderの版14.44は別であり、WDK8.1だけで完結したとは扱わない。標準CRT headersを含むVisual Studio/Windows SDK環境も必要。明示include rootsだけでは全依存を表さないため、異なる環境では各objectの実 `-MD` dependency fileも確認する。
