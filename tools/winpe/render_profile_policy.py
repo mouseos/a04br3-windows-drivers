@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """明示opt-inの固定Render/CPU-DOD/SPM profile。旧System GPU policyは不変。"""
-import argparse, datetime, hashlib, json, re, subprocess
+import argparse, datetime, hashlib, importlib.util, json, re, subprocess
 from pathlib import Path
 from engine_io_package import require_armnt
 
@@ -38,6 +38,11 @@ def package(root,entry,role,repo,render_color=False):
  require(set(entry)=={'directory','manifest_sha256','source_commit'},'component field不一致: '+role)
  d=rooted(root,entry['directory']);p=d/'signed-manifest.json';require(sha(p)==hexpin(entry['manifest_sha256']),'署名manifest pin不一致')
  m=jsonfile(p);source=hexpin(entry['source_commit'],40)
+ native379=False
+ if role=='render' and m.get('schema')=='GE8300_VIDPN379_SINGLE_TU_V1':
+  adapter=Path(__file__).resolve().parents[1]/'recovery/followup231-vidpn379-schema.py'
+  spec=importlib.util.spec_from_file_location('vidpn379',adapter);v379=importlib.util.module_from_spec(spec);spec.loader.exec_module(v379)
+  lock=jsonfile(adapter.with_name('followup231-accepted.json'));m,verified379=v379.validate(root,p,lock);native379=True
  native378=False
  if role=='render' and m.get('schema')=='ge8300-wire378-three-tu-v1':
   lock=jsonfile(Path(__file__).resolve().parents[1]/'recovery/gpu378-keypad13-accepted.json')
@@ -50,8 +55,8 @@ def package(root,entry,role,repo,render_color=False):
  entries=m.get('files',m.get('outputs'));require(isinstance(entries,list),'固定file manifestが必要')
  files={}
  for e in entries:
-  n=e.get('path',e.get('name'));require(isinstance(n,str) and re.fullmatch(r'(?:display-transport/)?[A-Za-z0-9_.-]+' if (native371 or native378) else r'[A-Za-z0-9_.-]+',n) and n not in files,'flat固定fileのみ')
-  f=rooted(root,d/n);require((f.parent==d or ((native371 or native378) and f.parent==d/'display-transport')) and f.is_file() and 0<f.stat().st_size<=16777216,'package file範囲不正')
+  n=e.get('path',e.get('name'));require(isinstance(n,str) and re.fullmatch(r'(?:display-transport/)?[A-Za-z0-9_.-]+' if (native371 or native378 or native379) else r'[A-Za-z0-9_.-]+',n) and n not in files,'flat固定fileのみ')
+  f=rooted(root,d/n);require((f.parent==d or ((native371 or native378 or native379) and f.parent==d/'display-transport')) and f.is_file() and 0<f.stat().st_size<=16777216,'package file範囲不正')
   require(sha(f)==hexpin(e['sha256']),'package hash不一致: '+n);files[n]=sha(f)
  names=TARGETS[role][3];require(set(names).issubset(files) and 'mt8167-development.cer' in files,'固定package不足')
  require(hashlib.sha1((d/'mt8167-development.cer').read_bytes()).hexdigest().upper()==SIGNER,'固定private入力cert不一致')
@@ -75,6 +80,8 @@ def package(root,entry,role,repo,render_color=False):
  require(not re.search(r'(?i)\b(CoInstallers32|RegisterDlls|UnregisterDlls|RunPreSetupCommands|RunPostSetupCommands)\b',inf),'実行性INF拡張拒否')
  if native371:
   require(v=='11/10/2026,0.0.3.71' and files[names[1]]=='202f0f3fd7d4325df20dd8570d88299f008fae421bff16cccf99589282a19ded' and files['ge8300-mips.fw']==FW,'実371 INF/SYS/FWだけ');flags={}
+ elif native379:
+  require(v=='11/11/2026,0.0.3.79' and files==verified379,'exact379 tuple only');flags={}
  elif native378:
   require(v=='11/11/2026,0.0.3.78' and files[names[1]]==g['sys_sha256'] and files['ge8300-umd.dll']==g['umd_sha256'] and files['ge8300-mips.fw']==FW,'exact378 tuple only');flags={}
  elif role=='parent':

@@ -74,7 +74,9 @@ def generate(p):
  lock=read(ACCEPTED);require(lock['status']=='actual-signed-candidates-main-reviewed' and lock['adapter_id'] in ADAPTERS,'actual candidate adapter pending')
  require(p['profile']==PROFILE and p['draft'] is False and p['main_execution_approved'] is True,'reviewed final policy only')
  require(p['install_targets']==([] if lock['mode']=='client-only' else ['render']) and p['planned_reboots']==(0 if lock['mode']=='client-only' else 1),'minimal restart and affected role only')
- return ADAPTERS[lock['adapter_id']].generate(p,lock)
+ h=ADAPTERS[lock['adapter_id']].generate(p,lock)
+ require('#define A04_VIDPN_CALLBACK_TRACE 1' in h,'strict trace guard must be enabled by reviewed adapter')
+ return h
 def validate_runtime_policy(root,p):
  lock=accepted(root);return ADAPTERS[lock['adapter_id']].validate_runtime_policy(root,p,lock)
 def paths():return configure_baseline().paths()

@@ -303,7 +303,10 @@ def main():
   # Existing ancestor/allowed-file gate below permits only media-validator tooling after signing.
   require(sm.get('development_display_on')==1 and sm['compile_closure']['macro']=='A04_DEVELOPMENT_DISPLAY_ON=1' and sm['compile_closure']['display_idle_policy']['sha256']==sha(repo/'tools/winpe/display-idle-policy.h') and sm['source_sha256']==sha(repo/'tools/winpe/mt8167-peripheral-update.c'),'377 actual power-helper compile closure required')
  if a.followup231_profile or a.gpu378_keypad_profile:
-  require(sm['compile_closure']['keypad_checkpoint']['sha256']==sha(repo/'tools/winpe/keypad13-checkpoint-policy.h') and sm['compile_closure']['profile_macros']==['A04_KEYPAD13_CHECKPOINT=1','A04_DISPLAY_IDLE_BEFORE_CLIENTS=1'],'378 actual keypad/power compile closure')
+  require(sm['compile_closure']['keypad_checkpoint']['sha256']==sha(repo/'tools/winpe/keypad13-checkpoint-policy.h') and sm['compile_closure']['profile_macros']==(['A04_KEYPAD13_CHECKPOINT=1','A04_DISPLAY_IDLE_BEFORE_CLIENTS=1']+(['A04_VIDPN_CALLBACK_TRACE=1'] if a.followup231_profile else [])),'378 actual keypad/power compile closure')
+ if a.followup231_profile:
+  trace=sm['compile_closure']['vidpn_callback_trace']
+  require(trace['sha256']==sha(repo/'tools/winpe/vidpn-callback-trace-policy.h') and trace['reader_sha256']==sha(repo/'tools/recovery/read-vidpn-callback-trace.ps1') and trace['writer_source']=='b9fb91571b587ab98c01ed1a118c847b634b21ca','followup231 strict trace source closure')
  if signed_source!=a.source_commit:
   subprocess.run(['git','-C',str(repo),'merge-base','--is-ancestor',signed_source,a.source_commit],check=True)
   changed=set(subprocess.check_output(['git','-C',str(repo),'diff','--name-only',signed_source,a.source_commit],text=True).splitlines())

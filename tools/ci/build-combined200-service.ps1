@@ -48,6 +48,7 @@ try{
   $displayHeaderHash=(Get-FileHash $displayHeader -Algorithm SHA256).Hash.ToLowerInvariant()
   if($Gpu378Keypad -or $Followup231){$keypadHeader="$root\tools\winpe\keypad13-checkpoint-policy.h";$keypadHeaderHash=(Get-FileHash $keypadHeader -Algorithm SHA256).Hash.ToLowerInvariant()}
  }
+ if($Followup231){$vidpnHeader="$root\tools\winpe\vidpn-callback-trace-policy.h";$vidpnHeaderHash=(Get-FileHash $vidpnHeader -Algorithm SHA256).Hash.ToLowerInvariant()}
  & clang @developmentFlags --target=thumbv7-pc-windows-msvc -O2 -ffreestanding -fno-builtin -fno-stack-protector -w -fms-extensions -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 -DNTDDI_VERSION=0x06030000 -DA04_PERIPHERAL_BATCH=1 -DA04_PERIPHERAL_NEXT_PROFILE=1 "-I$inc\um" "-I$inc\shared" "-I$out" -c $source -o "$out\$name.obj"
  if($LASTEXITCODE){throw 'Actual ARM TU compile failed'}
  $libs=@('kernel32','advapi32','setupapi','cfgmgr32','bcrypt','wintrust','crypt32');$pins=@();$paths=@()
@@ -89,6 +90,11 @@ try{
    $m.compile_closure.keypad_checkpoint=@{path='tools/winpe/keypad13-checkpoint-policy.h';sha256=$keypadHeaderHash}
    $m.compile_closure.profile_macros=@('A04_KEYPAD13_CHECKPOINT=1','A04_DISPLAY_IDLE_BEFORE_CLIENTS=1')
   }
+ }
+ if($Followup231){
+  if((Get-FileHash $vidpnHeader -Algorithm SHA256).Hash.ToLowerInvariant() -cne $vidpnHeaderHash){throw 'VidPn trace policy header changed during build'}
+  $m.compile_closure.vidpn_callback_trace=@{path='tools/winpe/vidpn-callback-trace-policy.h';sha256=$vidpnHeaderHash;writer_source='b9fb91571b587ab98c01ed1a118c847b634b21ca';reader_sha256=(Get-FileHash "$root\tools\recovery\read-vidpn-callback-trace.ps1" -Algorithm SHA256).Hash.ToLowerInvariant()}
+  $m.compile_closure.profile_macros+=@('A04_VIDPN_CALLBACK_TRACE=1')
  }
  if($Mode -eq 'Service'){
   $m.profile=$policy.profile

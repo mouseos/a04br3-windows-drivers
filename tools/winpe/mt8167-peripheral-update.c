@@ -183,11 +183,15 @@ static DWORD captured_registry_values(void){
 }
 #endif
 #include "keypad13-checkpoint-policy.h"
+#include "vidpn-callback-trace-policy.h"
 static DWORD preserved(void){WCHAR sys[MAX_PATH],full[MAX_PATH];HANDLE h;DWORD i,e;if(!GetSystemDirectoryW(sys,MAX_PATH))return GetLastError();for(i=0;i<sizeof(preserved_files)/sizeof(preserved_files[0]);i++){h=INVALID_HANDLE_VALUE;if(A04_FEATURE148&&preserved_files[i].name[0]==L'\\'){full[0]=sys[0];full[1]=L':';lstrcpyW(full+2,preserved_files[i].name);e=0;}else e=path(full,sys,preserved_files[i].name);if(!e)e=deferred_file(full,preserved_files[i].hash,&h);if(h!=INVALID_HANDLE_VALUE)CloseHandle(h);if(e)return e;}e=old_services();
 #if A04_FEATURE148
  if(!e)e=captured_registry_values();
 #if A04_KEYPAD13_CHECKPOINT
  if(!e)e=keypad13_checkpoint();
+#endif
+#if A04_VIDPN_CALLBACK_TRACE
+ if(!e)e=vidpn_callback_trace();
 #endif
 #endif
  return e;}

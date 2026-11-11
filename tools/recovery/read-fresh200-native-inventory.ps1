@@ -4,7 +4,7 @@ param([Parameter(Mandatory=$true)][string]$WorkspaceRoot,
  [Parameter(Mandatory=$true)][string]$SourceDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,
  [Parameter(Mandatory=$true)][string]$PolicyPath,[Parameter(Mandatory=$true)][string]$ExpectedPolicyFileSha256,
  [string]$ExpectedPolicySha256,[ValidatePattern('^MT8167CombinedFollowup[0-9]{3}$')][string]$NewServiceName='MT8167CombinedFollowup200',
- [string[]]$AdditionalServiceNames=@(),[int]$TimingCaptureNumber=0,[ValidateSet('resume224')][string]$CaptureSuffix,[switch]$IncludeWifiCheckpoint,[switch]$IncludeGraphicsTopologyCache,[switch]$IncludeDisplayDeviceBindings,[switch]$IncludeBatteryFirstFailure,[switch]$IncludeButtonsDeviceBindings,[switch]$IncludeKeypadCheckpoint)
+ [string[]]$AdditionalServiceNames=@(),[int]$TimingCaptureNumber=0,[ValidateSet('resume224')][string]$CaptureSuffix,[switch]$IncludeWifiCheckpoint,[switch]$IncludeGraphicsTopologyCache,[switch]$IncludeDisplayDeviceBindings,[switch]$IncludeBatteryFirstFailure,[switch]$IncludeButtonsDeviceBindings,[switch]$IncludeKeypadCheckpoint,[switch]$IncludeVidPnCallbackTrace)
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 function Hash($p){(Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant()}
 $w=[IO.Path]::GetFullPath($WorkspaceRoot).TrimEnd('\')
@@ -98,6 +98,7 @@ if($IncludeDisplayDeviceBindings){$r.source_recipe_files['read-display-device-bi
 if($IncludeBatteryFirstFailure){$r.source_recipe_files['read-lc709203f-first-failure.ps1']=Hash (Join-Path $PSScriptRoot 'read-lc709203f-first-failure.ps1')}
 if($IncludeButtonsDeviceBindings){$r.source_recipe_files['read-buttons-device-bindings.ps1']=Hash (Join-Path $PSScriptRoot 'read-buttons-device-bindings.ps1')}
 if($IncludeKeypadCheckpoint){$r.source_recipe_files['read-keypad13-checkpoint-loaded.ps1']=Hash (Join-Path $PSScriptRoot 'read-keypad13-checkpoint-loaded.ps1')}
+if($IncludeVidPnCallbackTrace){$r.source_recipe_files['read-vidpn-callback-trace.ps1']=Hash (Join-Path $PSScriptRoot 'read-vidpn-callback-trace.ps1')}
 $wifiCheckpoint=$null
 $mount='MT8167OfflineSYSTEM_'+[Guid]::NewGuid().ToString('N');$root=$null;$priv=$null;$loaded=$false
 try{
@@ -196,6 +197,11 @@ try{
  $r.gpu_init=Read-GpuNativeCheckpoint $root $cs
  . (Join-Path $PSScriptRoot 'read-ge8300-start-gap359.ps1')
  $r.startup_gap359=Read-Ge8300StartGap359 $root
+ if($IncludeVidPnCallbackTrace){
+  . (Join-Path $PSScriptRoot 'read-vidpn-callback-trace.ps1')
+  $r.vidpn_callback_trace=Read-VidPnCallbackTrace $root $cs
+  if($r.vidpn_callback_trace.errors.Count){$r.errors+=@('Strict VidPn callback trace validation failed; see vidpn_callback_trace.errors')}
+ }
  if($IncludeGraphicsTopologyCache){
   . (Join-Path $PSScriptRoot 'read-graphics-topology-cache.ps1')
   $r.graphics_topology_cache=Read-GraphicsTopologyCache $root $cs
