@@ -147,9 +147,9 @@ def prepared_system_check(system, manifest, expected_sha256, root, backup, selec
             if report.get('single_gpu_rearm'):
                 if not re.fullmatch('[0-9a-f]{64}',before.get('single_gpu_ledger','')) or services[0].get('diagnostic_fingerprint')!=before['single_gpu_ledger']:raise ValueError('single GPU ledger preservation missing')
                 related_names.add('single_gpu_ledger')
-        if selected_service in ('MT8167CombinedFollowup200','MT8167CombinedFollowup202') or timing or output371 or client373 or combined375:
+        if selected_service in ('MT8167CombinedFollowup200','MT8167CombinedFollowup202') or timing or output371 or client373 or combined375 or output377:
             p = expected_peripheral_policy
-            if not p or p['profile'] != ('combined-features-fresh221-gpu376-battery18-wifi1031-client375-v1' if combined375 else policy_variant(p)['profile'] if client373 else 'combined-features-fresh212-gpu371-output-v1' if output371 else 'combined-features-fresh'+selected_service[-3:]+('-gpu369-timing-v1' if timing else '-gpu368-v1')) or not re.fullmatch('[0-9a-f]{64}',report.get('peripheral_preservation_plan_sha256','')):
+            if not p or p['profile'] != ('combined-features-fresh225-gpu377-output-client375-v1' if output377 else 'combined-features-fresh221-gpu376-battery18-wifi1031-client375-v1' if combined375 else policy_variant(p)['profile'] if client373 else 'combined-features-fresh212-gpu371-output-v1' if output371 else 'combined-features-fresh'+selected_service[-3:]+('-gpu369-timing-v1' if timing else '-gpu368-v1')) or not re.fullmatch('[0-9a-f]{64}',report.get('peripheral_preservation_plan_sha256','')):
                 raise ValueError('GPU368 exact fresh200 policy binding required')
             if report.get('peripheral_old_services_preserved') is not True or report.get('engine_rearm_plan_sha256'):
                 raise ValueError('GPU368 preservation proof required')

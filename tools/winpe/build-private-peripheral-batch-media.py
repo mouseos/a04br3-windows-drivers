@@ -275,7 +275,7 @@ def main():
  signed_source=a.service_source_commit or a.source_commit
  require(re.fullmatch('[0-9a-f]{40}',signed_source),'署名source pin必須')
  if a.gpu377_output_profile:
-  require(signed_source==a.source_commit,'377 uses the exact fixed SCM source; no post-sign source drift')
+  # Existing ancestor/allowed-file gate below permits only media-validator tooling after signing.
   require(sm.get('development_display_on')==1 and sm['compile_closure']['macro']=='A04_DEVELOPMENT_DISPLAY_ON=1' and sm['compile_closure']['display_idle_policy']['sha256']==sha(repo/'tools/winpe/display-idle-policy.h') and sm['source_sha256']==sha(repo/'tools/winpe/mt8167-peripheral-update.c'),'377 actual power-helper compile closure required')
  if signed_source!=a.source_commit:
   subprocess.run(['git','-C',str(repo),'merge-base','--is-ancestor',signed_source,a.source_commit],check=True)
