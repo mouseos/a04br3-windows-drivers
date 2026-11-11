@@ -116,13 +116,29 @@ if set(selected)!=set(units) or len(selected)!=len(units):raise ValueError('Norm
 asset=json.loads(file('tools/ci/ge8300-copy-usc-asset.json'))
 if len(asset['bytes'])!=152 or sha(bytes(asset['bytes']))!='5c68917faa051238b23674b64c6b137ef7ff75425dbde9dbc5e1e5a36e02c4a3' or asset['sha256']!=sha(bytes(asset['bytes'])):raise ValueError('Original copy asset changed')
 
-# Fresh full-source entry point: no old internal-layout objects may be reused.
+# Cold full-source entry rebuilds internal-layout consumers. Explicit native-only
+# reuse requires the separately pinned full-closure compile-stage admission.
 full_recipe=file('tools/ci/build-ge8300-from-source.ps1').decode()
 for entry in ['build-ge8300-native-owner-core.ps1','build-wdk81.ps1','build-native-development-wdk81.ps1']:
  calls=[line for line in full_recipe.splitlines() if line.lstrip().startswith('& ') and entry in line]
  if len(calls)!=1 or any(flag in calls[0] for flag in ['-ReuseDirectory','-ReuseVerifiedDirectory']):raise ValueError('Shared internal-header rebuild contract changed: '+entry)
-for marker in ['native_KMD_UMD_objects_reused=0','SDK_rebuilt=0','RT_SRV_implemented=$true','blend_implemented=$true','DWM_verified=$false','ge8300_compiler_cache.py']:
+for marker in ['native_KMD_UMD_objects_reused=$scNativeObjectsReused','SDK_rebuilt=0','RT_SRV_implemented=$true','blend_implemented=$true','DWM_verified=$false','ge8300_compiler_cache.py']:
  if marker not in full_recipe:raise ValueError('Fullsource bundle/cache manifest contract missing: '+marker)
+# New host-only admission does not weaken the native builder's legacy LinkCheck guard.
+cache_policy=origins.get('native_compile_cache_integration',{})
+if cache_policy.get('schema')!='verified-native-compile-cache-source-v1' or cache_policy.get('default_enabled') is not False or cache_policy.get('KMD_UMD_reused') is not False:
+ raise ValueError('Missing explicit native-only cache source policy')
+for marker in ['[string]$VerifiedNativeCompileCache','[string]$NativeCompileInputSnapshot',
+               '$scNativeObjectsReused=0','$scNativeObjectsReused=67',
+               'ge8300_native_compile_cache.py',"if($LASTEXITCODE){throw 'Native compile-cache admission failed; no fallback compile'}",
+               '$scNativeAdmission.admitted','$scNativeAdmission.offline_audit',
+               '$scNativeAdmission.current_source_closure_identical',
+               'native_reuse_receipt_sha256','Admitted native checkpoint/receipt changed']:
+ if marker not in full_recipe:raise ValueError('Native admission/cold-default contract missing: '+marker)
+for path in cache_policy['files']:
+ row=next((r for r in origins['files'] if r['path']==path),None)
+ if not row or row['source_commit']!=cache_policy['implementation_source_commit']:
+  raise ValueError('Native cache host source origin missing: '+path)
 # Independent kernel/PCO tool inputs; archive compiler outputs before driver work.
 for marker in ['[string]$KernelVcToolsDirectory,[switch]$ArchiveCompilerCache','$scKernelVc=$scVc','-MicrosoftArmCompiler $scKernelCl','-MicrosoftCrtInclude "$scKernelVc\\include"','697a8f41ff7fcb71e7c6625f5517ef6e2f8ea146d1e351e078317ff92da0839c','f8b2e9c5341419525f915b61b87d1bc8aa307adca6e1e022071175912e965938']:
  if marker not in full_recipe:raise ValueError('Kernel/PCO tool separation missing: '+marker)
@@ -166,6 +182,9 @@ public379_expected={'schema': 'GE8300_PUBLIC_RUNTIME379_SOURCE_V1', 'runtime_sou
 if any(x.get('public_runtime379_integration')!=public379_expected for x in (origins,native)):raise ValueError('Public379 integration identity changed')
 for expected in public379_expected['files']:
  row=next(r for r in origins['files'] if r['path']==expected['path'])
+ if expected['path']=='tools/ci/build-ge8300-from-source.ps1':
+  row=historical_row(row,expected)
+  if not row:raise ValueError('Original public379 wrapper origin lost')
  if any(row.get(k)!=expected[k] for k in ('source_commit','sha256')):raise ValueError('Public379 source mismatch')
  prior=expected['previous_origin_row_sha256']
  if prior and (not row.get('previous_origins') or sha(json.dumps(row['previous_origins'][0],sort_keys=True,separators=(',',':')).encode())!=prior):raise ValueError('Public379 predecessor lost')
