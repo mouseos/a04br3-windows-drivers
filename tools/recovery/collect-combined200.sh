@@ -76,6 +76,7 @@ if adb shell "test -d $managed"; then
   size=$(adb shell stat -c %s "$item" </dev/null | tr -d '\r')
   [[ "$size" =~ ^[0-9]+$ ]] && [ "$size" -le 16777216 ]
   case "$item" in
+   "$managed/logs/collection-reboot-proof-v1.bin") [ "$size" -eq 216 ] ;;
    "$managed/mt8167-clock-snapshot-v1.bin") [ "$size" -le 128 ] ;;
    "$managed/logs/clock_snapshot1120.stdout.txt"|"$managed/logs/clock_snapshot1120.stderr.txt") [ "$size" -le 4096 ] ;;
    "$managed/logs/global-diag368-response.bin") { [ "$size" -eq 0 ] || [ "$size" -eq 262148 ]; } ;;

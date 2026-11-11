@@ -1,7 +1,51 @@
 #!/usr/bin/env python3
 """main専用GPU368共通engine。terminal後はWindows保持、回収は明示再開。"""
-import argparse,hashlib,importlib.util,json,re,subprocess,time
+import argparse,hashlib,importlib.util,json,os,re,signal,subprocess,time
 from pathlib import Path
+
+# Keep all foreground device clients in this command's private process group.
+# --foreground prevents GNU timeout from creating an escaping nested group.
+BOUNDED_DEVICE_SHELL = r'''command -v timeout >/dev/null
+fastboot() {
+ if [ "${1:-}" = devices ]; then
+  timeout --foreground --kill-after=2s 10s fastboot devices | awk -v s="$rt_target_serial" '$1 == s'
+ else
+  timeout --foreground --kill-after=2s 10s fastboot -s "$rt_target_serial" "$@"
+ fi
+}
+adb() {
+ local limit=120s
+ case "${1:-}" in devices|get-state|root) limit=10s;; esac
+ if [ "${1:-}" = devices ]; then
+  timeout --foreground --kill-after=2s "$limit" adb devices | awk -v s="$rt_target_serial" 'NR == 1 || $1 == s'
+ else
+  timeout --foreground --kill-after=2s "$limit" adb -s "$rt_target_serial" "$@"
+ fi
+}
+'''
+
+def run_command_group(args, *, timeout, **kwargs):
+ """Bound one shell and reap only its own newly-created process group."""
+ with subprocess.Popen(args,start_new_session=True,**kwargs) as process:
+  try:
+   code=process.wait(timeout=timeout)
+  except BaseException:
+   try:os.killpg(process.pid,signal.SIGTERM)
+   except ProcessLookupError:pass
+   # Do not stop cleanup when the shell exits: descendants can ignore TERM.
+   time.sleep(0.2)
+   try:os.killpg(process.pid,signal.SIGKILL)
+   except ProcessLookupError:pass
+   process.wait()
+   raise
+  if code:
+   try:os.killpg(process.pid,signal.SIGTERM)
+   except ProcessLookupError:pass
+   time.sleep(0.2)
+   try:os.killpg(process.pid,signal.SIGKILL)
+   except ProcessLookupError:pass
+   raise subprocess.CalledProcessError(code,args)
+  return subprocess.CompletedProcess(args,code)
 
 PROFILE='combined-features-fresh200-gpu368-v1'
 SERVICE='MT8167CombinedFollowup200'
@@ -84,14 +128,14 @@ def stage_preflight(root,c,out,digest):
  log=out.parent/(out.name+'-preflight-'+digest[:12]+'.log')
  body='''set -euo pipefail
 source "$1"
-[ "$rt_target_serial" = "$5" ]
+'''+BOUNDED_DEVICE_SHELL+'''[ "$rt_target_serial" = "$5" ]
 [ "$(adb get-state)" = recovery ]
 [ "$(adb shell id -u | tr -d '\\r')" = 0 ]
 '''+MOUNT_GUARD+'''python3 -B "$2" verify --serial "$rt_target_serial" --manifest "$3" --manifest-sha256 "$4"
 adb shell 'set -e; test "$(readlink -f /dev/block/by-name/boot)" = /dev/block/mmcblk0p17; test "$(cat /sys/class/block/mmcblk0p17/start)" = 294912; test "$(cat /sys/class/block/mmcblk0p17/size)" = 65536; test "$(readlink -f /dev/block/by-name/EFI)" = /dev/block/mmcblk0p18; test "$(cat /sys/class/block/mmcblk0p18/start)" = 360448; test "$(cat /sys/class/block/mmcblk0p18/size)" = 524288'
 '''
  with log.open('ab') as f:
-  subprocess.run(['bash','-c',body,'ge8300-stage',str(root/c['target_tools']),str(root/c['capture_tool']),str(root/c['fresh_manifest']),c['fresh_manifest_sha256'],c['serial']],cwd=root,stdout=f,stderr=subprocess.STDOUT,check=True,timeout=180)
+  run_command_group(['bash','-c',body,'ge8300-stage',str(root/c['target_tools']),str(root/c['capture_tool']),str(root/c['fresh_manifest']),c['fresh_manifest_sha256'],c['serial']],cwd=root,stdout=f,stderr=subprocess.STDOUT,timeout=180)
 
 def validate_seal(root,path,digest,known_profile="run201",entrypoint=None):
  k=contract(known_profile);service=k["service"]
@@ -225,6 +269,10 @@ def validate_seal(root,path,digest,known_profile="run201",entrypoint=None):
   require(pinned('rebind_helper')==Path(__file__).resolve().with_name('combined222_rebind223.py'),'固定resume validator pin必須')
   side=rebind_module().validate(root,ref,c)
   for row in side['refs']:require(pins.get(row['path'])==row['sha256'],'拒否/再結合証拠seal pin欠落')
+ from collection_reboot import policy_config,verify_source_pins
+ if policy_config(p):
+  ref=m['collection_reboot_service_manifest'];require(pins.get(ref['path'])==ref['sha256'],'actual collection service manifest seal pin')
+  verify_source_pins(source,c,p,read(rooted(root,ref['path'])),workspace=root)
  return c,m
 
 class Observation:
@@ -325,8 +373,11 @@ def verify_collection(out,c,digest,k,latch):
 
 def main(known_profile="run201",entrypoint=None,argv=None):
  k=contract(known_profile)
- ap=argparse.ArgumentParser();ap.add_argument('--resume-baseline-reject',action='store_true',help='固定223 rebind sidecar付きsealによる未arm拒否だけの1回resume');ap.add_argument('--workspace',type=Path,required=True);ap.add_argument('--seal',type=Path,required=True);ap.add_argument('--seal-sha256',required=True);ap.add_argument('--output',type=Path,required=True);ap.add_argument('--validate-only',action='store_true');ap.add_argument('--collect-only','--resume-collect',dest='collect_only',action='store_true',help='held terminalから回収のみ。install/診断を再実行しない');a=ap.parse_args(argv)
+ ap=argparse.ArgumentParser();ap.add_argument('--resume-baseline-reject',action='store_true',help='固定223 rebind sidecar付きsealによる未arm拒否だけの1回resume');ap.add_argument('--workspace',type=Path,required=True);ap.add_argument('--seal',type=Path,required=True);ap.add_argument('--seal-sha256',required=True);ap.add_argument('--output',type=Path,required=True);ap.add_argument('--validate-only',action='store_true');ap.add_argument('--collection-reboot',action='store_true',help='new opt-in profile only; wait for Windows shutdown/fastboot without UART reset');ap.add_argument('--collect-only','--resume-collect',dest='collect_only',action='store_true',help='held terminalから回収のみ。install/診断を再実行しない');a=ap.parse_args(argv)
  root=a.workspace.resolve(strict=True);seal=rooted(root,a.seal);c,m=validate_seal(root,seal,a.seal_sha256,known_profile,entrypoint)
+ from collection_reboot import admit,wait_fastboot
+ collection_config=admit(c,m.get('policy',{}),a.collection_reboot)
+ require(not (collection_config and a.collect_only),'collection reboot v1 uses the initial automatic collection path only')
  require(bool(c.get('baseline_reject_resume'))==a.resume_baseline_reject,'resume sealは明示--resume-baseline-rejectのみ')
  live_c=c;resume_number=None
  if a.resume_baseline_reject:
@@ -358,17 +409,19 @@ def main(known_profile="run201",entrypoint=None,argv=None):
  def command(body,name,args=(),timeout=400,flash=False):
   require(sha(root/c['target_tools'])==next(x['sha256'] for x in c['pinned_files'] if x['path']==c['target_tools']),'target tools変更検出')
   with (out/name).open('wb') as f:
-   try:subprocess.run(['bash','-c','set -euo pipefail\nsource "$1"\n[ "$rt_target_serial" = "'+c['serial']+'" ]\n'+body,'gpu%d'%k['run'],str(root/c['target_tools']),*map(str,args)],cwd=root,stdout=f,stderr=subprocess.STDOUT,check=True,timeout=timeout)
+   try:run_command_group(['bash','-c','set -euo pipefail\nsource "$1"\n'+BOUNDED_DEVICE_SHELL+'[ "$rt_target_serial" = "'+c['serial']+'" ]\n'+body,'gpu%d'%k['run'],str(root/c['target_tools']),*map(str,args)],cwd=root,stdout=f,stderr=subprocess.STDOUT,timeout=timeout)
    finally:
     f.flush()
     if flash:
      with (root/'port/gsi/logs/flash.log').open('ab') as log:log.write((out/name).read_bytes())
- def recovery(name):
-  command('''if [ "$(adb get-state 2>/dev/null || true)" != recovery ]; then
+ def recovery(name,allow_reset=True):
+  body='''if [ "$(adb get-state 2>/dev/null || true)" != recovery ]; then
  if [ -z "$(fastboot devices)" ]; then
   UART=/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0 bash "$2"
-  for ((i=0;i<90;i++)); do [ -n "$(fastboot devices)" ] && break; sleep 1; done
+  deadline=$((SECONDS+90))
+  while ((SECONDS<deadline)); do [ -n "$(fastboot devices)" ] && break; sleep 1; done
  fi
+ [ -n "$(fastboot devices)" ] || exit 1
  info=$(fastboot getvar product 2>&1); [[ "$info" =~ product:[[:space:]]*A04BR3 ]]
  fastboot oem reboot-recovery
  for ((i=0;i<120;i++)); do [ "$(adb get-state 2>/dev/null || true)" = recovery ] && break; sleep 1; done
@@ -376,7 +429,11 @@ fi
 [ "$(adb get-state)" = recovery ]; adb root || true
 for ((i=0;i<30;i++)); do [ "$(adb shell id -u 2>/dev/null | tr -d '\\r')" = 0 ] && break; sleep 1; done
 [ "$(adb shell id -u | tr -d '\\r')" = 0 ]
-'''+MOUNT_GUARD,name,(root/c['reset_script'],),flash=True)
+'''
+  if not allow_reset:
+   begin=body.index(' if [ -z "$(fastboot devices)" ]; then');end=body.index(' [ -n "$(fastboot devices)" ] || exit 1',begin)
+   body=body[:begin]+body[end:] # No UART command is present, even if transport disappears.
+  command(body+MOUNT_GUARD,name,(root/c['reset_script'],),flash=True)
  def deploy(image,digest,name,initial=False):
   require(sha(image)==digest,'ESP変更検出');offset=uart.stat().st_size
   gate=('python3 -B "$2" verify --serial "$rt_target_serial" --manifest "$3" --manifest-sha256 '+live_c['fresh_manifest_sha256']+'\n') if initial else ''
@@ -446,11 +503,14 @@ adb shell 'set -e; test "$(id -u)" = 0; test "$(readlink -f /dev/block/by-name/b
    if st.get('terminal'):st['safe_flush_terminal']=True;save();time.sleep(c['terminal_settle_seconds'])
    with uart.open('rb') as f:f.seek(offset);drained=f.read()
    (out/'normal-uart.log').write_bytes(drained);(out/'normal-uart-deinterleaved.log').write_bytes(re.sub(STORAGE_TRACE,b'',drained))
-   if st['status'] in TERMINAL_BOUNDARIES:
+   if st['status'] in TERMINAL_BOUNDARIES and collection_config:
+    require(st.get('terminal',{}).get('phase')==1,'collection reboot never substitutes an install failure')
+    st['collection_shutdown']=wait_fastboot(root,c,out,st['terminal'],uart,offset,lambda raw:re.sub(STORAGE_TRACE,b'',raw),run=run_command_group,bounded_shell=BOUNDED_DEVICE_SHELL);save()
+   elif st['status'] in TERMINAL_BOUNDARIES:
     if hold_terminal(out,st,c,a.seal_sha256):
      save();print('GPU%d_TERMINAL_WINDOWS_HELD_NOT_GPU_FUNCTIONAL_SUCCESS'%k['run']);return
     save()
-  save();recovery('terminal-to-recovery.log');st['collection_boundary']=st['status'];save()
+  save();recovery('terminal-to-recovery.log',allow_reset=not bool(collection_config));st['collection_boundary']=st['status'];save()
   command('''[ "$(adb get-state)" = recovery ]
 '''+MOUNT_GUARD+'''adb push "$2" /tmp/rt-ntfs3g
 adb shell chmod 755 /tmp/rt-ntfs3g

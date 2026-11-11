@@ -1,5 +1,5 @@
 ﻿# One SCM TU and (separately) the corrected capture client TU; no driver rebuild.
-param([int]$CaptureNumber=200,[switch]$Gpu369Timing,[switch]$Gpu371Output,[switch]$Gpu375Combined,[switch]$Gpu377Output,[switch]$Gpu378Keypad,[switch]$Gpu378Diagnostic,[switch]$Followup231,[Alias('Gpu374Client','Gpu375Client')][switch]$Gpu373Client,[Parameter(Mandatory=$true)][ValidateSet('CaptureClient','Service')][string]$Mode,
+param([switch]$CollectionReboot,[int]$CaptureNumber=200,[switch]$Gpu369Timing,[switch]$Gpu371Output,[switch]$Gpu375Combined,[switch]$Gpu377Output,[switch]$Gpu378Keypad,[switch]$Gpu378Diagnostic,[switch]$Followup231,[Alias('Gpu374Client','Gpu375Client')][switch]$Gpu373Client,[Parameter(Mandatory=$true)][ValidateSet('CaptureClient','Service')][string]$Mode,
  [Parameter(Mandatory=$true)][string]$Workspace,[string]$PackageMap,[Parameter(Mandatory=$true)][string]$OutputDirectory,
  [Parameter(Mandatory=$true)][string]$KitHeaderRoot,[Parameter(Mandatory=$true)][string]$LibraryRoot,[Parameter(Mandatory=$true)][string]$SigntoolPath)
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
@@ -34,7 +34,12 @@ if($LASTEXITCODE){throw 'Final combined contract rejected'}
 $name="MT8167CombinedFollowup$CaptureNumber";$source="$root\tools\winpe\mt8167-peripheral-update.c"
 $policy=Get-Content "$out\peripheral-policy.json" -Raw|ConvertFrom-Json
 $expectedProfile=if($Followup231){"combined-features-fresh231-reviewed-followup-v1"}elseif($Gpu378Diagnostic){"combined-features-fresh229-gpu378-keypad13-diagnostic-only-v1"}elseif($Gpu378Keypad){"combined-features-fresh227-gpu378-keypad13-client375-v1"}elseif($Gpu377Output){"combined-features-fresh225-gpu377-output-client375-v1"}elseif($Gpu375Combined){"combined-features-fresh221-gpu376-battery18-wifi1031-client375-v1"}elseif($Gpu373Client){"combined-features-fresh$CaptureNumber-gpu$clientVersion-clients-v1"}elseif($Gpu371Output){"combined-features-fresh212-gpu371-output-v1"}elseif($Gpu369Timing){"combined-features-fresh$CaptureNumber-gpu369-timing-v1"}else{"combined-features-fresh$CaptureNumber-gpu368-v1"}
+if($CollectionReboot){$expectedProfile+='-collection-reboot-v1'}
 if($policy.service -cne $name -or $policy.data_directory -cne $name -or $policy.profile -cne $expectedProfile){throw 'Generated policy identity mismatch'}
+$collectionArgs=@();if($CollectionReboot){$collectionArgs=@('--explicit')}
+$collectionJson=& python -B "$root\tools\recovery\collection_reboot.py" --policy "$out\peripheral-policy.json" --repo $root @collectionArgs
+if($LASTEXITCODE){throw 'Explicit collection profile/recipe mismatch before compile'}
+$collectionClosure=$collectionJson|ConvertFrom-Json
 $oldTmp=$env:TMP;$oldTemp=$env:TEMP
 try{
  $env:TMP=$out;$env:TEMP=$out
@@ -51,6 +56,7 @@ try{
  if($Followup231){$vidpnHeader="$root\tools\winpe\vidpn-callback-trace-policy.h";$vidpnHeaderHash=(Get-FileHash $vidpnHeader -Algorithm SHA256).Hash.ToLowerInvariant()}
  & clang @developmentFlags --target=thumbv7-pc-windows-msvc -O2 -ffreestanding -fno-builtin -fno-stack-protector -w -fms-extensions -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 -DNTDDI_VERSION=0x06030000 -DA04_PERIPHERAL_BATCH=1 -DA04_PERIPHERAL_NEXT_PROFILE=1 "-I$inc\um" "-I$inc\shared" "-I$out" -c $source -o "$out\$name.obj"
  if($LASTEXITCODE){throw 'Actual ARM TU compile failed'}
+ if($collectionClosure){foreach($r in $collectionClosure.headers){if((Get-FileHash (Join-Path $root $r.path) -Algorithm SHA256).Hash.ToLowerInvariant() -cne $r.sha256){throw 'Collection source changed during compile'}}}
  $libs=@('kernel32','advapi32','setupapi','cfgmgr32','bcrypt','wintrust','crypt32');$pins=@();$paths=@()
  foreach($n in $libs){$p=Join-Path $lib ($n+'.lib');$paths+=$p;$pins+=@{name=$n;sha256=(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()}}
  & lld-link /subsystem:console,6.3 /machine:arm /entry:mainCRTStartup /nodefaultlib /dynamicbase /nxcompat "$out\$name.obj" @paths "/out:$out\$name.exe"
@@ -80,6 +86,7 @@ try{
  $toolchain=@{headers=$inc;arm_libraries=$lib;import_libraries=$pins;signtool=$sign;signtool_sha256=(Get-FileHash $sign -Algorithm SHA256).Hash.ToLowerInvariant();ntddi='0x06030000';win32_winnt='0x0603'}
  $m=[ordered]@{schema=$(if($Mode -eq 'CaptureClient'){'capture-next122-log-isolation-v1'}else{"combined$CaptureNumber-unified356-service-v1"});source_commit=(& git -C $root rev-parse HEAD);source_dirty=$false;source_sha256=(Get-FileHash $source -Algorithm SHA256).Hash.ToLowerInvariant();data_directory=$name;profile=$null;service=$name;signer_thumbprint=$thumb;signature_status='Valid';exe_sha256=(Get-FileHash "$out\$name.exe" -Algorithm SHA256).Hash.ToLowerInvariant();path_header_sha256=(Get-FileHash "$out\peripheral-service-path-policy.h" -Algorithm SHA256).Hash.ToLowerInvariant();runtime_utf16_path_verified=$true;toolchain=$toolchain;driver_rebuilt=$false;device_verified=$false}
  if((Get-FileHash $filterRootHeader -Algorithm SHA256).Hash.ToLowerInvariant() -cne $filterRootHeaderHash){throw 'Filter root header changed during build'}
+ if($collectionClosure){$m.collection_reboot=$collectionClosure}
  $m.filter_root_header=@{path='tools/winpe/filter-root-transition.h';sha256=$filterRootHeaderHash;enabled=($null -ne $policy.filter_root_transitions -and @($policy.filter_root_transitions).Count -gt 0)}
  if($Gpu377Output -or $Gpu378Keypad -or $Followup231){
   if((Get-FileHash $displayHeader -Algorithm SHA256).Hash.ToLowerInvariant() -cne $displayHeaderHash){throw 'Power header changed during build'}

@@ -50,7 +50,7 @@ class Fixture:
    self.write(self.c['diagnostics_output']+'/capture-index.json',b'{"windows_unmounted":true}')
   return subprocess.CompletedProcess(args,0)
  def run(self,*extra):
-  with patch.object(m,'validate_seal',return_value=(self.c,{})),patch.object(m.subprocess,'run',side_effect=self.fake_run),patch.object(m.subprocess,'check_output',side_effect=AssertionError('unexpected subprocess')),patch.object(m.time,'sleep'):
+  with patch.object(m,'validate_seal',return_value=(self.c,{})),patch.object(m,'run_command_group',side_effect=self.fake_run),patch.object(m.subprocess,'run',side_effect=self.fake_run),patch.object(m.subprocess,'check_output',side_effect=AssertionError('unexpected subprocess')),patch.object(m.time,'sleep'):
    m.main(self.profile,argv=self.args+list(extra))
  def names(self):return [n for n,_ in self.calls]
  def result(self):return m.read(self.out/'result.json')

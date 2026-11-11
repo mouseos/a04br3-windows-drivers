@@ -196,6 +196,8 @@ def generate(p):
  for f in p['bt_first_install']['files']:lines.append('{'+cstr(f['name'])+','+cbytes(f['sha256'])+'},')
  bt=p['bt_first_install'];date=datevalue(bt['driver_date'])
  lines+=['};','#define A04_BT_VERSION '+str(version(bt['driver_version']))+'ULL','#define A04_BT_DATE_LOW '+str(date&0xffffffff)+'u','#define A04_BT_DATE_HIGH '+str(date>>32)+'u']
+ from collection_reboot import macros
+ lines+=macros(p)
  return '\n'.join(lines)+'\n'
 
 def load_map(path,root):return build_policy(root,read(path))

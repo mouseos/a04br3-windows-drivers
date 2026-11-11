@@ -297,6 +297,12 @@ def main():
  p=load_map(a.map,root)
  if a.followup231_profile or a.gpu378_keypad_profile or a.gpu377_output_profile or a.gpu369_timing_profile or a.gpu371_output_profile or a.gpu373_client_profile:require(p.get('main_execution_approved') is True,'GPU369 media generation requires main approval')
  service=rooted(root,a.service_package);sm=json.loads((service/'peripheral-service-manifest.json').read_text(encoding='utf-8-sig'))
+ import sys
+ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'recovery'))
+ from collection_reboot import policy_config,source_closure
+ cfg=policy_config(p)
+ require(bool(sm.get('collection_reboot'))==bool(cfg),'service/profile collection mode mismatch')
+ if cfg:require(sm['collection_reboot']==dict(schema='MT8167_COLLECTION_REBOOT_COMPILE_V1',config=cfg,headers=source_closure(repo),macros=['A04_COLLECTION_REBOOT=1','A04_COLLECTION_REBOOT_PROFILE=1']),'actual collection source/compile closure')
  signed_source=a.service_source_commit or a.source_commit
  require(re.fullmatch('[0-9a-f]{40}',signed_source),'署名source pin必須')
  if a.followup231_profile or a.gpu377_output_profile or a.gpu378_keypad_profile:
@@ -491,5 +497,6 @@ def main():
  subprocess.run([str(tools/'wimtools/wimlib-imagex'),'update',str(image),'1'],input=commands,text=True,env=env,check=True);subprocess.run([str(tools/'wimtools/wimlib-imagex'),'verify',str(image)],env=env,check=True)
  subprocess.run(['python3','-B',str(here/'replace-esp-wim.py'),'--template',str(base/'maintenance-staged-esp.img'),'--wim',str(image),'--output',str(out/'update-esp.img'),'--template-bcd-sha256','65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d','--template-wim-sha256','0df19de6c783068b24c466a1d7afaa900cd99a0aef24841a319bbd566cbbedf4'],env=env,check=True)
  manifest={'rejected_journal_archive':journal_binding,'canonical_policy_sha256':token,'runtime_policy_sha256':runtime_policy_token,'reboot_after_commit':a.reboot_after_commit,'profile':PROFILE,'source_commit':a.source_commit,'service_source_commit':signed_source,'tooling_only_changes_since_signed_service':signed_source!=a.source_commit,'service':SERVICE,'policy':p,'native_prepared':native,'files':files,'esp_sha256':sha(out/'update-esp.img'),'wim_sha256':sha(image),'required_main_boot_transition':p['boot_transition'],'planned_windows_reboots':p['planned_reboots'],'no_gpu_or_engine_client':not any(c['phase']==1 for c in p['diagnostic_clients']),'engine_client_execute':False,'old_gpu_client_execute':False,'new_gpu_client_count':sum(c['phase']==1 for c in p['diagnostic_clients']),'software_or_userfs_rollback':False,'device_verified':False}
+ if cfg:manifest['collection_reboot_service_manifest']=dict(path=(service/'peripheral-service-manifest.json').relative_to(root).as_posix(),sha256=sha(service/'peripheral-service-manifest.json'))
  (out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 if __name__=='__main__':main()

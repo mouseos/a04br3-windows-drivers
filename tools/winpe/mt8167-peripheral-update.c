@@ -45,6 +45,12 @@ struct diagnostic_client {const WCHAR *exe,*arguments,*name,*relative_directory;
 #ifndef A04_DIAGNOSTIC_ONLY
 #define A04_DIAGNOSTIC_ONLY 0
 #endif
+#ifndef A04_COLLECTION_REBOOT
+#define A04_COLLECTION_REBOOT 0
+#endif
+#if A04_COLLECTION_REBOOT && !A04_COLLECTION_REBOOT_PROFILE
+#error Collection reboot requires a new explicit generated profile opt-in
+#endif
 #include "rotation-job-contract.h"
 #ifndef A04_CANDIDATE_EXTRA_COUNT
 #define A04_CANDIDATE_EXTRA_COUNT 0u
@@ -324,7 +330,13 @@ static DWORD installed_gpu_extras(int candidate){
  return 0;
 #endif
 }
-static DWORD save_blob(const WCHAR *name,const void *data,DWORD bytes){WCHAR p[MAX_PATH];HANDLE h;DWORD e,n;e=path(p,log_directory,name);if(e)return e;h=CreateFileW(p,GENERIC_WRITE,FILE_SHARE_READ,NULL,CREATE_NEW,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_WRITE_THROUGH,NULL);if(h==INVALID_HANDLE_VALUE)return GetLastError();e=(!WriteFile(h,data,bytes,&n,NULL)||n!=bytes||!FlushFileBuffers(h))?ERROR_WRITE_FAULT:0;CloseHandle(h);return e;}
+static DWORD save_blob(const WCHAR *name,const void *data,DWORD bytes){WCHAR p[MAX_PATH];HANDLE h;DWORD e,n;e=path(p,log_directory,name);if(e)return e;h=CreateFileW(p,GENERIC_WRITE,FILE_SHARE_READ,NULL,CREATE_NEW,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_WRITE_THROUGH,NULL);if(h==INVALID_HANDLE_VALUE)return GetLastError();e=(!WriteFile(h,data,bytes,&n,NULL)||n!=bytes||!FlushFileBuffers(h))?ERROR_WRITE_FAULT:0;
+#if A04_COLLECTION_REBOOT
+ if(!CloseHandle(h)&&!e){e=GetLastError();if(!e)e=ERROR_WRITE_FAULT;}
+#else
+ CloseHandle(h);
+#endif
+ return e;}
 /* Read-only ABI copied from RTC5 rtc_ioctl.h and thermal17 readout{,_ioctl}.h.
  * No set-calendar, calibration, trigger, or thermal-write request exists here. */
 static int readonly_uncertain;
@@ -407,6 +419,8 @@ struct combined_client_result {DWORD observed,phase,client_id,pid,created,wait_s
 static struct combined_node_record combined_nodes[PERIPHERAL_TARGET_COUNT];
 static struct combined_client_result combined_clients[8];
 static DWORD combined_gpu_node_ready,combined_diagnostic;
+typedef char combined_client_schema2_unchanged[(sizeof(struct combined_client_result)==36)?1:-1];
+#include "collection-reboot.h"
 static DWORD combined_snapshot(const WCHAR *phase,DWORD result,int include_volume){
  HKEY key=NULL;WCHAR name[256],policy_hash[65];DWORD at;DWORD e=0,nodes=PERIPHERAL_TARGET_COUNT,clients=(DWORD)A04_DIAGNOSTIC_CLIENT_COUNT,schema=2,complete=0;
  if(clients>8)return ERROR_INVALID_DATA;
@@ -473,15 +487,28 @@ static DWORD run_clients(DWORD peripheral_result)
   }
   if(job)CloseHandle(job);
   if(held!=INVALID_HANDLE_VALUE)CloseHandle(held);
+#if A04_COLLECTION_REBOOT
+  if(stdout_!=INVALID_HANDLE_VALUE){DWORD part=FlushFileBuffers(stdout_)?0:collection_error();collection_latch_io(i,part);if(part&&!e)e=part;part=CloseHandle(stdout_)?0:collection_error();collection_latch_io(i,part);if(part&&!e)e=part;}
+  if(stderr_!=INVALID_HANDLE_VALUE){DWORD part=FlushFileBuffers(stderr_)?0:collection_error();collection_latch_io(i,part);if(part&&!e)e=part;part=CloseHandle(stderr_)?0:collection_error();collection_latch_io(i,part);if(part&&!e)e=part;}
+#else
   if(stdout_!=INVALID_HANDLE_VALUE){if(!FlushFileBuffers(stdout_)&&!e)e=GetLastError();if(!CloseHandle(stdout_)&&!e)e=GetLastError();}
   if(stderr_!=INVALID_HANDLE_VALUE){if(!FlushFileBuffers(stderr_)&&!e)e=GetLastError();if(!CloseHandle(stderr_)&&!e)e=GetLastError();}
+#endif
   if(nul!=INVALID_HANDLE_VALUE)CloseHandle(nul);
   combined_clients[i].wait_status=wait;combined_clients[i].exit_valid=exit_valid;combined_clients[i].exit_code=exit;combined_clients[i].result=e;
   if(c->phase==1){
-   if(A04_FEATURE148&&!A04_GPU_PHASE1_ENABLED)return ERROR_INVALID_PARAMETER;struct {DWORD schema,bytes,result,exit_valid,exit_code;} g={1,20,e,exit_valid,exit};DWORD saved=save_blob((A04_GPU368_DUAL_DIAGNOSTICS&&i==1)?L"globaldiag-result.bin":L"gpu-result.bin",&g,sizeof(g));record(i,0x284,saved);if(saved&&!e)e=saved;}
+   if(A04_FEATURE148&&!A04_GPU_PHASE1_ENABLED)return ERROR_INVALID_PARAMETER;struct {DWORD schema,bytes,result,exit_valid,exit_code;} g={1,20,e,exit_valid,exit};DWORD saved=save_blob((A04_GPU368_DUAL_DIAGNOSTICS&&i==1)?L"globaldiag-result.bin":L"gpu-result.bin",&g,sizeof(g));record(i,0x284,saved);
+#if A04_COLLECTION_REBOOT
+   collection_latch_io(i,saved);
+#endif
+   if(saved&&!e)e=saved;}
   record(i,0x221,e);if(e&&!first)first=e;
  }
- {DWORD e=combined_snapshot(L"Final",first,0);if(e&&!first)first=e;}
+ {DWORD e=combined_snapshot(L"Final",first,0);
+#if A04_COLLECTION_REBOOT
+  collection_latch_io(2,e);collection_diagnostic_complete=e?0:1;
+#endif
+  if(e&&!first)first=e;}
  return first;
 }
 #endif
@@ -614,8 +641,50 @@ static DWORD once(void){
  if(display){DWORD clear=PowerClearRequest(power,PowerRequestDisplayRequired)?0:GetLastError();record(0,0x2b5,clear);}
  if(!PowerClearRequest(power,PowerRequestSystemRequired)&&!cleanup)cleanup=GetLastError();
  if(!CloseHandle(power)&&!cleanup)cleanup=GetLastError();
+#if A04_COLLECTION_REBOOT
+ collection_latch_io(2,cleanup);
+#endif
  if(cleanup&&(e==0||e==ERROR_SUCCESS_REBOOT_REQUIRED))e=cleanup;return e;
 }
 static void WINAPI control(DWORD c){if(c==SERVICE_CONTROL_STOP&&stop_event)SetEvent(stop_event);}
+#if A04_COLLECTION_REBOOT
+static void WINAPI service_main(DWORD argc,WCHAR **argv)
+{
+ DWORD e,event_error,final_error,log_flush=0,log_close=0,arm_error=ERROR_NOT_READY;BOOL stopped;unsigned i;struct a04_cr_proof proof;
+ (void)argc;(void)argv;stop_event=CreateEventW(NULL,TRUE,FALSE,NULL);event_error=stop_event?0:GetLastError();
+ status_handle=RegisterServiceCtrlHandlerW(service_name,control);if(!status_handle)return;
+ memset(&service_status,0,sizeof(service_status));service_status.dwServiceType=SERVICE_WIN32_OWN_PROCESS;service_status.dwCurrentState=SERVICE_RUNNING;service_status.dwControlsAccepted=SERVICE_ACCEPT_STOP;SetServiceStatus(status_handle,&service_status);
+ e=event_error?event_error:once();final_error=combined_finalize(e);if(final_error&&(e==0||e==ERROR_SUCCESS_REBOOT_REQUIRED))e=final_error;
+ if(!A04_DIAGNOSTIC_ONLY&&e==ERROR_SUCCESS_REBOOT_REQUIRED){DWORD w=deferred_start_waiter();if(w){(void)disable_self();e=w;}}
+ if(e&&e!=ERROR_SUCCESS_REBOOT_REQUIRED)(void)disable_self();record(0,0x207,e);
+ if(logfile!=INVALID_HANDLE_VALUE){log_flush=FlushFileBuffers(logfile)?0:collection_error();if(log_flush&&!e)e=ERROR_WRITE_FAULT;log_close=CloseHandle(logfile)?0:collection_error();logfile=INVALID_HANDLE_VALUE;}else log_close=ERROR_INVALID_HANDLE;
+ memset(&proof,0,sizeof(proof));proof.magic=A04_CR_MAGIC;proof.version=1;proof.bytes=sizeof(proof);proof.run_id=combined_run_id;proof.service_pid=combined_service_pid;proof.result=e;proof.diagnostic_complete=combined_diagnostic?collection_diagnostic_complete:0;proof.finalize_error=final_error;proof.log_flush_error=log_flush;proof.log_close_error=log_close;proof.readonly_uncertain=!!readonly_uncertain;proof.cancelled=!stop_event||WaitForSingleObject(stop_event,0)!=WAIT_TIMEOUT;proof.client_count=(DWORD)A04_DIAGNOSTIC_CLIENT_COUNT;proof.io_error=collection_io_error?collection_io_error:log_error;
+ memcpy(proof.policy,deferred_token,64);
+ for(i=0;i<2&&i<A04_DIAGNOSTIC_CLIENT_COUNT;i++){memcpy(&proof.clients[i],&combined_clients[i],sizeof(combined_clients[i]));proof.clients[i].io_error=collection_client_io[i];}
+ /* Complete proof and permanent once claim precede waiter startup. Neither
+  * arming errors nor helper status replace the real diagnostic result. */
+ if(a04_cr_proof_valid(&proof,combined_run_id,combined_service_pid,deferred_token))arm_error=collection_start(&proof);
+ if(combined_diagnostic)collection_process_result=e;
+ service_status.dwCurrentState=SERVICE_STOPPED;service_status.dwControlsAccepted=0;
+ if(e){service_status.dwWin32ExitCode=ERROR_SERVICE_SPECIFIC_ERROR;service_status.dwServiceSpecificExitCode=e;}
+ stopped=SetServiceStatus(status_handle,&service_status);
+ /* Only this ordering can publish readiness; waiter still waits for the
+  * inherited real process object to signal and checks its actual exit code. */
+ if(!arm_error&&stopped&&WaitForSingleObject(stop_event,0)==WAIT_TIMEOUT){if(!SetEvent(collection_ready))collection_uart(0x2d2,GetLastError());}
+ if(collection_ready){CloseHandle(collection_ready);collection_ready=NULL;}
+ /* Keep the cancel event valid until ExitProcess when a waiter inherited it.
+  * A late in-flight STOP can still signal the exact same event object. */
+ if(stop_event&&arm_error)CloseHandle(stop_event);
+}
+#else
 static void WINAPI service_main(DWORD argc,WCHAR **argv){DWORD e,event_error;(void)argc;(void)argv;stop_event=CreateEventW(NULL,TRUE,FALSE,NULL);event_error=stop_event?0:GetLastError();status_handle=RegisterServiceCtrlHandlerW(service_name,control);if(!status_handle)return;memset(&service_status,0,sizeof(service_status));service_status.dwServiceType=SERVICE_WIN32_OWN_PROCESS;service_status.dwCurrentState=SERVICE_RUNNING;service_status.dwControlsAccepted=SERVICE_ACCEPT_STOP;SetServiceStatus(status_handle,&service_status);e=event_error?event_error:once();{DWORD final=combined_finalize(e);if(final&&(e==0||e==ERROR_SUCCESS_REBOOT_REQUIRED))e=final;}if(!A04_DIAGNOSTIC_ONLY&&e==ERROR_SUCCESS_REBOOT_REQUIRED){DWORD w=deferred_start_waiter();if(w){(void)disable_self();e=w;}}if(e&&e!=ERROR_SUCCESS_REBOOT_REQUIRED)(void)disable_self();record(0,0x207,e);if(logfile!=INVALID_HANDLE_VALUE){if(!FlushFileBuffers(logfile)&&!e)e=ERROR_WRITE_FAULT;CloseHandle(logfile);logfile=INVALID_HANDLE_VALUE;}service_status.dwCurrentState=SERVICE_STOPPED;service_status.dwControlsAccepted=0;if(e){service_status.dwWin32ExitCode=ERROR_SERVICE_SPECIFIC_ERROR;service_status.dwServiceSpecificExitCode=e;}SetServiceStatus(status_handle,&service_status);if(stop_event)CloseHandle(stop_event);}
-void mainCRTStartup(void){const WCHAR *cmd=GetCommandLineW();DWORD e,i;combined_service_pid=GetCurrentProcessId();combined_run_id=GetTickCount()^combined_service_pid;memset(combined_nodes,0xff,sizeof(combined_nodes));memset(combined_clients,0xff,sizeof(combined_clients));for(i=0;i<PERIPHERAL_TARGET_COUNT;i++)combined_nodes[i].observed=0;for(i=0;i<8;i++)combined_clients[i].observed=0;SetErrorMode(SEM_FAILCRITICALERRORS|SEM_NOOPENFILEERRORBOX);if(*cmd=='"'){cmd++;while(*cmd&&*cmd!='"')cmd++;if(*cmd)cmd++;}else while(*cmd&&*cmd!=' '&&*cmd!='\t')cmd++;while(*cmd==' '||*cmd=='\t')cmd++;if(!lstrcmpW(cmd,L"--reboot-after-stop"))e=deferred_reboot_waiter();else if(*cmd)e=ERROR_INVALID_PARAMETER;else{SERVICE_TABLE_ENTRYW t[2]={{(LPWSTR)service_name,service_main},{NULL,NULL}};e=StartServiceCtrlDispatcherW(t)?0:GetLastError();}if(logfile!=INVALID_HANDLE_VALUE)CloseHandle(logfile);ExitProcess(e);}
+#endif
+void mainCRTStartup(void){const WCHAR *cmd=GetCommandLineW();DWORD e,i;combined_service_pid=GetCurrentProcessId();combined_run_id=GetTickCount()^combined_service_pid;memset(combined_nodes,0xff,sizeof(combined_nodes));memset(combined_clients,0xff,sizeof(combined_clients));for(i=0;i<PERIPHERAL_TARGET_COUNT;i++)combined_nodes[i].observed=0;for(i=0;i<8;i++)combined_clients[i].observed=0;SetErrorMode(SEM_FAILCRITICALERRORS|SEM_NOOPENFILEERRORBOX);if(*cmd=='"'){cmd++;while(*cmd&&*cmd!='"')cmd++;if(*cmd)cmd++;}else while(*cmd&&*cmd!=' '&&*cmd!='\t')cmd++;while(*cmd==' '||*cmd=='\t')cmd++;if(!lstrcmpW(cmd,L"--reboot-after-stop"))e=deferred_reboot_waiter();
+#if A04_COLLECTION_REBOOT
+else if(collection_command(cmd))e=collection_waiter(cmd+(sizeof(L"--collection-after-stop ")/sizeof(WCHAR)-1));
+#endif
+else if(*cmd)e=ERROR_INVALID_PARAMETER;else{SERVICE_TABLE_ENTRYW t[2]={{(LPWSTR)service_name,service_main},{NULL,NULL}};e=StartServiceCtrlDispatcherW(t)?0:GetLastError();
+#if A04_COLLECTION_REBOOT
+if(!e&&combined_diagnostic)e=collection_process_result;
+#endif
+}if(logfile!=INVALID_HANDLE_VALUE)CloseHandle(logfile);ExitProcess(e);}
