@@ -75,7 +75,9 @@ def decode(data, after_generation=None):
                 events[-1]['last_manufacture_cid'] = detail & 255
         if stage == 128:
             boundary = detail & 255
-            if phase != 2 or kind != 3 or not observed or boundary not in (1, 2, 3, 4) or detail & ~0x1fff:
+            if (build != 1031 or channel != 3 or phase != 2 or kind != 3 or not observed
+                    or boundary not in (1, 2, 3, 4) or detail & ~0x1fff
+                    or (not detail & 0x1000 and detail & 0x0c00)):
                 raise ValueError('Unknown RESET boundary event')
             broker = bool(detail & (1 << 12))
             events[-1]['reset_boundary'] = dict(

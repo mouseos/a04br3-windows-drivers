@@ -47,7 +47,13 @@ function Test-Mt6630CheckpointRecord([byte[]]$b,[uint32]$channel){
  $stages=@(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,59,65,66,67,68,69,80,81,82,83,84,85,86,87,88,89,90,91,92,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127)
  for($i=0;$i -lt $count;$i++){
   $off=88+24*$i;$stage=[BitConverter]::ToUInt32($b,$off);$phase=[BitConverter]::ToUInt32($b,$off+4);$kind=[BitConverter]::ToUInt32($b,$off+8);$observed=[BitConverter]::ToUInt32($b,$off+12)
-  if($stage -notin $stages -or $phase -notin @(1,2,3) -or $kind -gt 4 -or $observed -gt 1 -or ($phase -eq 1 -and $observed)){throw 'Checkpoint event schema mismatch'}
+  if($stage -eq 128){
+   # source6aa39105 checkpoint_wire.h/native_control.c: RuntimeFailure only.
+   $build=[BitConverter]::ToUInt32($b,84);$detail=[BitConverter]::ToUInt32($b,$off+20);$boundary=$detail -band 255
+   if($build -ne 1031 -or $channel -ne 3 -or $phase -ne 2 -or $kind -ne 3 -or $observed -ne 1 -or
+      $boundary -notin @(1,2,3,4) -or ($detail -band 0xffffe000L) -ne 0 -or
+      (($detail -band 0x1000) -eq 0 -and ($detail -band 0x0c00) -ne 0)){throw 'Checkpoint RESET_BOUNDARY schema mismatch'}
+  }elseif($stage -notin $stages -or $phase -notin @(1,2,3) -or $kind -gt 4 -or $observed -gt 1 -or ($phase -eq 1 -and $observed)){throw 'Checkpoint event schema mismatch'}
  }
  for($i=(88+24*$count);$i -lt 1624;$i++){if($b[$i]){throw 'Unused event storage must be zero'}}
  return $gen
