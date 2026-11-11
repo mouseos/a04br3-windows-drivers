@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent
  * Source-linked Dxgk owner. No WDF, second IRQ connection or user payload. */
 #include "native_owner_factory_private.h"
+#include "../../wddm-render/allocation_batch.h"
 #include "display_geometry356.h"
 #include "native_factory_checkpoint.h"
 #include "../draw_trace_candidate.h"
@@ -110,10 +111,8 @@ static NTSTATUS set_power(void *p,uint64_t epoch,DEVICE_POWER_STATE power)
 }
 static struct e_native_resource *resource(struct e_native_owner *c,uint64_t id)
 {struct e_native_resource *r;for(r=c->resources;r && r->id!=id;r=r->next){}return r;}
-static int32_t create(void *p,const struct geo_surface_desc *d,uint64_t *id)
+static NTSTATUS resource_desc_status(const struct geo_surface_desc *d)
 {
-    struct e_native_owner *c=p;struct e_native_resource *r;NTSTATUS s;
-    if(!id)return STATUS_INVALID_PARAMETER;*id=0;
     BOOLEAN vertex=d && d->format==100u && d->usage==3u;
     BOOLEAN linear=d && (d->usage==GEO_USAGE_STAGING || d->usage==GEO_USAGE_INDEX_BUFFER || d->usage==GEO_USAGE_TEXTURE2D);
     if(linear){if(!geo_desc_valid(d))return STATUS_INVALID_PARAMETER;}
@@ -122,6 +121,13 @@ static int32_t create(void *p,const struct geo_surface_desc *d,uint64_t *id)
         if(d->size!=sizeof(*d) || d->version!=1 || d->width<4 || d->width>65536 ||
            d->height!=1 || d->pitch!=d->width || d->reserved)return STATUS_INVALID_PARAMETER;
     }else if(!geo_desc_valid(d) || !geo_usage_renderable(d->usage))return STATUS_NOT_SUPPORTED;
+    return STATUS_SUCCESS;
+}
+static int32_t create(void *p,const struct geo_surface_desc *d,uint64_t *id)
+{
+    struct e_native_owner *c=p;struct e_native_resource *r;NTSTATUS s;
+    if(!id)return STATUS_INVALID_PARAMETER;*id=0;
+    s=resource_desc_status(d);if(s!=STATUS_SUCCESS)return s;
     s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
     if(c->next_id==UINT64_MAX)return leave(c,STATUS_INTEGER_OVERFLOW);
     /* Logical allocations are not current hardware bindings. In particular,
@@ -235,6 +241,68 @@ static int32_t destroy(void *p,uint64_t surface)
     if(r->linear)return leave(c,STATUS_DEVICE_BUSY);
     if((surface==c->vertex && c->allocation->vertex) || (surface==c->surface && c->allocation->binding))return leave(c,STATUS_DEVICE_BUSY);
     *link=r->next;ExFreePoolWithTag(r,E_FACTORY_TAG);return leave(c,STATUS_SUCCESS);
+}
+/* Atomic metadata-only transactions. No bind/unbind/MMIO/firmware action.
+ * Only this factory's ops are accepted: never cast an arbitrary provider's
+ * opaque context to e_native_owner. Public ABI4 is unchanged. */
+static BOOLEAN batch_owner(const struct geo_owner_ops *o)
+{
+ return o && o->size==sizeof(*o) && o->version==GEO_OWNER_OPS_VERSION &&
+        o->context && o->create==create && o->destroy==destroy;
+}
+NTSTATUS GeoNativeCreateAllocationBatch(const struct geo_owner_ops *o,UINT count,
+ const struct geo_surface_desc *desc,uint64_t *tokens)
+{
+ struct e_native_owner *c;struct e_native_resource *pending=NULL,*r;UINT i;NTSTATUS s;
+ if(KeGetCurrentIrql()!=PASSIVE_LEVEL || !batch_owner(o) || !count ||
+    count>GEO_ALLOCATION_BATCH_MAX || !desc || !tokens)return STATUS_INVALID_PARAMETER;
+ for(i=0;i<count;i++){s=resource_desc_status(&desc[i]);if(s!=STATUS_SUCCESS)return s;}
+ /* Prepare without publishing or consuming IDs. Pool failure needs no owner
+  * callback rollback; every pending object is still solely ours. */
+ for(i=0;i<count;i++){
+  r=ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*r),E_FACTORY_TAG);
+  if(!r){s=STATUS_INSUFFICIENT_RESOURCES;goto abort;}
+  RtlZeroMemory(r,sizeof(*r));r->desc=desc[i];r->next=pending;pending=r;
+ }
+ c=o->context;s=enter(c,FALSE);if(!NT_SUCCESS(s))goto abort;
+ if(c->next_id>UINT64_MAX-count){s=leave(c,STATUS_INTEGER_OVERFLOW);goto abort;}
+ /* Admission complete. No failure/allocations/callbacks in commit. Rundown
+  * and the owner mutex cover every native list/ID change as one operation. */
+ for(i=count;i;i--){
+  r=pending;pending=r->next;r->id=c->next_id+i;tokens[i-1]=r->id;
+  r->next=c->resources;c->resources=r;
+ }
+ c->next_id+=count;return leave(c,STATUS_SUCCESS);
+abort:
+ while(pending){r=pending;pending=r->next;ExFreePoolWithTag(r,E_FACTORY_TAG);}
+ return s;
+}
+NTSTATUS GeoNativeDestroyAllocationBatch(const struct geo_owner_ops *o,UINT count,const uint64_t *tokens)
+{
+ struct e_native_owner *c;struct e_native_resource **rows,**link;UINT i,j;NTSTATUS s;
+ if(KeGetCurrentIrql()!=PASSIVE_LEVEL || !batch_owner(o) || !count ||
+    count>GEO_ALLOCATION_BATCH_MAX || !tokens)return STATUS_INVALID_PARAMETER;
+ rows=ExAllocatePoolWithTag(NonPagedPoolNx,count*sizeof(*rows),E_FACTORY_TAG);
+ if(!rows)return STATUS_INSUFFICIENT_RESOURCES;
+ c=o->context;s=enter(c,TRUE);if(!NT_SUCCESS(s))goto done;
+ for(i=0;i<count;i++){
+  if(!tokens[i]){s=STATUS_INVALID_PARAMETER;goto reject;}
+  for(j=0;j<i;j++)if(tokens[i]==tokens[j]){s=STATUS_INVALID_PARAMETER;goto reject;}
+  rows[i]=resource(c,tokens[i]);if(!rows[i]){s=STATUS_INVALID_PARAMETER;goto reject;}
+  if(rows[i]->linear || (tokens[i]==c->vertex && c->allocation->vertex) ||
+     (tokens[i]==c->surface && c->allocation->binding)){s=STATUS_DEVICE_BUSY;goto reject;}
+ }
+ /* No fallible work after admission. List membership/uniqueness cannot change
+  * while this mutex and rundown are held. Free only validated cold metadata. */
+ for(i=0;i<count;i++){
+  for(link=&c->resources;*link!=rows[i];link=&(*link)->next){}
+  *link=rows[i]->next;ExFreePoolWithTag(rows[i],E_FACTORY_TAG);
+ }
+ s=STATUS_SUCCESS;
+reject:
+ s=leave(c,s);
+done:
+ ExFreePoolWithTag(rows,E_FACTORY_TAG);return s;
 }
 static NTSTATUS select_target_locked(struct e_native_owner *c,uint64_t surface,BOOLEAN copy)
 {

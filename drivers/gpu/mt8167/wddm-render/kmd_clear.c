@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "kmd_clear.h"
+#include "allocation_batch.h"
 #include "display_adapter356.h"
 #include "capture.h"
 #include "lifecycle.h"
@@ -12,8 +13,16 @@ static int ticket_range(UINT size,UINT begin,UINT end) {
 }
 static NTSTATUS discard_allocation_prepares(struct geo_kmd_adapter *,struct geo_allocation *);
 static NTSTATUS prepare_pending(struct geo_kmd_adapter *,const struct geo_dma_ticket *);
-static NTSTATUS GeoCreateAllocationImpl(HANDLE adapter,DXGKARG_CREATEALLOCATION *p) {
- struct geo_kmd_adapter *a=adapter;struct geo_allocation *allocation;struct geo_surface_desc desc;struct geo_allocation_data data;struct geo_allocation_data_v2 extended={0};struct geo_shared_surface shared={0},resource_shared;struct geo_kmd_shared_resource *resource=NULL;UINT primary=0;DXGK_ALLOCATIONINFO *info;NTSTATUS s;
+struct geo_allocation_prepared {
+ struct geo_surface_desc desc;struct geo_allocation_data data;
+ struct geo_shared_surface shared;UINT primary;
+};
+static NTSTATUS validate_allocation(struct geo_kmd_adapter *a,DXGKARG_CREATEALLOCATION *p,
+ struct geo_allocation_prepared *out)
+{
+ struct geo_surface_desc desc;struct geo_allocation_data data;struct geo_allocation_data_v2 extended={0};
+ struct geo_shared_surface shared={0},resource_shared;struct geo_kmd_shared_resource *resource=NULL;
+ UINT primary=0;DXGK_ALLOCATIONINFO *info;
  if(!a||!p||KeGetCurrentIrql()!=PASSIVE_LEVEL||p->NumAllocations!=1||!p->pAllocationInfo)return STATUS_INVALID_PARAMETER;
  info=p->pAllocationInfo;
  if((info->PrivateDriverDataSize!=sizeof(data)&&info->PrivateDriverDataSize!=sizeof(extended)&&info->PrivateDriverDataSize!=sizeof(shared))||!info->pPrivateDriverData)return STATUS_INVALID_PARAMETER;
@@ -41,6 +50,28 @@ static NTSTATUS GeoCreateAllocationImpl(HANDLE adapter,DXGKARG_CREATEALLOCATION 
      (desc.usage==GEO_USAGE_RT_TEXTURE2D&&(data.logical_width!=desc.width||data.logical_height!=desc.height)))return STATUS_NOT_SUPPORTED;
  }else if(data.logical_width!=desc.width||data.logical_height!=desc.height)return STATUS_INVALID_PARAMETER;
 if(!a->aperture_ready||!geo_desc_valid(&desc)||ROUND_TO_PAGES(desc.pitch*desc.height)>a->aperture.commit_limit)return STATUS_NOT_SUPPORTED;
+ out->desc=desc;out->data=data;out->shared=shared;out->primary=primary;return STATUS_SUCCESS;
+}
+static void publish_allocation_info(DXGK_ALLOCATIONINFO *info,struct geo_allocation *allocation)
+{
+ struct geo_surface_desc desc=allocation->desc;
+ info->hAllocation=allocation;info->Alignment=PAGE_SIZE;info->Size=ROUND_TO_PAGES(desc.pitch*desc.height);
+ /* A CPU-only allocation supports no pitch-aligned GPU segment.
+  * WDK8.1 DXGK_ALLOCATIONINFO.PitchAlignedSize is zero in that case. */
+ info->PitchAlignedSize=allocation->cpu_only?0:info->Size;info->PreferredSegment.Value=0;info->PreferredSegment.SegmentId0=1;
+ info->SupportedReadSegmentSet=1;info->SupportedWriteSegmentSet=1;
+ info->EvictionSegmentSet=0;
+ info->HintedBank.Value=0;info->MaximumRenamingListLength=0;info->pAllocationUsageHint=NULL;
+ info->Flags.Value=0;info->Flags.CpuVisible=1;info->Flags.Cached=1;info->Flags.SynchronousPaging=1;
+ info->AllocationPriority=D3DDDI_ALLOCATIONPRIORITY_NORMAL;
+}
+static NTSTATUS GeoCreateAllocationSingle(HANDLE adapter,DXGKARG_CREATEALLOCATION *p) {
+ struct geo_kmd_adapter *a=adapter;struct geo_allocation *allocation;
+ struct geo_allocation_prepared prep;struct geo_surface_desc desc;struct geo_allocation_data data;
+ struct geo_shared_surface shared;struct geo_kmd_shared_resource *resource=NULL;
+ UINT primary;DXGK_ALLOCATIONINFO *info;NTSTATUS s;
+ s=validate_allocation(a,p,&prep);if(s!=STATUS_SUCCESS)return s;
+ info=p->pAllocationInfo;desc=prep.desc;data=prep.data;shared=prep.shared;primary=prep.primary;
  allocation=ExAllocatePoolWithTag(NonPagedPool,sizeof(*allocation),'rOeG');if(!allocation)return STATUS_INSUFFICIENT_RESOURCES;
  if(shared.magic){
   resource=ExAllocatePoolWithTag(NonPagedPool,sizeof(*resource),'sOeG');
@@ -52,17 +83,57 @@ if(!a->aperture_ready||!geo_desc_valid(&desc)||ROUND_TO_PAGES(desc.pitch*desc.he
  allocation->shared=shared;
  if(resource){resource->allocation=allocation;resource->next=a->shared_resources;a->shared_resources=resource;p->hResource=resource;}
  allocation->logical_width=data.logical_width;allocation->logical_height=data.logical_height;allocation->primary=primary;allocation->source_id=0;if(primary)allocation->cpu_only=0;
- info->hAllocation=allocation;info->Alignment=PAGE_SIZE;info->Size=ROUND_TO_PAGES(desc.pitch*desc.height);
- /* A CPU-only allocation supports no pitch-aligned GPU segment.
-  * WDK8.1 DXGK_ALLOCATIONINFO.PitchAlignedSize is zero in that case. */
- info->PitchAlignedSize=allocation->cpu_only?0:info->Size;info->PreferredSegment.Value=0;info->PreferredSegment.SegmentId0=1;
- info->SupportedReadSegmentSet=1;info->SupportedWriteSegmentSet=1;
- info->EvictionSegmentSet=0;
- info->HintedBank.Value=0;info->MaximumRenamingListLength=0;info->pAllocationUsageHint=NULL;
- info->Flags.Value=0;info->Flags.CpuVisible=1;info->Flags.Cached=1;info->Flags.SynchronousPaging=1;
- info->AllocationPriority=D3DDDI_ALLOCATIONPRIORITY_NORMAL;return STATUS_SUCCESS;
+ publish_allocation_info(info,allocation);return STATUS_SUCCESS;
 }
-static NTSTATUS GeoDestroyAllocationImpl(HANDLE adapter,const DXGKARG_DESTROYALLOCATION *p) {
+struct allocation_create_batch {
+ struct geo_allocation_prepared prep[GEO_ALLOCATION_BATCH_MAX];
+ struct geo_surface_desc desc[GEO_ALLOCATION_BATCH_MAX];
+ struct geo_allocation *allocations[GEO_ALLOCATION_BATCH_MAX];
+ uint64_t tokens[GEO_ALLOCATION_BATCH_MAX];
+};
+static NTSTATUS GeoCreateAllocationImpl(HANDLE adapter,DXGKARG_CREATEALLOCATION *p)
+{
+ struct geo_kmd_adapter *a=adapter;struct allocation_create_batch *b;DXGKARG_CREATEALLOCATION one;
+ UINT i;NTSTATUS s;struct geo_allocation *x;
+ if(!a||!p||KeGetCurrentIrql()!=PASSIVE_LEVEL||!p->NumAllocations||
+    p->NumAllocations>GEO_ALLOCATION_BATCH_MAX||!p->pAllocationInfo)return STATUS_INVALID_PARAMETER;
+ if(p->NumAllocations==1)return GeoCreateAllocationSingle(adapter,p);
+ if(a->engine.poisoned)return GEO_POISONED;
+ if(a->engine.allocation_count>UINT32_MAX-p->NumAllocations)return STATUS_INTEGER_OVERFLOW;
+ b=ExAllocatePoolWithTag(NonPagedPool,sizeof(*b),'bAeG');if(!b)return STATUS_INSUFFICIENT_RESOURCES;
+ RtlZeroMemory(b,sizeof(*b));one=*p;one.NumAllocations=1;
+ /* Validate EVERY element before allocating/native preparation. The shared
+  * wire describes exactly one immutable allocation/resource; do not extend
+  * that wire or append multiple allocations under its single resource. */
+ for(i=0;i<p->NumAllocations;i++){
+  one.pAllocationInfo=&p->pAllocationInfo[i];s=validate_allocation(a,&one,&b->prep[i]);
+  if(s!=STATUS_SUCCESS)goto abort;
+  if(b->prep[i].shared.magic){s=STATUS_NOT_SUPPORTED;goto abort;}
+  b->desc[i]=b->prep[i].desc;
+ }
+ for(i=0;i<p->NumAllocations;i++){
+  b->allocations[i]=ExAllocatePoolWithTag(NonPagedPool,sizeof(*x),'rOeG');
+  if(!b->allocations[i]){s=STATUS_INSUFFICIENT_RESOURCES;goto abort;}
+  RtlZeroMemory(b->allocations[i],sizeof(*x));
+ }
+ s=GeoNativeCreateAllocationBatch(&a->engine.owner,p->NumAllocations,b->desc,b->tokens);
+ if(s!=STATUS_SUCCESS)goto abort;
+ /* Native has committed. All frontend storage already exists; publish cannot
+  * fail. No output handle/hResource is written before this point. */
+ for(i=0;i<p->NumAllocations;i++){
+  x=b->allocations[i];x->desc=b->desc[i];x->surface=b->tokens[i];
+  x->logical_width=b->prep[i].data.logical_width;x->logical_height=b->prep[i].data.logical_height;
+  x->primary=b->prep[i].primary;x->source_id=0;
+  x->cpu_only=!x->primary&&(x->desc.usage==GEO_USAGE_STAGING||x->desc.usage==GEO_USAGE_INDEX_BUFFER||x->desc.usage==GEO_USAGE_TEXTURE2D);
+  x->next=a->engine.allocations;a->engine.allocations=x;a->engine.allocation_count++;
+  publish_allocation_info(&p->pAllocationInfo[i],x);
+ }
+ ExFreePoolWithTag(b,'bAeG');return STATUS_SUCCESS;
+abort:
+ for(i=0;i<p->NumAllocations;i++)if(b->allocations[i])ExFreePoolWithTag(b->allocations[i],'rOeG');
+ ExFreePoolWithTag(b,'bAeG');return s;
+}
+static NTSTATUS GeoDestroyAllocationSingle(HANDLE adapter,const DXGKARG_DESTROYALLOCATION *p) {
  struct geo_kmd_adapter *a=adapter;struct geo_allocation *allocation=NULL,*scan;NTSTATUS s;
  struct geo_kmd_shared_resource **link,*resource=NULL;
  if(!a||!p||KeGetCurrentIrql()!=PASSIVE_LEVEL||p->NumAllocations>1||
@@ -87,6 +158,58 @@ static NTSTATUS GeoDestroyAllocationImpl(HANDLE adapter,const DXGKARG_DESTROYALL
  }
  if(p->Flags.DestroyResource&&resource){*link=resource->next;ExFreePoolWithTag(resource,'sOeG');}
  return STATUS_SUCCESS;
+}
+struct allocation_destroy_batch {
+ struct geo_kmd_adapter *a;UINT count;struct geo_allocation *allocations[GEO_ALLOCATION_BATCH_MAX];
+ uint64_t tokens[GEO_ALLOCATION_BATCH_MAX];NTSTATUS status;
+};
+static BOOLEAN allocation_destroy_admit(void *arg)
+{
+ struct allocation_destroy_batch *b=arg;UINT i;
+ b->status=STATUS_SUCCESS;
+ if(b->a->engine.poisoned){b->status=GEO_POISONED;return TRUE;}
+ for(i=0;i<b->count;i++){
+  struct geo_allocation *x=b->allocations[i];
+  if(x->poisoned){b->status=GEO_POISONED;break;}
+  /* No wait/restore/drain/unmap for multi: reject ALL before any mutation. */
+  if(x->bound||x->references||x->open_count||x->display_refs){b->status=STATUS_DEVICE_BUSY;break;}
+ }
+ return TRUE;
+}
+static NTSTATUS GeoDestroyAllocationImpl(HANDLE adapter,const DXGKARG_DESTROYALLOCATION *p)
+{
+ struct geo_kmd_adapter *a=adapter;struct allocation_destroy_batch *b;
+ struct geo_allocation *x,**link;struct geo_kmd_shared_resource *r,**rlink;UINT i,j;NTSTATUS s;
+ if(!a||!p||KeGetCurrentIrql()!=PASSIVE_LEVEL||p->NumAllocations>GEO_ALLOCATION_BATCH_MAX||
+    (p->NumAllocations&&!p->pAllocationList))return STATUS_INVALID_PARAMETER;
+ if(p->NumAllocations<=1)return GeoDestroyAllocationSingle(adapter,p);
+ if(a->engine.allocation_count<p->NumAllocations)return STATUS_INVALID_PARAMETER;
+ b=ExAllocatePoolWithTag(NonPagedPool,sizeof(*b),'bAeG');if(!b)return STATUS_INSUFFICIENT_RESOURCES;
+ RtlZeroMemory(b,sizeof(*b));b->a=a;b->count=p->NumAllocations;
+ for(i=0;i<b->count;i++){
+  for(j=0;j<i;j++)if(p->pAllocationList[j]==p->pAllocationList[i]){s=STATUS_INVALID_PARAMETER;goto done;}
+  for(x=a->engine.allocations;x&&x!=p->pAllocationList[i];x=x->next){}
+  if(!x){s=STATUS_INVALID_PARAMETER;goto done;}
+  if(x->shared.magic){s=STATUS_NOT_SUPPORTED;goto done;}
+  for(r=a->shared_resources;r;r=r->next)if(r->allocation==x){s=STATUS_NOT_SUPPORTED;goto done;}
+  b->allocations[i]=x;b->tokens[i]=x->surface;
+ }
+ for(rlink=&a->shared_resources;*rlink&&*rlink!=p->hResource;rlink=&(*rlink)->next){}
+ r=*rlink;if(r&&r->allocation){s=STATUS_INVALID_PARAMETER;goto done;}
+ if(!a->synchronize||!a->synchronize(a->sync_context,allocation_destroy_admit,b)){s=STATUS_DEVICE_NOT_READY;goto done;}
+ s=b->status;if(s!=STATUS_SUCCESS)goto done;
+ s=GeoNativeDestroyAllocationBatch(&a->engine.owner,b->count,b->tokens);if(s!=STATUS_SUCCESS)goto done;
+ /* Successful native atomic commit; only non-failing frontend unlink/free
+  * remains. PASSIVE session excludes opens/maps/new captures; the synchronized
+  * zero-ref check excludes in-flight IRQ jobs referencing these allocations. */
+ for(i=0;i<b->count;i++){
+  x=b->allocations[i];for(link=&a->engine.allocations;*link!=x;link=&(*link)->next){}
+  *link=x->next;a->engine.allocation_count--;GeoEndVidMmMap(a,x);ExFreePoolWithTag(x,'rOeG');
+ }
+ if(p->Flags.DestroyResource&&r){*rlink=r->next;ExFreePoolWithTag(r,'sOeG');}
+ s=STATUS_SUCCESS;
+done:
+ ExFreePoolWithTag(b,'bAeG');return s;
 }
 static NTSTATUS GeoBuildPagingBufferImpl(HANDLE adapter,DXGKARG_BUILDPAGINGBUFFER *p) {
  struct geo_kmd_adapter *a=adapter;struct geo_allocation *allocation,*scan;uint32_t bytes;uint64_t begin,extent,other;NTSTATUS status;PMDL selected_view=NULL;
