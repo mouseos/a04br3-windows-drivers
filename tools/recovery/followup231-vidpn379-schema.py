@@ -42,7 +42,7 @@ def inspect_signed_manifest(root,manifest):
  require(m['success'] is True and m['signed'] is True and m['signer_thumbprint']==SIGNER and m['candidate_version']==379 and m['runtime_build_id_retained_from378'] is True and m['hardware_verified'] is False,'actual379 signed result only')
  require(all(m[k] is False for k in ('SDK_rebuilt','PCO_rebuilt','UMD_rebuilt','native_owner_rebuilt')) and m['native_owner_sha256']==NATIVE,'retained378 inputs only')
  tus=m['compiled_TUs'];require(len(tus)==1 and tus[0]['source'].replace('\\','/')=='drivers/gpu/mt8167/wddm-display/unified_display.cxx' and tus[0]['object']=='display_unified_display.obj' and re.fullmatch('[0-9a-f]{64}',tus[0]['sha256']),'one bridge TU only')
- closure=tus[0]['include_closure'];require(len(closure)>10,'actual trace include closure')
+ closure=tus[0]['include_closure'];require(len(closure)==92 and all(isinstance(n,str) and re.fullmatch('[0-9a-f]{64}',h) for n,h in closure.items()),'actual379 recorded 92-header closure')
  for suffix,digest in (
   ('/drivers/gpu/mt8167/wddm-display/unified_display.cxx','4393a26b5b5faaa328ca8a5b3c2c3e8c6bcdcebfa36a7f367d22641a609b6ba4'),
   ('/drivers/gpu/mt8167/wddm-display/vidpn_callback_trace.h','0fba97d0ff2ac4dcdf0b3c769d9f2ede4d6967b09c7395945e05b088ea2f24a6')):
