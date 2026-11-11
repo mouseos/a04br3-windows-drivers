@@ -505,7 +505,7 @@ adb shell 'set -e; test "$(id -u)" = 0; test "$(readlink -f /dev/block/by-name/b
    (out/'normal-uart.log').write_bytes(drained);(out/'normal-uart-deinterleaved.log').write_bytes(re.sub(STORAGE_TRACE,b'',drained))
    if st['status'] in TERMINAL_BOUNDARIES and collection_config:
     require(st.get('terminal',{}).get('phase')==1,'collection reboot never substitutes an install failure')
-    st['collection_shutdown']=wait_fastboot(root,c,out,st['terminal'],uart,offset,lambda raw:re.sub(STORAGE_TRACE,b'',raw),run=run_command_group,bounded_shell=BOUNDED_DEVICE_SHELL);save()
+    st['collection_shutdown']=wait_fastboot(root,c,out,st['terminal'],uart,offset,lambda raw:re.sub(STORAGE_TRACE,b'',raw),run=run_command_group,bounded_shell=BOUNDED_DEVICE_SHELL,storage_trace=STORAGE_TRACE);save()
    elif st['status'] in TERMINAL_BOUNDARIES:
     if hold_terminal(out,st,c,a.seal_sha256):
      save();print('GPU%d_TERMINAL_WINDOWS_HELD_NOT_GPU_FUNCTIONAL_SUCCESS'%k['run']);return

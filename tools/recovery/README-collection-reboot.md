@@ -44,3 +44,9 @@ root内ログのWindows compileはテスト専用headerコピーでSCM1TUのみ�
 
 VU decoder394cはhost waitのfastboot確認時/期限終了時へ接続し、`vidpn-vu-snapshot.json`を保存する。
 欠落・破損は未観測/未証明として記録し、read-only回収を妨げない。decoderもsourceclosureへpinする。
+
+VU入力区間は、今回normal offset以後の最初のVU候補行から、後続最初のBOOT_REASON token直前まで。
+ENDで切らず、不正な最初の候補を飛ばさないため、途中boot・END欠落・同区間複数streamは既decoderで拒否される。
+`vidpn-vu-window.json`へnormal元offset/end、全raw SHA、storage除去範囲、clean/raw双方の区間座標とSHA、
+全boot token範囲、後続VU候補、API0/例外観測の分類を保存する。全raw・deinterleaved raw・decode区間を別保存する。
+後続bootのVUを最初の区間へ混ぜず、存在をsidecarへ明示する。boot原因・current boot・GPU成功は証明しない。

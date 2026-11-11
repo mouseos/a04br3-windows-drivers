@@ -1,5 +1,5 @@
 """Explicit new-profile collection reboot contract and no-reset host boundary."""
-import importlib.util,json,re,subprocess,time
+import hashlib,importlib.util,json,re,subprocess,time
 from pathlib import Path
 CONFIG=dict(schema='MT8167_COLLECTION_REBOOT_OPT_IN_V1',enabled=True,receipt_schema='MT8167_COLLECTION_REBOOT_PROOF_V1',fastboot_wait_seconds=180,maximum_shutdown_requests=1,require_both_clients_completed=True,preserve_diagnostic_result=True,uart_reset_allowed=False)
 def require(v,msg):
@@ -41,19 +41,62 @@ def proof_events(raw,terminal,policy):
  expected=[(0x2d3,terminal['run']),(0x2d4,terminal['PID'])]+[(0x2e0+i,int(policy[i*8:i*8+8],16)) for i in range(8)]+[(0x2d0,terminal['code']),(0x2d1,0)]
  require(len(relevant)<=len(expected) and relevant==expected[:len(relevant)],'collection receipt run/PID/policy/result/API sequence mismatch')
  return len(relevant)==len(expected)
-def save_vu_snapshot(c,out,terminal,raw):
+def save_vu_snapshot(c,out,terminal,raw,*,normal_offset=0,full_raw=None,storage_trace=None):
  if not c.get('vidpn_uart_snapshot'):return None
  require(c['vidpn_uart_snapshot']==SNAPSHOT_CONFIG,'exact sealed VU snapshot config')
  spec=importlib.util.spec_from_file_location('collection_vidpn_vu',Path(__file__).with_name('decode-vidpn-vu.py'))
  module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
- try:result=module.decode(raw,terminal['run'],terminal['PID'])
+ original=raw if full_raw is None else full_raw
+ removed=list(re.finditer(storage_trace,original)) if storage_trace else []
+ require((re.sub(storage_trace,b'',original) if storage_trace else original)==raw,'VU raw/deinterleaved provenance mismatch')
+ def original_boundary(position,right=False):
+  deleted=0;answer=position
+  for match in removed:
+   boundary=match.start()-deleted;length=match.end()-match.start()
+   if boundary<position or (right and boundary==position):answer+=length
+   deleted+=length
+  return answer
+ def span(begin,end):
+  return dict(clean_start=begin,clean_end=end,original_start=normal_offset+original_boundary(begin,True),original_end=normal_offset+original_boundary(end,begin==end))
+ # Match the decoder's candidate rule, including malformed/contaminated VU.
+ # Never skip a bad first candidate to select a later apparently valid stream.
+ candidates=[];at=0
+ for line in raw.split(b'\n'):
+  if line.startswith(b'VU') or b'VU ' in line:candidates.append(at)
+  at+=len(line)+1
+ begin=candidates[0] if candidates else len(raw)
+ markers=list(module.BOOT.finditer(raw));following=[m for m in markers if m.start()>=begin]
+ boundary=following[0] if following else None;end=boundary.start() if boundary else len(raw)
+ window=raw[begin:end]
+ original_window=original[original_boundary(begin,True):original_boundary(end,begin==end)]
+ require((re.sub(storage_trace,b'',original_window) if storage_trace else original_window)==window,'VU selected original/clean window mismatch')
+ (out/'collection-reboot-uart-raw.log').write_bytes(original)
+ (out/'collection-reboot-uart.log').write_bytes(raw)
+ (out/'vidpn-vu-window.uart').write_bytes(window)
+ try:shutdown=proof_events(raw,terminal,c['policy_sha256'])
+ except (ValueError,KeyError):shutdown=False
+ fault=lambda data:bool(re.search(rb'A04(?:GPU|WIN) BUGCHECK|Unhandled Exception',data))
+ later=[pos for pos in candidates if pos>=end] if boundary else []
+ side=dict(schema='MT8167_VIDPN_VU_WINDOW_V1',coordinate_system='clean ranges relative to normal window; original ranges absolute in source UART',
+  normal_offset=normal_offset,normal_end=normal_offset+len(original),full_raw_file='collection-reboot-uart-raw.log',full_raw_sha256=hashlib.sha256(original).hexdigest(),full_raw_bytes=len(original),
+  cleaned_file='collection-reboot-uart.log',cleaned_sha256=hashlib.sha256(raw).hexdigest(),window_file='vidpn-vu-window.uart',window_sha256=hashlib.sha256(window).hexdigest(),original_window_sha256=hashlib.sha256(original_window).hexdigest(),window=span(begin,end),
+  window_rule='first VU candidate through immediately before next BOOT_REASON; no latest/resync/END-based trimming',
+  boot_markers=[span(m.start(),m.end()) for m in markers],following_boot_marker=span(boundary.start(),boundary.end()) if boundary else None,
+  removed_storage_ranges=[dict(original_start=normal_offset+m.start(),original_end=normal_offset+m.end()) for m in removed],
+  later_vu_candidates=[span(pos,min(len(raw),raw.find(b'\n',pos)+1 if b'\n' in raw[pos:] else len(raw))) for pos in later],
+  reboot_observed=bool(boundary),normal_shutdown_API_return0_recorded=shutdown,exception_before_boundary_observed=fault(raw[:end]),exception_in_full_window_observed=fault(raw),
+  reboot_classification=('exception-evidence-and-reboot-observed' if fault(raw[:end]) else 'shutdown-API0-and-reboot-observed' if shutdown else 'reboot-observed-cause-unproven') if boundary else 'no-following-boot-marker-observed',
+  post_boundary_VU_present=bool(later),boot_cause_proven=False,current_boot_unproven=True,hardware_success=False)
+ try:result=module.decode(window,terminal['run'],terminal['PID'])
  except module.Rejected as error:result=dict(schema='GE8300_VIDPN_VU_HOST_V1',transport_complete=False,current_boot_unproven=True,hardware_success=False,error=str(error))
+ result['window_sidecar']='vidpn-vu-window.json';side['decoder_transport_complete']=result['transport_complete'];side['decoder_error']=result.get('error')
+ (out/'vidpn-vu-window.json').write_text(json.dumps(side,indent=2)+'\n')
  (out/'vidpn-vu-snapshot.json').write_text(json.dumps(result,indent=2)+'\n');return result
-def wait_fastboot(root,c,out,terminal,uart,offset,clean,run,bounded_shell,clock=time.monotonic,sleep=time.sleep):
+def wait_fastboot(root,c,out,terminal,uart,offset,clean,run,bounded_shell,clock=time.monotonic,sleep=time.sleep,storage_trace=None):
  require(c.get('collection_reboot')==CONFIG,'explicit sealed collection mode')
  deadline=clock()+CONFIG['fastboot_wait_seconds'];observed=False
  while clock()<deadline:
-  with Path(uart).open('rb') as f:f.seek(offset);raw=clean(f.read())
+  with Path(uart).open('rb') as f:f.seek(offset);full_raw=f.read();raw=clean(full_raw)
   (out/'collection-reboot-uart.log').write_bytes(raw)
   fault=bool(re.search(rb'A04(?:GPU|WIN) BUGCHECK|Unhandled Exception',raw));proof_error=None
   try:observed=proof_events(raw,terminal,c['policy_sha256'])
@@ -66,12 +109,12 @@ def wait_fastboot(root,c,out,terminal,uart,offset,clean,run,bounded_shell,clock=
   except (subprocess.TimeoutExpired,subprocess.CalledProcessError):
    r=None # Probe unavailable; group already reaped, same absolute deadline.
   if r is not None and r.returncode==0:
-   snapshot=save_vu_snapshot(c,out,terminal,raw)
+   snapshot=save_vu_snapshot(c,out,terminal,raw,normal_offset=offset,full_raw=full_raw,storage_trace=storage_trace)
    result=dict(schema='MT8167_COLLECTION_REBOOT_HOST_PROOF_V1',terminal=terminal,policy_sha256=c['policy_sha256'],collection_transport_status='fastboot-observed-api-return0-recorded' if observed else 'fastboot-observed-shutdown-unproven',Windows_shutdown_API_return0=True if observed else None,UART_shutdown_proof_complete=observed,UART_proof_validation_error=proof_error,runtime_fault_observed=fault,fastboot_identity_verified=True,UART_reset_requested=False,hardware_success=False)
    if snapshot is not None:result['vidpn_vu_snapshot_output']='vidpn-vu-snapshot.json'
    (out/'collection-fastboot-proof.json').write_text(json.dumps(result,indent=2)+'\n');return result
   sleep(.5)
- save_vu_snapshot(c,out,terminal,raw)
+ save_vu_snapshot(c,out,terminal,raw,normal_offset=offset,full_raw=full_raw,storage_trace=storage_trace)
  raise RuntimeError('collection fastboot timeout; no UART reset/retry; preserve Windows result')
 
 SOURCE_PATHS=('tools/recovery/collection_reboot.py','tools/recovery/decode-collection-reboot.py','tools/winpe/collection-reboot.h','tools/winpe/collection-reboot-contract.h','tools/winpe/vidpn-uart-snapshot.h','tools/winpe/collection-vidpn-uart.h','tools/recovery/decode-vidpn-vu.py')
