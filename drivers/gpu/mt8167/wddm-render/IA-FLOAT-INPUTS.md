@@ -43,3 +43,25 @@ native67/KMD/PCO source・native map・compile flagsは不変。
 その中に両UMD sourceも含むため、今回の変更は既存cache admissionで拒否される。
 「native依存無変更」を理由にguard成功とはしない。guardは変更しない。
 署名、Windows compile/link、実機への投入はこのsource作業には含まない。
+
+
+## optional UMD-only relink（通常cold entryとは別経路）
+
+`tools/ci/relink-ge8300-ia-float-umd.py` は既定でread-only admissionだけを行う。`--execute-link` を明示した時だけ、28objectのうち旧ace26個と既ARMcompile成功323aの2個でarchive/DLLを作る。新compile、native67/KMD/PCO/client build、署名は行わず、67のbroad451 cache guardも呼ばない。既存通常cold入口とguardは変更しない。private artifact不要の通常cold buildの代替とはしない。このoptional入口では実保持artifactを明示入力する。
+
+```powershell
+python tools/ci/relink-ge8300-ia-float-umd.py `
+  --baseline-stage <umd-verifiedディレクトリ> `
+  --new-compile <回収compile-outputディレクトリ> `
+  --new-compile-manifest-sha256 492758853be46ce70563d6daad8fa24dbf46acce5c5184fd3a772c053de84704 `
+  --compiler-directory <既保持compiler-adaptersディレクトリ> `
+  --output build/ia-float-umd-only
+```
+
+新旧実sourceを含むfull Git cloneで実行する（原ace recipe blobも参照）。旧UMD manifest `d9a8e631...`、旧broad451 witness `d12012a2...` はこの候補の実SHAへ固定。451の差がUMD2Cだけであること、旧28objectの実hashとarchive20memberの実bytes、26継承TUのsource、新2objectのsource/flags/clang/-MD/deps/logs、PCO605sourceとsource plan、30cbの原link/pair manifest、順序付き10libsとpco_pair.objを照合する。broad witnessのrecorded sourceはed360、UMDのcompiled sourceはaceであり、別fieldへ保持する。新2objectのcompiled source323aと現relink recipe HEADも分離する。
+
+実行許可・source独立レビュー後だけ `--execute-link --llvm-lib <既存llvm-lib.exe> --lld-link <既存lld-link.exe> --readobj <既存llvm-readobj.exe>` を追加する。公開tool hashesを要求し、元recipeのarchive入力順20件、DLL直入力entry/typed_entry/archive/pco_pair、10libs順を維持する。新archiveの実member名順と各body hashを検査し、DLLのARMNT/imports/exportsを比較する。未使用の旧client objectも26保持に含むがclientを再linkしない。
+
+`relink-receipt.json` は旧26compiled ace、新2compiled323a、PCO compiled30cb、relink recipe HEADを個別記録し、原manifestsをprovenanceへbyte保存する。入力を変更せず、失敗時は完了object/archive/DLL/logを保持し自動再試行しない。
+
+この処理は厳密な旧環境全証明ではない。旧UMDの実効全argvや環境header全snapshotは保存不足であり、旧source recipeのflags・現source/実object/hash・新2TUの実依存に基づく限定候補である。`strict_cache_qualified=false`、`historical_environment_header_snapshot_complete=false` を維持し、元PCO receipt/current_source等を現sourceへ改名しない。source実装時はread-only admission/parseのみ、実archive/link/署名/実機は未実行。
