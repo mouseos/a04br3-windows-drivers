@@ -39,7 +39,10 @@ static NTSTATUS APIENTRY create_context365(HANDLE handle,DXGKARG_CREATECONTEXT *
  p->ContextInfo.DmaBufferPrivateDataSize=sizeof(struct geo_dma_ticket);/* RT8.1 VidMm AddBuffer raises nonzero allocation-list capacities <4 to
   * 3, then AcquireBuffer compares that actual capacity with this request.
   * Request the stable minimum; Render/Patch still use only named entries. */
- p->ContextInfo.AllocationListSize=3;p->ContextInfo.PatchLocationListSize=3;p->hContext=c;
+ /* GDI has a fixed WDK allocation-list contract independent of the
+  * smaller list requested by the retained ordinary UMD context. */
+ p->ContextInfo.AllocationListSize=p->Flags.GdiContext?DXGK_ALLOCATION_LIST_SIZE_GDICONTEXT:3;
+ p->ContextInfo.PatchLocationListSize=3;p->hContext=c;
  done:GeoSessionLeave(a,1);return status;
 }
 NTSTATUS APIENTRY GeoCreateContext(HANDLE handle,DXGKARG_CREATECONTEXT *p) {
@@ -157,9 +160,11 @@ NTSTATUS APIENTRY GeoGetStandardAllocationDriverData(HANDLE handle,DXGKARG_GETST
  if(!geo_desc_valid(&d)){status=STATUS_NOT_SUPPORTED;goto done;}
  RtlZeroMemory(&data,sizeof(data));data.size=sizeof(data);data.version=1;data.logical_width=d.width;data.logical_height=d.height;data.storage=d;
  p->AllocationPrivateDriverDataSize=sizeof(data);p->ResourcePrivateDriverDataSize=0;
- if(p->StandardAllocationType==D3DKMDT_STANDARDALLOCATION_STAGINGSURFACE)p->pCreateStagingSurfaceData->Pitch=d.pitch;
- else p->pCreateShadowSurfaceData->Pitch=d.pitch;
+ /* The NULL-buffer size query must leave the standard descriptor alone.
+  * Publish its pitch only when filling the private allocation data. */
  if(p->pAllocationPrivateDriverData) {
+  if(p->StandardAllocationType==D3DKMDT_STANDARDALLOCATION_STAGINGSURFACE)p->pCreateStagingSurfaceData->Pitch=d.pitch;
+  else p->pCreateShadowSurfaceData->Pitch=d.pitch;
   RtlCopyMemory(p->pAllocationPrivateDriverData,&data,sizeof(data));
  }
  done:GeoSessionLeave(a,1);return status;

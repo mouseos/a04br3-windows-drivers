@@ -430,13 +430,17 @@ static int present_region(const RECT *src,const RECT *dst,const RECT *dirty,
  int64_t sw=(int64_t)src->right-src->left,sh=(int64_t)src->bottom-src->top;
  int64_t dw=(int64_t)dst->right-dst->left,dh=(int64_t)dst->bottom-dst->top;
  int64_t sx=(int64_t)src->left+dirty->left-dst->left,sy=(int64_t)src->top+dirty->top-dst->top;
- if(sw<=0||sh<=0||sw!=dw||sh!=dh||src->left<0||src->top<0||dst->left<0||dst->top<0||
-    src->right>source->logical_width||src->bottom>source->logical_height||
-    dst->right>destination->logical_width||dst->bottom>destination->logical_height||
+ int64_t width=(int64_t)dirty->right-dirty->left,height=(int64_t)dirty->bottom-dirty->top;
+ /* Outer rectangles define the translation and may cross surface edges.
+  * Only the preclipped dirty rectangle and its mapped source are copied.
+  * Check both actual regions in 64 bits before narrowing any coordinate. */
+ if(sw<=0||sh<=0||sw!=dw||sh!=dh||width<=0||height<=0||
     dirty->left<dst->left||dirty->top<dst->top||dirty->right>dst->right||dirty->bottom>dst->bottom||
-    dirty->right<=dirty->left||dirty->bottom<=dirty->top||sx<0||sy<0||sx>UINT32_MAX||sy>UINT32_MAX)return 0;
+    dirty->left<0||dirty->top<0||(int64_t)dirty->right>destination->logical_width||(int64_t)dirty->bottom>destination->logical_height||
+    sx<0||sy<0||sx>UINT32_MAX||sy>UINT32_MAX||width>UINT32_MAX||height>UINT32_MAX||
+    sx+width>source->logical_width||sy+height>source->logical_height)return 0;
  *out=(struct geo_copy_region){(UINT)sx,(UINT)sy,(UINT)dirty->left,(UINT)dirty->top,
-  (UINT)(dirty->right-dirty->left),(UINT)(dirty->bottom-dirty->top)};
+  (UINT)width,(UINT)height};
  return geo_copy_region_valid(out,source->logical_width,source->logical_height,destination->logical_width,destination->logical_height);
 }
 NTSTATUS APIENTRY GeoPresent(HANDLE context,DXGKARG_PRESENT *p) {

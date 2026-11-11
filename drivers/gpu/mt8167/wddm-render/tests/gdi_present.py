@@ -132,6 +132,22 @@ int main(void){
  struct geo_copy_region r;RECT src={20,30,120,230},dst={100,200,200,400},sub={110,210,130,250};
  assert(present_region(&src,&dst,&sub,&shadow,&primary,&r)&&r.source_x==30&&r.source_y==40);
  src.right++;assert(!present_region(&src,&dst,&sub,&shadow,&primary,&r));
+ /* OS-preclipped copies may cross each outer destination edge. */
+ src=(RECT){0,0,800,1280};
+ dst=(RECT){-10,0,790,1280};sub=(RECT){0,0,790,1280};
+ assert(present_region(&src,&dst,&sub,&shadow,&primary,&r)&&r.source_x==10&&r.destination_x==0&&r.width==790);
+ dst=(RECT){10,0,810,1280};sub=(RECT){10,0,800,1280};
+ assert(present_region(&src,&dst,&sub,&shadow,&primary,&r)&&r.source_x==0&&r.destination_x==10&&r.width==790);
+ dst=(RECT){0,-10,800,1270};sub=(RECT){0,0,800,1270};
+ assert(present_region(&src,&dst,&sub,&shadow,&primary,&r)&&r.source_y==10&&r.height==1270);
+ dst=(RECT){0,10,800,1290};sub=(RECT){0,10,800,1280};
+ assert(present_region(&src,&dst,&sub,&shadow,&primary,&r)&&r.source_y==0&&r.destination_y==10&&r.height==1270);
+ /* Reject the same requests when the actual destination is not clipped. */
+ for(UINT edge=0;edge<4;edge++){
+  RECT unclipped[4]={{-10,0,790,1280},{10,0,810,1280},{0,-10,800,1270},{0,10,800,1290}};
+  dst=unclipped[edge];sub=dst;assert(!present_region(&src,&dst,&sub,&shadow,&primary,&r));
+ }
+
  src=(RECT){INT32_MIN,0,INT32_MAX,1280};assert(!present_region(&src,&dst,&sub,&shadow,&primary,&r));
  p=initial;p.MultipassOffset=33;assert(GeoPresent(&c,&p)==GEO_INVALID);
  p=initial;list[2].WriteOperation=0;assert(GeoPresent(&c,&p)==GEO_UNSUPPORTED);list[2].WriteOperation=1;

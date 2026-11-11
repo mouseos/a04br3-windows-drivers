@@ -45,9 +45,9 @@ int main(void){
  unsigned char resource[16];struct geo_engine engine={0};struct geo_allocation alloc={0};struct geo_clear_packet packet={GEO_CLEAR_MAGIC,sizeof(packet),GEO_ABI_VERSION,0,0xff112233,0,{0,0}};struct geo_dma_ticket ticket;
  memset(resource,0xa5,sizeof(resource));memset(&guarded,0xcc,sizeof(guarded));
  p.StandardAllocationType=3;p.pCreateStagingSurfaceData=&stage;
- assert(GeoGetStandardAllocationDriverData(&adapter,&p)==0);assert(p.AllocationPrivateDriverDataSize==sizeof(guarded.data)&&p.ResourcePrivateDriverDataSize==0&&stage.Pitch==3200);
+ assert(GeoGetStandardAllocationDriverData(&adapter,&p)==0);assert(p.AllocationPrivateDriverDataSize==sizeof(guarded.data)&&p.ResourcePrivateDriverDataSize==0&&stage.Pitch==0xdeadbeef);
  p.pAllocationPrivateDriverData=&guarded.data;p.pResourcePrivateDriverData=resource;
- assert(GeoGetStandardAllocationDriverData(&adapter,&p)==0);assert(guarded.before==0xcccccccc&&guarded.after==0xcccccccc);
+ assert(GeoGetStandardAllocationDriverData(&adapter,&p)==0);assert(guarded.before==0xcccccccc&&guarded.after==0xcccccccc&&stage.Pitch==3200);
  for(unsigned i=0;i<sizeof(resource);i++)assert(resource[i]==0xa5);
  assert(guarded.data.logical_width==800&&guarded.data.logical_height==600);
  assert(guarded.data.storage.format==GEO_FORMAT_X8R8G8B8&&guarded.data.storage.usage==GEO_USAGE_STAGING&&geo_desc_valid(&guarded.data.storage));
@@ -68,7 +68,7 @@ int main(void){
  p.pCreateStagingSurfaceData=0;assert(GeoGetStandardAllocationDriverData(&adapter,&p)==STATUS_INVALID_PARAMETER);
  p.StandardAllocationType=1;assert(GeoGetStandardAllocationDriverData(&adapter,&p)==STATUS_NOT_SUPPORTED);
  p.StandardAllocationType=4;assert(GeoGetStandardAllocationDriverData(&adapter,&p)==STATUS_NOT_SUPPORTED);
- {D3DKMDT_SHADOWSURFACEDATA shadow={800,600,21,0};p.StandardAllocationType=2;p.pCreateShadowSurfaceData=&shadow;assert(GeoGetStandardAllocationDriverData(&adapter,&p)==0&&shadow.Pitch==3200);assert(guarded.data.storage.format==21);shadow.Format=22;assert(GeoGetStandardAllocationDriverData(&adapter,&p)==0&&guarded.data.storage.format==22&&shadow.Pitch==3200);shadow.Format=24;assert(GeoGetStandardAllocationDriverData(&adapter,&p)==STATUS_NOT_SUPPORTED);}
+ {D3DKMDT_SHADOWSURFACEDATA shadow={800,600,21,0xabcdef01};p.StandardAllocationType=2;p.pCreateShadowSurfaceData=&shadow;p.pAllocationPrivateDriverData=0;p.pResourcePrivateDriverData=0;assert(GeoGetStandardAllocationDriverData(&adapter,&p)==0&&shadow.Pitch==0xabcdef01);p.pAllocationPrivateDriverData=&guarded.data;p.pResourcePrivateDriverData=resource;assert(GeoGetStandardAllocationDriverData(&adapter,&p)==0&&shadow.Pitch==3200);assert(guarded.data.storage.format==21);shadow.Format=22;assert(GeoGetStandardAllocationDriverData(&adapter,&p)==0&&guarded.data.storage.format==22&&shadow.Pitch==3200);shadow.Format=24;assert(GeoGetStandardAllocationDriverData(&adapter,&p)==STATUS_NOT_SUPPORTED);}
  p.StandardAllocationType=3;p.pCreateStagingSurfaceData=&stage;stage.Width=800;adapter.live=0;assert(GeoGetStandardAllocationDriverData(&adapter,&p)==STATUS_DEVICE_NOT_READY);
  assert(GeoGetStandardAllocationDriverData(&adapter,0)==STATUS_INVALID_PARAMETER);
  return 0;
