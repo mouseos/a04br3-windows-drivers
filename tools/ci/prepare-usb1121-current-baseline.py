@@ -15,6 +15,10 @@ component = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(component)
 b = component.b
 ROLES = {'rtc','thermal','usb','wifi','sd','display','parent','keypad','battery','audio','render','msdc','bt'}
+ROLE_SYS = dict(zip(('rtc','thermal','usb','wifi','sd','display','parent','keypad','battery','audio','render','msdc','bt'),
+                   ('mt6392-rtc.sys','mt8167-thermal.sys','mt8167-usb20.sys','mt6630-combo-runtime.sys',
+                    'mt8167-sd.sys','mt8167-display-transport.sys','mt8167-shared.sys','mt8167-keypad.sys',
+                    'lc709203f.sys','mt8167-audio.sys','ge8300-render.sys','mt8167-msdc.sys','mt6630-combo-bluetooth.sys')))
 
 
 def pinned(root, ref):
@@ -56,15 +60,32 @@ def build(root, inputs, *, for_deployment=False):
             b.require(name not in files or files[name] == item['sha256'], '重複取得の不一致')
             files[name] = item['sha256']
     b.require(set(packages) == ROLES, '全13roleの実package行が必要')
-    for row in packages.values():
+    for role, row in packages.items():
         b.require(set(row['names']) == {'inf','sys','cat'} and set(row['hashes']) == {'inf','sys','cat'}, 'trio不完全')
+        b.require(row['names']['sys'] == ROLE_SYS[role], 'roleと実ハードSYS名が不一致')
         mp = b.below(root, row['manifest'])
         b.require(b.sha(mp) == row['manifest_sha256'], '保持packageの出自不一致')
+        manifest = b.read(mp)
+        source = manifest.get('package_source_commit', manifest.get('source_commit'))
+        if role == 'display':
+            source = manifest.get('new_display_source_commit', source)
+        b.require(isinstance(source, str) and re.fullmatch('[0-9a-f]{40}', source) and
+                  source == row['source_commit'], 'roleのmanifest sourceが不一致')
+        members = manifest.get('files', manifest.get('outputs', []))
+        b.require(isinstance(members, list) and members, '実manifestのleaf集合が必要')
         for kind, name in row['names'].items():
             b.require(re.fullmatch('[A-Za-z0-9_.-]+', name), 'package basename不正')
             b.require(b.sha(b.below(root, Path(row['directory']) / name)) == row['hashes'][kind], '保持package byte不一致')
+            matches = [f['sha256'].lower() for f in members
+                       if Path(f.get('path', f.get('name','')).replace('\\','/')).name == name]
+            b.require(matches == [row['hashes'][kind]], 'roleのtrioとmanifest leafが不一致')
         b.require(files.get('Windows/System32/Drivers/' + row['names']['sys']) == row['hashes']['sys'],
                   '取得した実SYSとpackageが不一致')
+    extras = packages['render'].get('extra_members', [])
+    expected = {'ge8300-umd.dll':'ge8300-umd.dll', 'ge8300-mips.fw':'Drivers/ge8300-mips.fw'}
+    b.require(len(extras) == len(expected) and
+              {x['name']:x['installed'].replace('\\','/') for x in extras} == expected,
+              '実GPUの必須UMD/FW installed集合が不完全')
     raw_values = []
     for path, value in native['captured_named_values'].items():
         key, sep, name = path.rpartition('\\')
