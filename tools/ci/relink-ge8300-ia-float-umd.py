@@ -27,7 +27,8 @@ def recipe_identity(checkout,compiled_blob,current_blob):
  require(checkout.replace(b'\r\n',b'\n')==current_blob.replace(b'\r\n',b'\n'),'UMD recipe checkout differs beyond LF/CRLF conversion')
  return dict(compiled_git_blob_sha256=hashlib.sha256(compiled_blob).hexdigest(),current_git_blob_sha256=hashlib.sha256(current_blob).hexdigest(),checkout_sha256=hashlib.sha256(checkout).hexdigest(),checkout_difference_limited_to_LF_CRLF=True)
 
-def admit(stage,newdir,compiler,new_sha):
+def admit(stage,newdir,compiler,new_sha,compiled_source=NEW):
+ require(re.fullmatch('[0-9a-f]{40}',compiled_source) is not None,'Explicit new compile source must be a full commit')
  locks={}
  def bind(p,h=None):
   p=Path(p).resolve();actual=sha(p);require(h is None or actual==h.lower(),'Input hash: '+str(p));locks[p]=actual;return p
@@ -41,7 +42,7 @@ def admit(stage,newdir,compiler,new_sha):
   rel=row['path'].replace('\\','/');p=bind(ROOT/rel)
   if sha(p)!=row['sha256'].lower():delta.add(rel)
  require(delta==CHANGED,'Only UMD2C may differ in original broad451 runtime/header source set')
- require(new['schema']=='ge8300-ia-float-arm2tu-v1' and new['source_commit']==NEW and new['success'] and new['compile_count']==2 and new['link_count']==new['sign_count']==0 and len(new['units'])==2,'Actual successful323a two-TU compile')
+ require(new['schema']=='ge8300-ia-float-arm2tu-v1' and new['source_commit']==compiled_source and new['success'] and new['compile_count']==2 and new['link_count']==new['sign_count']==0 and len(new['units'])==2,'Actual successful selected-source two-TU compile')
  require({x['source'] for x in new['units']}==CHANGED,'Exactly two replacement TUs')
  recipe=bind(ROOT/RECIPE);text=recipe.read_text()
  oldrecipe=git('show',BASE+':'+RECIPE)
@@ -57,7 +58,8 @@ def admit(stage,newdir,compiler,new_sha):
   rel=PREFIX+x['unit']+'.c';leaf=x['unit'].replace('/','_')+'.obj';prior=bind(stage/'umd'/leaf,x['object_sha256']);arm(prior);old_objects[leaf]=prior
   if rel in CHANGED:
    n=newrows[rel];p=bind(newdir/n['object'],n['object_sha256']);arm(p)
-   require(n['object']==leaf and n['compile_complete'] and n['exit_code']==0 and n['compiled_source_commit']==NEW and n['source_sha256']==sha(ROOT/rel),'New object/source binding')
+   require(n['object']==leaf and n['compile_complete'] and n['exit_code']==0 and n['compiled_source_commit']==compiled_source and n['source_sha256']==sha(ROOT/rel),'New object/source binding')
+   require(git('show',compiled_source+':'+rel)==git('show','HEAD:'+rel),'Selected compiled/current TU Git blobs differ')
    bind(newdir/(leaf+'.d'),n['dependency_sha256']);bind(newdir/'logs'/(Path(rel).stem+'.log'),n['log_sha256'])
    flags=n['flags'];inc=PureWindowsPath(next(f[2:] for f in flags if f.startswith('-I') and PureWindowsPath(f[2:]).name.lower()=='shared')).parent
    expected=[f.replace('$inc',str(inc)) for f in common]+['-DA04_GE8300_UNIFIED_DISPLAY356=1','-D_D3D10_CONSTANTS','-D_D3D10_1_CONSTANTS']
@@ -71,7 +73,7 @@ def admit(stage,newdir,compiler,new_sha):
    for dep in n['actual_dependencies']:
     dp=PureWindowsPath(dep['path'])
     if dp.is_relative_to(source_root):bind(ROOT/dp.relative_to(source_root).as_posix(),dep['sha256'])
-   origin=NEW
+   origin=compiled_source
   else:
    require(sha(ROOT/rel)==x['source_sha256'].lower(),'Retained TU source bytes');p=prior;origin=BASE
   objects[leaf]=p;records.append(dict(unit=x['unit'],source=rel,source_sha256=sha(ROOT/rel),object=leaf,sha256=sha(p),compiled_source_commit=origin,reused_existing_object=True,original_object_sha256=x['object_sha256'].lower()))
@@ -96,19 +98,20 @@ def admit(stage,newdir,compiler,new_sha):
   libs.append(bind(compiler/name(row['path']),row['sha256']))
  require(len(libs)==10 and len({p.name for p in libs})==10,'Original ordered10 link libraries')
  pair_obj=bind(compiler/'pco_pair.obj',pair['object_sha256']);arm(pair_obj)
- receipt=dict(schema='ge8300-ia-float-UMD-only-relink-v1',source_commit=git('rev-parse','HEAD').decode().strip(),original_UMD_recipe_identity=recipe_proof,baseline_compiled_source_commit=BASE,new_objects_compiled_source_commit=NEW,PCO_compiled_source_commit=PCO,baseline_manifest_sha256=BASE_SHA,broad451_recorded_source_commit=broad['source_commit'],broad451_manifest_sha256=BROAD_SHA,new_compile_manifest_sha256=new_sha,compiler_manifest_sha256=sha(cm_path),pair_manifest_sha256=sha(pm_path),objects=records,original_archive_member_order=[n for n,b in oldmembers],archive_command_order=leaves,library_order=[dict(path=str(p),sha256=sha(p)) for p in libs],pco_pair_sha256=sha(pair_obj),compile_count=0,archive_count=0,link_count=0,sign_count=0,native67_used=False,native_cache_guard_called=False,KMD_rebuilt=False,SDK_setup=False,PCO_rebuilt=False,strict_cache_qualified=False,historical_environment_header_snapshot_complete=False,qualification='Explicit retained candidate; broad451 current source+PCO605 and actual objects verified, not a proof of every historical environment/header input',signed=False,hardware_verified=False,success=False,steps={})
+ receipt=dict(schema='ge8300-ia-float-UMD-only-relink-v1',source_commit=git('rev-parse','HEAD').decode().strip(),original_UMD_recipe_identity=recipe_proof,baseline_compiled_source_commit=BASE,new_objects_compiled_source_commit=compiled_source,PCO_compiled_source_commit=PCO,baseline_manifest_sha256=BASE_SHA,broad451_recorded_source_commit=broad['source_commit'],broad451_manifest_sha256=BROAD_SHA,new_compile_manifest_sha256=new_sha,compiler_manifest_sha256=sha(cm_path),pair_manifest_sha256=sha(pm_path),objects=records,original_archive_member_order=[n for n,b in oldmembers],archive_command_order=leaves,library_order=[dict(path=str(p),sha256=sha(p)) for p in libs],pco_pair_sha256=sha(pair_obj),compile_count=0,archive_count=0,link_count=0,sign_count=0,native67_used=False,native_cache_guard_called=False,KMD_rebuilt=False,SDK_setup=False,PCO_rebuilt=False,strict_cache_qualified=False,historical_environment_header_snapshot_complete=False,qualification='Explicit retained candidate; broad451 current source+PCO605 and actual objects verified, not a proof of every historical environment/header input',signed=False,hardware_verified=False,success=False,steps={})
  return receipt,locks,objects,leaves,oldmembers,libs,pair_obj
 
 def main():
  ap=argparse.ArgumentParser(description=__doc__)
  for n in ('baseline-stage','new-compile','compiler-directory','output'):ap.add_argument('--'+n,type=Path,required=True)
  ap.add_argument('--new-compile-manifest-sha256',required=True)
+ ap.add_argument('--new-compiled-source-commit',default=NEW,help='Explicit source of the two replacement objects; original FLOAT lane remains the default')
  for n in ('llvm-lib','lld-link','readobj'):ap.add_argument('--'+n,type=Path)
  ap.add_argument('--execute-link',action='store_true');a=ap.parse_args()
  require(not git('status','--porcelain'),'Clean published recipe source')
  out=a.output.resolve();require(not out.exists() and out.is_relative_to(ROOT),'Fresh checkout-local output only')
  for p in (a.baseline_stage.resolve(),a.new_compile.resolve(),a.compiler_directory.resolve()):require(not out.is_relative_to(p) and not p.is_relative_to(out),'Separate immutable input/output trees')
- receipt,locks,objects,leaves,oldmembers,libs,pair_obj=admit(a.baseline_stage.resolve(),a.new_compile.resolve(),a.compiler_directory.resolve(),a.new_compile_manifest_sha256)
+ receipt,locks,objects,leaves,oldmembers,libs,pair_obj=admit(a.baseline_stage.resolve(),a.new_compile.resolve(),a.compiler_directory.resolve(),a.new_compile_manifest_sha256,a.new_compiled_source_commit)
  if not a.execute_link:print(json.dumps(receipt,indent=2));return
  require(os.name=='nt','Native Windows link execution only')
  tools={'llvm-lib':a.llvm_lib,'lld-link':a.lld_link,'llvm-readobj':a.readobj};pins=read(HERE/'ge8300-wire378-inputs.json')['tools']
