@@ -61,13 +61,13 @@ class Fresh227(old.Fresh225):
   super().validate_transport(p,h)
   require(p['keypad']['hashes']['sys']==accepted()['keypad13']['sys_sha256'],'actual keypad1.3 SYS')
  def client(self,prior,originals,origin_sources,preserved,sources,witnesses,**unused):
-  require(prior['profile']==old.PROFILE,'actual run226 policy template only')
+  require(prior['profile']==getattr(self,'template_profile',old.PROFILE),'exact retained template profile')
   ref=self.spec['retained_client_policy'];q=rooted(self.root,ref['path']);require(sha(q)==ref['sha256'],'original signed375 policy ref');ancestral=read(q)
   client=super().client(ancestral,originals,origin_sources,preserved,sources,witnesses)
   self.client_references=[row[key] for row in ancestral['baseline221_client_transition_reference_only']['client_replacements'].values() for key in ('candidate','manifest','import_proof')]
   require(client==prior['diagnostic_clients'][0],'same actual375 client retained')
   # The shared builder creates UMD pre-copy witness before preserving files.
-  require('Windows/System32/ge8300-umd.dll' in witnesses,'explicit UMD old-byte witness')
+  if getattr(self,'require_UMD_replacement',True):require('Windows/System32/ge8300-umd.dll' in witnesses,'explicit UMD old-byte witness')
   return client
  def boot(self,b,transition,fresh,bootid,pin,pin_file):
   require(b['schema']=='GPU378_RETAINED_BOOT227_V1' and b['source_manifest_sha256']==fresh==FRESH_SHA and b['recovery_boot_id']==bootid==RECOVERY,'actual227 retained boot chain')
