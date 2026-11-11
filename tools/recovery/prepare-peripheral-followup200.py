@@ -198,6 +198,11 @@ def build_policy(root,spec):
   p['service_baseline_generation']['retained_service_count']=len(n['old_services'])
   p[f'baseline{CAPTURE}_module_identity_reference_only']=p.pop('baseline200_module_identity_reference_only')
  if TIMING:TIMING.finish(p,spec,n,pin,pin_file)
+ # Explicit per-filter inputs only; historical profiles remain byte-strict.
+ p.pop('filter_root_transitions',None)
+ if spec.get('filter_root_transitions'):
+  from filter_root_transition import bind
+  p['filter_root_transitions']=bind(p,root,spec['filter_root_transitions'],pin)
  p['input_pins']=[dict(path=k,sha256=v) for k,v in sorted(pins.items())];return p
 
 def generate(p):
@@ -212,7 +217,8 @@ def generate(p):
   header=base.generate(q)
  finally:
   base.cstr=old_cstr
- return ('#define A04_GPU368_DUAL_DIAGNOSTICS 1\n'+header).replace('/* run185:DIS0 System transport then GPU0 unified356; matchedboot required; BT retained. */','/* GPU368 render DIF1024/restart1; same-boot Present363 then globaldiag198 once. */')
+ from filter_root_transition import generate as filter_root_header
+ return (filter_root_header(p.get('filter_root_transitions',[]))+'#define A04_GPU368_DUAL_DIAGNOSTICS 1\n'+header).replace('/* run185:DIS0 System transport then GPU0 unified356; matchedboot required; BT retained. */','/* GPU368 render DIF1024/restart1; same-boot Present363 then globaldiag198 once. */')
 def load_map(path,root):return build_policy(root,read(path))
 def assert_paths(image,capture=False):
  b=Path(image).read_bytes()

@@ -37,6 +37,8 @@ $oldTmp=$env:TMP;$oldTemp=$env:TEMP
 try{
  $env:TMP=$out;$env:TEMP=$out
  $developmentFlags=@();$displayHeader=$null
+ $filterRootHeader="$root\tools\winpe\filter-root-transition.h"
+ $filterRootHeaderHash=(Get-FileHash $filterRootHeader -Algorithm SHA256).Hash.ToLowerInvariant()
  if($Gpu377Output -or $Gpu378Keypad){
   $developmentFlags=@('-DA04_DEVELOPMENT_DISPLAY_ON=1')
   $displayHeader="$root\tools\winpe\display-idle-policy.h"
@@ -72,6 +74,8 @@ try{
  Export-Certificate -Cert $cert -FilePath "$out\development.cer"|Out-Null
  $toolchain=@{headers=$inc;arm_libraries=$lib;import_libraries=$pins;signtool=$sign;signtool_sha256=(Get-FileHash $sign -Algorithm SHA256).Hash.ToLowerInvariant();ntddi='0x06030000';win32_winnt='0x0603'}
  $m=[ordered]@{schema=$(if($Mode -eq 'CaptureClient'){'capture-next122-log-isolation-v1'}else{"combined$CaptureNumber-unified356-service-v1"});source_commit=(& git -C $root rev-parse HEAD);source_dirty=$false;source_sha256=(Get-FileHash $source -Algorithm SHA256).Hash.ToLowerInvariant();data_directory=$name;profile=$null;service=$name;signer_thumbprint=$thumb;signature_status='Valid';exe_sha256=(Get-FileHash "$out\$name.exe" -Algorithm SHA256).Hash.ToLowerInvariant();path_header_sha256=(Get-FileHash "$out\peripheral-service-path-policy.h" -Algorithm SHA256).Hash.ToLowerInvariant();runtime_utf16_path_verified=$true;toolchain=$toolchain;driver_rebuilt=$false;device_verified=$false}
+ if((Get-FileHash $filterRootHeader -Algorithm SHA256).Hash.ToLowerInvariant() -cne $filterRootHeaderHash){throw 'Filter root header changed during build'}
+ $m.filter_root_header=@{path='tools/winpe/filter-root-transition.h';sha256=$filterRootHeaderHash;enabled=($null -ne $policy.filter_root_transitions -and @($policy.filter_root_transitions).Count -gt 0)}
  if($Gpu377Output -or $Gpu378Keypad){
   if((Get-FileHash $displayHeader -Algorithm SHA256).Hash.ToLowerInvariant() -cne $displayHeaderHash){throw 'Power header changed during build'}
   $m.development_display_on=1
