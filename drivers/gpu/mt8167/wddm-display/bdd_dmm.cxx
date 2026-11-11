@@ -42,6 +42,48 @@ static bool A04PathFits(const CURRENT_BDD_MODE& mode,UINT width,UINT height,
             mode.DispInfo.Pitch,turns,scaling==D3DKMDT_VPPS_CENTERED,&pw,&ph,&offset);
 }
 
+// Compare signal meaning, never object representation (padding/reserved bits).
+// Each rational component is a UINT. Widen BEFORE multiplying: even two
+// UINT_MAX components fit in uint64_t. Sentinel frequencies are not rates.
+static bool A04SameFrequency(const D3DDDI_RATIONAL& a,const D3DDDI_RATIONAL& b)
+{
+    return a.Numerator && a.Denominator && b.Numerator && b.Denominator &&
+        a.Numerator<D3DKMDT_FREQUENCY_NOTSPECIFIED && a.Denominator<D3DKMDT_FREQUENCY_NOTSPECIFIED &&
+        b.Numerator<D3DKMDT_FREQUENCY_NOTSPECIFIED && b.Denominator<D3DKMDT_FREQUENCY_NOTSPECIFIED &&
+        (uint64_t)a.Numerator*b.Denominator==(uint64_t)b.Numerator*a.Denominator;
+}
+static bool A04SamePanelSignal(const D3DKMDT_VIDEO_SIGNAL_INFO& a,const D3DKMDT_VIDEO_SIGNAL_INFO& b)
+{
+    return a.VideoStandard==b.VideoStandard &&
+        a.ActiveSize.cx==b.ActiveSize.cx && a.ActiveSize.cy==b.ActiveSize.cy &&
+        a.TotalSize.cx==b.TotalSize.cx && a.TotalSize.cy==b.TotalSize.cy &&
+        A04SameFrequency(a.VSyncFreq,b.VSyncFreq) && A04SameFrequency(a.HSyncFreq,b.HSyncFreq) &&
+        a.PixelRate==b.PixelRate &&
+        a.AdditionalSignalInfo.ScanLineOrdering==b.AdditionalSignalInfo.ScanLineOrdering &&
+        a.AdditionalSignalInfo.VSyncFreqDivider==b.AdditionalSignalInfo.VSyncFreqDivider;
+}
+// A supported partial VidPn may have no target pinned yet. A functional
+// commit may not. Query/release failures remain failures, not "unsupported".
+static NTSTATUS A04CheckPinnedTarget(const DXGK_VIDPN_INTERFACE *vidpn,D3DKMDT_HVIDPN handle,
+    D3DDDI_VIDEO_PRESENT_TARGET_ID target,const D3DKMDT_VIDEO_SIGNAL_INFO& expected,bool required)
+{
+    D3DKMDT_HVIDPNTARGETMODESET set=0;
+    const DXGK_VIDPNTARGETMODESET_INTERFACE *api=NULL;
+    const D3DKMDT_VIDPN_TARGET_MODE *mode=NULL;
+    NTSTATUS status=vidpn->pfnAcquireTargetModeSet(handle,target,&set,&api);
+    if(!NT_SUCCESS(status))return status;
+    status=api->pfnAcquirePinnedModeInfo(set,&mode);
+    if(NT_SUCCESS(status) && (mode ? !A04SamePanelSignal(mode->VideoSignalInfo,expected) : required))
+        status=STATUS_GRAPHICS_VIDPN_MODALITY_NOT_SUPPORTED;
+    if(mode) {
+        NTSTATUS released=api->pfnReleaseModeInfo(set,mode);
+        if(!NT_SUCCESS(released))status=released;
+    }
+    NTSTATUS released=vidpn->pfnReleaseTargetModeSet(handle,set);
+    if(!NT_SUCCESS(released))status=released;
+    return status;
+}
+
 // Display-Only Devices can only return display modes of D3DDDIFMT_A8R8G8B8.
 // Color conversion takes place if the app's fullscreen backbuffer has different format.
 // Full display drivers can add more if the hardware supports them.
@@ -129,6 +171,14 @@ NTSTATUS BASIC_DISPLAY_DRIVER::IsSupportedVidPn(_Inout_ DXGKARG_ISSUPPORTEDVIDPN
             }
             if(source)api->pfnReleaseModeInfo(set,source);
             if(set)pVidPnInterface->pfnReleaseSourceModeSet(pIsSupportedVidPn->hDesiredVidPn,set);
+        }
+        if(NT_SUCCESS(Status) && supported && A04_GE8300_UNIFIED_DISPLAY356) {
+            D3DKMDT_VIDEO_SIGNAL_INFO expected;
+            Status=BuildPanelSignal(&expected,m_CurrentModes[path->VidPnSourceId].DispInfo.Width,
+                m_CurrentModes[path->VidPnSourceId].DispInfo.Height);
+            if(NT_SUCCESS(Status))Status=A04CheckPinnedTarget(pVidPnInterface,pIsSupportedVidPn->hDesiredVidPn,
+                path->VidPnTargetId,expected,false);
+            if(Status==STATUS_GRAPHICS_VIDPN_MODALITY_NOT_SUPPORTED){supported=false;Status=STATUS_SUCCESS;}
         }
         CONST D3DKMDT_VIDPN_PRESENT_PATH* next=NULL;
         NTSTATUS nextStatus=STATUS_SUCCESS;
@@ -218,6 +268,19 @@ NTSTATUS BASIC_DISPLAY_DRIVER::EnumVidPnCofuncModality(_In_ CONST DXGKARG_ENUMVI
     // Loop through all available paths.
     while (Status != STATUS_GRAPHICS_NO_MORE_ELEMENTS_IN_DATASET)
     {
+        // Validate even a target pivot before assigning any mode sets. Never
+        // replace a pinned target to make an unsupported constraint appear valid.
+        if(A04_GE8300_UNIFIED_DISPLAY356) {
+            if(pVidPnPresentPath->VidPnSourceId>=MAX_VIEWS || pVidPnPresentPath->VidPnTargetId>=MAX_CHILDREN) {
+                Status=STATUS_GRAPHICS_VIDPN_MODALITY_NOT_SUPPORTED;break;
+            }
+            const CURRENT_BDD_MODE& current=m_CurrentModes[pVidPnPresentPath->VidPnSourceId];
+            D3DKMDT_VIDEO_SIGNAL_INFO expected;
+            Status=BuildPanelSignal(&expected,current.DispInfo.Width,current.DispInfo.Height);
+            if(NT_SUCCESS(Status))Status=A04CheckPinnedTarget(pVidPnInterface,pEnumCofuncModality->hConstrainingVidPn,
+                pVidPnPresentPath->VidPnTargetId,expected,false);
+            if(!NT_SUCCESS(Status))break;
+        }
         // Get the Source Mode Set interface so the pinned mode can be retrieved
         Status = pVidPnInterface->pfnAcquireSourceModeSet(pEnumCofuncModality->hConstrainingVidPn,
                                                           pVidPnPresentPath->VidPnSourceId,
@@ -661,6 +724,10 @@ NTSTATUS BASIC_DISPLAY_DRIVER::CommitVidPn(_In_ CONST DXGKARG_COMMITVIDPN* CONST
         pPinnedVidPnSourceModeInfo = NULL;
     }
 
+    if(A04_GE8300_UNIFIED_DISPLAY356 && NumPaths && !pPinnedVidPnSourceModeInfo) {
+        Status=STATUS_GRAPHICS_VIDPN_MODALITY_NOT_SUPPORTED;goto CommitVidPnExit;
+    }
+
     // Resolve and validate topology without the Present mutex: VidPn callbacks
     // must not run while the framebuffer ownership lock is held.
     if (pPinnedVidPnSourceModeInfo != NULL)
@@ -678,6 +745,14 @@ NTSTATUS BASIC_DISPLAY_DRIVER::CommitVidPn(_In_ CONST DXGKARG_COMMITVIDPN* CONST
             if (!NT_SUCCESS(Status)) goto CommitVidPnExit;
             Status = IsVidPnPathFieldsValid(pVidPnPresentPath);
             if (!NT_SUCCESS(Status)) goto CommitVidPnExit;
+            if(A04_GE8300_UNIFIED_DISPLAY356) {
+                const CURRENT_BDD_MODE& current=m_CurrentModes[pCommitVidPn->AffectedVidPnSourceId];
+                D3DKMDT_VIDEO_SIGNAL_INFO expected;
+                Status=BuildPanelSignal(&expected,current.DispInfo.Width,current.DispInfo.Height);
+                if(NT_SUCCESS(Status))Status=A04CheckPinnedTarget(pVidPnInterface,pCommitVidPn->hFunctionalVidPn,
+                    TargetId,expected,true);
+                if(!NT_SUCCESS(Status))goto CommitVidPnExit;
+            }
         }
     }
     {
