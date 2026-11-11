@@ -60,3 +60,31 @@ preflightは実223 manifest/SHA/Recovery boot IDで既capture verifyを実行す
 terminal後Windows保持、予定restart1、Present/helper各1、boot/GPT0は既engineのまま。
 後続のcollect-onlyには同じseal/outputと`--resume-baseline-reject --collect-only`を指定する。
 その際も元223捕捉は上書きせず、新規`*-resume223`へ回収する。
+
+## 旧拒否journalの保存退避（追加opt-in）
+
+最初のpre-copy拒否でも`C:\a04backup\peripheral-batch-<policy token>`は残る。
+通常guardはこのdirectoryが存在するだけで`JOURNAL_EXISTS_NO_CHANGE/exit4`にする。
+このguardを無条件には解除しない。
+
+mainがread-only回収した当該`JOURNAL.txt`がある場合に限り、media CLIへ
+`--resume-rejected-journal <実回収file> --resume-rejected-journal-sha256 <実SHA256>`を追加する。
+実回収前の仮file/hashで生成してはならない。固定combined375/C922/旧CRC拒否policyと
+同tokenで、fileが厳密に`STATE=BASELINE_REJECTED_NO_CHANGE`のCRLF1行の場合のみ受理する。
+media manifestの`rejected_journal_archive`へ実入力と退避先を記録する。
+
+WinPEはvolume guard後、現在journalをembedded実回収witnessとbyte比較する。
+退避先が未存在の場合だけ旧directory全体を
+`peripheral-batch-<token>.baseline-rejected-<journal SHA先頭16桁>`へmoveし、
+退避journalも再比較してから新journal directoryを作る。
+旧journal/prepare-report等を削除せず、既存退避先へ上書きしない。
+不一致、別state、旧directory不在、退避先既存、move失敗は拒否する。
+既存の36pre-copy比較と候補書込み境界は維持する。
+
+このmedia opt-inだけで消費済みresume223 latchを再開放しない。
+次の実Recovery/捕捉/拒否証拠に結合した別の明示resume許可が必要であり、
+旧latch/output/resultの削除・改名・上書きで代用してはならない。
+
+prepare UARTはraw原本を保持し、既`STORAGE_TRACE`完全一致spanだけを除去したcopyを
+`prepare-uart-storage-deinterleaved.log`へ保存してから既CRC decoderへ渡す。
+chunk順序/長さ/全chunk CRC/whole CRC/terminal検証は変更しない。

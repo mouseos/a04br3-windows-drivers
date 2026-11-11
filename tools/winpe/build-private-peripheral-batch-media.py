@@ -21,6 +21,26 @@ def stage_script(template,prepare,token,fresh):
  require('/ForceUnsigned' not in cmd and 'RESTORE_FROM' not in cmd,'fallback/rollback禁止')
  return cmd
 
+def rejected_journal_stage(cmd,token,journal_sha256):
+ # Only an explicitly pinned, captured rejection can vacate the once-only slot.
+ require(re.fullmatch('[0-9a-f]{16}',token) and re.fullmatch('[0-9a-f]{64}',journal_sha256),'Fixed token/journal SHA required')
+ gate='if exist "%A04_BK%" goto journalexists\n'
+ require(cmd.count(gate)==1 and ('set "A04_BK=C:\\a04backup\\peripheral-batch-'+token+'"') in cmd,'Exact combined transaction journal guard required')
+ archive='C:\\a04backup\\peripheral-batch-'+token+'.baseline-rejected-'+journal_sha256[:16]
+ steps=[
+  'if not exist "%A04_BK%" goto journalexists',
+  'if exist "'+archive+'" goto journalexists',
+  'X:\\a04br3\\compare-files.exe X:\\a04br3\\resume-journal\\JOURNAL.txt "%A04_BK%\\JOURNAL.txt" >> "%A04_REPORT%" 2>&1',
+  'if errorlevel 1 goto journalexists',
+  'move "%A04_BK%" "'+archive+'" >> "%A04_REPORT%" 2>&1',
+  'if errorlevel 1 goto backupfail',
+  'if exist "%A04_BK%" goto backupfail',
+  'X:\\a04br3\\compare-files.exe X:\\a04br3\\resume-journal\\JOURNAL.txt "'+archive+'\\JOURNAL.txt" >> "%A04_REPORT%" 2>&1',
+  'if errorlevel 1 goto backupfail',
+  '>> "%A04_REPORT%" echo REJECTED_JOURNAL_ARCHIVED_TOKEN='+token,
+  '>> "%A04_REPORT%" echo REJECTED_JOURNAL_ARCHIVED_SHA256='+journal_sha256]
+ return cmd.replace(gate,'\n'.join(steps)+'\n')
+
 def reboot_committed_stage(cmd):
  # Preserve the existing CRC stream; reboot only after all three success gates.
  marker='exit /b %A04_RC%\n'
@@ -110,6 +130,7 @@ def gpu368_media_contract(p,header,exe,root=None):
 
 def main():
  ap=argparse.ArgumentParser()
+ ap.add_argument('--resume-rejected-journal',type=Path);ap.add_argument('--resume-rejected-journal-sha256')
  ap.add_argument('--stage-only',action='store_true',help='GPU368 only: run every staging assertion and stop before WIM/ESP; not deployable');ap.add_argument('--reboot-after-commit',action='store_true',help='Reboot WinPE after committed update, volume release and UART stream success')
  for n in ('workspace','map','service-package','prepared-system','prepared-result','comparator','base','tools','out'):ap.add_argument('--'+n,type=Path,required=True)
  for n in ('prepared-sha256','comparator-manifest-sha256','source-commit'):ap.add_argument('--'+n,required=True)
@@ -308,6 +329,20 @@ def main():
   copy(root/client['directory']/client['exe'],'payload/clients/'+client['exe'])
   for dep in client['dependencies']:copy(root/client['directory']/dep['exe'],'payload/clients/'+dep['exe'])
  token=hashlib.sha256(json.dumps(p,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+ journal_binding=None
+ require(bool(a.resume_rejected_journal)==bool(a.resume_rejected_journal_sha256),'Captured journal and exact SHA must be paired')
+ if a.resume_rejected_journal:
+  require(a.gpu375_combined_profile and signed_source=='c922efe5227b582801acd2ddba60c6fc823cd0b3','Only fixed combined221 C922 journal resume')
+  import importlib.util
+  js=importlib.util.spec_from_file_location('rejected222_rebind',here.parent/'recovery/combined222_rebind223.py');jm=importlib.util.module_from_spec(js);js.loader.exec_module(jm)
+  evidence=jm.evaluate(root)
+  require(evidence['policy_sha256']==token,'Journal token must match original CRC rejection policy')
+  journal=rooted(root,a.resume_rejected_journal)
+  require(re.fullmatch('[0-9a-f]{64}',a.resume_rejected_journal_sha256 or '') and sha(journal)==a.resume_rejected_journal_sha256,'Captured journal exact hash mismatch')
+  require(journal.read_bytes()==b'STATE=BASELINE_REJECTED_NO_CHANGE\r\n','Only exact pre-copy rejected journal bytes; no pending/committed/failed-write states')
+  copy(journal,'resume-journal/JOURNAL.txt')
+  journal_binding=dict(schema='GPU375_COMBINED_REJECTED_JOURNAL_ARCHIVE_V1',token=token[:16],captured_journal=dict(path=journal.relative_to(root).as_posix(),sha256=sha(journal)),original_seal_sha256=evidence['original_seal_sha256'],archive_directory='C:/a04backup/peripheral-batch-'+token[:16]+'.baseline-rejected-'+sha(journal)[:16],delete_allowed=False,replace_existing_archive_allowed=False)
+
  runtime_policy_token=gpu368_media_contract(p,(service/'peripheral-batch-policy.h').read_text(),(service/(SERVICE+'.exe')).read_bytes(),root) if a.combined200_profile else token
  (stage/'payload/boot-transition-authorized.bin').write_bytes(runtime_policy_token.encode()+b'\0');files['payload/boot-transition-authorized.bin']=sha(stage/'payload/boot-transition-authorized.bin')
  # Candidate client hashes are post-copy invariants; only old witnesses may
@@ -397,7 +432,7 @@ def main():
  # Last mutation only: main-selected capture-derived clean SYSTEM containing the one new service.
  prepare+=['copy /b /y X:\\a04br3\\payload\\SYSTEM.patched C:\\Windows\\System32\\config\\SYSTEM >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail','X:\\a04br3\\compare-files.exe X:\\a04br3\\payload\\SYSTEM.patched C:\\Windows\\System32\\config\\SYSTEM >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
  prepare=baseline_failure_reports(prepare)
- cmd=stage_script((here/'run-mt8167-shared-io-update.cmd.in').read_text(),prepare,token[:16],p['backup_manifest_sha256']);cmd=reboot_committed_stage(cmd) if a.reboot_after_commit else cmd;(stage/'run-update-once.cmd').write_bytes(cmd.replace('\r','').replace('\n','\r\n').encode());files['run-update-once.cmd']=sha(stage/'run-update-once.cmd')
+ cmd=stage_script((here/'run-mt8167-shared-io-update.cmd.in').read_text(),prepare,token[:16],p['backup_manifest_sha256']);cmd=rejected_journal_stage(cmd,token[:16],journal_binding['captured_journal']['sha256']) if journal_binding else cmd;cmd=reboot_committed_stage(cmd) if a.reboot_after_commit else cmd;(stage/'run-update-once.cmd').write_bytes(cmd.replace('\r','').replace('\n','\r\n').encode());files['run-update-once.cmd']=sha(stage/'run-update-once.cmd')
  (stage/'startnet.cmd').write_bytes(b'@echo off\r\nmountvol /N\r\nwpeinit\r\nif errorlevel 1 exit /b 2\r\nmountvol /N\r\nif errorlevel 1 exit /b 2\r\ncall X:\\a04br3\\run-update-once.cmd\r\n');files['startnet.cmd']=sha(stage/'startnet.cmd')
  if a.stage_only:
   (out/'stage-only-manifest.json').write_text(json.dumps({'not_deployable':True,'source_commit':a.source_commit,'service_source_commit':signed_source,'files':files,'canonical_policy_sha256':token,'runtime_policy_sha256':runtime_policy_token,'GPU_rebuilt':False,'hardware_verified':False},indent=2)+'\n')
@@ -408,6 +443,6 @@ def main():
   if f.is_file() and f.name!='startnet.cmd':commands+='add "'+str(f)+'" /a04br3/'+str(f.relative_to(stage))+'\n'
  subprocess.run([str(tools/'wimtools/wimlib-imagex'),'update',str(image),'1'],input=commands,text=True,env=env,check=True);subprocess.run([str(tools/'wimtools/wimlib-imagex'),'verify',str(image)],env=env,check=True)
  subprocess.run(['python3','-B',str(here/'replace-esp-wim.py'),'--template',str(base/'maintenance-staged-esp.img'),'--wim',str(image),'--output',str(out/'update-esp.img'),'--template-bcd-sha256','65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d','--template-wim-sha256','0df19de6c783068b24c466a1d7afaa900cd99a0aef24841a319bbd566cbbedf4'],env=env,check=True)
- manifest={'canonical_policy_sha256':token,'runtime_policy_sha256':runtime_policy_token,'reboot_after_commit':a.reboot_after_commit,'profile':PROFILE,'source_commit':a.source_commit,'service_source_commit':signed_source,'tooling_only_changes_since_signed_service':signed_source!=a.source_commit,'service':SERVICE,'policy':p,'native_prepared':native,'files':files,'esp_sha256':sha(out/'update-esp.img'),'wim_sha256':sha(image),'required_main_boot_transition':p['boot_transition'],'planned_windows_reboots':p['planned_reboots'],'no_gpu_or_engine_client':not any(c['phase']==1 for c in p['diagnostic_clients']),'engine_client_execute':False,'old_gpu_client_execute':False,'new_gpu_client_count':sum(c['phase']==1 for c in p['diagnostic_clients']),'software_or_userfs_rollback':False,'device_verified':False}
+ manifest={'rejected_journal_archive':journal_binding,'canonical_policy_sha256':token,'runtime_policy_sha256':runtime_policy_token,'reboot_after_commit':a.reboot_after_commit,'profile':PROFILE,'source_commit':a.source_commit,'service_source_commit':signed_source,'tooling_only_changes_since_signed_service':signed_source!=a.source_commit,'service':SERVICE,'policy':p,'native_prepared':native,'files':files,'esp_sha256':sha(out/'update-esp.img'),'wim_sha256':sha(image),'required_main_boot_transition':p['boot_transition'],'planned_windows_reboots':p['planned_reboots'],'no_gpu_or_engine_client':not any(c['phase']==1 for c in p['diagnostic_clients']),'engine_client_execute':False,'old_gpu_client_execute':False,'new_gpu_client_count':sum(c['phase']==1 for c in p['diagnostic_clients']),'software_or_userfs_rollback':False,'device_verified':False}
  (out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 if __name__=='__main__':main()

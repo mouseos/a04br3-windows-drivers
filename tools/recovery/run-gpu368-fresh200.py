@@ -380,7 +380,11 @@ adb shell 'set -e; test "$(id -u)" = 0; test "$(readlink -f /dev/block/by-name/b
     while time.monotonic()<deadline:
      time.sleep(2);raw+=f.read();(out/'prepare-uart.log').write_bytes(raw)
      if b'Unhandled Exception' in raw:raise RuntimeError('WinPE例外。normal bootへ進まない')
-     if re.search(rb'A04AU2E '+c['prepare_token'].encode()+rb' [0-9A-F]{8}\r?\n',raw):report=decoder.decode(raw,c['prepare_token']);break
+     clean,spans=re.subn(STORAGE_TRACE,b'',raw)
+     (out/'prepare-uart-storage-deinterleaved.log').write_bytes(clean)
+     if re.search(rb'A04AU2E '+c['prepare_token'].encode()+rb' [0-9A-F]{8}\r?\n',clean):
+      report=decoder.decode(clean,c['prepare_token'])
+      (out/'prepare-storage-deinterleave-proof.json').write_text(json.dumps(dict(raw_sha256=hashlib.sha256(raw).hexdigest(),clean_sha256=hashlib.sha256(clean).hexdigest(),known_storage_trace_spans_removed=spans,all_chunk_and_whole_CRC_valid=True,report_sha256=hashlib.sha256(report).hexdigest()),indent=2)+'\n');break
    require(report is not None,'CRC terminalなし。timeout reset/normal boot禁止')
    (out/'prepare-report.txt').write_bytes(report);lines=report.decode().splitlines();require(all(lines.count(x)==1 for x in ('UPDATE_STATUS=COMMITTED','UPDATE_RELEASE_EXIT=0','UPDATE_EXIT=0')),'CRC内のCOMMITTED/release0/exit0が必要')
    st.update(status='prepared-volume-released',prepare_crc_committed_released=True);save();recovery('prepare-to-recovery.log');offset=deploy(root/c['normal_esp'],c['normal_esp_sha256'],'normal-esp-write.log')
