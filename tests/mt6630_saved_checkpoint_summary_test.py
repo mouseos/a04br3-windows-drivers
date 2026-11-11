@@ -40,4 +40,11 @@ class KnownWireBuilds(unittest.TestCase):
    for build,parent,expected in ((1030,101,True),(1029,101,False),(1031,101,False),(1030,99,False)):
     put('RuntimeFailure',record(3,102,parent,[(100,2,4,1,2,0),(117,2,1,1,0,0)],build))
     result=m.summarize_receipt(d);self.assertTrue(result['selection_1030']);self.assertEqual(result['connection_parent_bound'],expected);self.assertEqual(result['connect_request_context_observed'],expected);self.assertFalse(result['connection_success_claimed'])
+ def test_reset_boundary_only_known_1031_runtime_contract(self):
+  for detail in (1,2,3,4,0x0304,0x1f04):
+   raw=record(3,102,101,[(128,2,3,1,0xffffffff,detail)],1031)
+   self.assertEqual(m.decode(raw)['events'][0]['reset_boundary']['backend_return'],-1)
+  for build,channel,phase,kind,observed,detail in ((1029,3,2,3,1,4),(1030,3,2,3,1,4),(1032,3,2,3,1,4),(1031,2,2,3,1,4),(1031,3,1,3,0,4),(1031,3,3,3,1,4),(1031,3,2,4,1,4),(1031,3,2,3,0,4),(1031,3,2,3,1,0),(1031,3,2,3,1,5),(1031,3,2,3,1,0x2004),(1031,3,2,3,1,0x0404)):
+   with self.subTest(build=build,channel=channel,phase=phase,kind=kind,observed=observed,detail=detail):
+    with self.assertRaises(ValueError):m.decode(record(channel,102,101,[(128,phase,kind,observed,0,detail)],build))
 if __name__=='__main__':unittest.main()
