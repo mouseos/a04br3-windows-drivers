@@ -33,7 +33,7 @@ def main():
  um=read(child('umd30cb/build-manifest.json'));require(um['compiler_manifest_sha256'].lower()==sha(child('compiler/link-manifest.json')) and um['pair_manifest_sha256'].lower()==sha(child('compiler/pair-manifest.json')),'Actual UMD/compiler/pair receipt binding')
  for r in um['outputs']:
   if r['name']=='ge8300-native-umd.lib':pin(child('umd30cb/'+r['name']),r['sha256'])
- plan=dict(schema='ge8300-wire378-three-tu-v1',source_commit=commit,baseline377_manifest_sha256=sha(child('package377/signed-manifest.json')),retained_UMD_source_commit=compiler['source_commit'],compile_TUs=spec['sources'],SDK_rebuild=0,PCO_rebuild=0,native_owner_rebuild=0,SYS_links=1,UMD_links=1,hardware_verified=False)
+ plan=dict(schema='ge8300-wire378-three-tu-v1',source_commit=commit,candidate_version=378,driver_version='0.0.3.78',driver_date='11/11/2026',baseline377_manifest_sha256=sha(child('package377/signed-manifest.json')),retained_UMD_source_commit=compiler['source_commit'],compile_TUs=spec['sources'],SDK_rebuild=0,PCO_rebuild=0,native_owner_rebuild=0,SYS_links=1,UMD_links=1,hardware_verified=False)
  if not a.execute:print(json.dumps(dict(plan,executed=False),indent=2));return
  require(os.name=='nt','Windows build only');require(a.resume==out.exists(),'Explicit resume for existing output; never overwrite')
  out.mkdir(exist_ok=True);(out/'logs').mkdir(exist_ok=True);(out/'objects').mkdir(exist_ok=True)
@@ -112,7 +112,10 @@ def main():
   changed={'ge8300-render.sys','ge8300-umd.dll','ge8300-render.inf','ge8300-render.cat'};actual={p.relative_to(pkg).as_posix():sha(p) for p in pkg.rglob('*') if p.is_file()}
   require(set(actual)=={r['name'] for r in baseline['outputs']},'Package member set drift')
   for r in baseline['outputs']:require((actual[r['name']]!=r['sha256'])==(r['name'] in changed),'Unexpected package change: '+r['name'])
+  old.old.reuse.HASH_CACHE.clear()
   for name,h in spec['files'].items():pin(child(name),h)
+  for name,p in tools.items():pin(p,spec['tools'][name])
+  for p in klibs:pin(p,spec['kernel_libraries'][p.name])
   for r in state['compiled']:
    for name,h in r['actual_include_closure'].items():pin(Path(name),h)
   require(old.old.reuse.clean_source()==commit,'Source drift')
