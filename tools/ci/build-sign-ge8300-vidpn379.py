@@ -19,6 +19,8 @@ def main():
  check(not subprocess.check_output(['git','-C',ROOT,'status','--porcelain'],text=True).strip(),'Clean committed source required')
  changed=set(subprocess.check_output(['git','-C',ROOT,'diff','--name-only',spec['baseline_source'],'--','drivers/gpu/mt8167'],text=True).splitlines())
  check(changed=={'drivers/gpu/mt8167/wddm-display/unified_display.cxx','drivers/gpu/mt8167/wddm-display/vidpn_callback_trace.h','drivers/gpu/mt8167/wddm-render/ge8300-render.inf'},'Exact bridge/header/INF changes required')
+ for name in ('unified_display.cxx','vidpn_callback_trace.h'):
+  relative='drivers/gpu/mt8167/wddm-display/'+name;blob=subprocess.check_output(['git','-C',ROOT,'show',spec['trace_source']+':'+relative]);check((ROOT/relative).read_bytes()==blob,'Trace runtime differs from reviewed source: '+name)
  inp=a.inputs.resolve();deps=a.deps.resolve();out=a.output.resolve()
  for n,v in spec['files'].items():check((inp/n).stat().st_size==v['bytes'] and sha(inp/n)==v['sha256'],'Pinned input mismatch: '+n)
  check(not out.exists() and out.is_relative_to(ROOT),'Fresh checkout-local output required')
