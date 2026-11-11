@@ -201,6 +201,26 @@ static int same_luid(LUID a,LUID b){return a.HighPart==b.HighPart&&a.LowPart==b.
 /* Select only the already available physical target of this hardware adapter.
  * Let CCD choose target timing through the advertised mode set. Do not invent
  * signal timing or alter the persistent topology database for this probe. */
+/* Read-only post-apply observation. A retry never changes topology again.
+ * Five seconds is a diagnostic budget, not an OS completion guarantee. */
+#define GEO_ACTIVE_SETTLE_MS 5000u
+#define GEO_ACTIVE_POLL_MS 100u
+#define GEO_ACTIVE_MAX_QUERIES 64u
+static UINT active_path_mismatch(LUID id,const DISPLAYCONFIG_PATH_INFO *paths,UINT32 pc,
+                                const DISPLAYCONFIG_MODE_INFO *modes,UINT32 mc){
+ if(pc!=1)return 1u;
+ const DISPLAYCONFIG_PATH_INFO *p=&paths[0];UINT32 si=p->sourceInfo.modeInfoIdx,ti=p->targetInfo.modeInfoIdx;
+ if(!(p->flags&DISPLAYCONFIG_PATH_ACTIVE))return 2u;
+ if(!same_luid(p->sourceInfo.adapterId,id)||!same_luid(p->targetInfo.adapterId,id))return 3u;
+ if(p->sourceInfo.id||p->targetInfo.id||!p->targetInfo.targetAvailable)return 4u;
+ if(si>=mc||ti>=mc)return 5u;
+ if(modes[si].infoType!=DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE||modes[ti].infoType!=DISPLAYCONFIG_MODE_INFO_TYPE_TARGET)return 6u;
+ if(!same_luid(modes[si].adapterId,id)||!same_luid(modes[ti].adapterId,id)||modes[si].id||modes[ti].id)return 7u;
+ if(modes[si].sourceMode.width!=800||modes[si].sourceMode.height!=1280||modes[si].sourceMode.pixelFormat!=DISPLAYCONFIG_PIXELFORMAT_32BPP)return 8u;
+ if(p->targetInfo.rotation!=DISPLAYCONFIG_ROTATION_IDENTITY)return 9u;
+ if(modes[ti].targetMode.targetVideoSignalInfo.activeSize.cx!=800||modes[ti].targetMode.targetVideoSignalInfo.activeSize.cy!=1280)return 10u;
+ return 0;
+}
 static HRESULT activate_display_path(LUID id){
  static DISPLAYCONFIG_PATH_INFO paths[16];
  static DISPLAYCONFIG_MODE_INFO modes[64];
@@ -237,10 +257,28 @@ static HRESULT activate_display_path(LUID id){
   status=SetDisplayConfig(1,&chosen,1,&source,SDC_APPLY|SDC_USE_SUPPLIED_DISPLAY_CONFIG|SDC_NO_OPTIMIZATION);
   line("ACTIVATION_APPLY_STATUS",status);if(status!=ERROR_SUCCESS)return HRESULT_FROM_WIN32(status);
  }
- pc=16;mc=64;
- status=QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS,&pc,paths,&mc,modes,NULL);
- line("ACTIVATION_QUERY_ACTIVE_STATUS",status);line("ACTIVATION_ACTIVE_COUNT",pc);line("ACTIVATION_MODE_COUNT",mc);
- if(status!=ERROR_SUCCESS)return HRESULT_FROM_WIN32(status);
+ {DWORD begin=GetTickCount(),rounds=0,changes=0,last=0xffffffffu;UINT reason;MSG msg;
+  line("ACTIVATION_OBSERVER_VERSION",1);line("ACTIVATION_SETTLE_BUDGET_MS",GEO_ACTIVE_SETTLE_MS);line("ACTIVATION_MAX_QUERIES",GEO_ACTIVE_MAX_QUERIES);
+  for(;;){
+   pc=16;mc=64;status=QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS,&pc,paths,&mc,modes,NULL);rounds++;
+   if(status!=ERROR_SUCCESS){line("ACTIVATION_QUERY_ACTIVE_STATUS",status);return HRESULT_FROM_WIN32(status);}
+   reason=active_path_mismatch(id,paths,pc,modes,mc);
+   if(reason!=last){line("ACTIVATION_QUERY_ACTIVE_STATUS",status);line("ACTIVATION_ACTIVE_COUNT",pc);line("ACTIVATION_MODE_COUNT",mc);line("ACTIVATION_MISMATCH_REASON",reason);last=reason;}
+   if(!reason){line("ACTIVATION_SETTLE_ROUNDS",rounds);line("ACTIVATION_SETTLE_ELAPSED_MS",GetTickCount()-begin);line("ACTIVATION_DISPLAYCHANGE_COUNT",changes);break;}
+   if(rounds>=GEO_ACTIVE_MAX_QUERIES||(DWORD)(GetTickCount()-begin)>=GEO_ACTIVE_SETTLE_MS){line("ACTIVATION_SETTLE_ROUNDS",rounds);line("ACTIVATION_SETTLE_ELAPSED_MS",GetTickCount()-begin);line("ACTIVATION_DISPLAYCHANGE_COUNT",changes);line("ACTIVATION_SETTLE_TIMEOUT",1);return HRESULT_FROM_WIN32(ERROR_TIMEOUT);}
+   /* Bound each pump too: queued messages cannot turn this into an endless loop. */
+   for(UINT pumped=0;pumped<32&&PeekMessageW(&msg,NULL,0,0,PM_REMOVE);pumped++){
+    if(msg.message==WM_QUIT)return HRESULT_FROM_WIN32(ERROR_CANCELLED);
+    if(msg.message==WM_DISPLAYCHANGE)changes++;
+    TranslateMessage(&msg);DispatchMessageW(&msg);
+   }
+   DWORD elapsed=GetTickCount()-begin;
+   if(elapsed<GEO_ACTIVE_SETTLE_MS){DWORD remaining=GEO_ACTIVE_SETTLE_MS-elapsed;
+    DWORD wait=MsgWaitForMultipleObjectsEx(0,NULL,remaining<GEO_ACTIVE_POLL_MS?remaining:GEO_ACTIVE_POLL_MS,QS_ALLINPUT,MWMO_INPUTAVAILABLE);
+    if(wait==WAIT_FAILED)return HRESULT_FROM_WIN32(GetLastError());
+   }
+  }
+ }
  if(pc!=1||!(paths[0].flags&DISPLAYCONFIG_PATH_ACTIVE)||!same_luid(paths[0].sourceInfo.adapterId,id)||!same_luid(paths[0].targetInfo.adapterId,id)||paths[0].sourceInfo.id||paths[0].targetInfo.id||!paths[0].targetInfo.targetAvailable)return E_UNEXPECTED;
  UINT32 si=paths[0].sourceInfo.modeInfoIdx,ti=paths[0].targetInfo.modeInfoIdx;
  if(si>=mc||ti>=mc||modes[si].infoType!=DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE||modes[ti].infoType!=DISPLAYCONFIG_MODE_INFO_TYPE_TARGET||!same_luid(modes[si].adapterId,id)||!same_luid(modes[ti].adapterId,id)||modes[si].id||modes[ti].id)return E_UNEXPECTED;
