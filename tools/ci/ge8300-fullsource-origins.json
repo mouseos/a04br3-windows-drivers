@@ -1309,52 +1309,60 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/umd/typed_draw.c",
-      "source_commit": "19bf34d5aef7e027489803e0a454fb9d8dd35bc2",
-      "sha256": "f049ec960b61f073bde735de9ad8805dda965b3ae227c6223198745ef10d5ef4",
-      "role": "Premultiplied ONE/INV_SRC_ALPHA ADD BGRA8; source-only DWM contract",
+      "source_commit": "3e515af583c8f8163a92200feeea8d583dfdb9d6",
+      "sha256": "c1865ef5c63481a96d31200b3d7b60445a6e587674834ef196afb0e7016927f6",
+      "role": "IA float1..4 canonical float4 packing; slot0/two registers; source/host only",
       "previous_origins": [
         {
           "path": "drivers/gpu/mt8167/wddm-render/umd/typed_draw.c",
-          "source_commit": "16d284a0795964cc41bfa4ab9848307d703229af",
-          "sha256": "000508cbd12ddf9db978ad750ba0a70ae6367644b7181bb6d19877af4b567c80",
-          "role": "Descriptor geometry/scissor/real native region copy; blend remains unsupported",
+          "source_commit": "19bf34d5aef7e027489803e0a454fb9d8dd35bc2",
+          "sha256": "f049ec960b61f073bde735de9ad8805dda965b3ae227c6223198745ef10d5ef4",
+          "role": "Premultiplied ONE/INV_SRC_ALPHA ADD BGRA8; source-only DWM contract",
           "previous_origins": [
             {
               "path": "drivers/gpu/mt8167/wddm-render/umd/typed_draw.c",
-              "source_commit": "cd2aacb60434c55a93fa517638ef82277792d131",
-              "sha256": "be55071f98193163af099da34161ff44750b975aef04053e36b5aca87d660713",
-              "role": "Native RT/SRV same-backing role transition and bounded viewport; no caps/completion relaxation",
+              "source_commit": "16d284a0795964cc41bfa4ab9848307d703229af",
+              "sha256": "000508cbd12ddf9db978ad750ba0a70ae6367644b7181bb6d19877af4b567c80",
+              "role": "Descriptor geometry/scissor/real native region copy; blend remains unsupported",
               "previous_origins": [
                 {
                   "path": "drivers/gpu/mt8167/wddm-render/umd/typed_draw.c",
-                  "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
-                  "role": "Unified356 source overlay; prior origin retained",
-                  "sha256": "2ba31047e8a11bfac52058b0f66f65312a6db096fd765a31fcaf6779cdfc8cc1",
-                  "baseline_origin": {
-                    "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
-                    "role": "UMD-base3f829",
-                    "sha256": "345677e57675770691ae11d202132f661e45e6cbd34800b7cd2d1f1a830b0ed8"
-                  },
+                  "source_commit": "cd2aacb60434c55a93fa517638ef82277792d131",
+                  "sha256": "be55071f98193163af099da34161ff44750b975aef04053e36b5aca87d660713",
+                  "role": "Native RT/SRV same-backing role transition and bounded viewport; no caps/completion relaxation",
                   "previous_origins": [
                     {
-                      "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
-                      "sha256": "fbc7e5d174539022ab4cf05b0ceee9647172fa50fe18c40e6e674faddbb4b00e",
-                      "role": "Texture326/327 explicit source overlay"
-                    },
-                    {
-                      "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
-                      "sha256": "04b47d1d32e1c5c527ef73ec92a61958a34b13375aa358ae7aae44643cf06846",
-                      "role": "Reviewed ABI4 shader/native runtime source329"
-                    },
-                    {
-                      "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
-                      "sha256": "0f33a4267fd712ab81876221bd5891f899f1ff53cddbfea98a582f60743e235b",
-                      "role": "Matrix VS + sampled PS331 / explicit owned ABI5 composition"
-                    },
-                    {
-                      "source_commit": "729d296b1f4710e9b162a85dca60560d0c22c8ee",
-                      "sha256": "9734a7024a96e1b91e2ea22ab471f747a8edf91ce921e216788162f2688f7239",
-                      "role": "332 bounded readback, retention and durable boundary"
+                      "path": "drivers/gpu/mt8167/wddm-render/umd/typed_draw.c",
+                      "source_commit": "39bf96c6550f68d12577eb9b3ae198c859e3c1c4",
+                      "role": "Unified356 source overlay; prior origin retained",
+                      "sha256": "2ba31047e8a11bfac52058b0f66f65312a6db096fd765a31fcaf6779cdfc8cc1",
+                      "baseline_origin": {
+                        "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+                        "role": "UMD-base3f829",
+                        "sha256": "345677e57675770691ae11d202132f661e45e6cbd34800b7cd2d1f1a830b0ed8"
+                      },
+                      "previous_origins": [
+                        {
+                          "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
+                          "sha256": "fbc7e5d174539022ab4cf05b0ceee9647172fa50fe18c40e6e674faddbb4b00e",
+                          "role": "Texture326/327 explicit source overlay"
+                        },
+                        {
+                          "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
+                          "sha256": "04b47d1d32e1c5c527ef73ec92a61958a34b13375aa358ae7aae44643cf06846",
+                          "role": "Reviewed ABI4 shader/native runtime source329"
+                        },
+                        {
+                          "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
+                          "sha256": "0f33a4267fd712ab81876221bd5891f899f1ff53cddbfea98a582f60743e235b",
+                          "role": "Matrix VS + sampled PS331 / explicit owned ABI5 composition"
+                        },
+                        {
+                          "source_commit": "729d296b1f4710e9b162a85dca60560d0c22c8ee",
+                          "sha256": "9734a7024a96e1b91e2ea22ab471f747a8edf91ce921e216788162f2688f7239",
+                          "role": "332 bounded readback, retention and durable boundary"
+                        }
+                      ]
                     }
                   ]
                 }
@@ -1390,57 +1398,65 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/umd/typed_entry.c",
-      "source_commit": "dee0b733d5ed472fb461325fad2cbc22eca6a045",
-      "sha256": "702aa3946330382cc531860940e2ee134461622457f79d3f82174cfb6c05a05d",
-      "role": "Descriptor geometry/scissor/real native region copy; blend remains unsupported",
+      "source_commit": "3e515af583c8f8163a92200feeea8d583dfdb9d6",
+      "sha256": "25ae44d47ece2b9b147f94fa29ef02cecb5ead73fdfe535d6d198816b1aae1c9",
+      "role": "IA float1..4 canonical float4 packing; slot0/two registers; source/host only",
       "previous_origins": [
         {
           "path": "drivers/gpu/mt8167/wddm-render/umd/typed_entry.c",
-          "source_commit": "16d284a0795964cc41bfa4ab9848307d703229af",
-          "sha256": "d0225ba629284a8ae7bb006d50b5d5983302b4e57a8c203d0a7bba3d2f079b1e",
+          "source_commit": "dee0b733d5ed472fb461325fad2cbc22eca6a045",
+          "sha256": "702aa3946330382cc531860940e2ee134461622457f79d3f82174cfb6c05a05d",
           "role": "Descriptor geometry/scissor/real native region copy; blend remains unsupported",
           "previous_origins": [
             {
               "path": "drivers/gpu/mt8167/wddm-render/umd/typed_entry.c",
-              "source_commit": "ae6c1508e7fea7a95efca0db960827bcd6f2827f",
-              "role": "UI359 NPOT/pitch/BGRA-RGBA allocation-to-GPU sampling; original shader constraints retained",
-              "sha256": "12bfc9559bf00dd6c27dcaa35d15445cc8eb8a768b2bfddac219a81cbf99af79",
+              "source_commit": "16d284a0795964cc41bfa4ab9848307d703229af",
+              "sha256": "d0225ba629284a8ae7bb006d50b5d5983302b4e57a8c203d0a7bba3d2f079b1e",
+              "role": "Descriptor geometry/scissor/real native region copy; blend remains unsupported",
               "previous_origins": [
                 {
                   "path": "drivers/gpu/mt8167/wddm-render/umd/typed_entry.c",
-                  "source_commit": "80abf5a9ef3c54914743d6ca3dd54e8861b7272d",
-                  "sha256": "1312714101b7eb3ea8654cd7c7bfd5385987a691a5d4d407372a1bf3afd87764",
-                  "role": "Present355 runtime callback boundary; display caps remain disabled",
+                  "source_commit": "ae6c1508e7fea7a95efca0db960827bcd6f2827f",
+                  "role": "UI359 NPOT/pitch/BGRA-RGBA allocation-to-GPU sampling; original shader constraints retained",
+                  "sha256": "12bfc9559bf00dd6c27dcaa35d15445cc8eb8a768b2bfddac219a81cbf99af79",
                   "previous_origins": [
                     {
                       "path": "drivers/gpu/mt8167/wddm-render/umd/typed_entry.c",
-                      "source_commit": "ab744bc6278fc1ed099e42f31b07444a2c860b61",
-                      "role": "Integrated real Copy336 all-consumer/ownership contract",
-                      "sha256": "e09b2f5049b6e392791a527d94b2a5fc168f30afc7d209a39c08b94fbb5f129d",
+                      "source_commit": "80abf5a9ef3c54914743d6ca3dd54e8861b7272d",
+                      "sha256": "1312714101b7eb3ea8654cd7c7bfd5385987a691a5d4d407372a1bf3afd87764",
+                      "role": "Present355 runtime callback boundary; display caps remain disabled",
                       "previous_origins": [
                         {
-                          "source_commit": "729d296b1f4710e9b162a85dca60560d0c22c8ee",
-                          "role": "332 bounded readback, retention and durable boundary",
-                          "sha256": "0612b24a0534aaac44781d2fea966c225f20577fb008cf47cc835b1da63d7be8",
+                          "path": "drivers/gpu/mt8167/wddm-render/umd/typed_entry.c",
+                          "source_commit": "ab744bc6278fc1ed099e42f31b07444a2c860b61",
+                          "role": "Integrated real Copy336 all-consumer/ownership contract",
+                          "sha256": "e09b2f5049b6e392791a527d94b2a5fc168f30afc7d209a39c08b94fbb5f129d",
                           "previous_origins": [
                             {
-                              "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
-                              "sha256": "b939a02c49d56633184772af5fd2a9abc509d0221c7fa79c0d7aa98fa7754b4a",
-                              "role": "Texture326/327 explicit source overlay"
-                            },
-                            {
-                              "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
-                              "sha256": "14663eddf6f59e47c9b93cbe33ed5de305fc405dc8268ecd768cbe38f10d3020"
-                            },
-                            {
-                              "source_commit": "9aa8386cf967e8348e0130a23d419cc9b627d0e6",
-                              "sha256": "c2e0b14f4be9c48f63fe9faefed77da04e311ae38641a01486beaa488beb5861",
-                              "role": "Explicit VS uniform330 source overlay"
-                            },
-                            {
-                              "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
-                              "sha256": "9da10285c97eb87249a4bb2407f37e76845db7c0281fac75b2e0c1e02fbeb3bf",
-                              "role": "Matrix VS + sampled PS331 / explicit owned ABI5 composition"
+                              "source_commit": "729d296b1f4710e9b162a85dca60560d0c22c8ee",
+                              "role": "332 bounded readback, retention and durable boundary",
+                              "sha256": "0612b24a0534aaac44781d2fea966c225f20577fb008cf47cc835b1da63d7be8",
+                              "previous_origins": [
+                                {
+                                  "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
+                                  "sha256": "b939a02c49d56633184772af5fd2a9abc509d0221c7fa79c0d7aa98fa7754b4a",
+                                  "role": "Texture326/327 explicit source overlay"
+                                },
+                                {
+                                  "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
+                                  "sha256": "14663eddf6f59e47c9b93cbe33ed5de305fc405dc8268ecd768cbe38f10d3020"
+                                },
+                                {
+                                  "source_commit": "9aa8386cf967e8348e0130a23d419cc9b627d0e6",
+                                  "sha256": "c2e0b14f4be9c48f63fe9faefed77da04e311ae38641a01486beaa488beb5861",
+                                  "role": "Explicit VS uniform330 source overlay"
+                                },
+                                {
+                                  "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
+                                  "sha256": "9da10285c97eb87249a4bb2407f37e76845db7c0281fac75b2e0c1e02fbeb3bf",
+                                  "role": "Matrix VS + sampled PS331 / explicit owned ABI5 composition"
+                                }
+                              ]
                             }
                           ]
                         }
@@ -3128,15 +3144,23 @@
     },
     {
       "path": "tools/ci/verify-ge8300-fullsource.py",
-      "source_commit": "fed800894b58e099b9334790a69d8e5fa887ea82",
-      "sha256": "7b7e0f4c055883a8a6b6c1b1ab94a55c3b3bdcae92e0a0f7c5ae53253e893b11",
-      "role": "Default-off KernelOnly skips unused module UMD/prototypes only; kernel/unified codegen unchanged",
+      "source_commit": "cee609d58d8ea1f1c1970c9fff5703ca65b77291",
+      "sha256": "87257cf21c3729f47e4583cf751780cd975d96e4c588f4866ccddc8a81faab66",
+      "role": "Exact IA FLOAT source overlay and complete prior379/KernelOnly origin guards",
       "previous_origins": [
         {
           "path": "tools/ci/verify-ge8300-fullsource.py",
-          "source_commit": "3a6da08a7cd7d096df1871ef7848b7f9e3a41bdf",
-          "sha256": "6ad7ed4e77df18f9c81fa70810d7df1a7e91606da48538b1e5ebc1c8dc4d5a61",
-          "role": "Default-off verified native compile-stage cache admission; no driver/SDK changes"
+          "source_commit": "fed800894b58e099b9334790a69d8e5fa887ea82",
+          "sha256": "7b7e0f4c055883a8a6b6c1b1ab94a55c3b3bdcae92e0a0f7c5ae53253e893b11",
+          "role": "Default-off KernelOnly skips unused module UMD/prototypes only; kernel/unified codegen unchanged",
+          "previous_origins": [
+            {
+              "path": "tools/ci/verify-ge8300-fullsource.py",
+              "source_commit": "3a6da08a7cd7d096df1871ef7848b7f9e3a41bdf",
+              "sha256": "6ad7ed4e77df18f9c81fa70810d7df1a7e91606da48538b1e5ebc1c8dc4d5a61",
+              "role": "Default-off verified native compile-stage cache admission; no driver/SDK changes"
+            }
+          ]
         }
       ]
     },
@@ -3150,6 +3174,18 @@
         "sha256": "561b6f1ba7539e413a5f187b6839ac10f31d2430a08839797e2a290ad10a667c",
         "registered_in_origins": false
       }
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/tests/ia_float_inputs.py",
+      "source_commit": "3e515af583c8f8163a92200feeea8d583dfdb9d6",
+      "sha256": "08698c47839197799e66541706f68492404b570da71fdef947ecc6a421d5bfb3",
+      "role": "IA float1..4 canonical float4 packing; slot0/two registers; source/host only"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/IA-FLOAT-INPUTS.md",
+      "source_commit": "3e515af583c8f8163a92200feeea8d583dfdb9d6",
+      "sha256": "05ca0fe6dd77dcbaebfc97ef309e56f1d2337f610167021b2e08b5839a4fb56c",
+      "role": "IA float1..4 canonical float4 packing; slot0/two registers; source/host only"
     }
   ],
   "legacy_files_preserved": [
@@ -6011,5 +6047,55 @@
       "tools/ci/build-ge8300-from-source.ps1",
       "tools/ci/verify-ge8300-fullsource.py"
     ]
+  },
+  "ia_float_inputs_integration": {
+    "implementation_source_commit": "3e515af583c8f8163a92200feeea8d583dfdb9d6",
+    "base_source_commit": "4f54e28f4d9358941a892d33aa318baf3572c8b7",
+    "formats": [
+      "R32_FLOAT",
+      "R32G32_FLOAT",
+      "R32G32B32_FLOAT",
+      "R32G32B32A32_FLOAT"
+    ],
+    "slot": 0,
+    "maximum_input_registers": 2,
+    "missing_channels_bits": [
+      0,
+      0,
+      0,
+      1065353216
+    ],
+    "zero_stride_supported": true,
+    "stride_independent_of_element_width": true,
+    "files": [
+      {
+        "path": "drivers/gpu/mt8167/wddm-render/umd/typed_draw.c",
+        "sha256": "c1865ef5c63481a96d31200b3d7b60445a6e587674834ef196afb0e7016927f6",
+        "previous_origin_row_sha256": "4dd47fe2bc145cd3d507a11affc7d28289758a65366e3909c159e2ce9cbd802b"
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-render/umd/typed_entry.c",
+        "sha256": "25ae44d47ece2b9b147f94fa29ef02cecb5ead73fdfe535d6d198816b1aae1c9",
+        "previous_origin_row_sha256": "b18967821565f5e7d56d83dd1d6a50f6a09a03361432da5a4937232909c5ba45"
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-render/tests/ia_float_inputs.py",
+        "sha256": "08698c47839197799e66541706f68492404b570da71fdef947ecc6a421d5bfb3",
+        "previous_origin_row_sha256": null
+      },
+      {
+        "path": "drivers/gpu/mt8167/wddm-render/IA-FLOAT-INPUTS.md",
+        "sha256": "05ca0fe6dd77dcbaebfc97ef309e56f1d2337f610167021b2e08b5839a4fb56c",
+        "previous_origin_row_sha256": null
+      }
+    ],
+    "native_ABI_changed": false,
+    "native67_source_map_or_flags_changed": false,
+    "KMD_changed": false,
+    "native_cache_admission_with_previous451_input_snapshot": false,
+    "native_cache_guard_changed": false,
+    "Windows_compile_executed": false,
+    "hardware_verified": false,
+    "run232_fault_causality_proven": false
   }
 }
