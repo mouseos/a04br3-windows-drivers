@@ -1,7 +1,51 @@
 #!/usr/bin/env python3
 """main専用GPU368共通engine。terminal後はWindows保持、回収は明示再開。"""
-import argparse,hashlib,importlib.util,json,re,subprocess,time
+import argparse,hashlib,importlib.util,json,os,re,signal,subprocess,time
 from pathlib import Path
+
+# Keep all foreground device clients in this command's private process group.
+# --foreground prevents GNU timeout from creating an escaping nested group.
+BOUNDED_DEVICE_SHELL = r'''command -v timeout >/dev/null
+fastboot() {
+ if [ "${1:-}" = devices ]; then
+  timeout --foreground --kill-after=2s 10s fastboot devices | awk -v s="$rt_target_serial" '$1 == s'
+ else
+  timeout --foreground --kill-after=2s 10s fastboot -s "$rt_target_serial" "$@"
+ fi
+}
+adb() {
+ local limit=120s
+ case "${1:-}" in devices|get-state|root) limit=10s;; esac
+ if [ "${1:-}" = devices ]; then
+  timeout --foreground --kill-after=2s "$limit" adb devices | awk -v s="$rt_target_serial" 'NR == 1 || $1 == s'
+ else
+  timeout --foreground --kill-after=2s "$limit" adb -s "$rt_target_serial" "$@"
+ fi
+}
+'''
+
+def run_command_group(args, *, timeout, **kwargs):
+ """Bound one shell and reap only its own newly-created process group."""
+ with subprocess.Popen(args,start_new_session=True,**kwargs) as process:
+  try:
+   code=process.wait(timeout=timeout)
+  except BaseException:
+   try:os.killpg(process.pid,signal.SIGTERM)
+   except ProcessLookupError:pass
+   # Do not stop cleanup when the shell exits: descendants can ignore TERM.
+   time.sleep(0.2)
+   try:os.killpg(process.pid,signal.SIGKILL)
+   except ProcessLookupError:pass
+   process.wait()
+   raise
+  if code:
+   try:os.killpg(process.pid,signal.SIGTERM)
+   except ProcessLookupError:pass
+   time.sleep(0.2)
+   try:os.killpg(process.pid,signal.SIGKILL)
+   except ProcessLookupError:pass
+   raise subprocess.CalledProcessError(code,args)
+  return subprocess.CompletedProcess(args,code)
 
 PROFILE='combined-features-fresh200-gpu368-v1'
 SERVICE='MT8167CombinedFollowup200'
@@ -84,14 +128,14 @@ def stage_preflight(root,c,out,digest):
  log=out.parent/(out.name+'-preflight-'+digest[:12]+'.log')
  body='''set -euo pipefail
 source "$1"
-[ "$rt_target_serial" = "$5" ]
+'''+BOUNDED_DEVICE_SHELL+'''[ "$rt_target_serial" = "$5" ]
 [ "$(adb get-state)" = recovery ]
 [ "$(adb shell id -u | tr -d '\\r')" = 0 ]
 '''+MOUNT_GUARD+'''python3 -B "$2" verify --serial "$rt_target_serial" --manifest "$3" --manifest-sha256 "$4"
 adb shell 'set -e; test "$(readlink -f /dev/block/by-name/boot)" = /dev/block/mmcblk0p17; test "$(cat /sys/class/block/mmcblk0p17/start)" = 294912; test "$(cat /sys/class/block/mmcblk0p17/size)" = 65536; test "$(readlink -f /dev/block/by-name/EFI)" = /dev/block/mmcblk0p18; test "$(cat /sys/class/block/mmcblk0p18/start)" = 360448; test "$(cat /sys/class/block/mmcblk0p18/size)" = 524288'
 '''
  with log.open('ab') as f:
-  subprocess.run(['bash','-c',body,'ge8300-stage',str(root/c['target_tools']),str(root/c['capture_tool']),str(root/c['fresh_manifest']),c['fresh_manifest_sha256'],c['serial']],cwd=root,stdout=f,stderr=subprocess.STDOUT,check=True,timeout=180)
+  run_command_group(['bash','-c',body,'ge8300-stage',str(root/c['target_tools']),str(root/c['capture_tool']),str(root/c['fresh_manifest']),c['fresh_manifest_sha256'],c['serial']],cwd=root,stdout=f,stderr=subprocess.STDOUT,timeout=180)
 
 def validate_seal(root,path,digest,known_profile="run201",entrypoint=None):
  k=contract(known_profile);service=k["service"]
@@ -358,7 +402,7 @@ def main(known_profile="run201",entrypoint=None,argv=None):
  def command(body,name,args=(),timeout=400,flash=False):
   require(sha(root/c['target_tools'])==next(x['sha256'] for x in c['pinned_files'] if x['path']==c['target_tools']),'target tools変更検出')
   with (out/name).open('wb') as f:
-   try:subprocess.run(['bash','-c','set -euo pipefail\nsource "$1"\n[ "$rt_target_serial" = "'+c['serial']+'" ]\n'+body,'gpu%d'%k['run'],str(root/c['target_tools']),*map(str,args)],cwd=root,stdout=f,stderr=subprocess.STDOUT,check=True,timeout=timeout)
+   try:run_command_group(['bash','-c','set -euo pipefail\nsource "$1"\n'+BOUNDED_DEVICE_SHELL+'[ "$rt_target_serial" = "'+c['serial']+'" ]\n'+body,'gpu%d'%k['run'],str(root/c['target_tools']),*map(str,args)],cwd=root,stdout=f,stderr=subprocess.STDOUT,timeout=timeout)
    finally:
     f.flush()
     if flash:
@@ -367,8 +411,10 @@ def main(known_profile="run201",entrypoint=None,argv=None):
   command('''if [ "$(adb get-state 2>/dev/null || true)" != recovery ]; then
  if [ -z "$(fastboot devices)" ]; then
   UART=/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0 bash "$2"
-  for ((i=0;i<90;i++)); do [ -n "$(fastboot devices)" ] && break; sleep 1; done
+  deadline=$((SECONDS+90))
+  while ((SECONDS<deadline)); do [ -n "$(fastboot devices)" ] && break; sleep 1; done
  fi
+ [ -n "$(fastboot devices)" ] || { echo 'FASTBOOT_NOT_FOUND_AFTER_RESET' >&2; exit 1; }
  info=$(fastboot getvar product 2>&1); [[ "$info" =~ product:[[:space:]]*A04BR3 ]]
  fastboot oem reboot-recovery
  for ((i=0;i<120;i++)); do [ "$(adb get-state 2>/dev/null || true)" = recovery ] && break; sleep 1; done
