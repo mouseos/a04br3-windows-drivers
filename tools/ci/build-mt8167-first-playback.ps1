@@ -131,7 +131,7 @@ try {
     }
     if($IntegratedWifi -and !$SkipPeripheralBuild){
         $wifiOut=Join-Path $out 'wifi'
-        & (Join-Path $PSScriptRoot 'build-mt6630-runtime.ps1') -OutputDirectory $wifiOut -SharedParentDirectory (Join-Path $out 'a04-msdc-parent-probe')
+        & (Join-Path $PSScriptRoot 'build-mt6630-runtime.ps1') -LegacyRuntime -OutputDirectory $wifiOut -SharedParentDirectory (Join-Path $out 'a04-msdc-parent-probe')
         $files+=@((Join-Path $wifiOut 'mt6630-runtime.sys'),(Join-Path $wifiOut 'mt6630-runtime.inf'),
           (Join-Path $wifiOut 'manifest.json'),(Join-Path $wifiOut 'wlan-probe\mt6630-wlan-probe.exe'))
     }

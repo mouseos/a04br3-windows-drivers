@@ -1,0 +1,179 @@
+{
+  "schema": "mt6630-combo-cold-plan-v1",
+  "order_provenance": "52e59b49d681ba1a943e6f307505d8d9270d147b",
+  "flags_provenance": "6aa391051759078dbac9dba5d7b8d1106886e512 provider common flags; paths rebound to explicit SDK roots",
+  "objects": [
+    {
+      "source": "drivers/bluetooth/mt6630/transport.c",
+      "object": "provider/bt-transport.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/checkpoint.c",
+      "object": "provider/checkpoint.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/board_sequence.c",
+      "object": "provider/board_sequence.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/bringup.c",
+      "object": "provider/bringup.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/calibration.c",
+      "object": "provider/calibration.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/control_start.c",
+      "object": "provider/control_start.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/direct.c",
+      "object": "provider/direct.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/enumerate.c",
+      "object": "provider/enumerate.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/identity.c",
+      "object": "provider/identity.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/lifetime.c",
+      "object": "provider/lifetime.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/msdc2_pio.c",
+      "object": "provider/msdc2_pio.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/nvram_sector.c",
+      "object": "provider/nvram_sector.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/power_bridge.c",
+      "object": "provider/power_bridge.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/power_plan.c",
+      "object": "provider/power_plan.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/regulatory.c",
+      "object": "provider/regulatory.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/resource_lease.c",
+      "object": "provider/resource_lease.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/sha256.c",
+      "object": "provider/sha256.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/transport.c",
+      "object": "provider/transport.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/windows_board.c",
+      "object": "provider/windows_board.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/windows_calibration.c",
+      "object": "provider/windows_calibration.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/windows_diagnostic.c",
+      "object": "provider/windows_diagnostic.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/windows_firmware.c",
+      "object": "provider/windows_firmware.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/windows_irq.c",
+      "object": "provider/windows_irq.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/windows_irq_firmware.c",
+      "object": "provider/windows_irq_firmware.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/windows_irq_work.c",
+      "object": "provider/windows_irq_work.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/windows_msdc2.c",
+      "object": "provider/windows_msdc2.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/windows_nvram_reader.c",
+      "object": "provider/windows_nvram_reader.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/windows_session.c",
+      "object": "provider/windows_session.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/windows_session_irq.c",
+      "object": "provider/windows_session_irq.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/wlan_firmware.c",
+      "object": "provider/wlan_firmware.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/wmt_bridge.c",
+      "object": "provider/wmt_bridge.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/native_control.c",
+      "object": "provider/native_control.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/native_contract.c",
+      "object": "provider/native_contract.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/native_security.c",
+      "object": "provider/native_security.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/station_runtime.c",
+      "object": "provider/station_runtime.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/native_tx.c",
+      "object": "provider/native_tx.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/native_scan.c",
+      "object": "provider/native_scan.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/native_scan_bridge.c",
+      "object": "provider/native_scan_bridge.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/native_nbl.c",
+      "object": "provider/native_nbl.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/native_receive.c",
+      "object": "provider/native_receive.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/native_hif_rx.c",
+      "object": "provider/native_hif_rx.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/ndis_runtime.c",
+      "object": "provider/ndis_runtime.obj"
+    },
+    {
+      "source": "drivers/network/mt6630/combo_broker.c",
+      "object": "provider/combo_broker.obj"
+    }
+  ]
+}

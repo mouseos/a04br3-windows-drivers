@@ -519,3 +519,22 @@ INF表示名は `MediaTek MT6630 Wireless LAN SDIO Adapter`。
 主要経路をまとめた新miniportと共有親の実取得・解放経路は [RUNTIME.md](RUNTIME.md) を参照。
 従来candidateと診断の既定設定は維持する。新runtimeは明示的な専用scriptでビルドする。
 実機scan・接続・Windows受理・WDK8.1 SYSリンクは未確認。
+
+
+### 現combo runtime 1033の通常cold build
+
+Windows上のclean checkoutで、既存通常入口を使う。必要入力はclang、MSVC14.29 ARM LINK、WDK8.1 ARM headers/kernel libs、WDF1.13 headers。SDKのインストール・再構築や過去の署名package/private baselineは、この入口の処理に含まれない。
+
+```powershell
+& .\tools\ci\build-mt6630-runtime.ps1 `
+  -OutputDirectory "$PWD\build\wifi1033-cold" `
+  -WdkRoot 'C:\kits\wdk81' -WdfRoot 'C:\kits\wdk81' `
+  -ClangPath 'C:\Program Files\LLVM\bin\clang.exe' `
+  -LinkPath 'C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.29.30133\bin\Hostx64\arm\link.exe'
+```
+
+pathsは実インストール先を指定する。WDF headersは `WdfRoot/Include/wdf/kmdf/1.13`、kernel libsは `WdkRoot/Lib/winv6.3/km/arm` を使用する。現在のcombo INFからDriverVer（日付/版）を取得する（現1033）。公開 `mt6630-combo-cold-plan.json` の43TUを順番に全compileし、実1031 providerの共通scalar ARM/NDIS630/診断/BT broker flagsを現SDK rootsへ結合する。NDIS token-paste互換headerはoutput内だけに生成する。旧保持24objectの歴史的な全flagsや過去署名SYSとのbyte同一性を再現する主張ではない。
+
+出力は `package/provider/mt6630-combo-runtime.{sys,inf}` と `unsigned-manifest.json`、object/dependency files、link map。manifestは43TUのsource/object hashと順序、実argv、tool/lib hash、元NDIS/overlay hash、INF版を記録する。unsignedでありCAT・署名・配備は別工程。接続成功や実機検証済みを意味しない。
+
+既存 `build-sign-mt6630-provider1033.py` は実1032 baselineを厳密再利用する増分/署名入口として変更せず保持する。coldはこれを呼ばず、旧objectも使わない。旧shared-parent型runtime/probeは `build-mt6630-runtime.ps1 -LegacyRuntime` で保持する。以前のNATIVE/RUN文書の同入口はこのlegacy経路の履歴であり、現1033の手順ではない。旧first-playback callerも明示legacy指定を使う。

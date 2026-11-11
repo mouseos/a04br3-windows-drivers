@@ -215,3 +215,6 @@ bind成功やDISM exit0だけで新SYS実適用としない。
 NDIS6.30初期化・標準WLAN列挙・scanの属性修正と、未実装必須OID/容量の一覧は
 [INITIALIZATION-CONTRACT.md](INITIALIZATION-CONTRACT.md) を参照。INF1002候補とは別のsource差分で、
 この修正だけで全面準拠や実WLAN列挙成功とは扱わない。
+
+
+現combo runtime（1033）の通常cold入口・必要SDK配置・unsigned出力は [README](README.md#現combo-runtime-1033の通常cold-build) を参照。この文書中の旧shared-parent/runtime/probe手順は `-LegacyRuntime` に対応する履歴であり、現1033の再現手順とは区別する。
