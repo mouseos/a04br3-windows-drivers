@@ -20,6 +20,62 @@ def need(ok, message):
         raise ValueError(message)
 
 
+def atomic_signature_gate(root, manifest, m, data, pe):
+    """Pinned Windows署名検証reportを実EXE/CER/ログへ結合する（CI実機受理とは別）。"""
+    need(m.get('signed') is True, 'Signed production atomic helper required')
+    signing = m.get('signing', {})
+    need(signing.get('schema') == 'ATOMIC_STAGE_AUTHENTICODE_V1'
+         and signing.get('policy') == 'Authenticode' and signing.get('digest') == 'SHA256'
+         and signing.get('thumbprint') == THUMB
+         and signing.get('private_key_exported') is False
+         and signing.get('new_identity_created') is False, 'Existing BCBF production signature required')
+    optional = pe + 24
+    need(optional + 136 <= len(data) and struct.unpack_from('<H', data, optional)[0] == 0x10b,
+         'Signed production PE32 header required')
+    offset, size = struct.unpack_from('<II', data, optional + 128)
+    need(offset >= optional + 136 and offset % 8 == 0 and size >= 8
+         and offset + size == len(data), 'Actual production certificate directory missing or invalid')
+    length, revision, kind = struct.unpack_from('<IHH', data, offset)
+    need(8 < length <= size and ((length + 7) & ~7) == size
+         and revision == 0x200 and kind == 2 and data[offset + 8] == 0x30,
+         'Actual production WIN_CERTIFICATE/PKCS7 required')
+    certrow = signing['public_certificate']
+    need(certrow['name'] == 'atomic-stage-replace.cer', 'Fixed public certificate leaf required')
+    cert = (manifest.parent / certrow['name']).resolve(strict=True)
+    need(cert.is_relative_to(root) and cert.is_file() and cert.stat().st_size == certrow['bytes']
+         and sha(cert) == certrow['sha256'], 'Production public certificate drift')
+    der = cert.read_bytes()
+    need(hashlib.sha1(der).hexdigest().upper() == THUMB
+         and der in data[offset + 8:offset + length], 'Actual embedded BCBF certificate mismatch')
+    signatures = m.get('signatures', [])
+    need(len(signatures) == 1 and signatures[0]['name'] == 'atomic-stage-replace.exe'
+         and signatures[0]['status'] == 'Valid' and signatures[0]['thumbprint'] == THUMB
+         and signatures[0]['sha256'] == hashlib.sha256(data).hexdigest()
+         and signatures[0]['certificate_sha256'] == sha(cert),
+         'Windows production signature report must bind actual bytes')
+    steps = {s['name']: s for s in m['steps']}
+    need(len(steps) == len(m['steps']) and all(s['exit_code'] == 0 for s in m['steps']),
+         'Failed or duplicate atomic build/signature stage')
+    for stage in ('sign-production', 'verify-production'):
+        need(stage in steps and re.fullmatch('[0-9a-f]{64}', steps[stage].get('log_sha256') or ''),
+             'Native production signature stage missing: ' + stage)
+        log = (manifest.parent / 'logs' / (stage + '.log')).resolve(strict=True)
+        need(log.is_relative_to(root) and log.is_file() and log.stat().st_size > 0
+             and sha(log) == steps[stage]['log_sha256'], 'Actual signature log drift: ' + stage)
+    payload = signing['non_signature_payload']
+    unsigned_size = payload['unsigned_bytes']
+    need(payload['unchanged'] is True and type(unsigned_size) is int
+         and optional + 136 <= unsigned_size <= offset
+         and payload['certificate_offset'] == offset and payload['certificate_bytes'] == size
+         and not any(data[unsigned_size:offset]), 'Production signing payload layout mismatch')
+    normalized = bytearray(data[:unsigned_size])
+    normalized[optional + 64:optional + 68] = bytes(4)
+    normalized[optional + 128:optional + 136] = bytes(8)
+    digest = hashlib.sha256(normalized).hexdigest()
+    need(payload['normalized_unsigned_sha256'] == digest
+         and payload['normalized_signed_sha256'] == digest, 'Production non-signature payload mismatch')
+
+
 def load_atomic_helper(root, manifest, digest):
     root = root.resolve(strict=True)
     manifest = (root / manifest).resolve(strict=True)
@@ -42,6 +98,7 @@ def load_atomic_helper(root, manifest, digest):
     pe = struct.unpack_from('<I', data, 60)[0]
     need(pe + 24 < len(data) and data[pe:pe+4] == b'PE\0\0'
          and struct.unpack_from('<H', data, pe+4)[0] == 0x1c4, 'Production helper must be ARMNT')
+    atomic_signature_gate(root, manifest, m, data, pe)
     tests = m['reference_tests']
     need(tests['status'] == 'passed' and tests['reference_sha256'] == m['reference']['sha256']
          and tests['cases'] >= 3 and re.fullmatch('[0-9a-f]{64}', tests['result_sha256']),

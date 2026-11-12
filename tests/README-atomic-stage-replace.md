@@ -46,7 +46,15 @@ source/destの全親をOPEN_REPARSE_POINTで開き、reparseでないdirectory�
 
 ## ビルドとWindows reference試験
 
-`tools/ci/build-atomic-stage-replace.ps1` は既存clang/lld-link、WDK 8.1 header cache、CRT header cache、指定済みのWindows Kits 10 kernel32.libを使う。SDK、GPU、driverをビルドしない。署名も行わない。
+`tools/ci/build-atomic-stage-replace.ps1` は既存clang/lld-link、WDK 8.1 header cache、CRT header cache、指定済みのWindows Kits 10 kernel32.libを使う。SDK、GPU、driverをビルドしない。本番EXEは既存BCBF identityで署名する。
+
+署名ツールは必須引数 `-SigntoolPath` に既存signtool.exeの絶対pathを指定する。`-CertificateStore` はCurrentUser（既定）またはLocalMachine。BCBF6C456C6F0DD0818434763B189488FBF13570だけを許可し、既存Myの秘密鍵・CodeSigning EKU・有効期間とRootの同一DERを確認する。新しいidentity作成、秘密鍵export、trust設定変更は行わない。公開DERだけを `atomic-stage-replace.cer` に出力する。
+
+本番link後、`sign-production`（SHA256）、`verify-production`（signtool verify /pa /v）、Get-AuthenticodeSignatureのValid・BCBF・DER一致を要求する。checksumとsecurity directory以外の元payloadが変わっていないことも確認する。その後にproductionのname/path/bytes/sha256を確定するため、既存20ケースのreceiptは署名後の実byteへ結合される。reference本体と20ケースのalgorithm・期待値は変更しない。旧unsigned artifactやreceiptは書き換えず、新規出力で再ビルド・再試験する。
+
+manifestはsigned=true、signing（ATOMIC_STAGE_AUTHENTICODE_V1）、公開CER、signatures、署名stepのlog hashを持つ。consumerはこれらに加え、実EXEのWIN_CERTIFICATE、埋込みBCBF DER、公開CER・実ログのhash、正規化payload、署名後EXEに結合したreceiptを照合する。これはpin済みWindows署名reportの照合であり、Linux側でAuthenticode暗号検証を再実装したものではない。実WinPE CI受理とquery成功は引き続き別のfield qualificationで確認する。
+
+対応検査は `tests/atomic_helper_signature_test.py` と `tests/atomic_signing_payload_test.ps1`。前者の合成PKCS7 fixtureはreport結合・拒否条件だけを検査し、暗号署名の妥当性を主張しない。後者はbuilderの実SignedPayload関数を使い、署名部分の追加とpayload改変を区別する。実証明書による署名とWindows native20ケースの実行はmainのrunner側で行う。
 
 必須パラメータはOutputDirectory、WdkRoot、CrtIncludeRoot。OutputDirectoryはcheckoutの `out\` 配下の新規ディレクトリに限定し、既存出力を拒否する。WdkRootには `Include\um`、`Include\shared` を持つcacheのrootを指定する。CrtIncludeRootはstdint.hを含む必要なCRT header cacheで、WDKの `Include\km\crt` を指定しない。追加includeはum/sharedとこのCRT-rootだけに限定し、intrin.hはClangのresource headerを使用する。ユーザーによるnative環境の診断では、WDK8.1のkm/crtを追加するとintrin.hの__ldrexd型がClang20 builtinと衝突し、同includeを外した既署名RX12 recipeは成功している。これはinclude構成の問題で、source/runtime不具合の証拠として扱わない。ライブラリの既定値は以下。
 

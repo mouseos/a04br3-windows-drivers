@@ -4,6 +4,8 @@ param(
  [Parameter(Mandatory=$true)][string]$OutputDirectory,
  [Parameter(Mandatory=$true)][string]$WdkRoot,
  [Parameter(Mandatory=$true)][string]$CrtIncludeRoot,
+ [Parameter(Mandatory=$true)][string]$SigntoolPath,
+ [ValidateSet('CurrentUser','LocalMachine')][string]$CertificateStore='CurrentUser',
  [string]$ReferenceVcRoot='C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.29.30133',
  [string]$ReferenceSdkLibraryRoot='C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0',
  [string]$ArmKernel32Library='C:\Program Files (x86)\Windows Kits\10\Lib\10.0.17763.0\um\arm\kernel32.lib',
@@ -39,6 +41,20 @@ $linker=(Get-Command lld-link -CommandType Application -ErrorAction Stop).Source
 $referenceCl=Join-Path $ReferenceVcRoot 'bin\Hostx64\x64\cl.exe'
 $referenceLink=Join-Path $ReferenceVcRoot 'bin\Hostx64\x64\link.exe'
 $tools=@((Leaf $compiler),(Leaf $linker),(Leaf $ArmKernel32Library),(Leaf $X64Kernel32Library),(Leaf $referenceCl),(Leaf $referenceLink))
+$signTool=[IO.Path]::GetFullPath($SigntoolPath)
+$tools+=,(Leaf $signTool)
+$thumb='BCBF6C456C6F0DD0818434763B189488FBF13570'
+$cert=Get-Item -LiteralPath "Cert:\$CertificateStore\My\$thumb"
+$trusted=Get-Item -LiteralPath "Cert:\$CertificateStore\Root\$thumb"
+if(!$cert.HasPrivateKey -or $cert.NotBefore -gt (Get-Date) -or $cert.NotAfter -lt (Get-Date) -or
+   [Convert]::ToBase64String($cert.RawData) -cne [Convert]::ToBase64String($trusted.RawData)){throw 'Existing valid BCBF My/Root identity required'}
+$codeSigning=$false
+foreach($extension in $cert.Extensions){
+ if($extension.Oid.Value -eq '2.5.29.37'){
+  foreach($usage in $extension.EnhancedKeyUsages){if($usage.Value -eq '1.3.6.1.5.5.7.3.3'){$codeSigning=$true}}
+ }
+}
+if(!$codeSigning){throw 'Existing BCBF CodeSigning EKU required'}
 $referenceLibraries=@((Join-Path $ReferenceVcRoot 'lib\x64\libcmt.lib'),(Join-Path $ReferenceVcRoot 'lib\x64\libvcruntime.lib'),(Join-Path $ReferenceVcRoot 'lib\x64\oldnames.lib'),(Join-Path $ReferenceSdkLibraryRoot 'ucrt\x64\libucrt.lib'),(Join-Path $ReferenceSdkLibraryRoot 'um\x64\kernel32.lib'))
 foreach($lib in $referenceLibraries){$tools+=,(Leaf $lib)}
 $kit=[IO.Path]::GetFullPath($WdkRoot)
@@ -70,6 +86,28 @@ function Run([string]$Name,[string]$Exe,[string[]]$Argv) {
   finally { Save }
  }
  if($null -eq $step.exit_code -or $step.exit_code -ne 0){throw ('Native stage failed: '+$Name)}
+}
+function SignedPayload([byte[]]$Unsigned,[byte[]]$Signed) {
+ $pe=[BitConverter]::ToInt32($Unsigned,60);$optional=$pe+24
+ $checksum=$optional+64;$security=$optional+128
+ if([BitConverter]::ToUInt16($Unsigned,$optional) -ne 0x10b -or
+    [BitConverter]::ToUInt32($Unsigned,$security) -or [BitConverter]::ToUInt32($Unsigned,$security+4)){throw 'Unsigned PE32 input required'}
+ $offset=[BitConverter]::ToUInt32($Signed,$security);$size=[BitConverter]::ToUInt32($Signed,$security+4)
+ if($offset -lt $Unsigned.Length -or ($offset%8) -or $size -lt 8 -or ([uint64]$offset+$size) -ne $Signed.Length){throw 'Unexpected appended Authenticode layout'}
+ for($i=$Unsigned.Length;$i -lt $offset;$i++){if($Signed[$i]){throw 'Nonzero signing padding'}}
+ $before=[byte[]]$Unsigned.Clone();$after=New-Object byte[] $Unsigned.Length
+ [Array]::Copy($Signed,$after,$Unsigned.Length)
+ foreach($a in @($before,$after)){
+  for($i=0;$i -lt 4;$i++){$a[$checksum+$i]=0}
+  for($i=0;$i -lt 8;$i++){$a[$security+$i]=0}
+ }
+ $hasher=[Security.Cryptography.SHA256]::Create()
+ try{
+  $left=([BitConverter]::ToString($hasher.ComputeHash($before))).Replace('-','').ToLowerInvariant()
+  $right=([BitConverter]::ToString($hasher.ComputeHash($after))).Replace('-','').ToLowerInvariant()
+ }finally{$hasher.Dispose()}
+ if($left -cne $right){throw 'Signing changed production payload'}
+ return [ordered]@{unchanged=$true;unsigned_bytes=$Unsigned.Length;normalized_unsigned_sha256=$left;normalized_signed_sha256=$right;certificate_offset=$offset;certificate_bytes=$size}
 }
 function RvaOffset([byte[]]$Bytes,[int]$Pe,[uint32]$Rva) {
  $sections=[BitConverter]::ToUInt16($Bytes,$Pe+6)
@@ -140,6 +178,23 @@ try {
    Run ('link-'+$variant) $linker @('/subsystem:console,6.3',('/machine:'+$machine),'/entry:mainCRTStartup','/nodefaultlib','/dynamicbase','/nxcompat',$object,$library,('/out:'+$exe))
   }
   CheckPE $exe $(if($reference){0x8664}else{0x1c4}) $reference
+  if(!$reference){
+   $unsignedBytes=[IO.File]::ReadAllBytes($exe)
+   $cer=Join-Path $out 'atomic-stage-replace.cer'
+   [IO.File]::WriteAllBytes($cer,$cert.RawData)
+   $storeArgs=@('/s','My','/sha1',$thumb);if($CertificateStore -eq 'LocalMachine'){$storeArgs+='/sm'}
+   Run 'sign-production' $signTool (@('sign','/fd','SHA256')+$storeArgs+@($exe))
+   Run 'verify-production' $signTool @('verify','/pa','/v',$exe)
+   $sig=Get-AuthenticodeSignature -LiteralPath $exe
+   if($sig.Status -ne 'Valid' -or !$sig.SignerCertificate -or $sig.SignerCertificate.Thumbprint -cne $thumb -or
+      [Convert]::ToBase64String($sig.SignerCertificate.RawData) -cne [Convert]::ToBase64String($cert.RawData)){throw 'Production Authenticode/BCBF verification failed'}
+   $payload=SignedPayload $unsignedBytes ([IO.File]::ReadAllBytes($exe))
+   CheckPE $exe 0x1c4 $false
+   $manifest.signing=[ordered]@{schema='ATOMIC_STAGE_AUTHENTICODE_V1';policy='Authenticode';digest='SHA256';thumbprint=$thumb;public_certificate=(Leaf $cer);private_key_exported=$false;new_identity_created=$false;non_signature_payload=$payload}
+   $manifest.signatures=@([ordered]@{name='atomic-stage-replace.exe';status=[string]$sig.Status;thumbprint=$thumb;sha256=(Hash $exe);certificate_sha256=(Hash $cer)})
+   $manifest.signed=$true
+  }
+  # This is the final signed production hash; the unchanged 20-case script binds it.
   $manifest[$variant]=Leaf $exe;Save
  }
  # The dedicated script executes only the x64 reference, never the ARMNT image.
@@ -156,6 +211,8 @@ try {
  foreach($pin in @($sourceFiles)+@($tools)+@($manifest.production,$manifest.reference)) {
   if((Hash $pin.path) -cne $pin.sha256){throw 'Source/tool/output drift during build'}
  }
+ if((Hash $manifest.signing.public_certificate.path) -cne $manifest.signing.public_certificate.sha256 -or
+    [Convert]::ToBase64String((Get-Item -LiteralPath "Cert:\$CertificateStore\Root\$thumb").RawData) -cne [Convert]::ToBase64String($cert.RawData)){throw 'BCBF certificate drift during build'}
  $manifest.success=$true;Save
 } catch {
  $manifest.success=$false
