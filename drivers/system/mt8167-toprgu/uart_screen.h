@@ -1,8 +1,14 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #ifndef A04_UART_SCREEN_H
 #define A04_UART_SCREEN_H
+#include <stdint.h>
 #define A04_UART_SCREEN_DEVICE L"\\Device\\A04BR3ScreenUart"
 #define A04_UART_SCREEN_LINK L"\\DosDevices\\A04BR3ScreenUart"
 #define A04_UART_SCREEN_SEND CTL_CODE(FILE_DEVICE_UNKNOWN,0x840,METHOD_BUFFERED,FILE_WRITE_ACCESS)
 #define A04_UART_VOLUME_GET CTL_CODE(FILE_DEVICE_UNKNOWN,0x841,METHOD_BUFFERED,FILE_READ_ACCESS)
+#define A04_UART_WINPE_LEASE_QUERY CTL_CODE(FILE_DEVICE_UNKNOWN,0x842,METHOD_BUFFERED,FILE_READ_ACCESS)
+#define A04_WINPE_LEASE_STATUS_MAGIC 0x314c5041u
+struct a04_winpe_lease_status {
+    uint32_t magic, seconds, elapsed_low, elapsed_high, active;
+};
 #endif

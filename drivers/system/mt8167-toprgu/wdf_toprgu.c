@@ -5,6 +5,7 @@
 #include <wdf.h>
 #include "reset_command.h"
 #include "watchdog_policy.h"
+#include "winpe_lease.h"
 #include "handoff_policy.h"
 #include "thermal_stop.h"
 #ifndef A04_TOPRGU_UART_VOLUME
@@ -66,6 +67,9 @@ typedef struct {
     ULONGLONG started;
     BOOLEAN deadlineReported;
     ULONG backupCalls;
+#if A04_TOPRGU_WINPE_LEASE_SECONDS
+    struct a04_winpe_lease lease;
+#endif
     struct mt8167_reset_parser parser;
 #if A04_TOPRGU_UART_VOLUME
     struct mt8167_volume_parser volumeParser;
@@ -171,6 +175,9 @@ NTSTATUS ToprguD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
      * touch either here, even when D0 arrives before AP startup. */
     c->parser.matched=0; c->ticks=0;
     c->started=KeQueryInterruptTime(); c->deadlineReported=FALSE;
+#if A04_TOPRGU_WINPE_LEASE_SECONDS
+    a04_winpe_lease_start(&c->lease,c->started);
+#endif
     c->backupCalls=0;
     InterlockedExchange(&c->ownedFour,0);
     InterlockedExchange(&c->backupStarted,0);
@@ -194,6 +201,7 @@ NTSTATUS ToprguD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
     WdfTimerStop(c->timer,TRUE);
     KeCancelTimer(&c->backupTimer);
     KeFlushQueuedDpcs();
+#if !A04_TOPRGU_WINPE_LEASE_SECONDS
     if (KeQueryActiveProcessorCount(NULL)==4 && InterlockedCompareExchange(&c->ownedFour,1,1) && c->wdt &&
 #if A04_TOPRGU_THERMAL_STOP
         !InterlockedCompareExchange(&c->thermalHalt,0,0) &&
@@ -206,8 +214,27 @@ NTSTATUS ToprguD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
         c->suspendedWatchdog=TRUE;
         Trace(c,"A04RGU watchdog disabled for system power transition\n");
     }
+#else
+    /* Trial WinPE must retain the hardware watchdog during shutdown too:
+     * a stalled wpeutil/power transition must not disable its last reset. */
+    UNREFERENCED_PARAMETER(action);
+#endif
     return STATUS_SUCCESS;
 }
+
+#if A04_TOPRGU_WINPE_LEASE_SECONDS
+/* Called under busy, after four-CPU ownership. No UART RX or user process
+ * is needed. The irreversible lease also prevents feeds if SWRST fails. */
+static BOOLEAN ToprguWinpeLeaseExpired(TOPRGU_CONTEXT *c)
+{
+    int action=a04_winpe_lease_poll(&c->lease,KeQueryInterruptTime());
+    if (action==A04_WINPE_LEASE_RESET) {
+        WRITE_REGISTER_ULONG(c->wdt+5,0x1209u);
+        Trace(c,"A04RGU WinPE lease expired; SWRST requested\n");
+    }
+    return action!=A04_WINPE_LEASE_CONTINUE;
+}
+#endif
 
 static ULONG ToprguMpidrAffinity(void)
 {
@@ -252,7 +279,13 @@ static VOID ToprguPoll(TOPRGU_CONTEXT *c, BOOLEAN backup)
             if (!(READ_REGISTER_ULONG(c->wdt) & 1u)) goto done;
             InterlockedExchange(&c->ownedFour,1);
             Trace(c,"A04RGU CPU1 ownership acquired CPUs>=4\n");
+#if A04_TOPRGU_WINPE_LEASE_SECONDS
+            Trace(c,A04_WINPE_LEASE_MARKER "\n");
+#endif
         }
+#if A04_TOPRGU_WINPE_LEASE_SECONDS
+        if (ToprguWinpeLeaseExpired(c)) goto done;
+#endif
         if (backup && ++c->backupCalls <= 3)
             Trace(c,"A04RGU backup DPC active\n");
         ++c->ticks;
@@ -333,6 +366,9 @@ NTSTATUS ToprguD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
     WRITE_REGISTER_ULONG(c->wdt + 2,0x1971u);
     c->parser.matched=0; c->ticks=0;
     c->started=KeQueryInterruptTime(); c->deadlineReported=FALSE;
+#if A04_TOPRGU_WINPE_LEASE_SECONDS
+    a04_winpe_lease_start(&c->lease,c->started);
+#endif
     c->backupCalls=0;
     InterlockedExchange(&c->running,1);
     Trace(c, KeQueryActiveProcessorCount(NULL) >= 4 ?
@@ -467,6 +503,31 @@ VOID ToprguScreenIoctl(WDFQUEUE queue,WDFREQUEST request,size_t out,size_t in,UL
 {
     TOPRGU_CONTEXT *c=ToprguGetContext(WdfIoQueueGetDevice(queue));
     UCHAR *data; size_t length,i; NTSTATUS status=STATUS_INVALID_PARAMETER;
+#if A04_TOPRGU_WINPE_LEASE_SECONDS
+    if (code==A04_UART_WINPE_LEASE_QUERY && in==0) {
+        struct a04_winpe_lease_status *result; size_t available;
+        ULONGLONG now,elapsed;
+        status=WdfRequestRetrieveOutputBuffer(request,sizeof(*result),(PVOID *)&result,&available);
+        if (!NT_SUCCESS(status)) goto finish;
+        if (InterlockedCompareExchange(&c->busy,1,0)!=0) { status=STATUS_DEVICE_BUSY; goto finish; }
+        now=KeQueryInterruptTime();
+        if (!InterlockedCompareExchange(&c->running,0,0) || !InterlockedCompareExchange(&c->ownedFour,0,0) ||
+            KeQueryActiveProcessorCount(NULL)!=4 || !c->lease.armed || c->lease.expired ||
+            !c->wdt || !(READ_REGISTER_ULONG(c->wdt)&1u) || now<c->lease.started)
+            status=STATUS_DEVICE_NOT_READY;
+        else {
+            elapsed=now-c->lease.started;
+            result->magic=A04_WINPE_LEASE_STATUS_MAGIC;
+            result->seconds=A04_TOPRGU_WINPE_LEASE_SECONDS;
+            result->elapsed_low=(ULONG)elapsed;
+            result->elapsed_high=(ULONG)(elapsed>>32);
+            result->active=1;status=STATUS_SUCCESS;
+        }
+        InterlockedExchange(&c->busy,0);
+        if (NT_SUCCESS(status)) { WdfRequestCompleteWithInformation(request,status,sizeof(*result)); return; }
+        goto finish;
+    }
+#endif
 #if A04_TOPRGU_UART_VOLUME
     if (code==A04_UART_VOLUME_GET) {
         ULONG *result; size_t available;
