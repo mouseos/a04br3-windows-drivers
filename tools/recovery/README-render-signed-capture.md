@@ -7,8 +7,9 @@ GPU380の実署名manifest・main独立review・Windows certificate reportは
 同byte結合と全15leaf/INF/HWID/ClassGuid/source/versionを検査する。
 候補lockのartifact承認は、更新実行や実機描画の成功承認を意味しない。
 
-actual235はまだ未取得。`render-signed-capture.pending.json`のcapture番号・fresh等は
-nullであり、schemaもFINALIZEではない。233のreceiptを235へ改名/コピーして通さない。
+初版時点の`render-signed-capture.pending.json`はcapture番号・fresh等がnullの準備用で、
+schemaもFINALIZEではない。実取得状況は各manifestで確認し、233のreceiptを235等へ
+改名/コピーして通さない。
 未完成mapから最終policy/header/native/mediaを生成しない。
 
 ## 最小の最終map
@@ -50,7 +51,10 @@ nullであり、schemaもFINALIZEではない。233のreceiptを235へ改名/コ
 - `globaldiag_manifest` / `globaldiag_import_proof`: 既署名globaldiag198の実ref。
 - `install_targets: ["render"]`、`planned_reboots: 1`、`filter_root_transitions: []`。
 
-上記field集合以外は最終mapで拒否する。USB合成は別componentとしてmainが後で扱う。
+新規actual237以降だけ、`unattended_collection_reboot: true`を任意追加できる。
+この場合は診断終了後のflush・サービス停止・同run/PID/policyの証拠を確認して
+通常の再起動APIを一度だけ要求し、自動回収へ進む。旧世代へは適用しない。
+上記とこの任意field以外は最終mapで拒否する。USB合成は別componentとして扱う。
 `capture+1`をrun、`capture+2`をpost captureとするが、番号の算出は取得証拠ではない。
 
 ## keypad14の同load境界
@@ -78,16 +82,23 @@ receiptのsource_recipe_filesにその実SHAが必要。stale/unknownは今回�
 3. 既`prepare-offline-system-service.ps1`はこのprofileとaccepted lockだけを厳密admitし、
    native SYSTEM patch/verifyの既保持検証を継続する。新native処理frameworkはない。
 4. 既`build-private-peripheral-batch-media.py --signed-render-profile`へ同mapを渡す。
-   native結果validatorも全policy再生成で照合する。
+   native結果validatorも全policy再生成で照合する。新mediaでは
+   `--winpe-lease-manifest/--winpe-lease-manifest-sha256`と
+   `--atomic-replace-manifest/--atomic-replace-manifest-sha256`が必須。
+   1800秒のWinPE専用watchdogと、実kernelの期限照会を行うatomic publisherを組み込む。
 5. 既`run-gpu368-fresh200.py --signed-render-capture <N>`へmain作成の
    `SIGNED_RENDER_RUN<N+1>_MAIN_SEAL_V1`と既引数を渡す。
    generator/controller/input pins・once-latch・terminal hold・既timeoutを維持する。
-   collection reboot opt-inはこのprofileでは不可。
+   新actual237以降の無人試験ではmapへ上記opt-inを加え、SCMへ`-CollectionReboot`、
+   sealへ同collection CONFIG・WinPE lease・atomic packageの実pinを記録する。
+   起動先には`run-unattended-signed-render.py --signed-render-capture <N>`を使う。
+   詳細は[無人回収入口](README-unattended-signed-render.md)を参照。
 
 render専用選択maskは1。しかしshared200の固定13role表ではrenderはbit10なので
 実`A04_PERIPHERAL_INSTALL_MASK`は1024（0x400）。mask1を13role表へそのまま渡すとrtcに
 なるため、両者を`render_update_mask:1` / `install_mask:1024`と明示して区別する。
-期待値はrender1role、restart1、boot/GPT0、最後はWindows hold。
+期待値はrender1role、restart1、boot/GPT0。旧既定は最後にWindows hold。
+新規の無人opt-inは診断後の回収用再起動とRecovery回収までを要求する。
 
 既diag2だけ（Present launcher/evaluator一組とglobaldiag198各1）を使い、
 追加diagnostic EXE起動を増やさない。pre-clientの既Powerhelperはpreserved成功後だけ。
@@ -109,3 +120,14 @@ render専用選択maskは1。しかしshared200の固定13role表ではrenderは
 未来captureの成功fixtureやfinal policyを捏造しない。
 Python/PowerShell parseとhost契約の成功は、未取得actual235での最終再生成・
 ARM SCM compile/sign・native patch/verify・media生成・実機動作成功ではない。
+
+
+## 初回の期限リセット確認
+
+`tools/winpe/build-winpe-lease-qualification.py`は同じ署名lease/atomic packageから、
+通常Windowsの更新・明示的なWindows volume mapを要求しない資格確認イメージを作る。
+startnetは`atomic-stage-replace.exe --check-lease`を実行してCRC付きUART報告を送り、
+カーネルの1800秒SWRSTを待つ。ホストUART resetや通常のwpeutil rebootで成功を代用しない。
+資格確認用WIM/ESPの生成は実機reset/Recovery復帰の成功を意味しない。
+これを実機で試した場合はRecovery boot IDが変わるため、後続の更新用fresh/nativeも
+その新しい実機状態から取得する。古いfreshをそのまま更新に使わない。
