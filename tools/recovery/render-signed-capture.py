@@ -192,5 +192,5 @@ def main():
  for k in ('workspace','map','out'):ap.add_argument('--'+k,type=Path,required=True)
  ap.add_argument('--finalize',action='store_true',required=True);a=ap.parse_args();root=a.workspace.resolve(strict=True);out=(root/a.out).resolve();require(out.is_relative_to(root) and not out.exists(),'New root-local output')
  p=load_map(rooted(root,a.map),root);h=generate(p);out.mkdir(parents=True)
- for name,text in [('peripheral-service-path-policy.h',paths()),('peripheral-batch-policy.h',h),('peripheral-policy.json',json.dumps(p,indent=2)+'\n'),('peripheral-preservation-plan.json',json.dumps(p,indent=2)+'\n')]: (out/name).write_text(text)
+ for name,text in [('peripheral-service-path-policy.h',paths()),('peripheral-batch-policy.h',h),('peripheral-policy.json',json.dumps(p,indent=2)+'\n'),('peripheral-preservation-plan.json',json.dumps(p,indent=2)+'\n')]: (out/name).write_text(text,newline="\n")
 if __name__=='__main__':main()
