@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """実policyで、更新前UMDと更新後UMDの混同を再発させない。"""
-import argparse,copy,importlib.util,json
+import argparse,copy,importlib.util,json,sys
 from pathlib import Path
 ap=argparse.ArgumentParser();ap.add_argument('--policy',type=Path,required=True);a=ap.parse_args()
 p=Path(__file__).resolve().parents[1]/'tools/winpe/build-private-peripheral-batch-media.py'
+sys.path.insert(0,str(p.parent))
 s=importlib.util.spec_from_file_location('render_media_regression',p);m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
 policy=json.loads(a.policy.read_text(encoding='utf-8-sig'));before=copy.deepcopy(policy)
 r=m.render_precopy_replacements(policy);key='Windows/System32/ge8300-umd.dll'
