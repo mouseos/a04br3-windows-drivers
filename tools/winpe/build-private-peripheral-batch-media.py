@@ -55,6 +55,24 @@ def reboot_committed_stage(cmd):
          'exit /b 9\n')
  return cmd.replace(marker,suffix)
 
+def render_precopy_replacements(policy):
+ # New render extras are post-install invariants; pre-copy checks must use
+ # the separately captured old bytes. Keep this exception limited to UMD.
+ result={}
+ for item in policy['packages']['render']['extra_members']:
+  if item['baseline_sha256']==item['sha256']:continue
+  name='Windows/System32/'+item['installed'].replace('\\','/')
+  require(name=='Windows/System32/ge8300-umd.dll','Only the admitted render UMD may change before install')
+  old=policy['baseline_witnesses'].get(name)
+  candidate=(Path(policy['packages']['render']['directory'])/item['name']).as_posix()
+  require(old and old['sha256']==item['baseline_sha256'] and
+          policy['preserved_files'].get(name)==item['sha256'] and
+          policy['preserved_sources'].get(name)==candidate,
+          'Render UMD old witness/new post-install tuple mismatch')
+  result[name]=dict(baseline=old,candidate=dict(path=candidate,sha256=item['sha256']))
+ require(set(result)=={'Windows/System32/ge8300-umd.dll'},'Exactly one actual render UMD transition required')
+ return result
+
 def baseline_failure_reports(prepare):
  # Keep comparator bytes/order/exit handling. Emit metadata only in its failure arm.
  result=[];ordinal=0;prefix='X:\\a04br3\\'
@@ -439,6 +457,7 @@ def main():
   require(set(client_replacements)=={'Windows/System32/mt8167-dxgi-console-launch363.exe','Windows/System32/mt8167-dxgi-present356.exe'},'Only the admitted client pair may replace preserved leaves')
   for name,row in client_replacements.items():
    require(p['baseline_witnesses'].get(name)==row['baseline'] and p['preserved_files'].get(name)==row['candidate']['sha256'] and p['preserved_sources'].get(name)==row['candidate']['path'],'Client old witness/new preserved binding mismatch')
+ render_replacements=render_precopy_replacements(p) if a.signed_render_profile else {}
  prepare=[]
  for i,e in enumerate(x for x in b['files'] if x['source_path'] in {'Windows/System32/config/'+n+s for n in ('SYSTEM','DRIVERS') for s in ('','.LOG1','.LOG2')}):
   copy(backup.parent/e['backup_path'],'fresh-input/'+str(i)+'.bin')
@@ -446,7 +465,7 @@ def main():
  require(len(prepare)==12,'SYSTEM/DRIVERSの実trio各3必須')
  # Preserve exact current GPU/Engine/other bytes before arming SYSTEM.
  for i,(name,want) in enumerate(p['preserved_files'].items()):
-  if name in client_replacements:continue
+  if name in client_replacements or name in render_replacements:continue
   witness=rooted(root,p['preserved_sources'][name]);require(sha(witness)==want,'保持capture witness hash不一致')
   copy(witness,'preserved-proof/'+str(i)+'.bin')
   prepare+=['X:\\a04br3\\compare-files.exe X:\\a04br3\\preserved-proof\\'+str(i)+'.bin "C:\\'+name.replace('/','\\')+'" >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto baselinefail']
