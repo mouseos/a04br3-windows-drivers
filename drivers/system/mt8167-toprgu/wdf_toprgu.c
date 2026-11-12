@@ -229,8 +229,20 @@ static BOOLEAN ToprguWinpeLeaseExpired(TOPRGU_CONTEXT *c)
 {
     int action=a04_winpe_lease_poll(&c->lease,KeQueryInterruptTime());
     if (action==A04_WINPE_LEASE_RESET) {
-        WRITE_REGISTER_ULONG(c->wdt+5,0x1209u);
+        ULONG budget=20000;
+        ULONGLONG drainStarted;
         Trace(c,"A04RGU WinPE lease expired; SWRST requested\n");
+        drainStarted=KeQueryInterruptTime();
+        /* MT8167 LSR +0x14 bit6 (TEMT) includes the shift register;
+         * Trace's bit5 (THRE) only admits another byte. Keep the inherited
+         * baud/FIFO configuration. A dead UART or stalled interrupt clock
+         * must not prevent SWRST: at most 20ms or 20000 one-us polls. */
+        if (c->uart) while (budget--) {
+            if (READ_REGISTER_ULONG(c->uart+5) & 0x40u) break;
+            if (KeQueryInterruptTime()-drainStarted >= 200000u) break;
+            KeStallExecutionProcessor(1);
+        }
+        WRITE_REGISTER_ULONG(c->wdt+5,0x1209u);
     }
     return action!=A04_WINPE_LEASE_CONTINUE;
 }
