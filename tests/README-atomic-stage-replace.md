@@ -56,6 +56,8 @@ manifestはsigned=true、signing（ATOMIC_STAGE_AUTHENTICODE_V1）、公開CER�
 
 対応検査は `tests/atomic_helper_signature_test.py` と `tests/atomic_signing_payload_test.ps1`。前者の合成PKCS7 fixtureはreport結合・拒否条件だけを検査し、暗号署名の妥当性を主張しない。後者はbuilderの実SignedPayload関数を使い、署名部分の追加とpayload改変を区別する。実証明書による署名とWindows native20ケースの実行はmainのrunner側で行う。
 
+builderとconsumerはreference receiptの実suite固定20ケースを必須とする。件数20、case名集合の完全一致、大文字小文字を区別した名前の一意性、各caseのpassed=trueと固定期待終了コードへのactual/expected一致を検査する。3件だけのreceipt、同じcaseを20個並べたreceipt、別名との置換は、hashを再結合しても拒否する。順序は問わない。`tests/atomic_reference_suite_gate_test.ps1` はbuilderの実gateを読み込み、実20ケース本体の宣言から得たfixtureと欠落・重複等の反例を検査する。Python fixtureも同じ実suite宣言に照合する。Cと実20ケースは変更していないため、既存の署名済みEXEと完全な20ケースreceiptは、このgate追加だけのために再compileする必要はない。
+
 必須パラメータはOutputDirectory、WdkRoot、CrtIncludeRoot。OutputDirectoryはcheckoutの `out\` 配下の新規ディレクトリに限定し、既存出力を拒否する。WdkRootには `Include\um`、`Include\shared` を持つcacheのrootを指定する。CrtIncludeRootはstdint.hを含む必要なCRT header cacheで、WDKの `Include\km\crt` を指定しない。追加includeはum/sharedとこのCRT-rootだけに限定し、intrin.hはClangのresource headerを使用する。ユーザーによるnative環境の診断では、WDK8.1のkm/crtを追加するとintrin.hの__ldrexd型がClang20 builtinと衝突し、同includeを外した既署名RX12 recipeは成功している。これはinclude構成の問題で、source/runtime不具合の証拠として扱わない。ライブラリの既定値は以下。
 
 - ARM: `C:\Program Files (x86)\Windows Kits\10\Lib\10.0.17763.0\um\arm\kernel32.lib`

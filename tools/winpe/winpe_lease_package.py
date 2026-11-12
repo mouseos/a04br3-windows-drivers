@@ -9,6 +9,17 @@ from pathlib import Path
 THUMB = 'BCBF6C456C6F0DD0818434763B189488FBF13570'
 MARKER = b'A04RGU_WINPE_LEASE_V1:1800'
 NAMES = {'mt8167-toprgu.sys', 'mt8167-toprgu.inf', 'mt8167-toprgu.cat', 'mt8167-toprgu.cer'}
+ATOMIC_REFERENCE_CASES = {
+    'replace-existing': 0, 'publish-new-target': 0, 'empty-source': 0,
+    'fault-before-publish': 90, 'existing-temp-rejected': 5,
+    'missing-source-no-temp': 4, 'start-limit': 3, 'publish-limit': 8,
+    'below-both-limits': 0, 'extra-argument': 2,
+    'production-check-mode-rejected-in-reference': 2, 'ads-rejected': 2,
+    'dos-device-rejected': 2, 'trailing-dot-rejected': 2,
+    'outside-prefix-rejected': 2, 'directory-rejected': 4,
+    'parent-reparse-rejected': 4, 'source-too-large': 4,
+    'maximum-source-size': 0, 'locked-target': 10,
+}
 
 
 def sha(path):
@@ -76,6 +87,21 @@ def atomic_signature_gate(root, manifest, m, data, pe):
          and payload['normalized_signed_sha256'] == digest, 'Production non-signature payload mismatch')
 
 
+def atomic_reference_cases_gate(cases):
+    """件数だけのreceiptや重複による水増しを、実suiteの固定契約で拒否する。"""
+    need(isinstance(cases, list) and len(cases) == len(ATOMIC_REFERENCE_CASES),
+         'Fixed 20-case atomic reference suite required')
+    names = [case.get('name') for case in cases if isinstance(case, dict)]
+    need(len(names) == len(cases) and all(isinstance(name, str) for name in names)
+         and len(set(names)) == len(names) and set(names) == set(ATOMIC_REFERENCE_CASES),
+         'Fixed 20-case atomic reference names must be unique and complete')
+    need(all(case.get('passed') is True and type(case.get('expected_exit')) is int
+             and type(case.get('actual_exit')) is int
+             and case['expected_exit'] == ATOMIC_REFERENCE_CASES[case['name']]
+             and case['actual_exit'] == case['expected_exit'] for case in cases),
+         'Fixed atomic reference case outcome mismatch')
+
+
 def load_atomic_helper(root, manifest, digest):
     root = root.resolve(strict=True)
     manifest = (root / manifest).resolve(strict=True)
@@ -101,7 +127,8 @@ def load_atomic_helper(root, manifest, digest):
     atomic_signature_gate(root, manifest, m, data, pe)
     tests = m['reference_tests']
     need(tests['status'] == 'passed' and tests['reference_sha256'] == m['reference']['sha256']
-         and tests['cases'] >= 3 and re.fullmatch('[0-9a-f]{64}', tests['result_sha256']),
+         and type(tests['cases']) is int and tests['cases'] == len(ATOMIC_REFERENCE_CASES)
+         and re.fullmatch('[0-9a-f]{64}', tests['result_sha256']),
          'Bound Windows reference tests required')
     reference = (manifest.parent / m['reference']['name']).resolve(strict=True)
     need(reference.is_relative_to(root) and reference.stat().st_size == m['reference']['bytes']
@@ -110,12 +137,12 @@ def load_atomic_helper(root, manifest, digest):
     need(report.is_relative_to(root) and sha(report) == tests['result_sha256'],
          'Actual Windows reference receipt drift')
     result = json.loads(report.read_text(encoding='utf-8-sig'))
+    atomic_reference_cases_gate(result.get('cases'))
     need(result['schema'] == 'ATOMIC_STAGE_REPLACE_REFERENCE_TEST_V1'
          and result['success'] is True and result['production_executed'] is False
          and result['reference_sha256'] == sha(reference)
          and result['production_sha256'] == sha(exe)
-         and len(result['cases']) == tests['cases']
-         and all(c['passed'] is True and c['actual_exit'] == c['expected_exit'] for c in result['cases']),
+         and len(result['cases']) == tests['cases'],
          'Native failure-injection cases must bind actual production/reference bytes')
     return m, exe
 

@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import re
 import struct
 import tempfile
 import unittest
@@ -12,6 +13,12 @@ spec = importlib.util.spec_from_file_location(
     'atomic_lease', Path(__file__).resolve().parents[1] / 'tools/winpe/winpe_lease_package.py')
 lease = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(lease)
+
+
+def native_suite_contract():
+    source = (Path(__file__).parent / 'atomic_stage_replace_reference_test.ps1').read_text()
+    return [(name, int(code)) for name, code in re.findall(
+        r"^\s*RunCase '([^']+)' '[^']+' (\d+)", source, re.MULTILINE)]
 
 
 class SignatureAdmission(unittest.TestCase):
@@ -61,8 +68,8 @@ class SignatureAdmission(unittest.TestCase):
         self.receipt = dict(schema='ATOMIC_STAGE_REPLACE_REFERENCE_TEST_V1', success=True,
             production_executed=False, reference_sha256=lease.sha(reference),
             production_sha256=lease.sha(self.exe),
-            cases=[dict(name='synthetic-case-'+str(i), passed=True, actual_exit=0, expected_exit=0)
-                   for i in range(20)])
+            cases=[dict(name=name, passed=True, actual_exit=code, expected_exit=code)
+                   for name, code in native_suite_contract()])
         report = self.root / 'reference-result.json'
         report.write_text(json.dumps(self.receipt))
         self.m['reference_tests'] = dict(status='passed', reference_sha256=lease.sha(reference),
@@ -85,7 +92,69 @@ class SignatureAdmission(unittest.TestCase):
         self.m['production'] = self.row(self.exe)
         self.m['signatures'][0]['sha256'] = lease.sha(self.exe)
 
+    def seal_receipt(self, cases):
+        self.receipt['cases'] = cases
+        report = self.root / 'reference-result.json'
+        report.write_text(json.dumps(self.receipt))
+        self.m['reference_tests']['result_sha256'] = lease.sha(report)
+        self.m['reference_tests']['cases'] = len(cases)
+
     def test_bound_signed_fixture_admitted(self):
+        self.assertEqual(self.load()[1], self.exe)
+
+    def test_consumer_contract_matches_actual_native_suite(self):
+        rows = native_suite_contract()
+        self.assertEqual(len(rows), 20)
+        self.assertEqual(len(set(name for name, _ in rows)), 20)
+        self.assertEqual(dict(rows), lease.ATOMIC_REFERENCE_CASES)
+
+    def test_three_case_receipt_rejected_even_with_resealed_manifest(self):
+        self.seal_receipt(self.receipt['cases'][:3])
+        with self.assertRaises(ValueError): self.load()
+
+    def test_twenty_duplicate_cases_rejected(self):
+        self.seal_receipt([copy.deepcopy(self.receipt['cases'][0]) for _ in range(20)])
+        with self.assertRaisesRegex(ValueError, 'unique and complete'): self.load()
+
+    def test_single_duplicate_displacing_required_case_rejected(self):
+        cases = copy.deepcopy(self.receipt['cases'])
+        cases[-1] = copy.deepcopy(cases[0])
+        self.seal_receipt(cases)
+        with self.assertRaisesRegex(ValueError, 'unique and complete'): self.load()
+
+    def test_unknown_case_replacing_required_case_rejected(self):
+        cases = copy.deepcopy(self.receipt['cases'])
+        cases[-1]['name'] = 'other-successful-case'
+        self.seal_receipt(cases)
+        with self.assertRaisesRegex(ValueError, 'unique and complete'): self.load()
+
+    def test_missing_or_extra_case_rejected(self):
+        original = copy.deepcopy(self.receipt['cases'])
+        for cases in (original[:-1], original + [dict(original[0], name='extra-case')]):
+            with self.subTest(count=len(cases)):
+                self.seal_receipt(cases)
+                with self.assertRaises(ValueError): self.load()
+
+    def test_fixed_name_case_is_sensitive(self):
+        cases = copy.deepcopy(self.receipt['cases'])
+        cases[0]['name'] = cases[0]['name'].upper()
+        self.seal_receipt(cases)
+        with self.assertRaisesRegex(ValueError, 'unique and complete'): self.load()
+
+    def test_matching_but_wrong_expected_exit_rejected(self):
+        cases = copy.deepcopy(self.receipt['cases'])
+        cases[0].update(expected_exit=999, actual_exit=999)
+        self.seal_receipt(cases)
+        with self.assertRaisesRegex(ValueError, 'outcome mismatch'): self.load()
+
+    def test_failed_case_rejected(self):
+        cases = copy.deepcopy(self.receipt['cases'])
+        cases[0]['passed'] = False
+        self.seal_receipt(cases)
+        with self.assertRaisesRegex(ValueError, 'outcome mismatch'): self.load()
+
+    def test_complete_suite_order_is_not_significant(self):
+        self.seal_receipt(list(reversed(self.receipt['cases'])))
         self.assertEqual(self.load()[1], self.exe)
 
     def test_legacy_unsigned_manifest_rejected(self):

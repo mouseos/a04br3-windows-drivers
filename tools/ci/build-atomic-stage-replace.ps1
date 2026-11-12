@@ -109,6 +109,31 @@ function SignedPayload([byte[]]$Unsigned,[byte[]]$Signed) {
  if($left -cne $right){throw 'Signing changed production payload'}
  return [ordered]@{unchanged=$true;unsigned_bytes=$Unsigned.Length;normalized_unsigned_sha256=$left;normalized_signed_sha256=$right;certificate_offset=$offset;certificate_bytes=$size}
 }
+function AssertReferenceCases([object[]]$Cases) {
+ $expected=[ordered]@{
+  'replace-existing'=0; 'publish-new-target'=0; 'empty-source'=0
+  'fault-before-publish'=90; 'existing-temp-rejected'=5
+  'missing-source-no-temp'=4; 'start-limit'=3; 'publish-limit'=8
+  'below-both-limits'=0; 'extra-argument'=2
+  'production-check-mode-rejected-in-reference'=2; 'ads-rejected'=2
+  'dos-device-rejected'=2; 'trailing-dot-rejected'=2
+  'outside-prefix-rejected'=2; 'directory-rejected'=4
+  'parent-reparse-rejected'=4; 'source-too-large'=4
+  'maximum-source-size'=0; 'locked-target'=10
+ }
+ if($Cases.Count -ne $expected.Count){throw 'Fixed 20-case atomic reference suite required'}
+ $seen=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+ foreach($case in $Cases){
+  if($case.name -isnot [string] -or !($seen.Add($case.name))){throw 'Duplicate or invalid atomic reference case name'}
+ }
+ foreach($name in $expected.Keys){if(!$seen.Contains($name)){throw 'Fixed atomic reference case names incomplete'}}
+ foreach($case in $Cases){
+  if($case.passed -isnot [bool] -or !$case.passed -or
+     ($case.expected_exit -isnot [int] -and $case.expected_exit -isnot [long]) -or
+     ($case.actual_exit -isnot [int] -and $case.actual_exit -isnot [long]) -or
+     $case.expected_exit -ne $expected[$case.name] -or $case.actual_exit -ne $case.expected_exit){throw 'Fixed atomic reference case outcome mismatch'}
+ }
+}
 function RvaOffset([byte[]]$Bytes,[int]$Pe,[uint32]$Rva) {
  $sections=[BitConverter]::ToUInt16($Bytes,$Pe+6)
  $table=$Pe+24+[BitConverter]::ToUInt16($Bytes,$Pe+20)
@@ -206,7 +231,8 @@ try {
  } catch { $step.exit_code=1;throw }
  finally { $step.log_sha256=Hash (Join-Path $out 'logs\reference-tests.log');Save }
  $result=Get-Content -LiteralPath $testResult -Raw|ConvertFrom-Json
- if(!$result.success -or $result.reference_sha256 -cne $manifest.reference.sha256 -or $result.production_sha256 -cne $manifest.production.sha256 -or $result.cases.Count -lt 3 -or @($result.cases|Where-Object {-not $_.passed}).Count){throw 'Reference result mismatch'}
+ AssertReferenceCases @($result.cases)
+ if(!$result.success -or $result.reference_sha256 -cne $manifest.reference.sha256 -or $result.production_sha256 -cne $manifest.production.sha256){throw 'Reference result mismatch'}
  $manifest.reference_tests=[ordered]@{status='passed';reference_sha256=$manifest.reference.sha256;cases=$result.cases.Count;result_sha256=(Hash $testResult);result_path=$testResult}
  foreach($pin in @($sourceFiles)+@($tools)+@($manifest.production,$manifest.reference)) {
   if((Hash $pin.path) -cne $pin.sha256){throw 'Source/tool/output drift during build'}
