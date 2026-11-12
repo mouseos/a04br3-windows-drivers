@@ -17,6 +17,18 @@ $prefix='drivers/system/mt8167-toprgu/';$dir=Join-Path $root $prefix
 function Git([string[]]$Arguments){$v=@(& git.exe -C $root @Arguments);if($LASTEXITCODE){throw 'Git source pin check failed'};return $v}
 function Hash([string]$Path){(Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()}
 function Pin([string]$Path){$i=Get-Item -LiteralPath ([IO.Path]::GetFullPath($Path));if($i.PSIsContainer){throw 'File required'};[ordered]@{path=$i.FullName;bytes=$i.Length;sha256=(Hash $i.FullName)}}
+# INFだけ.gitattributesのtext eol=crlfを扱う。trim/metadata変換/literal変換はしない。
+function Canonical-InfGitPin([byte[]]$Bytes){
+ foreach($b in $Bytes){if($b -gt 127){throw 'ASCII source INF bytes required'}}
+ $canonical=[Text.Encoding]::UTF8.GetBytes([Text.Encoding]::ASCII.GetString($Bytes).Replace("`r`n","`n"))
+ $header=[Text.Encoding]::ASCII.GetBytes('blob '+$canonical.Length+[char]0)
+ $sha1=[Security.Cryptography.SHA1]::Create();$sha256=[Security.Cryptography.SHA256]::Create()
+ try{
+  [void]$sha1.TransformBlock($header,0,$header.Length,$header,0)
+  [void]$sha1.TransformFinalBlock($canonical,0,$canonical.Length)
+  return @{canonical_git_blob=([BitConverter]::ToString($sha1.Hash)).Replace('-','').ToLowerInvariant();actual_sha256=([BitConverter]::ToString($sha256.ComputeHash($Bytes))).Replace('-','').ToLowerInvariant();bytes=$Bytes.Length;normalization='CRLF-to-LF-only'}
+ }finally{$sha1.Dispose();$sha256.Dispose()}
+}
 function Save{$m|ConvertTo-Json -Depth 20|Set-Content -LiteralPath (Join-Path $out 'manifest.json') -Encoding UTF8}
 function Tool([string]$Name,[string]$Exe,[string[]]$Arguments){
  if(@($m.steps|Where-Object name -CEQ $Name).Count){throw 'No repeated tool stage'}
@@ -83,9 +95,16 @@ $relative=@(Git -Arguments @('ls-files','--',($prefix+'*.c'),($prefix+'*.h'),($p
 if(@($relative|Where-Object {$_ -like '*.c'}).Count -ne 2 -or $relative -cnotcontains ($prefix+'winpe_lease.h') -or $relative -cnotcontains ($prefix+'wdf_toprgu.c') -or $relative -cnotcontains ($prefix+'reset_command.c')){throw 'Exactly two tracked TUs and tracked winpe_lease.h required'}
 $relative+=@('tools/ci/build-toprgu-winpe-lease.ps1');$sources=@()
 foreach($rel in $relative){
- $path=Join-Path $root $rel;$blob=(Git -Arguments @('rev-parse',("${commit}:$rel"))) -join '';$actual=(Git -Arguments @('hash-object','--no-filters','--',$path)) -join ''
- if($actual -cne $blob){throw ('Worktree bytes differ from pinned Git blob: '+$rel)}
- $sources+=@{path=$rel;git_blob=$blob;sha256=(Hash $path);bytes=(Get-Item -LiteralPath $path).Length}
+ $path=Join-Path $root $rel;$blob=(Git -Arguments @('rev-parse',("${commit}:$rel"))) -join ''
+ if($rel -ceq ($prefix+'mt8167-toprgu.inf')){
+  $pin=Canonical-InfGitPin ([IO.File]::ReadAllBytes($path))
+  if($pin.canonical_git_blob -cne $blob){throw 'INF CRLF-to-LF canonical Git blob differs from pinned commit'}
+  $sources+=@{path=$rel;git_blob=$blob;sha256=$pin.actual_sha256;actual_sha256=$pin.actual_sha256;canonical_git_blob=$pin.canonical_git_blob;normalization=$pin.normalization;bytes=$pin.bytes}
+ }else{
+  $actual=(Git -Arguments @('hash-object','--no-filters','--',$path)) -join ''
+  if($actual -cne $blob){throw ('Worktree bytes differ from pinned Git blob: '+$rel)}
+  $sources+=@{path=$rel;git_blob=$blob;sha256=(Hash $path);bytes=(Get-Item -LiteralPath $path).Length}
+ }
 }
 $kit=[IO.Path]::GetFullPath($WdkRoot);$wdf=[IO.Path]::GetFullPath($WdfIncludeRoot);$wdfLib=[IO.Path]::GetFullPath($WdfLibraryRoot);$sign=[IO.Path]::GetFullPath($SigningToolRoot)
 $km=if($KernelLibraryRoot){[IO.Path]::GetFullPath($KernelLibraryRoot)}else{Join-Path $kit 'Lib\winv6.3\km\arm'}

@@ -7,7 +7,7 @@ SWRST後の永久停喂・再arm不可・D0Exit時のHW WDT保持はmain実装�
 このbuilderのmarker検証は実機reset成功を証明しません。
 
 汎用`build-mt8167-toprgu.ps1`やrx builderを呼びません。主treeの汎用builderは
-cache引数と`-MD`に未対応で、元INFもcatalog処理に適さないためです。
+cache引数と`-MD`に未対応であり、専用packageのINF正規化もこの入口で行うためです。
 GPU、他driver、SDKのbuild/install、WDF overlay復元、証明書生成・import・private key export、
 VM/実機操作は行いません。転送用closure/ZIP作成もmain側で扱います。
 
@@ -36,8 +36,15 @@ VM/実機操作は行いません。転送用closure/ZIP作成もmain側で扱�
 `KernelLibraryRoot`省略時は`WdkRoot/Lib/winv6.3/km/arm`を使用します。
 `CertificateStore`は既定CurrentUser（必要時LocalMachine）。thumbprintはBCBF以外を拒否します。
 全出力・TMP/TEMP/TMPDIR/RUNNER_TEMPはcheckout内`out/`の新規directory配下へ置きます。
-祖先reparse point、既存出力、dirty tree、commit不一致、Git blobと実byteの不一致を拒否します。
-Windowsの改行変換があるsourceを「同じcommit」として黙認しません。
+祖先reparse point、既存出力、dirty tree、commit不一致を拒否します。
+C/H/recipeは`git hash-object --no-filters`で実byteと固定commit blobの完全一致を要求します。
+INFだけは`.gitattributes`の`*.inf text eol=crlf`に従う通常checkout（CRLF）を許可します。
+ASCII byteを確認後、実CRLF→LFだけを置換し、UTF-8 byteへ
+`blob <byte長><NUL>`を付けたSHA1を計算して固定commitのGit blobと照合します。
+trim、metadata変更、literal escape変換はsource gateでは行いません。
+`source_files`のINF rowへ`actual_sha256`、`canonical_git_blob`、
+`normalization=CRLF-to-LF-only`を記録し、従来の`sha256`も実checkout byteのSHA256として保持します。
+終了時のsource hash再照合も実byteで行います。INFをraw LFへ戻してdirtyにする必要はありません。
 
 ## 固定build条件
 
@@ -58,7 +65,10 @@ unsigned/signed SYSで確認します。
 source、実依存header、link libs、tool hashを終了時に再検査し、source driftを拒否します。
 依存hashはcompile後の観測であり、全headerを過去の全読取り時点から固定していたとの主張はしません。
 
-主tree INFにあるliteral `\r\n`はpackage内だけで実CRLFへ明示変換します。
+実source INFはliteral escapeではなく実CRLFです。Git blobはLF、通常checkoutはCRLFであり、
+以前のtool表示の二重escapeからの説明を訂正します。現物の`literal_count`は0です。
+package生成時は実CRLFを維持・正規化し、literal `\r\n`形式にも変換サポートを残します。
+ただしliteral形式はsource gateで特別扱いしないため、固定commitにないbyteを通過させる用途には使えません。
 元INFは変更せず、改行変換後のmetadata変更は
 `DriverVer=11/06/2026,0.0.13.0`だけです。current runnerの日付より未来なら停止します。
 変換済みINFに対してのみInf2Catを実行し、SYSを先に署名してからCAT生成・署名へ進みます。
