@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import types
 import unittest
+import zlib
 from unittest.mock import patch
 
 REPO = Path(__file__).resolve().parents[1]
@@ -20,7 +21,38 @@ RAW = (b'A04RGU_WINPE_LEASE_V1:1800\nA04AU2E '+TOKEN.encode()+b' 12345678\n'
 TRACE = rb'A04WIN example\n'
 
 
+def crc_stream(report):
+    crc = zlib.crc32(report)
+    lines = [b'A04RGU_WINPE_LEASE_V1:1800',
+             ('A04AU20 %s %08X %08X' % (TOKEN, len(report), crc)).encode()]
+    for seq, start in enumerate(range(0, len(report), 16)):
+        chunk = report[start:start+16]
+        lines.append(('A04AU21 %s %08X %02X %s %08X' %
+                      (TOKEN, seq, len(chunk), chunk.hex().upper(), zlib.crc32(chunk))).encode())
+    lines += [('A04AU2E %s %08X' % (TOKEN, crc)).encode(), m.EXPIRED, b'BOOT_REASON: 4']
+    return b'\n'.join(lines) + b'\n'
+
+
 class Contracts(unittest.TestCase):
+    def test_exact_report_keys_with_real_crc_decoder(self):
+        path = REPO.parents[1]/'windows-rt/a04br3-windows-public-transport/tools/recovery/decode-audit-stream.py'
+        spec = importlib.util.spec_from_file_location('actual_crc_decoder', path)
+        decoder = importlib.util.module_from_spec(spec); spec.loader.exec_module(decoder)
+        self.assertTrue(m.evaluate_uart(crc_stream(REPORT),TOKEN,decoder,TRACE)[0]['runtime_query_valid'])
+        for key, value, other in ((b'LEASE_QUERY_EXIT',b'0',b'9020'),
+                                  (b'LEASE_EXPECTED_SECONDS',b'1800',b'1'),
+                                  (b'NORMAL_WINDOWS_UPDATE_REQUESTED',b'0',b'1')):
+            for bad in (REPORT+key+b'='+other+b'\n', REPORT+key+b'='+value+b'\n',
+                        REPORT.replace(key+b'='+value,key+b'=unknown'),
+                        REPORT.replace(key+b'='+value,key+b' ='+value),
+                        REPORT.replace(key+b'='+value,key)):
+                with self.subTest(key=key,report=bad):
+                    raw=crc_stream(bad)
+                    self.assertEqual(decoder.decode(raw,TOKEN),bad)
+                    proof,_=m.evaluate_uart(raw,TOKEN,decoder,TRACE)
+                    self.assertFalse(proof['runtime_query_valid'])
+                    self.assertFalse(proof['qualification_transport_evidence'])
+
     def test_event_order_and_query(self):
         decoder = types.SimpleNamespace(decode=lambda raw, token: REPORT)
         proof, _ = m.evaluate_uart(RAW, TOKEN, decoder, TRACE)
@@ -55,7 +87,14 @@ class Contracts(unittest.TestCase):
                     dir=REPO.parents[1]/'port/gsi/logs/ios-feasibility', prefix='qualification-next-test-') as td:
                 self.exercise(Path(td), query_ok)
 
-    def exercise(self, root, query_ok):
+    def test_early_reset_and_lower_boundary(self):
+        for elapsed, passed in ((1,False),(1789.9,False),(1790,True)):
+            with self.subTest(elapsed=elapsed),tempfile.TemporaryDirectory(
+                    dir=REPO.parents[1]/'port/gsi/logs/ios-feasibility',prefix='qualification-early-reset-test-') as td:
+                self.exercise(Path(td),True,elapsed=elapsed,expected_pass=passed)
+
+    def exercise(self, root, query_ok, elapsed=2200, expected_pass=None):
+        if expected_pass is None:expected_pass=query_ok
         logs = root/'port/gsi/logs/ios-feasibility'; logs.mkdir(parents=True)
         serial = 'fixture'
         boot1, boot2 = '11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222'
@@ -113,7 +152,7 @@ class Contracts(unittest.TestCase):
             if args[0]=='adb':
                 op=args[3:]
                 if op==['reboot']:
-                    uart.write_bytes(RAW);clock[0]+=2200
+                    uart.write_bytes(RAW);clock[0]+=elapsed
                     raise subprocess.TimeoutExpired(args,30,output=b'reboot ack unknown')
                 if op==['get-state']:answer=b'recovery'
                 elif op==['get-serialno']:answer=serial.encode()
@@ -138,11 +177,13 @@ class Contracts(unittest.TestCase):
         with patch.object(m,'load',side_effect=fake_load),patch.object(m.subprocess,'run',side_effect=run),\
              patch.object(m.time,'monotonic',side_effect=lambda:clock[0]),\
              patch.object(m.time,'sleep',side_effect=lambda n:clock.__setitem__(0,clock[0]+n)):
-            self.assertEqual(m.execute(a,c),0 if query_ok else 2)
+            self.assertEqual(m.execute(a,c),0 if expected_pass else 2)
         st=read_json(out/'result.json')
-        self.assertTrue(st['evidence_recovered']);self.assertEqual(st['qualification_pass'],query_ok)
+        self.assertTrue(st['evidence_recovered']);self.assertEqual(st['qualification_pass'],expected_pass)
+        self.assertEqual(st['hardware_verified'],expected_pass)
+        self.assertEqual(st['host_reset_window_valid'],1790<=elapsed<=2400)
         self.assertFalse(st['kernel_duration_measured'])
-        self.assertGreater(st['host_transport_elapsed_seconds'],1900)
+        self.assertEqual(st['host_transport_elapsed_seconds'],elapsed)
         self.assertEqual(sum(x[0]=='adb' and x[3:]==['reboot'] for x in calls),1)
         self.assertEqual(sum(x[0]=='adb' and x[3:]==['root'] for x in calls),1)
         self.assertEqual(sum(x[0]=='fastboot' and x[-2:]==['oem','reboot-recovery'] for x in calls),1)

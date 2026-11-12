@@ -33,9 +33,11 @@ serial共通flockは旧controllerと同じ名前を使用し、別outの並行�
 
 ## 時刻と合否
 
-hostのreboot要求からfastboot確認までは2400秒上限です。boot/lease/reset後transportを合わせた生存監視であり、kernelの1800秒をhost時計で直接測定する判定ではありません。旧1790..1900秒の合否条件は使用しません。後続Recovery/root待機は別枠150秒、RO回収は各helper1800秒上限です。reboot/Recovery移行/root要求はそれぞれ一度だけで、timeout/非zeroのack不明を理由に再送しません。
+hostのreboot要求からfastboot確認までは2400秒上限です。合格には保守的なhost下限1790秒も要求し、1秒等の早すぎるresetを拒否します。boot/lease/reset後transportを合わせた生存監視と早期reset防止であり、kernelの1800秒をhost時計で直接測定する判定ではありません。旧1900秒上限は復活させません。下限を満たさなくても安全なtransport確認後のRO回収は行い、不合格を維持します。後続Recovery/root待機は別枠150秒、RO回収は各helper1800秒上限です。reboot/Recovery移行/root要求はそれぞれ一度だけで、timeout/非zeroのack不明を理由に再送しません。
 
 CRCでquery0・期待1800秒・通常Windows更新要求0を確認し、同試験窓のlease compile marker、唯一のCRC終端、その後のdriver `A04RGU WinPE lease expired; SWRST requested`、その後の最初のBOOT_REASON=4を順序付きで要求します。別bootの理由4へ飛び越して合格させません。queryやCRCが不合格でも、product A04BR3のfastbootを確認できればRecoveryへ一度移行し、RO241を回収します。
+
+対象3keyは値を含む全出現を数え、各keyが期待値で厳密に一度だけ現れることを要求します。query0と9020の併存、同じ成功値の重複、未知値、key空白や値欠落も不合格です。CRC整合だけで意味の矛盾を受理しません。
 
 現署名helper Cの`--check-lease`はstdout markerとexit codeのみで、実IOCTLのelapsed high/lowは内部判定に使用するだけです。この版はCを変更せず、数値をreportへ出せるとは主張しません。resultでは`kernel_elapsed_low/high=null`、`kernel_duration_measured=false`を維持します。合格は署名済み1800秒runtime policy、実query、driver期限到達event、後続reset、Windows/補足file不変の統合検証を意味し、1800秒の測定精度を実証した意味ではありません。
 
@@ -57,4 +59,4 @@ driverはSWRSTレジスタ書込み後にexpired markerをTraceするため、re
 python3 -B -m unittest discover -s tests -p qualification_next_test.py -v
 ```
 
-device subprocessを全置換し、query9020でもRO回収すること、expired/CRC/boot順序の拒否、host2200秒で1900秒条件に誤拒否されないこと、各遷移要求の再送なし、旧証拠保持・既241拒否を確認します。実機・VMを呼びません。
+device subprocessを全置換し、query9020でもRO回収すること、expired/CRC/boot順序の拒否、host1秒・1790秒未満の不合格と1790秒境界、host2200秒の受理、実CRC decoderを使う矛盾key/重複値の拒否、各遷移要求の再送なし、旧証拠保持・既241拒否を確認します。実機・VMを呼びません。

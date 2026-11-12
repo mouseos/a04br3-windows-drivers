@@ -15,6 +15,7 @@ import time
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 TRANSPORT_SECONDS = 2400
+MIN_RESET_HOST_SECONDS = 1790
 EXPIRED = b'A04RGU WinPE lease expired; SWRST requested'
 MOUNT_GUARD = '''set -e
  test "$(id -u)" = 0
@@ -129,8 +130,15 @@ def evaluate_uart(raw, token, decoder, storage_trace):
         need(re.fullmatch('[0-9A-F]{16}', token or ''), '固定CRC tokenが必要です')
         report = decoder.decode(clean, token)
         lines = report.decode().splitlines()
-        evidence['runtime_query_valid'] = all(lines.count(x) == 1 for x in (
-            'LEASE_QUERY_EXIT=0', 'LEASE_EXPECTED_SECONDS=1800', 'NORMAL_WINDOWS_UPDATE_REQUESTED=0'))
+        expected = dict(LEASE_QUERY_EXIT='0', LEASE_EXPECTED_SECONDS='1800',
+                        NORMAL_WINDOWS_UPDATE_REQUESTED='0')
+        observed = {key: [] for key in expected}
+        for line in lines:
+            key, separator, value = line.partition('=')
+            if key.strip() in observed:
+                observed[key.strip()].append((key, separator, value))
+        evidence['runtime_query_valid'] = all(
+            observed[key] == [(key, '=', value)] for key, value in expected.items())
         ends = list(re.finditer(rb'A04AU2E ' + token.encode() + rb' [0-9A-F]{8}\r?\n', clean))
         need(len(ends) == 1, '同tokenのCRC終端は一度だけ必要です')
         end = ends[0].end()
@@ -329,12 +337,14 @@ def locked_execute(a, c):
             save()
         deadline = began + TRANSPORT_SECONDS
         fastboot = False
+        fastboot_observed = None
         while time.monotonic() < deadline:
             try:
                 p = command(['fastboot', '-s', serial, 'getvar', 'product'], 'fastboot-probe.log',
                             min(5, max(.01, deadline - time.monotonic())), False)
                 if p.returncode == 0:
                     need(re.search(rb'product:\s*A04BR3(?:\s|$)', p.stdout), 'fastboot product不一致')
+                    fastboot_observed = time.monotonic()
                     fastboot = True
                     break
             except subprocess.TimeoutExpired:
@@ -344,7 +354,11 @@ def locked_execute(a, c):
             f.seek(offset)
             raw = f.read()
         (out / 'qualification-uart.log').write_bytes(raw)
-        state['host_transport_elapsed_seconds'] = time.monotonic() - began
+        elapsed = (fastboot_observed if fastboot else time.monotonic()) - began
+        state['host_transport_elapsed_seconds'] = elapsed
+        # 早期resetを保守的に拒否するだけで、kernel期限の精度測定ではない。
+        state['host_reset_window_valid'] = MIN_RESET_HOST_SECONDS <= elapsed <= TRANSPORT_SECONDS
+        state['minimum_reset_host_seconds'] = MIN_RESET_HOST_SECONDS
         need(fastboot, '2400秒以内にfastboot productを確認できませんでした。再resetしません')
         decoder = load('next_qualification_crc', c['decoder'])
         engine = load('next_qualification_engine', c['engine'])
@@ -409,7 +423,7 @@ def locked_execute(a, c):
         unchanged()
         same = all(file_rows(before) == file_rows(post) and missing_rows(before) == missing_rows(post)
                    for before, post in zip(c['before'], bundle))
-        passed = same and proof['qualification_transport_evidence']
+        passed = same and proof['qualification_transport_evidence'] and state['host_reset_window_valid']
         state.update(status='reset-recovery-and-capture241-complete' if passed else 'capture241-complete-qualification-failed',
                      evidence_recovered=True, qualification_pass=passed, hardware_verified=passed,
                      Windows_files_unchanged=same, capture_manifest=mf.relative_to(root).as_posix(),
