@@ -280,7 +280,8 @@ static VOID ToprguPoll(TOPRGU_CONTEXT *c, BOOLEAN backup)
             InterlockedExchange(&c->ownedFour,1);
             Trace(c,"A04RGU CPU1 ownership acquired CPUs>=4\n");
 #if A04_TOPRGU_WINPE_LEASE_SECONDS
-            Trace(c,A04_WINPE_LEASE_MARKER "\n");
+            Trace(c,A04_WINPE_LEASE_MARKER);
+            Trace(c,"\n");
 #endif
         }
 #if A04_TOPRGU_WINPE_LEASE_SECONDS
