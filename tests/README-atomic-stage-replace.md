@@ -74,3 +74,13 @@ temp closeからrenameまでの間に別プロセスが同じdirectoryを書き�
 RESET後はhost側のRecovery read-only captureに限定し、通常OSの自動起動を禁止する。partialfailは回収・検証後にだけ次engineへ進める。このhost制御はmainの統合範囲であり、本helper単体では提供しない。referenceで証明できるのはWindows上の限定されたfile API挙動と拒否条件で、実WinPE driver query、1800秒WDT、ARMNT実行、実機電源断からの復旧成功を証明しない。
 
 実装時のローカル検査では、両PSをPowerShell parserで構文検査し、Cの両variantをcached MinGW headerとclangのx86_64-w64-windows-gnu targetでLLVM IRへコンパイルした。IRの外部宣言にCRT関数がないこと、本番/reference markerとDeviceIoControl経路の分離を確認した。これはWindows WDKでのARMNT/x64 PEビルドやWindows reference実行の代替ではない。実装担当はVM・実機操作を行っておらず、builderの実行とreference receiptの取得はmain側に残る。
+
+
+## 参照EXEの起動方式
+
+参照側は、標準CRTから同じC実装の入口を呼ぶ小さいlauncherを使う。
+対象runnerではCRTなしx64 EXEが最小例でもSTATUS_INVALID_IMAGE_FORMATとなり、
+標準CRT入口の最小EXEは起動したためである。ARM productionはCRT不要のまま。
+置換・flush・照合・失敗注入の実装、20ケースと期待結果を置き換えたり省略しない。
+既MSVC/SDKのVCとUCRT/static librariesだけを参照し、installは行わない。
+ケースは参照EXEのhashごとの新規directoryへ保存し、同byteでの再実行を拒否する。

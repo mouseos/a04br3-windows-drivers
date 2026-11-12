@@ -27,7 +27,7 @@ if((Hash $ReferenceExe) -cne $ExpectedReferenceSha256 -or (Hash $ProductionExe) 
 $rb=[IO.File]::ReadAllBytes($ReferenceExe);$pe=[BitConverter]::ToInt32($rb,60)
 if([BitConverter]::ToUInt16($rb,$pe+4) -ne 0x8664 -or !([Text.Encoding]::ASCII.GetString($rb)).Contains(('A04_ATOMIC_STAGE_V1:TESTCLOCK:REFERENCE'+[char]0))){throw 'x64 reference required; production must never execute'}
 if(![Environment]::Is64BitOperatingSystem -or ([IO.DriveInfo]::new('C:\')).DriveFormat -ine 'NTFS'){throw 'x64 Windows and NTFS C required'}
-$casesRoot=Join-Path $fixed 'cases'
+$casesRoot=Join-Path $fixed ('cases-'+$ExpectedReferenceSha256.Substring(0,16))
 if(Test-Path -LiteralPath $casesRoot){throw 'Existing cases are evidence; rerun forbidden'}
 New-Item -ItemType Directory -Path $casesRoot -ErrorAction Stop|Out-Null
 $result=[ordered]@{schema='ATOMIC_STAGE_REPLACE_REFERENCE_TEST_V1';success=$false;reference_sha256=$ExpectedReferenceSha256;production_sha256=$ExpectedProductionSha256;test_script_sha256=(Hash $PSCommandPath);root=$fixed;production_executed=$false;cases=@()}

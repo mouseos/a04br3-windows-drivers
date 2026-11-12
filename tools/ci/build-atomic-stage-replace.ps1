@@ -4,6 +4,8 @@ param(
  [Parameter(Mandatory=$true)][string]$OutputDirectory,
  [Parameter(Mandatory=$true)][string]$WdkRoot,
  [Parameter(Mandatory=$true)][string]$CrtIncludeRoot,
+ [string]$ReferenceVcRoot='C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.29.30133',
+ [string]$ReferenceSdkLibraryRoot='C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0',
  [string]$ArmKernel32Library='C:\Program Files (x86)\Windows Kits\10\Lib\10.0.17763.0\um\arm\kernel32.lib',
  [string]$X64Kernel32Library='C:\Program Files (x86)\Windows Kits\10\Lib\10.0.17763.0\um\x64\kernel32.lib'
 )
@@ -30,10 +32,15 @@ NoReparse $out
 $source=Join-Path $root 'tools\winpe\atomic-stage-replace.c'
 $header=Join-Path $root 'drivers\system\mt8167-toprgu\uart_screen.h'
 $test=Join-Path $root 'tests\atomic_stage_replace_reference_test.ps1'
-$sourceFiles=@($source,$header,$PSCommandPath,$test,(Join-Path $root 'tests\README-atomic-stage-replace.md')) | ForEach-Object { Leaf $_ }
+$launcher=Join-Path $root 'tests\atomic_stage_reference_launcher.c'
+$sourceFiles=@($source,$header,$PSCommandPath,$test,$launcher,(Join-Path $root 'tests\README-atomic-stage-replace.md')) | ForEach-Object { Leaf $_ }
 $compiler=(Get-Command clang -CommandType Application -ErrorAction Stop).Source
 $linker=(Get-Command lld-link -CommandType Application -ErrorAction Stop).Source
-$tools=@((Leaf $compiler),(Leaf $linker),(Leaf $ArmKernel32Library),(Leaf $X64Kernel32Library))
+$referenceCl=Join-Path $ReferenceVcRoot 'bin\Hostx64\x64\cl.exe'
+$referenceLink=Join-Path $ReferenceVcRoot 'bin\Hostx64\x64\link.exe'
+$tools=@((Leaf $compiler),(Leaf $linker),(Leaf $ArmKernel32Library),(Leaf $X64Kernel32Library),(Leaf $referenceCl),(Leaf $referenceLink))
+$referenceLibraries=@((Join-Path $ReferenceVcRoot 'lib\x64\libcmt.lib'),(Join-Path $ReferenceVcRoot 'lib\x64\libvcruntime.lib'),(Join-Path $ReferenceVcRoot 'lib\x64\oldnames.lib'),(Join-Path $ReferenceSdkLibraryRoot 'ucrt\x64\libucrt.lib'),(Join-Path $ReferenceSdkLibraryRoot 'um\x64\kernel32.lib'))
+foreach($lib in $referenceLibraries){$tools+=,(Leaf $lib)}
 $kit=[IO.Path]::GetFullPath($WdkRoot)
 $crt=[IO.Path]::GetFullPath($CrtIncludeRoot)
 foreach($p in @((Join-Path $kit 'Include\um\windows.h'),(Join-Path $kit 'Include\shared\winerror.h'),(Join-Path $crt 'stdint.h'))) {
@@ -115,12 +122,23 @@ try {
   $dep=Join-Path $out ('work\'+$variant+'.d')
   $exe=Join-Path $out $(if($reference){'atomic-stage-replace-reference-x64.exe'}else{'atomic-stage-replace.exe'})
   $argsList=@(('--target='+$target),'-O2','-ffreestanding','-fno-builtin','-fno-stack-protector','-fms-extensions','-Wall','-Wextra','-Werror','-D_WIN32_WINNT=0x0603','-DNTDDI_VERSION=0x06030000',('-DA04_ATOMIC_REPLACE_REFERENCE='+[int]$reference),'-MD','-MF',$dep)
-  if(!$reference){$argsList+=@('-D_ARM_','-DARM')}
+  if(!$reference){$argsList+=@('-D_ARM_','-DARM')}else{$argsList+=@('-DmainCRTStartup=a04_atomic_reference_entry')}
   # Do not add WDK km/crt: its intrin.h conflicts with Clang's ARM builtins.
   foreach($inc in @((Join-Path $kit 'Include\um'),(Join-Path $kit 'Include\shared'),$crt)){$argsList+=@('-isystem',$inc)}
   $argsList+=@('-c',$source,'-o',$object)
   Run ('compile-'+$variant) $compiler $argsList
-  Run ('link-'+$variant) $linker @('/subsystem:console,6.3',('/machine:'+$machine),'/entry:mainCRTStartup','/nodefaultlib','/dynamicbase','/nxcompat',$object,$library,('/out:'+$exe))
+  if($reference){
+   $shim=Join-Path $out 'work\reference-launcher.obj'
+   Run 'compile-reference-launcher' $referenceCl @('/nologo','/c','/MT','/O2',('/Fo'+$shim),$launcher)
+   $rsp=Join-Path $out 'work\reference-link.rsp'
+   $linkArgs=@('/SUBSYSTEM:CONSOLE,6.3','/MACHINE:X64','/INCREMENTAL:NO','/NODEFAULTLIB','/DYNAMICBASE','/NXCOMPAT',('/OUT:"'+$exe+'"'),('/LIBPATH:"'+(Join-Path $ReferenceVcRoot 'lib\x64')+'"'),('/LIBPATH:"'+(Join-Path $ReferenceSdkLibraryRoot 'ucrt\x64')+'"'),('/LIBPATH:"'+(Join-Path $ReferenceSdkLibraryRoot 'um\x64')+'"'),('"'+$object+'"'),('"'+$shim+'"'))
+   $linkArgs+=@($referenceLibraries|ForEach-Object{'"'+$_+'"'})
+   [IO.File]::WriteAllLines($rsp,$linkArgs,[Text.Encoding]::ASCII)
+   Run 'link-reference-standard-crt' $referenceLink @(('@'+$rsp))
+   $manifest.reference_launcher=[ordered]@{mode='standard-CRT-calls-same-C-entry';source_sha256=(Hash $launcher);object_sha256=(Hash $shim);response_file_sha256=(Hash $rsp)}
+  }else{
+   Run ('link-'+$variant) $linker @('/subsystem:console,6.3',('/machine:'+$machine),'/entry:mainCRTStartup','/nodefaultlib','/dynamicbase','/nxcompat',$object,$library,('/out:'+$exe))
+  }
   CheckPE $exe $(if($reference){0x8664}else{0x1c4}) $reference
   $manifest[$variant]=Leaf $exe;Save
  }
