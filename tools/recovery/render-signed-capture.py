@@ -99,7 +99,7 @@ def configure(spec,root):
     if name not in {'ge8300-render.inf','ge8300-render.sys','ge8300-render.cat','ge8300-umd.dll'}:require(oldfiles[name]==h,'Unrelated leaf retained: '+name)
    row=copy.deepcopy(self.row)
    for x in row['extra_members']:
-    installed='Windows/System32/'+x['installed'];require(installed in originals,'Actual old extra required')
+    installed='Windows/System32/'+x['installed'].replace('\\','/');require(installed in originals,'Actual old extra required')
     x['baseline_sha256']=originals[installed]['sha256'];require(x['sha256']==hashes[x['name']],'Final signed extra')
    return row
   def validate_transport(self,packages,hashes):
