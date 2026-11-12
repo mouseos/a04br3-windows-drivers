@@ -56,13 +56,15 @@ def reboot_committed_stage(cmd,clean_reject=False):
  if clean_reject:
   require('set "A04_CANDIDATE_STARTED=0"' in cmd and
           'UPDATE_STATUS=BASELINE_REJECTED_NO_CHANGE' in cmd,'Clean pre-copy rejection protocol required')
-  rejected=('if "%A04_RC%"=="6" (\n'
+  require(':a04_clean_baseline_reboot' not in cmd,'Unique clean rejection label required')
+  rejected=(':a04_clean_baseline_reboot\n'
             'if not "%A04_CANDIDATE_STARTED%"=="0" exit /b 6\n'
             'if not "%A04_RELEASE_RC%"=="0" exit /b 7\n'
             'if not "%A04_STREAM_RC%"=="0" exit /b 8\n'
             'X:\\Windows\\System32\\wpeutil.exe reboot\n'
-            'exit /b 9\n)\n')
-  suffix=suffix.replace('if not "%A04_RC%"=="0" exit /b %A04_RC%\n',rejected+'if not "%A04_RC%"=="0" exit /b %A04_RC%\n')
+            'exit /b 9\n')
+  suffix=suffix.replace('if not "%A04_RC%"=="0" exit /b %A04_RC%\n',
+                        'if "%A04_RC%"=="6" goto a04_clean_baseline_reboot\nif not "%A04_RC%"=="0" exit /b %A04_RC%\n')+rejected
  return cmd.replace(marker,suffix)
 
 def render_precopy_replacements(policy):

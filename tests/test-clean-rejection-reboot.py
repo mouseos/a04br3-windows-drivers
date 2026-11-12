@@ -6,7 +6,7 @@ ap=argparse.ArgumentParser();ap.add_argument('--directory',type=Path,required=Tr
 p=Path(__file__).resolve().parents[1]/'tools/winpe/build-private-peripheral-batch-media.py';sys.path.insert(0,str(p.parent));s=importlib.util.spec_from_file_location('clean_reject_media',p);m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
 template='set "A04_CANDIDATE_STARTED=0"\necho UPDATE_STATUS=BASELINE_REJECTED_NO_CHANGE\necho UPDATE_STATUS=COMMITTED\nset "A04_RC=0"\nset "A04_RELEASE_RC=%errorlevel%"\nX:\\a04br3\\uart-audit-stream.exe report\nexit /b %A04_RC%\n'
 default=m.reboot_committed_stage(template)
-assert 'if "%A04_RC%"=="6" (' not in default
+assert 'a04_clean_baseline_reboot' not in default
 code=m.reboot_committed_stage(template,True).split('set "A04_STREAM_RC=%errorlevel%"\n',1)[1]
 lines=code.splitlines();assert sum('wpeutil.exe reboot' in x for x in lines)==2
 safe=[]
