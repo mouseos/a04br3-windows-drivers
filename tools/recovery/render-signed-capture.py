@@ -120,6 +120,10 @@ def configure(spec,root):
    self.client_policy=pin(root,spec['retained_client_policy']);client=copy.deepcopy(self.client_policy['diagnostic_clients'][0])
    require(client['name']=='gpu_present' and client['sha256']==launcher['sha256'] and client['exe']==Path(launcher['path']).name and client['dependencies']==[dict(exe=Path(evaluator['path']).name,sha256=evaluator['sha256'])] and client['phase']==1 and client['timeout_ms']==900000,'Existing signed379 diag2 client contract')
    client['directory']=Path(launcher['path']).parent.as_posix();return client
+  def seed_present_contract(self,p):
+   # The current peripheral-only baseline has no GPU diagnostic contract.
+   # Restore the already verified retained client contract before shared update.
+   p['standard_present_contract']=copy.deepcopy(self.client_policy['standard_present_contract'])
   def boot(self,b,transition,fresh,bootid,pin,pin_file):
    seal=pin(spec['last_boot_seal']);result=pin(spec['last_run_result'])
    require(b['schema']=='SIGNED_RENDER_CAPTURE_RETAINED_BOOT_V1' and b['source_manifest_sha256']==fresh and b['recovery_boot_id']==bootid and b['last_boot_seal']==spec['last_boot_seal'] and b['last_run_result']==spec['last_run_result'],'Current capture retained boot witness')
