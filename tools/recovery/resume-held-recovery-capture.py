@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 
-def admit(root, seal, digest):
+def admit(root, seal, digest, resume_empty_preparation=False):
     if hashlib.sha256(seal.read_bytes()).hexdigest() != digest:
         raise ValueError('seal SHA mismatch before loading controller')
     raw = json.loads(seal.read_text())
@@ -44,6 +44,19 @@ def admit(root, seal, digest):
     for key in ('capture_output', 'diagnostics_output'):
         e.require(not (root / c[key]).exists(), 'capture output already exists')
     output = held / 'collection-recovery-ready'
+    if resume_empty_preparation:
+        prior = e.read(output / 'result.json')
+        e.require(prior.get('status') == 'pipeline-stopped' and
+                  prior.get('prior_status') == st['collection_boundary'] and
+                  prior.get('held_result_sha256') == e.sha(held / 'result.json') and
+                  prior.get('seal_sha256') == digest and
+                  prior.get('recovery_ready_resume') is True and
+                  prior.get('failed_collection_sha256') == e.sha(failed_path),
+                  'unrelated preparation failure')
+        e.require({p.name for p in output.iterdir()} == {'result.json', 'prepare-capture.log'} and
+                  (output / 'prepare-capture.log').stat().st_size == 0,
+                  'only empty pre-capture preparation may resume')
+        output = held / 'collection-recovery-ready-rooted'
     e.require(not output.exists(), 'recovery-ready attempt already exists')
     return e, c, k, st, failed_path, output
 
@@ -54,12 +67,14 @@ def main():
     ap.add_argument('--seal', required=True, type=Path)
     ap.add_argument('--seal-sha256', required=True)
     ap.add_argument('--validate-only', action='store_true')
+    ap.add_argument('--resume-empty-preparation', action='store_true',
+                    help='root未準備で転送前に停止した空prepareだけを別出力で再開')
     a = ap.parse_args()
     root = a.workspace.resolve(strict=True)
     seal = a.seal.resolve(strict=True)
     if not seal.is_relative_to(root):
         raise ValueError('seal outside workspace')
-    e, c, k, held, failed_path, out = admit(root, seal, a.seal_sha256)
+    e, c, k, held, failed_path, out = admit(root, seal, a.seal_sha256, a.resume_empty_preparation)
     if a.validate_only:
         print('HELD_RECOVERY_CAPTURE_VALIDATED_NO_DEVICE_OPERATION')
         return
@@ -67,6 +82,9 @@ def main():
     state = subprocess.run(['adb', '-s', c['serial'], 'get-state'],
                            timeout=12, capture_output=True, check=True)
     e.require(state.stdout.strip() == b'recovery', 'already-running Recovery required')
+    uid = subprocess.run(['adb', '-s', c['serial'], 'shell', 'id', '-u'],
+                         timeout=12, capture_output=True, check=True)
+    e.require(uid.stdout.strip() == b'0', 'Recovery must already have root before claiming output')
     out.mkdir(mode=0o700)
     st = dict(held, status=held['collection_boundary'], collection_only=True,
               held_result_sha256=e.sha(out.parent / 'result.json'),
