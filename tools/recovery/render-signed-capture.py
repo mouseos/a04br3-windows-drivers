@@ -161,13 +161,22 @@ def configure(spec,root):
     p['present_collect']=copy.deepcopy(self.client_policy['present_collect']);p['present_collect'].pop('mount_root',None)
     p['present_collect']['mount_root_policy']='current main-sealed workspace-local read-only mount; historical mount path is not reused'
    p['development_display_on']=dict(macro='A04_DEVELOPMENT_DISPLAY_ON',value=1,phase=1,before_run_clients=True,after_readback=True,buttons_fix_claimed=False)
-   p['signed_render_contract']=dict(schema='SIGNED_RENDER_CAPTURE_TRANSITION_V1',accepted_lock_sha256=sha(LOCK),input=spec['_input_ref'],capture=capture,run=capture+1,post_capture=capture+2,render_update_mask=1,install_mask=1<<shared.ROLES.index('render'),planned_reboots=1,boot_write_required=False,gpt_written=False,terminal_windows_hold=True,GPU_candidate=spec['GPU_candidate'],main_review=spec['main_review'],retained_packages={r:p['packages'][r] for r in shared.ROLES if r!='render'},keypad14_reader_sha256=sha(READER),hardware_success_claimed=False)
+   p['signed_render_contract']=dict(schema='SIGNED_RENDER_CAPTURE_TRANSITION_V1',accepted_lock_sha256=sha(LOCK),input=spec['_input_ref'],capture=capture,run=capture+1,post_capture=capture+2,render_update_mask=1,install_mask=1<<shared.ROLES.index('render'),planned_reboots=1,boot_write_required=False,gpt_written=False,terminal_windows_hold=not spec.get('unattended_collection_reboot',False),GPU_candidate=spec['GPU_candidate'],main_review=spec['main_review'],retained_packages={r:p['packages'][r] for r in shared.ROLES if r!='render'},keypad14_reader_sha256=sha(READER),hardware_success_claimed=False)
+   if spec.get('unattended_collection_reboot'):
+    from collection_reboot import CONFIG,source_closure,policy_config
+    p['unattended_collection_reboot']=dict(schema='SIGNED_RENDER_UNATTENDED_COLLECTION_V1',capture=capture,bounded_winpe_required=True,require_atomic_publication=True)
+    p['collection_reboot']=dict(CONFIG)
+    for ref in source_closure(HERE.parents[1]):
+     q=HERE.parents[1]/ref['path'];pin_file(dict(path=q.resolve().relative_to(root).as_posix(),sha256=ref['sha256']))
+    policy_config(p)
  shared.TIMING=RenderUpdate();return shared
 
 def load_map(path,root):
  spec=read(path);require(spec.get('schema')=='SIGNED_RENDER_CAPTURE_FINALIZE_V1','Explicit finalized map, never a preparation template')
  required={'schema','capture_number','hardware_owner','main_execution_approved','fresh','native','supplement','capture_contract','template_policy','actual_package_rows','mutable_baseline','boot_witness','last_boot_seal','last_run_result','additional_service_names','GPU_candidate','main_review','retained_client_policy','client_pair','globaldiag_manifest','globaldiag_import_proof','install_targets','planned_reboots','filter_root_transitions'}
- require(set(spec)==required,'Exact final map fields; no pending or extra components')
+ require(set(spec) in (required,required|{'unattended_collection_reboot'}),'Exact final map fields; no pending or extra components')
+ require(type(spec.get('unattended_collection_reboot',False)) is bool,'Explicit boolean unattended opt-in required')
+ require(not spec.get('unattended_collection_reboot') or spec['capture_number']>=237,'Only a new actual237+ capture may enable unattended collection')
  validate_baseline(root,spec)
  require(not any(spec.get(k) for k in ('wifi_activation','retained_package_overrides','collection_reboot','USB')),'No other components or collection reboot')
  spec['_input_ref']=dict(path=path.relative_to(root).as_posix(),sha256=sha(path));spec['profile']=profile_name(spec['capture_number']);spec['GPU368_manifest']=spec['GPU_candidate'];spec['GPU368_handoff']=spec['main_review']

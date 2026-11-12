@@ -24,7 +24,7 @@ class Fixture:
   self.write('media/update-esp.img',b'fake-esp');self.write('normal.img',b'fake-normal')
   self.write('target-tools.sh',b'host-only-never-executed')
   self.write('crc.py',b"def decode(raw,token):return b'UPDATE_STATUS=COMMITTED\\nUPDATE_RELEASE_EXIT=0\\nUPDATE_EXIT=0\\n'\n")
-  self.c=dict(self.k,planned_windows_reboots=1,media_directory='media',normal_esp='normal.img',target_tools='target-tools.sh',reset_script='reset.sh',serial='HOST_FIXTURE',fresh_manifest='fresh.json',capture_tool='capture.py',crc_decoder='crc.py',ntfs3g='ntfs3g',diagnostics_collector='collector.sh',prepare_token='A'*16,terminal_settle_seconds=3,
+  self.c=dict(self.k,planned_windows_reboots=1,diagnostic_client_count=2,media_directory='media',normal_esp='normal.img',target_tools='target-tools.sh',reset_script='reset.sh',serial='HOST_FIXTURE',fresh_manifest='fresh.json',capture_tool='capture.py',crc_decoder='crc.py',ntfs3g='ntfs3g',diagnostics_collector='collector.sh',prepare_token='A'*16,terminal_settle_seconds=3,
               fresh_manifest_sha256='f'*64,policy_sha256='a'*64,esp_sha256=m.sha(root/'media/update-esp.img'),normal_esp_sha256=m.sha(root/'normal.img'))
   self.c['pinned_files']=[dict(path='target-tools.sh',sha256=m.sha(root/'target-tools.sh'))]
   self.args=['--workspace',str(root),'--seal',str(self.seal),'--seal-sha256',m.sha(self.seal),'--output',str(self.out)]

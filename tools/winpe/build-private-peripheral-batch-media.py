@@ -193,12 +193,26 @@ def gpu368_media_contract(p,header,exe,root=None):
 
 def main():
  ap=argparse.ArgumentParser()
+ ap.add_argument('--atomic-replace-manifest',type=Path);ap.add_argument('--atomic-replace-manifest-sha256')
+ ap.add_argument('--winpe-lease-manifest',type=Path);ap.add_argument('--winpe-lease-manifest-sha256')
  ap.add_argument('--resume-rejected-journal',type=Path);ap.add_argument('--resume-rejected-journal-sha256')
  ap.add_argument('--reboot-clean-baseline-reject',action='store_true',help='Signed render only: reboot after no candidate write, clean volume release and successful UART report')
  ap.add_argument('--stage-only',action='store_true',help='GPU368 only: run every staging assertion and stop before WIM/ESP; not deployable');ap.add_argument('--reboot-after-commit',action='store_true',help='Reboot WinPE after committed update, volume release and UART stream success')
  for n in ('workspace','map','service-package','prepared-system','prepared-result','comparator','base','tools','out'):ap.add_argument('--'+n,type=Path,required=True)
  for n in ('prepared-sha256','comparator-manifest-sha256','source-commit'):ap.add_argument('--'+n,required=True)
  ap.add_argument('--signed-render-profile',action='store_true');ap.add_argument('--signed-peripheral-profile',action='store_true');ap.add_argument('--followup231-profile',action='store_true');ap.add_argument('--gpu378-diagnostic-profile',action='store_true');ap.add_argument('--gpu378-keypad-profile',action='store_true');ap.add_argument('--gpu377-output-profile',action='store_true');ap.add_argument('--gpu375-combined-profile',action='store_true');ap.add_argument('--gpu373-client-profile','--gpu374-client-profile','--gpu375-client-profile',dest='gpu373_client_profile',action='store_true');ap.add_argument('--gpu371-output-profile',action='store_true');ap.add_argument('--gpu369-timing-profile',action='store_true');ap.add_argument('--combined202-profile',action='store_true');ap.add_argument('--combined200-profile',action='store_true');ap.add_argument('--combined196-profile',action='store_true');ap.add_argument('--combined194-profile',action='store_true');ap.add_argument('--combined192-profile',action='store_true');ap.add_argument('--combined190-profile',action='store_true');ap.add_argument('--combined188-profile',action='store_true');ap.add_argument('--combined186-profile',action='store_true');ap.add_argument('--combined184-profile',action='store_true');ap.add_argument('--combined182-profile',action='store_true');ap.add_argument('--combined180-profile',action='store_true');ap.add_argument('--combined178-profile',action='store_true');ap.add_argument('--combined176-profile',action='store_true');ap.add_argument('--combined174-profile',action='store_true');ap.add_argument('--combined172-profile',action='store_true');ap.add_argument('--combined170-profile',action='store_true');ap.add_argument('--combined168-profile',action='store_true');ap.add_argument('--combined166-profile',action='store_true');ap.add_argument('--combined164-profile',action='store_true');ap.add_argument('--combined162-profile',action='store_true');ap.add_argument('--combined160-profile',action='store_true');ap.add_argument('--combined158-profile',action='store_true');ap.add_argument('--combined156-profile',action='store_true');ap.add_argument('--combined154-profile',action='store_true');ap.add_argument('--combined152-profile',action='store_true');ap.add_argument('--combined150-profile',action='store_true');ap.add_argument('--combined148-profile',action='store_true');ap.add_argument('--combined146-profile',action='store_true');ap.add_argument('--combined144-profile',action='store_true');ap.add_argument('--combined142-profile',action='store_true');ap.add_argument('--combined140-profile',action='store_true');ap.add_argument('--combined138-profile',action='store_true');ap.add_argument('--combined136-profile',action='store_true');ap.add_argument('--next-profile',action='store_true');ap.add_argument('--service-source-commit');ap.add_argument('--enable-peripheral-batch',action='store_true');a=ap.parse_args();root=a.workspace.resolve(strict=True);here=Path(__file__).resolve().parent;repo=here.parents[1]
+ require(bool(a.winpe_lease_manifest)==bool(a.winpe_lease_manifest_sha256),'WinPE lease requires explicit manifest and SHA')
+ require(not a.signed_render_profile or bool(a.winpe_lease_manifest),'New signed-render media requires bounded unattended WinPE')
+ require(bool(a.atomic_replace_manifest)==bool(a.atomic_replace_manifest_sha256),'Atomic helper requires manifest and SHA')
+ require(bool(a.winpe_lease_manifest)==bool(a.atomic_replace_manifest),'Bounded WinPE requires atomic, lease-aware publication')
+ atomic_package=None
+ if a.atomic_replace_manifest:
+  from winpe_lease_package import load_atomic_helper
+  atomic_package=load_atomic_helper(root,a.atomic_replace_manifest,a.atomic_replace_manifest_sha256)
+ lease_package=None
+ if a.winpe_lease_manifest:
+  from winpe_lease_package import load_package
+  lease_package=load_package(root,a.winpe_lease_manifest,a.winpe_lease_manifest_sha256)
  require(not a.reboot_clean_baseline_reject or (a.signed_render_profile and a.reboot_after_commit),'Clean rejection reboot is explicit signed-render-only and requires committed reboot protocol')
  if a.signed_render_profile:
   require(not any(v for k,v in vars(a).items() if k.endswith('_profile') and k!='signed_render_profile'),'One explicit render profile');a.combined200_profile=True
@@ -549,6 +563,11 @@ def main():
   prepare+=['copy /b X:\\a04br3\\payload\\'+name+' C:\\Windows\\System32\\'+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail','X:\\a04br3\\compare-files.exe X:\\a04br3\\payload\\'+name+' C:\\Windows\\System32\\'+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
  # Last mutation only: main-selected capture-derived clean SYSTEM containing the one new service.
  prepare+=['copy /b /y X:\\a04br3\\payload\\SYSTEM.patched C:\\Windows\\System32\\config\\SYSTEM >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail','X:\\a04br3\\compare-files.exe X:\\a04br3\\payload\\SYSTEM.patched C:\\Windows\\System32\\config\\SYSTEM >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
+ atomic_count=0
+ if atomic_package:
+  from winpe_lease_package import atomic_copy_stage
+  prepare,atomic_count=atomic_copy_stage(prepare)
+  shutil.copyfile(atomic_package[1],stage/'atomic-stage-replace.exe');files['atomic-stage-replace.exe']=sha(stage/'atomic-stage-replace.exe')
  prepare=baseline_failure_reports(prepare)
  cmd=stage_script((here/'run-mt8167-shared-io-update.cmd.in').read_text(),prepare,token[:16],p['backup_manifest_sha256']);cmd=rejected_journal_stage(cmd,token[:16],journal_binding['captured_journal']['sha256']) if journal_binding else cmd;cmd=reboot_committed_stage(cmd,a.reboot_clean_baseline_reject) if a.reboot_after_commit else cmd;(stage/'run-update-once.cmd').write_bytes(cmd.replace('\r','').replace('\n','\r\n').encode());files['run-update-once.cmd']=sha(stage/'run-update-once.cmd')
  (stage/'startnet.cmd').write_bytes(b'@echo off\r\nmountvol /N\r\nwpeinit\r\nif errorlevel 1 exit /b 2\r\nmountvol /N\r\nif errorlevel 1 exit /b 2\r\ncall X:\\a04br3\\run-update-once.cmd\r\n');files['startnet.cmd']=sha(stage/'startnet.cmd')
@@ -560,9 +579,15 @@ def main():
  for f in sorted(stage.rglob('*')):
   if f.is_file() and f.name!='startnet.cmd':commands+='add "'+str(f)+'" /a04br3/'+str(f.relative_to(stage))+'\n'
  subprocess.run([str(tools/'wimtools/wimlib-imagex'),'update',str(image),'1'],input=commands,text=True,env=env,check=True);subprocess.run([str(tools/'wimtools/wimlib-imagex'),'verify',str(image)],env=env,check=True)
+ lease_embedded=None
+ if lease_package:
+  from winpe_lease_package import inject
+  lease_embedded=inject(image,root,tools,out/'winpe-lease-verified',env,a.winpe_lease_manifest,a.winpe_lease_manifest_sha256)
  subprocess.run(['python3','-B',str(here/'replace-esp-wim.py'),'--template',str(base/'maintenance-staged-esp.img'),'--wim',str(image),'--output',str(out/'update-esp.img'),'--template-bcd-sha256','65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d','--template-wim-sha256','0df19de6c783068b24c466a1d7afaa900cd99a0aef24841a319bbd566cbbedf4'],env=env,check=True)
  manifest={'rejected_journal_archive':journal_binding,'canonical_policy_sha256':token,'runtime_policy_sha256':runtime_policy_token,'reboot_after_commit':a.reboot_after_commit,'profile':PROFILE,'source_commit':a.source_commit,'service_source_commit':signed_source,'tooling_only_changes_since_signed_service':signed_source!=a.source_commit,'service':SERVICE,'policy':p,'native_prepared':native,'files':files,'esp_sha256':sha(out/'update-esp.img'),'wim_sha256':sha(image),'required_main_boot_transition':p['boot_transition'],'planned_windows_reboots':p['planned_reboots'],'no_gpu_or_engine_client':not any(c['phase']==1 for c in p['diagnostic_clients']),'engine_client_execute':False,'old_gpu_client_execute':False,'new_gpu_client_count':sum(c['phase']==1 for c in p['diagnostic_clients']),'software_or_userfs_rollback':False,'device_verified':False}
  if cfg:manifest['collection_reboot_service_manifest']=dict(path=(service/'peripheral-service-manifest.json').relative_to(root).as_posix(),sha256=sha(service/'peripheral-service-manifest.json'))
+ if lease_embedded:manifest['winpe_lease']=lease_embedded
+ if atomic_package:manifest['atomic_publication']=dict(schema='WINPE_ATOMIC_PUBLICATION_V1',manifest_path=a.atomic_replace_manifest.resolve().relative_to(root).as_posix(),manifest_sha256=a.atomic_replace_manifest_sha256,EXE_sha256=sha(atomic_package[1]),payload_copy_count=atomic_count,system_publication_count=1,deadline_query_required=True,hardware_verified=False)
  if a.reboot_clean_baseline_reject:manifest['reboot_after_clean_baseline_reject']=True
  (out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 if __name__=='__main__':main()

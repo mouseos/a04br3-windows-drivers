@@ -57,7 +57,11 @@ trim、metadata変更、literal escape変換はsource gateでは行いません�
 | A04_TOPRGU_THERMAL_STOP | 0 |
 | A04_TOPRGU_DEADLINE_SECONDS | 0 |
 
-TUは`wdf_toprgu.c`と`reset_command.c`だけです。各`-MD/-MF`から実依存path/size/SHAを保存し、
+TUは`wdf_toprgu.c`と`reset_command.c`だけです。WDKの`Include/km/crt`を`-I`へ追加せず、既signed RX12と同じClang標準header選択を使います。
+mainのsyntax診断ではWDK8.1 `intrin.h`とClang builtinの`__ldrexd`宣言衝突が確認されています。
+WDK/Clang/header本体へのpatchは行いません。
+
+各`-MD/-MF`から実依存path/size/SHAを保存し、
 `winpe_lease.h`が前者の実compile依存にあることを検査します。ARMNT/PE32と
 exact marker `A04RGU_WINPE_LEASE_V1:1800`（consumerと同じASCII＋末尾NUL）を
 unsigned/signed SYSで確認します。
@@ -89,6 +93,11 @@ package生成時は実CRLFを維持・正規化し、literal `\r\n`形式にも�
 `steps`の`name/exit_code/log_sha256`と実argv、source/dependency/tool/lib hashを保存します。
 必須署名検証step名は`verify-sys`、`verify-cat`、`member-mt8167-toprgu.sys`、`member-mt8167-toprgu.inf`です。
 後二者はWindows SignToolの`/c <actual CAT>`でSYS/INF membershipを検証します。
+
+各toolの実行中だけ`ErrorActionPreference=Continue`へ切り替え、native stderrをstdoutへ
+統合してUTF-8 `Out-File`で全量保存します。stderrの最初の行だけでcompile失敗とは判断しません。
+`finally`でnativeが更新する実`$global:LASTEXITCODE`をstepへ記録し、元のEAPへ戻してlog hash/manifestを保存します。
+実exitが非0なら失敗とし、終了code自体を得られなかった起動失敗も成功には扱いません。
 
 失敗時は成功済みobject/SYS/署名stageとlogsを保持し、manifestをfailure付きで保存します。
 自動retry・上書きはしません。packageはWinPE admission用で、通常Windowsへの導入許可や

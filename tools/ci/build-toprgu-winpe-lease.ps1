@@ -33,9 +33,19 @@ function Save{$m|ConvertTo-Json -Depth 20|Set-Content -LiteralPath (Join-Path $o
 function Tool([string]$Name,[string]$Exe,[string[]]$Arguments){
  if(@($m.steps|Where-Object name -CEQ $Name).Count){throw 'No repeated tool stage'}
  $log=Join-Path $out ("logs\$Name.log");$step=[ordered]@{name=$Name;exit_code=$null;log_sha256=$null;tool=$Exe;arguments=$Arguments};$m.steps+=@($step);Save
- & $Exe @Arguments *> $log
- $step.exit_code=$LASTEXITCODE;$step.log_sha256=Hash $log;Save
- if($step.exit_code -ne 0){throw ("Stage failed; keep partial output: $Name")}
+ $savedEAP=$ErrorActionPreference
+ $global:LASTEXITCODE=$null
+ try{
+  # Windows PowerShell 5のnative stderrを、最初の行でterminating errorにしない。
+  $ErrorActionPreference='Continue'
+  & $Exe @Arguments 2>&1 | Out-File -LiteralPath $log -Encoding UTF8 -ErrorAction Stop
+ }finally{
+  $step.exit_code=$global:LASTEXITCODE
+  $ErrorActionPreference=$savedEAP
+  try{if(Test-Path -LiteralPath $log){$step.log_sha256=Hash $log}}finally{Save}
+ }
+ if($null -eq $step.exit_code){throw ("Native process returned no exit code; keep partial output: $Name")}
+ if($step.exit_code -ne 0){throw ("Stage failed with exit $($step.exit_code); keep partial output: $Name")}
 }
 function Dependencies([string]$Path){
  $text=[IO.File]::ReadAllText($Path) -replace '\\\r?\n',' ';$target=[regex]::Match($text,'(?s)^.*?:\s+')
@@ -118,7 +128,7 @@ $tools.signtool=Pin (Join-Path $sign 'signtool.exe');$tools.inf2cat=Pin (Join-Pa
 $libs=@();foreach($name in @('wdfdriverentry.lib','wdfldr.lib')){$libs+=,(Pin (Join-Path $wdfLib $name))};foreach($name in @('ntoskrnl.lib','hal.lib','bufferoverflowfastfailk.lib')){$libs+=,(Pin (Join-Path $km $name))}
 $critical=@();foreach($path in @((Join-Path $kit 'Include\km\ntddk.h'),(Join-Path $kit 'Include\km\wdmsec.h'),(Join-Path $wdf 'wdf.h'))){$critical+=,(Pin $path)}
 $flags=[ordered]@{A04_TOPRGU_WINPE_LEASE_SECONDS=1800;A04_TOPRGU_CPU1_HANDOFF=1;A04_TOPRGU_UART_SCREEN=1;A04_TOPRGU_UART_VOLUME=1;A04_TOPRGU_THERMAL_STOP=0;A04_TOPRGU_DEADLINE_SECONDS=0}
-$includes=@((Join-Path $kit 'Include\km'),(Join-Path $kit 'Include\km\crt'),(Join-Path $kit 'Include\shared'),(Join-Path $kit 'Include\um'),$wdf,$dir)
+$includes=@((Join-Path $kit 'Include\km'),(Join-Path $kit 'Include\shared'),(Join-Path $kit 'Include\um'),$wdf,$dir)
 $defines=@('_KERNEL_MODE','_ARM_','ARM','KMDF_VERSION_MAJOR=1','KMDF_VERSION_MINOR=13','NTDDI_VERSION=0x06030000','_WIN32_WINNT=0x0603')
 New-Item -ItemType Directory -Path $out|Out-Null
 $work=Join-Path $out 'work';$package=Join-Path $out 'package';New-Item -ItemType Directory -Path $work,$package,(Join-Path $out 'logs')|Out-Null

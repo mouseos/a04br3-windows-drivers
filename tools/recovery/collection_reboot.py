@@ -14,7 +14,11 @@ def policy_config(p):
  snapshot_config(p)
  c=p.get('collection_reboot')
  if c is None:return None
- require(json.dumps(c,sort_keys=True)==json.dumps(CONFIG,sort_keys=True) and p['profile'].endswith('-collection-reboot-v1'),'explicit new collection-reboot profile required')
+ signed=p.get('unattended_collection_reboot')
+ if signed is not None:
+  n=p.get('capture_selection',{}).get('capture_number')
+  require(type(n) is int and 237<=n<=999 and signed==dict(schema='SIGNED_RENDER_UNATTENDED_COLLECTION_V1',capture=n,bounded_winpe_required=True,require_atomic_publication=True) and p['profile']=='combined-features-fresh'+str(n)+'-signed-render-v1' and p.get('signed_render_contract',{}).get('terminal_windows_hold') is False,'Exact new unattended signed-render contract required')
+ require(json.dumps(c,sort_keys=True)==json.dumps(CONFIG,sort_keys=True) and (p['profile'].endswith('-collection-reboot-v1') or signed is not None),'explicit new collection-reboot profile required')
  require(p['service']==p['data_directory'] and p['first_install_mask']==p['deferred_unbound_mask']==0,'no new install mode')
  require(len(p['diagnostic_clients'])==2 and [x['name'] for x in p['diagnostic_clients']]==['gpu_present','gpu_globaldiag'] and all(x['phase']==1 for x in p['diagnostic_clients']),'exact two phase1 clients')
  return dict(c)
