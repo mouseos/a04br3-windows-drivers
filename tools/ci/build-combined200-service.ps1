@@ -121,9 +121,25 @@ try{
   $m.profile=$policy.profile
   foreach($p in $policy.packages.PSObject.Properties.Value){$d=Join-Path $Workspace $p.directory;foreach($n in (@($p.names.inf,$p.names.sys)+@($p.extra_members|Where-Object {$_ -and $_.name}|ForEach-Object {$_.name}))){& $sign verify /pa /c (Join-Path $d $p.names.cat) (Join-Path $d $n);if($LASTEXITCODE){throw 'Candidate CAT membership failed'}};$cs=Get-AuthenticodeSignature (Join-Path $d $p.names.cat);if($cs.Status -ne 'Valid' -or $cs.SignerCertificate.Thumbprint -cne $thumb){throw 'Candidate CAT signer mismatch'}}
   foreach($c in $policy.diagnostic_clients){$sigc=Get-AuthenticodeSignature (Join-Path (Join-Path $Workspace $c.directory) $c.exe);if($sigc.Status -ne 'Valid' -or $sigc.SignerCertificate.Thumbprint -cne $thumb){throw 'Pinned client signature mismatch'};foreach($dep in $c.dependencies){$sigc=Get-AuthenticodeSignature (Join-Path (Join-Path $Workspace $c.directory) $dep.exe);if($sigc.Status -ne 'Valid' -or $sigc.SignerCertificate.Thumbprint -cne $thumb){throw 'Pinned client dependency signature mismatch'}}}
-  $bt=$policy.bt_first_install;$bd=Join-Path $Workspace $bt.directory
-  foreach($member in @('mt6630-combo-bluetooth.inf','mt6630-combo-bluetooth.sys')){& $sign verify /pa /c (Join-Path $bd 'mt6630-combo-bluetooth.cat') (Join-Path $bd $member);if($LASTEXITCODE){throw 'BT2013 membership failed'}}
-  $bs=Get-AuthenticodeSignature (Join-Path $bd 'mt6630-combo-bluetooth.cat');if($bs.Status -ne 'Valid' -or $bs.SignerCertificate.Thumbprint -cne $thumb){throw 'BT2013 signer mismatch'}
+  if($SignedRenderUpdate){
+   $btVerifier=Join-Path $PSScriptRoot 'retained_bt_membership.py'
+   $btVerifierSha=(Get-FileHash $btVerifier -Algorithm SHA256).Hash.ToLowerInvariant()
+   $btPlanPath=Join-Path $out 'retained-bt-membership-plan.json'
+   & python -B $btVerifier --workspace $Workspace --policy "$out\peripheral-policy.json" --out $btPlanPath
+   if($LASTEXITCODE){throw 'Retained BT policy/manifest/actual byte binding failed'}
+   $btPlan=Get-Content -LiteralPath $btPlanPath -Raw|ConvertFrom-Json
+   $btCatalog=Join-Path $Workspace $btPlan.catalog.path
+   foreach($member in $btPlan.members){& $sign verify /pa /c $btCatalog (Join-Path $Workspace $member.path);if($LASTEXITCODE){throw 'Retained BT CAT membership failed'}}
+   $bs=Get-AuthenticodeSignature $btCatalog
+   if($bs.Status -ne 'Valid' -or $bs.SignerCertificate.Thumbprint -cne $thumb){throw 'Retained BT CAT signer mismatch'}
+   & python -B $btVerifier --workspace $Workspace --policy "$out\peripheral-policy.json" --verify-plan $btPlanPath
+   if($LASTEXITCODE -or (Get-FileHash $btVerifier -Algorithm SHA256).Hash.ToLowerInvariant() -cne $btVerifierSha){throw 'Retained BT verifier/input changed during verification'}
+   $m.retained_bt_membership=@{plan=$btPlan;plan_sha256=(Get-FileHash $btPlanPath -Algorithm SHA256).Hash.ToLowerInvariant();verifier_source_sha256=$btVerifierSha;Windows_CAT_membership_verified=$true;signer_thumbprint=$bs.SignerCertificate.Thumbprint}
+  }else{
+   $bt=$policy.bt_first_install;$bd=Join-Path $Workspace $bt.directory
+   foreach($member in @('mt6630-combo-bluetooth.inf','mt6630-combo-bluetooth.sys')){& $sign verify /pa /c (Join-Path $bd 'mt6630-combo-bluetooth.cat') (Join-Path $bd $member);if($LASTEXITCODE){throw 'BT2013 membership failed'}}
+   $bs=Get-AuthenticodeSignature (Join-Path $bd 'mt6630-combo-bluetooth.cat');if($bs.Status -ne 'Valid' -or $bs.SignerCertificate.Thumbprint -cne $thumb){throw 'BT2013 signer mismatch'}
+  }
   $m.observer_contract=$policy.observer_contract;$m.source_TUs=1;$m.wlan_client_rebuilt=$false;$m.policy=$policy;$m.policy_manifest_sha256=(Get-FileHash "$out\peripheral-policy.json" -Algorithm SHA256).Hash.ToLowerInvariant();$m.preservation_plan_sha256=(Get-FileHash "$out\peripheral-preservation-plan.json" -Algorithm SHA256).Hash.ToLowerInvariant()
  }
  $manifest=if($Mode -eq 'CaptureClient'){'capture-client-manifest.json'}else{'peripheral-service-manifest.json'}
