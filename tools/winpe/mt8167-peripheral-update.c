@@ -42,6 +42,17 @@ struct filter_root_transition {const WCHAR *service;DWORD target;const WCHAR *di
 struct candidate_extra_file {const WCHAR *name,*installed;BYTE hash[32],baseline_hash[32];};
 struct diagnostic_client {const WCHAR *exe,*arguments,*name,*relative_directory;BYTE hash[32];DWORD timeout_ms,phase;};
 #include "peripheral-batch-policy.h"
+#ifndef A04_PRESERVED_PHASE_GUARD
+#define A04_PRESERVED_PHASE_GUARD 0
+#endif
+#if A04_PRESERVED_PHASE_GUARD != 0 && A04_PRESERVED_PHASE_GUARD != 1
+#error Invalid preserved-file phase guard
+#endif
+#if A04_PRESERVED_PHASE_GUARD
+typedef char preserved_phase_counts_must_match[
+ (sizeof(preinstall_preserved_files)/sizeof(preinstall_preserved_files[0]) ==
+  sizeof(preserved_files)/sizeof(preserved_files[0])) ? 1 : -1];
+#endif
 #ifndef A04_DIAGNOSTIC_ONLY
 #define A04_DIAGNOSTIC_ONLY 0
 #endif
@@ -193,7 +204,20 @@ static DWORD captured_registry_values(void){
 #endif
 #include "keypad13-checkpoint-policy.h"
 #include "vidpn-callback-trace-policy.h"
-static DWORD preserved(void){WCHAR sys[MAX_PATH],full[MAX_PATH];HANDLE h;DWORD i,e;if(!GetSystemDirectoryW(sys,MAX_PATH))return GetLastError();for(i=0;i<sizeof(preserved_files)/sizeof(preserved_files[0]);i++){h=INVALID_HANDLE_VALUE;if(A04_FEATURE148&&preserved_files[i].name[0]==L'\\'){full[0]=sys[0];full[1]=L':';lstrcpyW(full+2,preserved_files[i].name);e=0;}else e=path(full,sys,preserved_files[i].name);if(!e)e=deferred_file(full,preserved_files[i].hash,&h);if(h!=INVALID_HANDLE_VALUE)CloseHandle(h);if(e)return e;}e=old_services();
+/* candidate=0 before any DIF; candidate=1 after installation or on diagnostics.
+ * The generated preinstall table changes only explicitly admitted old extras.
+ * All other file/service/registry guards remain mandatory in both phases. */
+static DWORD preserved(int candidate){WCHAR sys[MAX_PATH],full[MAX_PATH];HANDLE h;DWORD i,e;const BYTE *expected;
+ if(candidate!=0&&candidate!=1)return ERROR_INVALID_PARAMETER;
+ if(!GetSystemDirectoryW(sys,MAX_PATH))return GetLastError();
+ for(i=0;i<sizeof(preserved_files)/sizeof(preserved_files[0]);i++){
+  expected=preserved_files[i].hash;
+#if A04_PRESERVED_PHASE_GUARD
+  if(lstrcmpiW(preinstall_preserved_files[i].name,preserved_files[i].name))return ERROR_INVALID_DATA;
+  if(!candidate)expected=preinstall_preserved_files[i].hash;
+#endif
+  h=INVALID_HANDLE_VALUE;if(A04_FEATURE148&&preserved_files[i].name[0]==L'\\'){full[0]=sys[0];full[1]=L':';lstrcpyW(full+2,preserved_files[i].name);e=0;}else e=path(full,sys,preserved_files[i].name);if(!e)e=deferred_file(full,expected,&h);if(h!=INVALID_HANDLE_VALUE)CloseHandle(h);if(e)return e;
+ }e=old_services();
 #if A04_FEATURE148
  if(!e)e=captured_registry_values();
 #if A04_KEYPAD13_CHECKPOINT
@@ -548,7 +572,7 @@ static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_CO
  if(render_target(i)){for(j=0;j<A04_CANDIDATE_EXTRA_COUNT;j++){e=path(extra_paths[j],folders[i],candidate_extras[j].name);if(!e)e=deferred_file(extra_paths[j],candidate_extras[j].hash,&held[i][j+3]);if(e)goto done;members[j+3]=extra_paths[j];}}
 #endif
  e=fixed_signer(paths_[i][2],held[i][2]);if(!e)e=deferred_members(i,paths_[i][2],members,held[i]);if(e)goto done;}
- if(log_error){e=log_error;goto done;}e=deferred_marker(L"boot-transition-authorized.bin",0);if(!e)e=preserved();if(e)goto done;set=SetupDiGetClassDevsW(NULL,NULL,NULL,DIGCF_ALLCLASSES|DIGCF_PRESENT);if(set==INVALID_HANDLE_VALUE){e=GetLastError();goto done;}
+ if(log_error){e=log_error;goto done;}e=deferred_marker(L"boot-transition-authorized.bin",0);if(!e)e=preserved(diagnostic);if(e)goto done;set=SetupDiGetClassDevsW(NULL,NULL,NULL,DIGCF_ALLCLASSES|DIGCF_PRESENT);if(set==INVALID_HANDLE_VALUE){e=GetLastError();goto done;}
  if(diagnostic){memset(combined_nodes,0xff,sizeof(combined_nodes));memset(combined_clients,0xff,sizeof(combined_clients));for(i=0;i<PERIPHERAL_TARGET_COUNT;i++)combined_nodes[i].observed=0;for(i=0;i<8;i++)combined_clients[i].observed=0;combined_gpu_node_ready=0;for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){ULONG status=0,problem=0;CONFIGRET cr;if(A04_PERIPHERAL_DEFERRED_UNBOUND_MASK&(1u<<i)){e=deferred_find(i,set,&devs[i]);if(!e)e=first_keypad_baseline(i,set,&devs[i]);if(!e)e=installed_sys(i,0);record(i,0x269,e);if(e&&!first)first=e;continue;}e=deferred_find(i,set,&devs[i]);if(!e){
  DWORD metadata,sys,inf_error=ERROR_NOT_READY;combined_nodes[i].observed=1;combined_nodes[i].discovery_error=0;cr=CM_Get_DevNode_Status(&status,&problem,devs[i].DevInst,0);record(i,0x202,(DWORD)cr);record(i,0x203,status);record(i,0x204,problem);
  metadata=selected_runtime(i,set,&devs[i],&inf_error);record(i,0x253,inf_error);record(i,0x219,metadata);sys=installed_sys(i,1);record(i,0x21a,sys);combined_nodes[i].cr=cr;combined_nodes[i].status=status;combined_nodes[i].problem=problem;combined_nodes[i].metadata_error=metadata;combined_nodes[i].sys_error=sys;combined_nodes[i].inf_location_error=inf_error;
@@ -577,7 +601,7 @@ static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_CO
 #if A04_DEVELOPMENT_DISPLAY_ON && A04_DISPLAY_IDLE_BEFORE_CLIENTS
  /* Captured-file/root/named guards and installed identity checks precede power writes.
   * Node readiness failures (e.g. battery Code10) remain independent observations. */
- e=preserved();if(e)goto done;
+ e=preserved(1);if(e)goto done;
  {DWORD identity=0;for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){
 #if A04_USB_PC_ROLE_OPTIONAL_LEGACY_NODE
   if(i==2&&combined_nodes[i].discovery_error==ERROR_NOT_FOUND)continue;
@@ -587,7 +611,7 @@ static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_CO
 #endif
  e=run_clients(first);if(e&&!first)first=e;
 #endif
- e=preserved();if(e&&!first)first=e;
+ e=preserved(1);if(e&&!first)first=e;
 #if A04_DEVELOPMENT_DISPLAY_ON
  /* All immutable baseline guards have passed. Keep optional power policy
   * separate from GPU success, and do not change it after a guard failure. */
@@ -618,7 +642,7 @@ static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_CO
 #if A04_FEATURE144 && !A04_FEATURE148
  e=bt_first_install();if(e)goto done;
 #endif
- e=preserved();if(e)goto done;e=deferred_marker(L"deferred-pending.bin",1);if(!e)e=deferred_arm_diagnostics();if(!e)e=ERROR_SUCCESS_REBOOT_REQUIRED;
+ e=preserved(1);if(e)goto done;e=deferred_marker(L"deferred-pending.bin",1);if(!e)e=deferred_arm_diagnostics();if(!e)e=ERROR_SUCCESS_REBOOT_REQUIRED;
  done:record(0,0x206,e);if(set!=INVALID_HANDLE_VALUE)SetupDiDestroyDeviceInfoList(set);for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){for(j=0;j<5;j++)if(held[i][j]!=INVALID_HANDLE_VALUE)CloseHandle(held[i][j]);if(directory_holds[i]!=INVALID_HANDLE_VALUE)CloseHandle(directory_holds[i]);}return e;}
 static DWORD batch_once(void){DWORD e;int diagnostic=0;e=local_system();if(e)return e;e=disable_self();if(e)return e;e=paths();if(e)return e;{WCHAR p[MAX_PATH];e=path(p,log_directory,L"service.log");if(e)return e;logfile=CreateFileW(p,GENERIC_WRITE,FILE_SHARE_READ,NULL,OPEN_ALWAYS,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_WRITE_THROUGH,NULL);if(logfile==INVALID_HANDLE_VALUE)return GetLastError();SetFilePointer(logfile,0,NULL,FILE_END);record(0,0x286,combined_run_id);record(0,0x287,combined_service_pid);}
 #if A04_DIAGNOSTIC_ONLY

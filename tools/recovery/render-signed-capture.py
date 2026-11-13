@@ -15,6 +15,29 @@ SIGNER=shared.THUMB
 FAMILY='SIGNED_RENDER_CAPTURE'
 READER=HERE/'read-keypad14-checkpoint-loaded.ps1'
 LOCK=HERE/'render-signed-capture-accepted.json'
+PRESERVED_PHASE_CONTRACT=dict(schema='SIGNED_RENDER_PRESERVED_PHASE_V1',
+                             preinstall='baseline',postinstall='candidate',diagnostic='candidate')
+
+def preinstall_preserved_files(p):
+ before=dict(p['preserved_files'])
+ extras=p['packages']['render']['extra_members']
+ require({x['name'] for x in extras}=={'ge8300-umd.dll','ge8300-mips.fw'} and len(extras)==2,
+         'Exact render UMD/FW phase contract required')
+ for extra in extras:
+  name='Windows/System32/'+re.sub('/+','/',extra['installed'].replace('\\','/'))
+  old,new=extra['baseline_sha256'],extra['sha256']
+  require(all(re.fullmatch('[0-9a-f]{64}',h or '') for h in (old,new))
+          and p['preserved_files'].get(name)==new,'Postinstall render extra hash mismatch')
+  if old!=new:
+   require(name=='Windows/System32/ge8300-umd.dll','Only admitted UMD may change phase hash')
+   witness=p['baseline_witnesses'].get(name)
+   require(witness and witness['sha256']==old,'Actual OLD UMD witness required for preinstall')
+  before[name]=old
+ return before
+
+def bind_preserved_phases(p):
+ p['preserved_phase_guard']=dict(PRESERVED_PHASE_CONTRACT)
+ p['preinstall_preserved_files']=preinstall_preserved_files(p)
 
 def pin(root,ref):
  require(isinstance(ref,dict) and set(ref)=={'path','sha256'} and isinstance(ref['path'],str) and isinstance(ref['sha256'],str) and re.fullmatch('[0-9a-f]{64}',ref['sha256'] or '') and ref['sha256']!='0'*64,'Actual path/hash required; pending input rejected')
@@ -144,6 +167,7 @@ def configure(spec,root):
     # Pre-copy baseline stays in witnesses; preserved() must test NEW bytes
     # AFTER installation even for extras which changed from the capture.
     p['preserved_files'][name]=x['sha256'];p['preserved_sources'][name]=q.relative_to(root).as_posix()
+   bind_preserved_phases(p)
    for key in list(p):
     if key.endswith('_contract') and (key.startswith('followup') or key.startswith('gpu') or key.startswith('signed_peripheral')):p['history_'+key+'_reference_only']=p.pop(key)
    p.pop('peripheral_status_only',None);p.pop('retained_GPU_reference_only',None)
@@ -185,8 +209,19 @@ def load_map(path,root):
 
 def generate(p):
  capture=p['capture_selection']['capture_number'];require(p['profile']==profile_name(capture) and p['install_targets']==['render'] and p['planned_reboots']==1 and p['boot_transition']['boot_write_required'] is False and p['boot_transition']['gpt_written'] is False,'Render-only/restart1/bootGPT0')
+ require(p.get('preserved_phase_guard')==PRESERVED_PHASE_CONTRACT
+         and p.get('preinstall_preserved_files')==preinstall_preserved_files(p),
+         'Explicit exact preinstall/postinstall preserved phase contract required')
  shared.PROFILE=shared.base.PROFILE=p['profile'];shared.SERVICE=shared.DIRECTORY=shared.base.SERVICE=shared.base.DIRECTORY=p['service'];shared.INSTALL=shared.base.INSTALL=['render']
- return '#define A04_KEYPAD13_CHECKPOINT 1\n#define A04_KEYPAD14_CHECKPOINT 1\n#define A04_DISPLAY_IDLE_BEFORE_CLIENTS 1\n#define A04_VIDPN_CALLBACK_TRACE 1\n'+shared.generate(p)
+ header=shared.generate(p)
+ baseline=copy.deepcopy(p);baseline['preserved_files']=dict(p['preinstall_preserved_files'])
+ # Reuse the actual emitter so absolute/relative path escaping and file order
+ # are identical in both tables; only the admitted UMD hash can differ.
+ old_header=shared.generate(baseline)
+ marker='static const struct preserved_file preserved_files[]='
+ start=old_header.index(marker);end=old_header.index('};',start)+2
+ before_table=old_header[start:end].replace('preserved_files[]','preinstall_preserved_files[]',1)
+ return '#define A04_PRESERVED_PHASE_GUARD 1\n#define A04_KEYPAD13_CHECKPOINT 1\n#define A04_KEYPAD14_CHECKPOINT 1\n#define A04_DISPLAY_IDLE_BEFORE_CLIENTS 1\n#define A04_VIDPN_CALLBACK_TRACE 1\n'+header+'\n'+before_table+'\n'
 
 def paths():return shared.paths()
 def validate_runtime_policy(root,p):require(p==load_map(rooted(root,p['signed_render_contract']['input']['path']),root),'Exact regenerated actual capture/render policy')
