@@ -58,7 +58,7 @@ if out.exists():
     raise ValueError('New output required')
 pin(old / 'signed-manifest.json', 'a838b2d43b325dc01f9ee9beb4b36da847e8b79bc6341a7a376af39bd9d0e90c')
 m = load(old / 'signed-manifest.json')
-for x in m['outputs'] + m['retained_provenance']:
+for x in m['outputs'] + m.get('retained_provenance', []):
     pin(old / x['name'], x['sha256'])
 pin(base / 'ge8300-kmd-clear.lib', '12c4503000b44f5303a5b0ae5cfed771529ffd222f422118a9f6fab447eb3f54')
 pin(base / 'ge8300-native-owner-core.lib', 'c7dcbffb1d3de151e22796c0494c033502570950d0afebb4162a6a2f598fa836')
