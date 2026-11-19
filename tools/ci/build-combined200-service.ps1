@@ -1,7 +1,7 @@
 ﻿# One SCM TU and (separately) the corrected capture client TU; no driver rebuild.
 param([switch]$SignedRenderUpdate,[switch]$SignedPeripherals,[switch]$CollectionReboot,[int]$CaptureNumber=200,[switch]$Gpu369Timing,[switch]$Gpu371Output,[switch]$Gpu375Combined,[switch]$Gpu377Output,[switch]$Gpu378Keypad,[switch]$Gpu378Diagnostic,[switch]$Followup231,[Alias('Gpu374Client','Gpu375Client')][switch]$Gpu373Client,[Parameter(Mandatory=$true)][ValidateSet('CaptureClient','Service')][string]$Mode,
  [Parameter(Mandatory=$true)][string]$Workspace,[string]$PackageMap,[Parameter(Mandatory=$true)][string]$OutputDirectory,
- [Parameter(Mandatory=$true)][string]$KitHeaderRoot,[Parameter(Mandatory=$true)][string]$LibraryRoot,[Parameter(Mandatory=$true)][string]$SigntoolPath)
+ [Parameter(Mandatory=$true)][string]$KitHeaderRoot,[Parameter(Mandatory=$true)][string]$LibraryRoot,[Parameter(Mandatory=$true)][string]$SigntoolPath,[Parameter(Mandatory=$true)][string]$ServiceSignerThumbprint)
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 if($Gpu378Diagnostic){if($Gpu378Keypad){throw 'Select diagnostic or update, not both'};$Gpu378Keypad=$true}
 $gpu378Generator=if($Gpu378Diagnostic){'prepare-gpu378-diagnostic229-inputs.py'}else{'prepare-gpu378-keypad13-inputs.py'}
@@ -11,7 +11,7 @@ $clientVersion=if($CaptureNumber -eq 221){375}elseif($CaptureNumber -eq 218){374
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'));$out=[IO.Path]::GetFullPath($OutputDirectory);$thumb='BCBF6C456C6F0DD0818434763B189488FBF13570'
 if(@(& git -C $root status --porcelain).Count -or (Test-Path $out) -or !$out.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Clean checkout/new checkout-local output required'}
 $inc=[IO.Path]::GetFullPath($KitHeaderRoot);$lib=[IO.Path]::GetFullPath($LibraryRoot);$sign=[IO.Path]::GetFullPath($SigntoolPath)
-$cert=Get-Item "Cert:\CurrentUser\My\$thumb";if(!$cert.HasPrivateKey){throw 'Existing BCBF private identity required'}
+$cert=Get-Item "Cert:\CurrentUser\My\$ServiceSignerThumbprint";if(!$cert.HasPrivateKey){throw 'Service signer private identity required'}
 if($Mode -ne 'Service' -or !$PackageMap){throw 'Combined service-only final map required'}
 if($SignedRenderUpdate){
  & python -B "$root\tools\recovery\render-signed-capture.py" --workspace $Workspace --map $PackageMap --out $out --finalize
@@ -66,8 +66,8 @@ try{
  foreach($n in $libs){$p=Join-Path $lib ($n+'.lib');$paths+=$p;$pins+=@{name=$n;sha256=(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()}}
  & lld-link /subsystem:console,6.3 /machine:arm /entry:mainCRTStartup /nodefaultlib /dynamicbase /nxcompat "$out\$name.obj" @paths "/out:$out\$name.exe"
  if($LASTEXITCODE){throw 'ARM EXE link failed'}
- & $sign sign /fd SHA256 /s My /sha1 $thumb "$out\$name.exe";if($LASTEXITCODE){throw 'BCBF signing failed'}
- $sig=Get-AuthenticodeSignature "$out\$name.exe";if($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Thumbprint -cne $thumb){throw 'Signed EXE identity/trust mismatch'}
+ & $sign sign /fd SHA256 /s My /sha1 $ServiceSignerThumbprint "$out\$name.exe";if($LASTEXITCODE){throw 'Service signing failed'}
+ $sig=Get-AuthenticodeSignature "$out\$name.exe";if($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Thumbprint -cne $ServiceSignerThumbprint){throw 'Signed EXE identity/trust mismatch'}
  $isCapture=if($Mode -eq 'CaptureClient'){'True'}else{'False'}
  if($SignedRenderUpdate){
   & python -B -c "import importlib.util,sys;from pathlib import Path;s=importlib.util.spec_from_file_location('render_capture',Path(sys.argv[1]));m=importlib.util.module_from_spec(s);s.loader.exec_module(m);m.assert_paths(Path(sys.argv[2]))" "$root\tools\recovery\render-signed-capture.py" "$out\$name.exe"
@@ -93,7 +93,7 @@ try{
  if($LASTEXITCODE){throw 'Signed EXE UTF16 path mismatch'}
  Export-Certificate -Cert $cert -FilePath "$out\development.cer"|Out-Null
  $toolchain=@{headers=$inc;arm_libraries=$lib;import_libraries=$pins;signtool=$sign;signtool_sha256=(Get-FileHash $sign -Algorithm SHA256).Hash.ToLowerInvariant();ntddi='0x06030000';win32_winnt='0x0603'}
- $m=[ordered]@{schema=$(if($Mode -eq 'CaptureClient'){'capture-next122-log-isolation-v1'}else{"combined$CaptureNumber-unified356-service-v1"});source_commit=(& git -C $root rev-parse HEAD);source_dirty=$false;source_sha256=(Get-FileHash $source -Algorithm SHA256).Hash.ToLowerInvariant();data_directory=$name;profile=$null;service=$name;signer_thumbprint=$thumb;signature_status='Valid';exe_sha256=(Get-FileHash "$out\$name.exe" -Algorithm SHA256).Hash.ToLowerInvariant();path_header_sha256=(Get-FileHash "$out\peripheral-service-path-policy.h" -Algorithm SHA256).Hash.ToLowerInvariant();runtime_utf16_path_verified=$true;toolchain=$toolchain;driver_rebuilt=$false;device_verified=$false}
+ $m=[ordered]@{schema=$(if($Mode -eq 'CaptureClient'){'capture-next122-log-isolation-v1'}else{"combined$CaptureNumber-unified356-service-v1"});source_commit=(& git -C $root rev-parse HEAD);source_dirty=$false;source_sha256=(Get-FileHash $source -Algorithm SHA256).Hash.ToLowerInvariant();data_directory=$name;profile=$null;service=$name;signer_thumbprint=$ServiceSignerThumbprint;signature_status='Valid';exe_sha256=(Get-FileHash "$out\$name.exe" -Algorithm SHA256).Hash.ToLowerInvariant();path_header_sha256=(Get-FileHash "$out\peripheral-service-path-policy.h" -Algorithm SHA256).Hash.ToLowerInvariant();runtime_utf16_path_verified=$true;toolchain=$toolchain;driver_rebuilt=$false;device_verified=$false}
  if((Get-FileHash $filterRootHeader -Algorithm SHA256).Hash.ToLowerInvariant() -cne $filterRootHeaderHash){throw 'Filter root header changed during build'}
  if($collectionClosure){$m.collection_reboot=$collectionClosure}
  $m.filter_root_header=@{path='tools/winpe/filter-root-transition.h';sha256=$filterRootHeaderHash;enabled=($null -ne $policy.filter_root_transitions -and @($policy.filter_root_transitions).Count -gt 0)}
