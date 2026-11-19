@@ -82,6 +82,9 @@ def render_precopy_replacements(policy):
           policy['preserved_sources'].get(name)==candidate,
           'Render UMD old witness/new post-install tuple mismatch')
   result[name]=dict(baseline=old,candidate=dict(path=candidate,sha256=item['sha256']))
+ if not result:
+  require(all(x['baseline_sha256']==x['sha256'] for x in policy['packages']['render']['extra_members']),'KMD-only render update requires unchanged extras')
+  return result
  require(set(result)=={'Windows/System32/ge8300-umd.dll'},'Exactly one actual render UMD transition required')
  return result
 
