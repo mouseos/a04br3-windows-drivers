@@ -91,7 +91,11 @@ assert obj.stat().st_size > 0, 'Empty object'
 lib_exe = Path('C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/lib.exe')
 kmd = out / 'ge8300-kmd-clear.lib'
 shutil.copyfile(base / 'ge8300-kmd-clear.lib', kmd)
-run([lib_exe, '/REMOVE:display_bdd_dmm.obj', str(kmd)])
+listed = subprocess.run([str(lib_exe), '/LIST', str(kmd)], capture_output=True, text=True, check=True).stdout
+victims = [l.strip() for l in listed.splitlines() if l.strip().lower().endswith('display_bdd_dmm.obj')]
+if len(victims) != 1:
+    raise ValueError('bdd_dmm archive member ambiguous: ' + repr(victims))
+run([lib_exe, '/REMOVE:' + victims[0], str(kmd)])
 native = base / 'ge8300-native-owner-core.lib'
 shutil.copyfile(native, out / native.name)
 kit = Path('C:/mt8167-native245-44570440701/cache/gdi376-inputs/wdk81/Lib/winv6.3/km/arm')
