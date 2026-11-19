@@ -110,6 +110,9 @@ run([sign, 'verify', '/pa', out / 'ge8300-render.sys'])
 for f in old.iterdir():
     if f.is_file() and f.name not in ['ge8300-render.sys', 'ge8300-render.cat', 'ge8300-render.inf', 'signed-manifest.json']:
         shutil.copyfile(f, pkg / f.name)
+for d in old.iterdir():
+    if d.is_dir():
+        shutil.copytree(d, pkg / d.name)
 shutil.copyfile(old / 'signed-manifest.json', pkg / 'baseline380-signed-manifest.json')
 shutil.copyfile(out / 'ge8300-render.sys', pkg / 'ge8300-render.sys')
 b = (old / 'ge8300-render.inf').read_bytes()
