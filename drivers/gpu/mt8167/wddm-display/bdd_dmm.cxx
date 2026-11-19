@@ -235,7 +235,18 @@ NTSTATUS BASIC_DISPLAY_DRIVER::RecommendFunctionalVidPn(_In_ CONST DXGKARG_RECOM
                                 &hTopo, &topo);
     if (!NT_SUCCESS(Status))
         return Status;
-    Status = topo->pfnAddPath(hTopo, 0, 0);
+    D3DKMDT_VIDPN_PRESENT_PATH path;
+    RtlZeroMemory(&path, sizeof(path));
+    path.VidPnSourceId = 0;
+    path.VidPnTargetId = 0;
+    path.ImportanceOrdinal = D3DKMDT_VPPI_PRIMARY;
+    path.ContentTransformation.Scaling = D3DKMDT_VPPS_IDENTITY;
+    path.ContentTransformation.ScalingSupport.Identity = 1;
+    path.ContentTransformation.Rotation = D3DKMDT_VPPR_IDENTITY;
+    path.ContentTransformation.RotationSupport.Identity = 1;
+    path.VidPnTargetColorBasis = D3DKMDT_CB_SCRGB;
+    path.Content = D3DKMDT_VPPC_GRAPHICS;
+    Status = topo->pfnAddPath(hTopo, &path);
     if (Status == STATUS_GRAPHICS_PATH_ALREADY_IN_TOPOLOGY)
         Status = STATUS_SUCCESS;
     if (!NT_SUCCESS(Status))
