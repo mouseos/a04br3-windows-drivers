@@ -131,13 +131,172 @@ NTSTATUS BASIC_DISPLAY_DRIVER::IsSupportedVidPn(_Inout_ DXGKARG_ISSUPPORTEDVIDPN
     return STATUS_SUCCESS;
 }
 
+static NTSTATUS RecommendPinnedPostMode(_In_ CONST DXGK_VIDPNSOURCEMODESET_INTERFACE* api,
+                                              D3DKMDT_HVIDPNSOURCEMODESET set,
+                                              UINT w, UINT h)
+{
+    // Pin the POST-sized 32bpp graphics mode; leave every other mode unpinned.
+    // Two passes keep the choice deterministic: exact A8R8G8B8 first.
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        CONST D3DKMDT_VIDPN_SOURCE_MODE* mode = NULL;
+        NTSTATUS Status = api->pfnAcquireFirstModeInfo(set, &mode);
+        while (NT_SUCCESS(Status) && mode)
+        {
+            bool match = mode->Type == D3DKMDT_RMT_GRAPHICS &&
+                mode->Format.Graphics.PrimSurfSize.cx == w &&
+                mode->Format.Graphics.PrimSurfSize.cy == h &&
+                (pass == 1 ?
+                    (mode->Format.Graphics.PixelFormat == D3DDDIFMT_A8R8G8B8 ||
+                     mode->Format.Graphics.PixelFormat == D3DDDIFMT_X8R8G8B8) :
+                    (mode->Format.Graphics.PixelFormat == D3DDDIFMT_A8R8G8B8));
+            CONST D3DKMDT_VIDPN_SOURCE_MODE* next = NULL;
+            NTSTATUS NextStatus = api->pfnAcquireNextModeInfo(set, mode, &next);
+            if (match)
+            {
+                Status = api->pfnPinMode(set, mode->Id);
+                api->pfnReleaseModeInfo(set, mode);
+                if (next)
+                    api->pfnReleaseModeInfo(set, next);
+                return Status;
+            }
+            api->pfnReleaseModeInfo(set, mode);
+            mode = NT_SUCCESS(NextStatus) ? next : NULL;
+            Status = NextStatus;
+            if (next && !NT_SUCCESS(NextStatus))
+                api->pfnReleaseModeInfo(set, next);
+        }
+        if (!NT_SUCCESS(Status) && Status != STATUS_GRAPHICS_NO_MORE_ELEMENTS_IN_DATASET)
+            return Status;
+    }
+    return STATUS_GRAPHICS_MODE_NOT_IN_MODESET;
+}
+
+static NTSTATUS RecommendPinnedPostTargetMode(_In_ CONST DXGK_VIDPNTARGETMODESET_INTERFACE* api,
+                                             D3DKMDT_HVIDPNTARGETMODESET set,
+                                             UINT w, UINT h)
+{
+    // Pin the POST-sized preferred target mode; nothing else is pinned.
+    CONST D3DKMDT_VIDPN_TARGET_MODE* mode = NULL;
+    NTSTATUS Status = api->pfnAcquireFirstModeInfo(set, &mode);
+    while (NT_SUCCESS(Status) && mode)
+    {
+        bool match = mode->VideoSignalInfo.ActiveSize.cx == w &&
+            mode->VideoSignalInfo.ActiveSize.cy == h &&
+            mode->VideoSignalInfo.VideoStandard == D3DKMDT_VSS_OTHER;
+        CONST D3DKMDT_VIDPN_TARGET_MODE* next = NULL;
+        NTSTATUS NextStatus = api->pfnAcquireNextModeInfo(set, mode, &next);
+        if (match)
+        {
+            Status = api->pfnPinMode(set, mode->Id);
+            api->pfnReleaseModeInfo(set, mode);
+            if (next)
+                api->pfnReleaseModeInfo(set, next);
+            return Status;
+        }
+        api->pfnReleaseModeInfo(set, mode);
+        mode = NT_SUCCESS(NextStatus) ? next : NULL;
+        Status = NextStatus;
+        if (next && !NT_SUCCESS(NextStatus))
+            api->pfnReleaseModeInfo(set, next);
+    }
+    if (Status == STATUS_GRAPHICS_NO_MORE_ELEMENTS_IN_DATASET)
+        return STATUS_GRAPHICS_MODE_NOT_IN_MODESET;
+    return Status;
+}
+
 NTSTATUS BASIC_DISPLAY_DRIVER::RecommendFunctionalVidPn(_In_ CONST DXGKARG_RECOMMENDFUNCTIONALVIDPN* CONST pRecommendFunctionalVidPn)
 {
     PAGED_CODE();
 
-    BDD_ASSERT(pRecommendFunctionalVidPn == NULL);
+    if (!pRecommendFunctionalVidPn)
+        return STATUS_INVALID_PARAMETER;
 
-    return STATUS_GRAPHICS_NO_RECOMMENDED_FUNCTIONAL_VIDPN;
+    // Recommend the single native panel path (source 0 -> target 0) at the
+    // POST mode validated during StartDevice. No invented connectors, modes,
+    // or EDID. When unified display is off, there is nothing to recommend.
+    if (!A04_GE8300_UNIFIED_DISPLAY356)
+        return STATUS_GRAPHICS_NO_RECOMMENDED_FUNCTIONAL_VIDPN;
+    const UINT w = m_CurrentModes[0].DispInfo.Width;
+    const UINT h = m_CurrentModes[0].DispInfo.Height;
+    if (!w || !h)
+        return STATUS_GRAPHICS_NO_RECOMMENDED_FUNCTIONAL_VIDPN;
+
+    CONST DXGK_VIDPN_INTERFACE* vpn = NULL;
+    NTSTATUS Status = m_DxgkInterface.DxgkCbQueryVidPnInterface(
+        pRecommendFunctionalVidPn->hRecommendedFunctionalVidPn,
+        DXGK_VIDPN_INTERFACE_VERSION_V1, &vpn);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    CONST DXGK_VIDPNTOPOLOGY_INTERFACE* topo = NULL;
+    D3DKMDT_HVIDPNTOPOLOGY hTopo = 0;
+    Status = vpn->pfnGetTopology(pRecommendFunctionalVidPn->hRecommendedFunctionalVidPn,
+                                &hTopo, &topo);
+    if (!NT_SUCCESS(Status))
+        return Status;
+    Status = topo->pfnAddPath(hTopo, 0, 0);
+    if (Status == STATUS_GRAPHICS_PATH_ALREADY_IN_TOPOLOGY)
+        Status = STATUS_SUCCESS;
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    // Source modes: ensure the POST-sized graphics mode exists, then pin it.
+    CONST DXGK_VIDPNSOURCEMODESET_INTERFACE* srcApi = NULL;
+    D3DKMDT_HVIDPNSOURCEMODESET hSrcSet = 0;
+    Status = vpn->pfnAcquireSourceModeSet(pRecommendFunctionalVidPn->hRecommendedFunctionalVidPn,
+                                          0, &hSrcSet, &srcApi);
+    if (!NT_SUCCESS(Status))
+    {
+        Status = vpn->pfnCreateNewSourceModeSet(pRecommendFunctionalVidPn->hRecommendedFunctionalVidPn,
+                                                0, &hSrcSet, &srcApi);
+        if (!NT_SUCCESS(Status))
+            return Status;
+        Status = AddSingleSourceMode(srcApi, hSrcSet, 0);
+        if (!NT_SUCCESS(Status))
+            return Status;
+        Status = vpn->pfnAssignSourceModeSet(pRecommendFunctionalVidPn->hRecommendedFunctionalVidPn,
+                                             0, hSrcSet);
+        if (!NT_SUCCESS(Status))
+            return Status;
+        hSrcSet = 0;
+        Status = vpn->pfnAcquireSourceModeSet(pRecommendFunctionalVidPn->hRecommendedFunctionalVidPn,
+                                              0, &hSrcSet, &srcApi);
+        if (!NT_SUCCESS(Status))
+            return Status;
+    }
+    Status = RecommendPinnedPostMode(srcApi, hSrcSet, w, h);
+    vpn->pfnReleaseSourceModeSet(pRecommendFunctionalVidPn->hRecommendedFunctionalVidPn, hSrcSet);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    // Target modes: same single POST mode, preferred, then pinned.
+    CONST DXGK_VIDPNTARGETMODESET_INTERFACE* tgtApi = NULL;
+    D3DKMDT_HVIDPNTARGETMODESET hTgtSet = 0;
+    Status = vpn->pfnAcquireTargetModeSet(pRecommendFunctionalVidPn->hRecommendedFunctionalVidPn,
+                                          0, &hTgtSet, &tgtApi);
+    if (!NT_SUCCESS(Status))
+    {
+        Status = vpn->pfnCreateNewTargetModeSet(pRecommendFunctionalVidPn->hRecommendedFunctionalVidPn,
+                                                0, &hTgtSet, &tgtApi);
+        if (!NT_SUCCESS(Status))
+            return Status;
+        Status = AddSingleTargetMode(tgtApi, hTgtSet, NULL, 0);
+        if (!NT_SUCCESS(Status))
+            return Status;
+        Status = vpn->pfnAssignTargetModeSet(pRecommendFunctionalVidPn->hRecommendedFunctionalVidPn,
+                                             0, hTgtSet);
+        if (!NT_SUCCESS(Status))
+            return Status;
+        hTgtSet = 0;
+        Status = vpn->pfnAcquireTargetModeSet(pRecommendFunctionalVidPn->hRecommendedFunctionalVidPn,
+                                              0, &hTgtSet, &tgtApi);
+        if (!NT_SUCCESS(Status))
+            return Status;
+    }
+    Status = RecommendPinnedPostTargetMode(tgtApi, hTgtSet, w, h);
+    vpn->pfnReleaseTargetModeSet(pRecommendFunctionalVidPn->hRecommendedFunctionalVidPn, hTgtSet);
+    return Status;
 }
 
 NTSTATUS BASIC_DISPLAY_DRIVER::RecommendVidPnTopology(_In_ CONST DXGKARG_RECOMMENDVIDPNTOPOLOGY* CONST pRecommendVidPnTopology)
