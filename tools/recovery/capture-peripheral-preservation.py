@@ -33,7 +33,7 @@ def main():
    for path in r.shell('find '+base+' -maxdepth 1 -type f -name "*.log"').splitlines():
     assert path.startswith(base+'/') and re.fullmatch(r'(?:clear|umd)-[A-Za-z0-9_.-]+\.log',path[len(base)+1:]),'固定GPUログ名以外は拒否'
     logs.append(path[len(mount)+1:])
-   assert len(logs)==len(set(logs)) and len(logs)<=128,'GPUログ件数の上限/重複'
+   assert len(logs)==len(set(logs)) and len(logs)<=256,'GPUログ件数の上限/重複'
    extra+=sorted(logs);extras += [(n,True) for n in sorted(logs)]
   specs=[(e['source_path'],True) for e in m['files']]+extras;assert len(specs)==len({x[0].lower() for x in specs}),'補足の重複禁止'
   before=r.snapshot(mount,specs)
