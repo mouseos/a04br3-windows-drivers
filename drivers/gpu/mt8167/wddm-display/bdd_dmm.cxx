@@ -19,6 +19,48 @@ public:
     ~A04DmmGuard() { KeReleaseMutex(m_Mutex,FALSE); }
 };
 
+// Diagnostic-only VidPn call trace over the debug UART. Compiled in only
+// for trace builds (A04_GE8300_VIDPN_TRACE=1); production builds emit nothing.
+#ifndef A04_GE8300_VIDPN_TRACE
+#define A04_GE8300_VIDPN_TRACE 0
+#endif
+#if A04_GE8300_VIDPN_TRACE
+static void A04VidPnPuts(volatile ULONG* uart, const char* text)
+{
+    while (*text)
+    {
+        ULONG tries;
+        for (tries = 100000; tries; --tries)
+            if (!(READ_REGISTER_ULONG(uart + 3) & 0x80u) && (READ_REGISTER_ULONG(uart + 5) & 0x20u)) break;
+        if (!tries) return;
+        WRITE_REGISTER_ULONG(uart, (ULONG)(UCHAR)*text++);
+    }
+}
+// Same UART/baud contract as the A04DISP trace path: base 0x11005000,
+// bounded waits, plain bytes. Emits one line: "A04VIDPN <stage> <v0> <v1>".
+static void A04VidPnTrace(ULONG stage, ULONG v0, ULONG v1)
+{
+    PHYSICAL_ADDRESS base; base.QuadPart = 0x11005000u;
+    volatile ULONG* uart = (volatile ULONG*)MmMapIoSpace(base, 0x1000, MmNonCached);
+    if (!uart) return;
+    static const char digits[] = "0123456789ABCDEF";
+    char line[48]; ULONG n = 0;
+    const char* head = "A04VIDPN ";
+    while (*head && n < sizeof(line) - 1) line[n++] = *head++;
+    ULONG vals[3] = {stage, v0, v1};
+    for (int i = 0; i < 3; ++i)
+    {
+        for (int s = 28; s >= 0; s -= 4) { if (n < sizeof(line) - 1) line[n++] = digits[(vals[i] >> s) & 0xFu]; }
+        if (n < sizeof(line) - 1) line[n++] = (i < 2) ? ' ' : '\n';
+    }
+    line[n] = 0;
+    A04VidPnPuts(uart, line);
+    MmUnmapIoSpace((PVOID)uart, 0x1000);
+}
+#else
+#define A04VidPnTrace(stage, v0, v1) ((void)0)
+#endif
+
 static bool A04PathFits(const CURRENT_BDD_MODE& mode,UINT width,UINT height,
     D3DKMDT_VIDPN_PRESENT_PATH_ROTATION rotation,D3DKMDT_VIDPN_PRESENT_PATH_SCALING scaling)
 {
@@ -43,6 +85,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::IsSupportedVidPn(_Inout_ DXGKARG_ISSUPPORTEDVIDPN
 
     BDD_ASSERT(pIsSupportedVidPn != NULL);
 
+    A04VidPnTrace(0xE0, (ULONG)(pIsSupportedVidPn->hDesiredVidPn != 0), 0);
     if (pIsSupportedVidPn->hDesiredVidPn == 0)
     {
         // A null desired VidPn is supported
@@ -121,13 +164,14 @@ NTSTATUS BASIC_DISPLAY_DRIVER::IsSupportedVidPn(_Inout_ DXGKARG_ISSUPPORTEDVIDPN
         NTSTATUS nextStatus=STATUS_SUCCESS;
         if(NT_SUCCESS(Status) && supported)nextStatus=pVidPnTopologyInterface->pfnAcquireNextPathInfo(hVidPnTopology,path,&next);
         pVidPnTopologyInterface->pfnReleasePathInfo(hVidPnTopology,path);
-        if(!NT_SUCCESS(Status))return Status;
-        if(!supported)return STATUS_SUCCESS;
+        if(!NT_SUCCESS(Status)){A04VidPnTrace(0xEF,(ULONG)Status,0);return Status;}
+        if(!supported){A04VidPnTrace(0xE1,0,0);return STATUS_SUCCESS;}
         path=next;Status=nextStatus;
     }
 
     // All sources succeeded so this VidPn is supported
     pIsSupportedVidPn->IsVidPnSupported = TRUE;
+    A04VidPnTrace(0xE1,1,0);
     return STATUS_SUCCESS;
 }
 
@@ -219,6 +263,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::RecommendFunctionalVidPn(_In_ CONST DXGKARG_RECOM
         return STATUS_GRAPHICS_NO_RECOMMENDED_FUNCTIONAL_VIDPN;
     const UINT w = m_CurrentModes[0].DispInfo.Width;
     const UINT h = m_CurrentModes[0].DispInfo.Height;
+    A04VidPnTrace(0xE2, w, h);
     if (!w || !h)
         return STATUS_GRAPHICS_NO_RECOMMENDED_FUNCTIONAL_VIDPN;
 
@@ -307,6 +352,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::RecommendFunctionalVidPn(_In_ CONST DXGKARG_RECOM
     }
     Status = RecommendPinnedPostTargetMode(tgtApi, hTgtSet, w, h);
     vpn->pfnReleaseTargetModeSet(pRecommendFunctionalVidPn->hRecommendedFunctionalVidPn, hTgtSet);
+    A04VidPnTrace(0xE3, (ULONG)Status, 0);
     return Status;
 }
 
@@ -336,6 +382,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::EnumVidPnCofuncModality(_In_ CONST DXGKARG_ENUMVI
 
     BDD_ASSERT(pEnumCofuncModality != NULL);
 
+    A04VidPnTrace(0xE8, 0, 0);
     D3DKMDT_HVIDPNTOPOLOGY                   hVidPnTopology = 0;
     D3DKMDT_HVIDPNSOURCEMODESET              hVidPnSourceModeSet = 0;
     D3DKMDT_HVIDPNTARGETMODESET              hVidPnTargetModeSet = 0;
@@ -697,6 +744,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::EnumVidPnCofuncModality(_In_ CONST DXGKARG_ENUMVI
 
     BDD_ASSERT_CHK(TempStatus == STATUS_NOT_FOUND || Status != STATUS_SUCCESS);
 
+    A04VidPnTrace(0xE9, (ULONG)Status, 0);
     return Status;
 }
 
@@ -746,6 +794,8 @@ NTSTATUS BASIC_DISPLAY_DRIVER::CommitVidPn(_In_ CONST DXGKARG_COMMITVIDPN* CONST
     BDD_ASSERT(pCommitVidPn != NULL);
     BDD_ASSERT(pCommitVidPn->AffectedVidPnSourceId < MAX_VIEWS);
 
+    A04VidPnTrace(0xE4, pCommitVidPn->AffectedVidPnSourceId, 0);
+
     NTSTATUS                                 Status;
     SIZE_T                                   NumPaths = 0;
     D3DKMDT_HVIDPNTOPOLOGY                   hVidPnTopology = 0;
@@ -791,6 +841,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::CommitVidPn(_In_ CONST DXGKARG_COMMITVIDPN* CONST
         goto CommitVidPnExit;
     }
 
+    A04VidPnTrace(0xE5, (ULONG)NumPaths, 0);
     if (NumPaths != 0)
     {
         // Get the Source Mode Set interface so we can get the pinned mode
@@ -885,6 +936,7 @@ CommitVidPnExit:
         NT_ASSERT(NT_SUCCESS(TempStatus));
     }
 
+    A04VidPnTrace(0xE6, (ULONG)Status, 0);
     return Status;
 }
 
