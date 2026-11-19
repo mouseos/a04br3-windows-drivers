@@ -101,7 +101,7 @@ if adb shell "test -d $managed"; then
 fi
 if adb shell "test -d /tmp/rt125-diag/$gpu_log_directory"; then
  adb shell "find /tmp/rt125-diag/$gpu_log_directory -maxdepth 1 -type f -name '*.log'" > "$out/gpu-log-file-list.txt"
- [ "$(wc -l < "$out/gpu-log-file-list.txt")" -le 128 ]
+ [ "$(wc -l < "$out/gpu-log-file-list.txt")" -le 256 ]
  total=0
  while IFS= read -r item; do
   item=${item%$'\r'}
