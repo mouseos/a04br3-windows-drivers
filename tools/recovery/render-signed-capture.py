@@ -154,7 +154,7 @@ def candidate384(root,spec,lock,ref,m,review,certs):
   require(name in expected and name not in seen and x['sha256'].lower()==files[name] and x['status']=='Valid' and x['signer_thumbprint']==NEW384_SIGNER,'Certificate result bound to exact final 384 bytes');seen.add(name)
  require(seen==expected and files['ge8300-render.sys']==review['SYS_sha256']==lock['SYS_sha256'] and files['ge8300-umd.dll']==review['UMD_sha256']==lock['UMD_sha256'],'Actual 384 SYS/UMD identity')
  inf=shared.base.inftext(rooted(root,Path(row['directory'])/row['names']['inf']))
- require(re.search(r'^\s*DriverVer\s*=\s*11/11/2026,0\.0\.3\.83\s*$',inf,re.M|re.I) and re.search(r'^\s*UserFiles\s*=\s*11\s*$',inf,re.M|re.I) and re.search(r'^\s*FirmwareFiles\s*=\s*12\s*$',inf,re.M|re.I),'Actual 384 INF version/destinations')
+ require(re.search(r'^\s*DriverVer\s*=\s*11/11/2026,0\.0\.3\.84\s*$',inf,re.M|re.I) and re.search(r'^\s*UserFiles\s*=\s*11\s*$',inf,re.M|re.I) and re.search(r'^\s*FirmwareFiles\s*=\s*12\s*$',inf,re.M|re.I),'Actual 384 INF version/destinations')
  row['extra_members']=[dict(name=name,installed=installed,sha256=files[name]) for name,installed in (('ge8300-umd.dll','ge8300-umd.dll'),('ge8300-mips.fw','Drivers\\ge8300-mips.fw'))]
  return shared.base.package(root,row,'render'),files,m,review
 
