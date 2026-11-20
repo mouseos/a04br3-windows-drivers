@@ -259,7 +259,7 @@ def configure(spec,root):
 def load_map(path,root):
  spec=read(path);require(spec.get('schema')=='SIGNED_RENDER_CAPTURE_FINALIZE_V1','Explicit finalized map, never a preparation template')
  required={'schema','capture_number','hardware_owner','main_execution_approved','fresh','native','supplement','capture_contract','template_policy','actual_package_rows','mutable_baseline','boot_witness','last_boot_seal','last_run_result','additional_service_names','GPU_candidate','main_review','retained_client_policy','client_pair','globaldiag_manifest','globaldiag_import_proof','install_targets','planned_reboots','filter_root_transitions'}
- require(set(spec) in (required,required|{'unattended_collection_reboot'}),'Exact final map fields; no pending or extra components')
+ require(set(spec) in (required,required|{'unattended_collection_reboot'},required|{'unattended_collection_reboot','render_reinstall_never_booted'}),'Exact final map fields; no pending or extra components')
  require(type(spec.get('unattended_collection_reboot',False)) is bool,'Explicit boolean unattended opt-in required')
  require(not spec.get('unattended_collection_reboot') or spec['capture_number']>=237,'Only a new actual237+ capture may enable unattended collection')
  validate_baseline(root,spec)
