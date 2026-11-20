@@ -9,6 +9,9 @@ if(@($Gpu369Timing,$Gpu371Output,$Gpu373Client,$Gpu375Combined,$Gpu377Output,$Gp
 if($SignedRenderUpdate){if($CaptureNumber -lt 235 -or $CaptureNumber -gt 999 -or ($CollectionReboot -and $CaptureNumber -lt 237)){throw 'Signed render requires actual235..999; unattended collection needs actual237+'}}elseif($SignedPeripherals){if($CaptureNumber -lt 204 -or $CaptureNumber -gt 999 -or $CollectionReboot){throw 'Signed peripherals requires actual204..999 and terminal hold'}}elseif($Followup231){if($CaptureNumber -ne 231){throw 'Followup231 requires actual231'}}elseif($Gpu378Keypad){if($CaptureNumber -ne $(if($Gpu378Diagnostic){229}else{227})){throw 'GPU378 requires actual fresh227'}}elseif($Gpu377Output){if($CaptureNumber -ne 225){throw 'GPU377 requires actual fresh225'}}elseif($Gpu375Combined){if($CaptureNumber -ne 221){throw 'Combined375 requires actual221'}}elseif($Gpu373Client){if($CaptureNumber -notin @(215,218,221)){throw 'Known client capture215/218 required'}}elseif($Gpu371Output){if($CaptureNumber -ne 212){throw 'GPU371 requires actual212'}}elseif($Gpu369Timing){if($CaptureNumber -lt 204 -or $CaptureNumber -gt 999){throw 'Actual timing capture204..999 required'}}elseif($CaptureNumber -notin @(200,202)){throw 'Legacy200/202 only without Gpu369Timing'}
 $clientVersion=if($CaptureNumber -eq 221){375}elseif($CaptureNumber -eq 218){374}else{373}
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'));$out=[IO.Path]::GetFullPath($OutputDirectory);$thumb='BCBF6C456C6F0DD0818434763B189488FBF13570'
+if($ServiceSignerThumbprint -notmatch '^[0-9A-Fa-f]{40}$'){throw 'Service signer thumbprint must be 40 hex'}
+$signerBytes=((0..19|ForEach-Object{'0x'+$ServiceSignerThumbprint.Substring($_*2,2)})-join ',')
+$signerFlags=@("-DA04_SERVICE_SIGNER_EXPECTED={$signerBytes}")
 if(@(& git -C $root status --porcelain).Count -or (Test-Path $out) -or !$out.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Clean checkout/new checkout-local output required'}
 $inc=[IO.Path]::GetFullPath($KitHeaderRoot);$lib=[IO.Path]::GetFullPath($LibraryRoot);$sign=[IO.Path]::GetFullPath($SigntoolPath)
 $cert=Get-Item "Cert:\CurrentUser\My\$ServiceSignerThumbprint";if(!$cert.HasPrivateKey){throw 'Service signer private identity required'}
@@ -59,7 +62,7 @@ try{
  }
  if($SignedPeripherals){$keypadHeader="$root\tools\winpe\keypad13-checkpoint-policy.h";$keypadHeaderHash=(Get-FileHash $keypadHeader -Algorithm SHA256).Hash.ToLowerInvariant()}
  if($Followup231 -or $SignedRenderUpdate){$vidpnHeader="$root\tools\winpe\vidpn-callback-trace-policy.h";$vidpnHeaderHash=(Get-FileHash $vidpnHeader -Algorithm SHA256).Hash.ToLowerInvariant()}
- & clang @developmentFlags --target=thumbv7-pc-windows-msvc -O2 -ffreestanding -fno-builtin -fno-stack-protector -w -fms-extensions -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 -DNTDDI_VERSION=0x06030000 -DA04_PERIPHERAL_BATCH=1 -DA04_PERIPHERAL_NEXT_PROFILE=1 "-I$inc\um" "-I$inc\shared" "-I$out" -c $source -o "$out\$name.obj"
+ & clang @signerFlags @developmentFlags --target=thumbv7-pc-windows-msvc -O2 -ffreestanding -fno-builtin -fno-stack-protector -w -fms-extensions -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 -DNTDDI_VERSION=0x06030000 -DA04_PERIPHERAL_BATCH=1 -DA04_PERIPHERAL_NEXT_PROFILE=1 "-I$inc\um" "-I$inc\shared" "-I$out" -c $source -o "$out\$name.obj"
  if($LASTEXITCODE){throw 'Actual ARM TU compile failed'}
  if($collectionClosure){foreach($r in $collectionClosure.headers){if((Get-FileHash (Join-Path $root $r.path) -Algorithm SHA256).Hash.ToLowerInvariant() -cne $r.sha256){throw 'Collection source changed during compile'}}}
  $libs=@('kernel32','advapi32','setupapi','cfgmgr32','bcrypt','wintrust','crypt32');$pins=@();$paths=@()

@@ -77,7 +77,7 @@ static DWORD collection_start(const struct a04_cr_proof *p)
  if(!DuplicateHandle(GetCurrentProcess(),GetCurrentProcess(),GetCurrentProcess(),&parent,SYNCHRONIZE|PROCESS_QUERY_LIMITED_INFORMATION,TRUE,0)||
     !DuplicateHandle(GetCurrentProcess(),collection_ready,GetCurrentProcess(),&child_ready,SYNCHRONIZE,TRUE,0)||
     !DuplicateHandle(GetCurrentProcess(),stop_event,GetCurrentProcess(),&child_cancel,SYNCHRONIZE,TRUE,0)){e=collection_error();goto done;}
- e=signed_image(executable,&held);if(!e)e=fixed_signer(executable,held);if(e)goto done;
+ e=signed_image(executable,&held);if(!e)e=fixed_signer_service(executable,held);if(e)goto done;
  start.StartupInfo.cb=sizeof(start);
  (void)InitializeProcThreadAttributeList(NULL,1,0,&n);if(!n){e=ERROR_INVALID_DATA;goto done;}
  attributes=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,n);if(!attributes){e=ERROR_NOT_ENOUGH_MEMORY;goto done;}start.lpAttributeList=attributes;

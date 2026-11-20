@@ -252,7 +252,7 @@ static DWORD deferred_reboot_waiter(void)
 static DWORD deferred_start_waiter(void)
 {
  WCHAR command[MAX_PATH+40];STARTUPINFOW startup;PROCESS_INFORMATION process;
- HANDLE held=INVALID_HANDLE_VALUE;DWORD error=signed_image(executable,&held);if(!error)error=fixed_signer(executable,held);if(error){if(held!=INVALID_HANDLE_VALUE)CloseHandle(held);return error;}
+ HANDLE held=INVALID_HANDLE_VALUE;DWORD error=signed_image(executable,&held);if(!error)error=fixed_signer_service(executable,held);if(error){if(held!=INVALID_HANDLE_VALUE)CloseHandle(held);return error;}
  lstrcpyW(command,L"\"");lstrcatW(command,executable);lstrcatW(command,L"\" --reboot-after-stop");
  memset(&startup,0,sizeof(startup));startup.cb=sizeof(startup);memset(&process,0,sizeof(process));
  if(!CreateProcessW(executable,command,NULL,NULL,FALSE,CREATE_NO_WINDOW,NULL,base_directory,&startup,&process))error=GetLastError();
