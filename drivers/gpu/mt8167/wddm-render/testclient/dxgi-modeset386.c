@@ -69,14 +69,14 @@ static HRESULT hardware_luid(LUID *wanted) {
   if(!SetupDiGetDeviceRegistryPropertyW(set,&node,SPDRP_HARDWAREID,&type,(BYTE *)hardware,sizeof(hardware),&bytes)){
    result=HRESULT_FROM_WIN32(GetLastError());goto next;
   }
-  if(type!=REG_MULTI_SZ||bytes<4||bytes>sizeof(hardware)||bytes%2||hardware[bytes/2-1]||hardware[bytes/2-2]){result=E_UNEXPECTED;goto next;}
-  for(at=0;at<bytes/2&&hardware[at];at+=(DWORD)lstrlenW(hardware+at)+1){
+  if(type!=REG_MULTI_SZ||bytes<4||bytes>sizeof(hardware)||(bytes&1)||hardware[(bytes>>1)-1]||hardware[(bytes>>1)-2]){result=E_UNEXPECTED;goto next;}
+  for(at=0;at<(bytes>>1)&&hardware[at];at+=(DWORD)lstrlenW(hardware+at)+1){
    if(!lstrcmpiW(hardware+at,L"ACPI\\MOU0006"))match=1;
   }
   line("PNP_FIXED_HARDWARE_MATCH",match);if(!match)goto next;
   memset(service,0,sizeof(service));bytes=0;
   if(!SetupDiGetDeviceRegistryPropertyW(set,&node,SPDRP_SERVICE,&type,(BYTE *)service,sizeof(service),&bytes)){result=HRESULT_FROM_WIN32(GetLastError());goto next;}
-  if(type!=REG_SZ||bytes<2||bytes>sizeof(service)||bytes%2||service[bytes/2-1]){result=E_UNEXPECTED;goto next;}
+  if(type!=REG_SZ||bytes<2||bytes>sizeof(service)||(bytes&1)||service[(bytes>>1)-1]){result=E_UNEXPECTED;goto next;}
   if(lstrcmpiW(service,L"GE8300Render")){line("PNP_RENDER_SERVICE_MATCH",0);goto next;}
   line("PNP_RENDER_SERVICE_MATCH",1);
   {

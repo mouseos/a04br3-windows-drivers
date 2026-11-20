@@ -76,11 +76,17 @@ assert head == a.recipe_commit, 'Recipe checkout required'
 assert subprocess.run(['git', '-C', str(repo), 'status', '--porcelain', '--untracked-files=no'], capture_output=True, text=True, check=True).stdout.strip() == '', 'Clean tree required'
 blob = subprocess.run(['git', '-C', str(repo), 'show', a.recipe_commit + ':drivers/gpu/mt8167/wddm-render/testclient/dxgi-modeset386.c'], capture_output=True, check=True).stdout
 assert src_file.read_bytes() == blob, 'Source matches recipe commit'
+mem_src = repo / 'drivers/gpu/mt8167/wddm-render/testclient/memory.c'
+mem_blob = subprocess.run(['git', '-C', str(repo), 'show', a.recipe_commit + ':drivers/gpu/mt8167/wddm-render/testclient/memory.c'], capture_output=True, check=True).stdout
+assert mem_src.read_bytes() == mem_blob, 'Memory helper matches recipe commit'
 obj = out / 'dxgi-modeset386.obj'
+mem_obj = out / 'modeset-memory.obj'
 flags = ['/nologo', '/c', '/Gy', '/GS-', '/Zl', '/D_ARM_', '/DARM', '/D_WIN32_WINNT=0x0603', '/I' + str(wdk / 'km'), '/I' + str(wdk / 'shared'), '/I' + str(wdk / 'um'), '/I' + str(vc_inc), '/I' + str(ucrt_inc), '/Fo' + str(obj), str(src_file)]
 run([cl, *flags])
 assert obj.stat().st_size > 0, 'Empty object'
-run([link, '/nologo', '/machine:arm', '/subsystem:console,6.03', '/entry:mainCRTStartup', '/nodefaultlib', '/largeaddressaware', '/tsaware:no', str(obj), *[str(ulib / (n + '.lib')) for n in ['kernel32', 'user32', 'gdi32', 'setupapi']], '/out:' + str(out / 'mt8167-dxgi-modeset386.exe')])
+run([cl, '/nologo', '/c', '/Gy', '/GS-', '/Zl', '/D_ARM_', '/DARM', '/I' + str(vc_inc), '/I' + str(ucrt_inc), '/Fo' + str(mem_obj), str(mem_src)])
+assert mem_obj.stat().st_size > 0, 'Empty memory object'
+run([link, '/nologo', '/machine:arm', '/subsystem:console,6.03', '/entry:mainCRTStartup', '/nodefaultlib', '/largeaddressaware', '/tsaware:no', str(obj), str(mem_obj), *[str(ulib / (n + '.lib')) for n in ['kernel32', 'user32', 'gdi32', 'setupapi']], '/out:' + str(out / 'mt8167-dxgi-modeset386.exe')])
 sign = a.signtool
 thumb = a.signer_thumbprint
 if not __import__('re').fullmatch(r'[0-9A-Fa-f]{40}', thumb or ''):
@@ -113,7 +119,7 @@ for f in sorted((old / 'display-transport').iterdir()):
 for n in ['ge8300-render.inf', 'ge8300-render.sys', 'ge8300-umd.dll', 'ge8300-mips.fw']:
     run([sign, 'verify', '/pa', '/c', pkg / 'ge8300-render.cat', pkg / n])
 new = dict(m)
-new.update(schema='vidpn386-modeset-v1', version=NEW_VERSION, candidate_version=386, signer_thumbprint=thumb, package_source_commit=a.recipe_commit, link_recipe_source_commit=a.recipe_commit, compiled_units=[{'source': 'drivers/gpu/mt8167/wddm-render/testclient/dxgi-modeset386.c', 'object': 'dxgi-modeset386.obj', 'tool': 'cl', 'arguments': flags[1:]}], reused_385_compiled_units=[t for t in m.get('compiled_units', [])], compiler_reexecuted=True, source_changed=True, native_owner_changed=False, linker_changed=False, runtime_build_id='GPU386-modeset-v1', inf_driverver='11/11/2026,0.0.3.86', baseline_manifest_file='baseline385-signed-manifest.json', baseline_manifest_sha256=sha(pkg / 'baseline385-signed-manifest.json'), hardware_verified=False, runtime_verified=False)
+new.update(schema='vidpn386-modeset-v1', version=NEW_VERSION, candidate_version=386, signer_thumbprint=thumb, package_source_commit=a.recipe_commit, link_recipe_source_commit=a.recipe_commit, compiled_units=[{'source': 'drivers/gpu/mt8167/wddm-render/testclient/dxgi-modeset386.c', 'object': 'dxgi-modeset386.obj', 'tool': 'cl', 'arguments': flags[1:]}, {'source': 'drivers/gpu/mt8167/wddm-render/testclient/memory.c', 'object': 'modeset-memory.obj', 'tool': 'cl', 'arguments': ['/nologo', '/c', '/Gy', '/GS-', '/Zl', '/D_ARM_', '/DARM']}], reused_385_compiled_units=[t for t in m.get('compiled_units', [])], compiler_reexecuted=True, source_changed=True, native_owner_changed=False, linker_changed=False, runtime_build_id='GPU386-modeset-v1', inf_driverver='11/11/2026,0.0.3.86', baseline_manifest_file='baseline385-signed-manifest.json', baseline_manifest_sha256=sha(pkg / 'baseline385-signed-manifest.json'), hardware_verified=False, runtime_verified=False)
 new['outputs'] = [{'name': x['name'], 'sha256': sha(pkg / x['name'])} for x in m['outputs']] + [{'name': 'mt8167-dxgi-modeset386.exe', 'sha256': sha(pkg / 'mt8167-dxgi-modeset386.exe')}]
 new['retained_provenance'] = [{'name': f.name, 'sha256': sha(f)} for f in pkg.iterdir() if f.is_file() and f.name not in {x['name'] for x in new['outputs']}]
 (out / 'build-manifest.json').write_text(json.dumps(new, indent=2) + '\n')
