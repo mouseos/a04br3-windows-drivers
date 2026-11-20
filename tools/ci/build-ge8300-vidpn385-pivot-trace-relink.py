@@ -131,8 +131,8 @@ shutil.copyfile(out / 'ge8300-render.sys', pkg / 'ge8300-render.sys')
 b = (old / 'ge8300-render.inf').read_bytes()
 enc = 'utf-16' if b[:2] in [b'\xff\xfe', b'\xfe\xff'] else 'utf-8-sig'
 s = b.decode(enc)
-before = 'DriverVer=11/11/2026,0.0.3.83'
-after = 'DriverVer=11/11/2026,0.0.3.84'
+before = 'DriverVer=11/11/2026,0.0.3.84'
+after = 'DriverVer=11/11/2026,0.0.3.85'
 if s.count(before) != 1:
     raise ValueError('Fixed384 DriverVer required')
 (pkg / 'ge8300-render.inf').write_text(s.replace(before, after), encoding=enc)
