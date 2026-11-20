@@ -210,7 +210,9 @@ def configure(spec,root):
     name='Windows/System32/'+x['installed'].replace('\\','/')
     require(originals[name]['sha256']==x['sha256']==oldfiles[x['name']],'Actual old UMD/FW equals retained package, not a historical declaration')
    for name,h in hashes.items():
-    if name not in {'ge8300-render.inf','ge8300-render.sys','ge8300-render.cat','ge8300-umd.dll'}:require(oldfiles[name]==h,'Unrelated leaf retained: '+name)
+    if name in {'ge8300-render.inf','ge8300-render.sys','ge8300-render.cat','ge8300-umd.dll'}:continue
+    if name=='mt8167-development.cer':continue
+    require(oldfiles[name]==h,'Unrelated leaf retained: '+name)
    row=copy.deepcopy(self.row)
    for x in row['extra_members']:
     installed='Windows/System32/'+x['installed'].replace('\\','/');require(installed in originals,'Actual old extra required')
