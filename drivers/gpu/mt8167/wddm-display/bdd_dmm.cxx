@@ -1279,11 +1279,16 @@ NTSTATUS BASIC_DISPLAY_DRIVER::AddSingleTargetMode(_In_ CONST DXGK_VIDPNTARGETMO
     pVidPnTargetModeInfo->VideoSignalInfo.TotalSize.cx = m_CurrentModes[SourceId].DispInfo.Width;
     pVidPnTargetModeInfo->VideoSignalInfo.TotalSize.cy = m_CurrentModes[SourceId].DispInfo.Height;
     pVidPnTargetModeInfo->VideoSignalInfo.ActiveSize = pVidPnTargetModeInfo->VideoSignalInfo.TotalSize;
-    pVidPnTargetModeInfo->VideoSignalInfo.VSyncFreq.Numerator = D3DKMDT_FREQUENCY_NOTSPECIFIED;
-    pVidPnTargetModeInfo->VideoSignalInfo.VSyncFreq.Denominator = D3DKMDT_FREQUENCY_NOTSPECIFIED;
-    pVidPnTargetModeInfo->VideoSignalInfo.HSyncFreq.Numerator = D3DKMDT_FREQUENCY_NOTSPECIFIED;
-    pVidPnTargetModeInfo->VideoSignalInfo.HSyncFreq.Denominator = D3DKMDT_FREQUENCY_NOTSPECIFIED;
-    pVidPnTargetModeInfo->VideoSignalInfo.PixelRate = D3DKMDT_FREQUENCY_NOTSPECIFIED;
+    // Real panel frequencies: the VidPn manager rejects NOTSPECIFIED with
+    // STATUS_GRAPHICS_INVALID_FREQUENCY (run262: E8->FC->E9). Values from the
+    // UEFI AUO WXGA programming (DisplayInitDxe.c: VSA4/VBP8/VFP8/HACT800,
+    // HSA8/HBP400/HFP60 word counts): VTotal 1300 lines, HTotal 956 pixels,
+    // 60Hz -> VSync 60/1, HSync 78000/1, PixelRate 74568000.
+    pVidPnTargetModeInfo->VideoSignalInfo.VSyncFreq.Numerator = 60;
+    pVidPnTargetModeInfo->VideoSignalInfo.VSyncFreq.Denominator = 1;
+    pVidPnTargetModeInfo->VideoSignalInfo.HSyncFreq.Numerator = 78000;
+    pVidPnTargetModeInfo->VideoSignalInfo.HSyncFreq.Denominator = 1;
+    pVidPnTargetModeInfo->VideoSignalInfo.PixelRate = 74568000;
     pVidPnTargetModeInfo->VideoSignalInfo.ScanLineOrdering = D3DDDI_VSSLO_PROGRESSIVE;
     // We add this as PREFERRED since it is the only supported target
     pVidPnTargetModeInfo->Preference = D3DKMDT_MP_PREFERRED;
