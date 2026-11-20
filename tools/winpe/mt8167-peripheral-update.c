@@ -187,7 +187,15 @@ static DWORD fixed_signer_service(const WCHAR *,HANDLE);
 #define A04_SERVICE_SIGNER_EXPECTED {0xbc,0xbf,0x6c,0x45,0x6c,0x6f,0x0d,0xd0,0x81,0x84,0x34,0x76,0x3b,0x18,0x94,0x88,0xfb,0xf1,0x35,0x70}
 #endif
 static DWORD fixed_signer_impl(const WCHAR *cat,HANDLE held,const BYTE expected[20]){GUID action=WINTRUST_ACTION_GENERIC_VERIFY_V2;WINTRUST_FILE_INFO f;WINTRUST_DATA d;LONG status;CRYPT_PROVIDER_DATA *provider;CRYPT_PROVIDER_SGNR *signer;CRYPT_PROVIDER_CERT *cert;BYTE thumb[20];DWORD bytes=sizeof(thumb),i,e=0;memset(&f,0,sizeof(f));f.cbStruct=sizeof(f);f.pcwszFilePath=cat;f.hFile=held;memset(&d,0,sizeof(d));d.cbStruct=sizeof(d);d.dwUIChoice=WTD_UI_NONE;d.dwUnionChoice=WTD_CHOICE_FILE;d.pFile=&f;d.dwProvFlags=WTD_CACHE_ONLY_URL_RETRIEVAL;d.dwStateAction=WTD_STATEACTION_VERIFY;status=WinVerifyTrust(NULL,&action,&d);if(status)e=ERROR_TRUST_FAILURE;else{provider=WTHelperProvDataFromStateData(d.hWVTStateData);signer=provider?WTHelperGetProvSignerFromChain(provider,0,FALSE,0):NULL;cert=signer?WTHelperGetProvCertFromChain(signer,0):NULL;if(!cert||!CertGetCertificateContextProperty(cert->pCert,CERT_SHA1_HASH_PROP_ID,thumb,&bytes)||bytes!=20)e=ERROR_TRUST_FAILURE;else for(i=0;i<20;i++)if(thumb[i]!=expected[i])e=ERROR_TRUST_FAILURE;}d.dwStateAction=WTD_STATEACTION_CLOSE;WinVerifyTrust(NULL,&action,&d);return e;}
-static DWORD fixed_signer(const WCHAR *cat,HANDLE held){static const BYTE expected[20]={0xbc,0xbf,0x6c,0x45,0x6c,0x6f,0x0d,0xd0,0x81,0x84,0x34,0x76,0x3b,0x18,0x94,0x88,0xfb,0xf1,0x35,0x70};return fixed_signer_impl(cat,held,expected);}
+/* Driver CATs stay verifiable under both pipeline test roots: the historical BCBF
+ * root that signed existing packages, and the rotating service key that signs
+ * rebuilt packages after the key loss. Both keys are pipeline-controlled and
+ * every artifact is additionally hash-pinned, so this admits no third key. */
+static DWORD fixed_signer(const WCHAR *cat,HANDLE held){static const BYTE old_root[20]={0xbc,0xbf,0x6c,0x45,0x6c,0x6f,0x0d,0xd0,0x81,0x84,0x34,0x76,0x3b,0x18,0x94,0x88,0xfb,0xf1,0x35,0x70};DWORD e=fixed_signer_impl(cat,held,old_root);if(!e)return e;
+#ifdef A04_SERVICE_SIGNER_EXPECTED
+{static const BYTE new_root[20]=A04_SERVICE_SIGNER_EXPECTED;e=fixed_signer_impl(cat,held,new_root);}
+#endif
+return e;}
 static DWORD fixed_signer_service(const WCHAR *exe,HANDLE held){static const BYTE expected[20]=A04_SERVICE_SIGNER_EXPECTED;return fixed_signer_impl(exe,held,expected);}
 /* The service image carries its rotating signer certificate embedded at build
  * time. Install those exact bytes into the machine trust stores before any
