@@ -382,7 +382,13 @@ NTSTATUS BASIC_DISPLAY_DRIVER::EnumVidPnCofuncModality(_In_ CONST DXGKARG_ENUMVI
 
     BDD_ASSERT(pEnumCofuncModality != NULL);
 
-    A04VidPnTrace(0xE8, 0, 0);
+    {
+        ULONG pivotId = 0xFFFFFFFFu;
+        if (pEnumCofuncModality->EnumPivotType == D3DKMDT_EPT_VIDPNSOURCE) pivotId = pEnumCofuncModality->EnumPivot.VidPnSourceId;
+        else if (pEnumCofuncModality->EnumPivotType == D3DKMDT_EPT_VIDPNTARGET) pivotId = pEnumCofuncModality->EnumPivot.VidPnTargetId;
+        else if ((pEnumCofuncModality->EnumPivotType == D3DKMDT_EPT_SCALING || pEnumCofuncModality->EnumPivotType == D3DKMDT_EPT_ROTATION)) pivotId = ((pEnumCofuncModality->EnumPivot.VidPnSourceId & 0xFFFFu) << 16) | (pEnumCofuncModality->EnumPivot.VidPnTargetId & 0xFFFFu);
+        A04VidPnTrace(0xE8, (ULONG)pEnumCofuncModality->EnumPivotType, pivotId);
+    }
     D3DKMDT_HVIDPNTOPOLOGY                   hVidPnTopology = 0;
     D3DKMDT_HVIDPNSOURCEMODESET              hVidPnSourceModeSet = 0;
     D3DKMDT_HVIDPNTARGETMODESET              hVidPnTargetModeSet = 0;
@@ -555,6 +561,8 @@ NTSTATUS BASIC_DISPLAY_DRIVER::EnumVidPnCofuncModality(_In_ CONST DXGKARG_ENUMVI
                     break;
                 }
 
+                if (pVidPnPinnedSourceModeInfo != NULL) A04VidPnTrace(0xEA, pVidPnPinnedSourceModeInfo->Format.Graphics.PrimSurfSize.cx, pVidPnPinnedSourceModeInfo->Format.Graphics.PrimSurfSize.cy);
+                else A04VidPnTrace(0xEA, 0xFFFFFFFFu, 0xFFFFFFFFu);
                 Status = AddSingleTargetMode(pVidPnTargetModeSetInterface, hVidPnTargetModeSet, pVidPnPinnedSourceModeInfo, pVidPnPresentPath->VidPnSourceId);
 
                 if (!NT_SUCCESS(Status))
