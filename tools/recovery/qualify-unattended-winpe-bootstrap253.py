@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """実253を起点に更新なしWinPE資格確認を一度実行し、実255をRO回収するbootstrap。
-既存固定controllerの改名流用ではない。新規profile render-update-255の起点を作る。"""
+既存固定controllerの改名流用ではない。新規profile render-update-255の起点を作る。
+run254がWindows install相で停止し(0x206=3010後の1790で再起動なし)、実253採取時の
+Recovery session結合が回復不能のため、re-anchorで継続する。同一端末・同一区画の
+serial/geometry一致とrun254失敗証拠のpinを条件に、現端末状態を新baselineとして
+採取し直す。Windows内容の同一性は要求しない(変更はrun254の記録どおり想定内)。"""
 import argparse
 import fcntl
 import hashlib
@@ -176,6 +180,7 @@ def preflight(a):
     primary = pin(a.prior_manifest, a.prior_sha256)
     supplement = pin(a.prior_supplement, a.prior_supplement_sha256)
     usb = pin(a.prior_usb, a.prior_usb_sha256)
+    prior_run = pin(a.prior_run_result, a.prior_run_sha256)
     prefix = root / 'port/xnu/out/private-windows-rt-prebackup-run253'
     need(primary == prefix / 'manifest.json'
          and supplement == prefix.with_name(prefix.name + '-gpu-assets') / 'manifest.json'
@@ -232,6 +237,7 @@ def preflight(a):
                fresh.with_name(fresh.name + '-usb1121-exe'))
     need(all(not p.exists() for p in outputs), '255 namespaceは再利用できません')
     return dict(root=root, pins=pins, q=q, qm=qm, esp=esp, primary=primary, before=before,
+                prior_run=prior_run,
                 capture=capture, extra=extra, usb=usb_tool, engine=engine, decoder=decoder,
                 ntfs=ntfs, out=out, outputs=outputs, serial=before[0]['serial'])
 
@@ -286,20 +292,38 @@ def locked_execute(a, c):
     try:
         unchanged()
         free_outputs()
-        command([sys.executable, '-B', str(c['capture']), 'verify', '--serial', serial,
-                 '--manifest', str(c['primary']), '--manifest-sha256', a.prior_sha256],
-                'verify253.log', 300)
+        run = read(c['prior_run'])
+        need(run.get('transaction') == 'combined-run254'
+             and run.get('status') == 'pipeline-stopped'
+             and run.get('prior_status') == 'install-failed-await-disk-verification'
+             and run.get('seal_sha256') == '3271404acf9178265f00cc9b99de800510dcd656d0e84cc26bffa5b4ba7387b7'
+             and isinstance(run.get('terminal'), dict) and run['terminal'].get('phase') == 0
+             and run.get('error') == 'collection reboot never substitutes an install failure',
+             're-anchorには記録どおりのrun254 install失敗証拠が必要です')
         backend = load('next_capture_backend', c['capture'])
         recovery = backend.Recovery(serial)
         identity = recovery.identity()
         recovery.require_unmounted(identity)
-        need(all(c['before'][0].get(k) == v for k, v in identity.items()),
-             '253取得時と同じRecovery boot/serial/geometryが必要です')
+        prior_id = c['before'][0]
+        need(all(prior_id.get(k) == v for k, v in identity.items() if k != 'recovery_boot_id'),
+             '同一端末・同一区画のserial/geometry一致が必要です')
+        need(identity['recovery_boot_id'] != prior_id.get('recovery_boot_id'),
+             're-anchorには交代したRecovery sessionが必要です')
+        (out / 'reanchor-identity.json').write_text(json.dumps(dict(
+            prior=dict((k, prior_id.get(k)) for k in identity),
+            current=identity, prior_run=run.get('prior_status'),
+            reason='run254 mutated Windows after 0x206=3010 then stopped; prior session unrecoverable'), indent=2) + '\n')
         once_id = hashlib.sha256((a.qualification_sha256 + a.prior_sha256).encode()).hexdigest()
         latch = root / ('port/gsi/logs/ios-feasibility/qualification-once-' + once_id + '.json')
         with latch.open('x') as f:
-            json.dump(dict(schema='QUALIFICATION_253_TO255_ONCE_V1', output=out.relative_to(root).as_posix(),
-                           qualification_sha256=a.qualification_sha256, prior_sha256=a.prior_sha256), f)
+            json.dump(dict(schema='QUALIFICATION_253_TO255_REANCHORED_V1', output=out.relative_to(root).as_posix(),
+                           qualification_sha256=a.qualification_sha256, prior_sha256=a.prior_sha256,
+                           prior_boot_id=prior_id.get('recovery_boot_id'),
+                           reanchor_boot_id=identity['recovery_boot_id'],
+                           prior_run_result=c['prior_run'].relative_to(root).as_posix(),
+                           prior_run_sha256=a.prior_run_sha256,
+                           prior_run_seal=run.get('seal_sha256'),
+                           reason='run254 install-phase stop broke prior session binding'), f)
             f.flush()
             os.fsync(f.fileno())
         directory = os.open(latch.parent, os.O_RDONLY | os.O_DIRECTORY)
@@ -424,9 +448,11 @@ def locked_execute(a, c):
         unchanged()
         same = all(file_rows(before) == file_rows(post) and missing_rows(before) == missing_rows(post)
                    for before, post in zip(c['before'], bundle))
-        passed = same and proof['qualification_transport_evidence'] and state['host_reset_window_valid']
+        need(not same, 're-anchor前提のrun254 Windows変更が検出できません')
+        passed = proof['qualification_transport_evidence'] and state['host_reset_window_valid']
         state.update(status='reset-recovery-and-capture255-complete' if passed else 'capture255-complete-qualification-failed',
                      evidence_recovered=True, qualification_pass=passed, hardware_verified=passed,
+                     reanchored=True, prior_run_seal='3271404acf9178265f00cc9b99de800510dcd656d0e84cc26bffa5b4ba7387b7',
                      Windows_files_unchanged=same, capture_manifest=mf.relative_to(root).as_posix(),
                      capture_manifest_sha256=sha(mf), supplement_sha256=sha(supplement/'manifest.json'),
                      usb_witness_sha256=sha(usb_out/'manifest.json'))
@@ -441,16 +467,16 @@ def locked_execute(a, c):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     for name in ('workspace', 'qualification-manifest', 'lease-manifest', 'atomic-manifest',
-                 'prior-manifest', 'prior-supplement', 'prior-usb', 'out'):
+                 'prior-manifest', 'prior-supplement', 'prior-usb', 'prior-run-result', 'out'):
         ap.add_argument('--' + name, type=Path, required=True)
     for name in ('qualification-sha256', 'lease-sha256', 'atomic-sha256', 'prior-sha256',
-                 'prior-supplement-sha256', 'prior-usb-sha256'):
+                 'prior-supplement-sha256', 'prior-usb-sha256', 'prior-run-sha256'):
         ap.add_argument('--' + name, required=True)
     ap.add_argument('--validate-only', action='store_true')
     a = ap.parse_args(argv)
     c = preflight(a)
     if a.validate_only:
-        print('QUALIFICATION_253_TO255_VALIDATED_NO_DEVICE_OPERATION')
+        print('QUALIFICATION_253_TO255_REANCHORED_VALIDATED_NO_DEVICE_OPERATION')
         return 0
     return execute(a, c)
 
