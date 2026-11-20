@@ -79,6 +79,10 @@ assert src_file.read_bytes() == blob, 'Source matches recipe commit'
 mem_src = repo / 'drivers/gpu/mt8167/wddm-render/testclient/memory.c'
 mem_blob = subprocess.run(['git', '-C', str(repo), 'show', a.recipe_commit + ':drivers/gpu/mt8167/wddm-render/testclient/memory.c'], capture_output=True, check=True).stdout
 assert mem_src.read_bytes() == mem_blob, 'Memory helper matches recipe commit'
+sign = a.signtool
+thumb = a.signer_thumbprint
+if not __import__('re').fullmatch(r'[0-9A-Fa-f]{40}', thumb or ''):
+    raise ValueError('Explicit 40-hex signer thumbprint required')
 obj = out / 'dxgi-modeset386.obj'
 mem_obj = out / 'modeset-memory.obj'
 flags = ['/nologo', '/c', '/Gy', '/GS-', '/Zl', '/D_ARM_', '/DARM', '/D_WIN32_WINNT=0x0603', '/I' + str(wdk / 'km'), '/I' + str(wdk / 'shared'), '/I' + str(wdk / 'um'), '/I' + str(vc_inc), '/I' + str(ucrt_inc), '/Fo' + str(obj), str(src_file)]
@@ -87,10 +91,8 @@ assert obj.stat().st_size > 0, 'Empty object'
 run([cl, '/nologo', '/c', '/Gy', '/GS-', '/Zl', '/D_ARM_', '/DARM', '/I' + str(vc_inc), '/I' + str(ucrt_inc), '/Fo' + str(mem_obj), str(mem_src)])
 assert mem_obj.stat().st_size > 0, 'Empty memory object'
 run([link, '/nologo', '/machine:arm', '/subsystem:console,6.03', '/entry:mainCRTStartup', '/nodefaultlib', '/largeaddressaware', '/tsaware:no', str(obj), str(mem_obj), *[str(ulib / (n + '.lib')) for n in ['kernel32', 'user32', 'gdi32', 'setupapi']], '/out:' + str(out / 'mt8167-dxgi-modeset386.exe')])
-sign = a.signtool
-thumb = a.signer_thumbprint
-if not __import__('re').fullmatch(r'[0-9A-Fa-f]{40}', thumb or ''):
-    raise ValueError('Explicit 40-hex signer thumbprint required')
+run([sign, 'sign', '/fd', 'SHA256', '/sha1', thumb, out / 'mt8167-dxgi-modeset386.exe'])
+run([sign, 'verify', '/pa', out / 'mt8167-dxgi-modeset386.exe'])
 for f in old.iterdir():
     if f.is_file() and f.name not in ['ge8300-render.cat', 'ge8300-render.inf', 'signed-manifest.json', 'mt8167-development.cer'] and not f.name.endswith('-build-manifest.json'):
         shutil.copyfile(f, pkg / f.name)
