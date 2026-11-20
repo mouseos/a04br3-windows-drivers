@@ -186,6 +186,36 @@ def candidate385(root,spec,lock,ref,m,review,certs):
  row['extra_members']=[dict(name=name,installed=installed,sha256=files[name]) for name,installed in (('ge8300-umd.dll','ge8300-umd.dll'),('ge8300-mips.fw','Drivers\\ge8300-mips.fw'))]
  return shared.base.package(root,row,'render'),files,m,review
 
+def candidate386(root,spec,lock,ref,m,review,certs):
+ NEW386_SIGNER='B566DDF957E4210375B6C272D63CAAB72A74B78F'
+ require(review['signed_manifest_sha256']==ref['sha256'] and review['source_commit']==lock['source_commit'] and review['package_version']==lock['driver_version'] and review['verified_package_outputs']==16,'Actual main native 386 review shape/source/output scope')
+ require(review['all_build_steps_exit0'] is True and review['CAT_membership_steps_exit0'] is True and review['actual_Windows_signature_reports_bound_to_same_bytes']==7 and review['certificate_report_sha256']==lock['certificates']['sha256'] and review['certificate_report_schema']=='GE8300_VIDPN386_CERTIFICATE_VERIFICATION_V1' and review['manifest_version_authoritative'] is True and review['hardware_verified'] is False and review['GPU_drawing_success'] is False and review['private_key_exported'] is False,'Actual main 386 signature/member evidence, no device success')
+ row=dict(directory=Path(ref['path']).parent.as_posix(),manifest=ref['path'],manifest_sha256=ref['sha256'],source_commit=lock['source_commit'],driver_version=lock['driver_version'],driver_date=lock['driver_date'],names=dict(inf='ge8300-render.inf',sys='ge8300-render.sys',cat='ge8300-render.cat'))
+ require(m['schema']=='vidpn386-modeset-v1' and m['runtime_build_id']=='GPU386-modeset-v1' and m['version']=='0.0.3.86' and m['candidate_version']==386 and m['inf_driverver']=='11/11/2026,0.0.3.86' and all(m.get(k) is True for k in ('executed','success','signed')) and m['hardware_verified'] is False and m['runtime_verified'] is False and m['signer_thumbprint']==NEW386_SIGNER,'Completed native signed386 schema only')
+ require(re.fullmatch('[0-9a-f]{40}',m['package_source_commit'] or '') and m['package_source_commit']==m['link_recipe_source_commit']==review['source_commit']==row['source_commit']==lock['source_commit'],'Actual 386 recipe/source tuple; no relabel')
+ require(row['manifest']==ref['path'] and row['manifest_sha256']==ref['sha256'] and Path(row['directory'])==Path(ref['path']).parent,'Candidate 386 directory/manifest exact')
+ compiled={u['source']:u['object'] for u in m.get('compiled_units',[])}
+ require(compiled.get('drivers/gpu/mt8167/wddm-render/testclient/dxgi-modeset386.c')=='dxgi-modeset386.obj' and compiled.get('drivers/gpu/mt8167/wddm-render/testclient/memory.c')=='modeset-memory.obj','386 modeset client compile record')
+ require(isinstance(m['steps'],list) and m['steps'] and all(isinstance(x,dict) and isinstance(x.get('stage'),str) for x in m['steps']),'386 stage list required')
+ stages=[x['stage'] for x in m['steps']]
+ required={'compile-display_bdd_dmm.obj','archive-kmd','link','sign-SYS','catalog','sign-CAT','signer-identities'}|{'member-'+n for n in ('ge8300-render.inf','ge8300-render.sys','ge8300-umd.dll','ge8300-mips.fw')}
+ require(required<=set(stages) and len(stages)==len(set(stages)),'Unique completed 386 KMD signature/CAT member stages (SYS retained from 385)')
+ files={}
+ require(len(m['outputs'])==16,'All sixteen actual 386 leaves reviewed')
+ for f in m['outputs']:
+  name=f['name'];require(re.fullmatch(r'(?:display-transport/)?[A-Za-z0-9_.-]+',name) and name not in files and re.fullmatch('[0-9a-f]{64}',f['sha256']),'Bounded exact 386 leaf inventory')
+  p=rooted(root,Path(row['directory'])/name);require(p.stat().st_size>0 and sha(p)==f['sha256'],'Actual candidate 386 leaf hash/size: '+name);files[name]=f['sha256']
+ require(certs['schema']=='GE8300_VIDPN386_CERTIFICATE_VERIFICATION_V1' and certs['hardware_verified'] is False and certs['private_key_exported'] is False and len(certs['files'])==7,'Actual seven-file 386 certificate verification')
+ expected={'ge8300-render.sys','ge8300-render.cat','ge8300-umd.dll','mt8167-dxgi-modeset386.exe','mt8167-dxgi-present356.exe','display-transport/mt8167-display-transport.sys','display-transport/mt8167-display-transport.cat'};seen=set()
+ for x in certs['files']:
+  name=x['path'].replace('\\','/').rsplit('/package386/',1)[-1]
+  require(name in expected and name not in seen and x['sha256'].lower()==files[name] and x['status']=='Valid' and x['signer_thumbprint']==NEW386_SIGNER,'Certificate result bound to exact final 386 bytes');seen.add(name)
+ require(seen==expected and files['ge8300-render.sys']==review['SYS_sha256']==lock['SYS_sha256'] and files['ge8300-umd.dll']==review['UMD_sha256']==lock['UMD_sha256'],'Actual 386 SYS/UMD identity (KMD retained from 385)')
+ inf=shared.base.inftext(rooted(root,Path(row['directory'])/row['names']['inf']))
+ require(re.search(r'^\s*DriverVer\s*=\s*11/11/2026,0\.0\.3\.86\s*$',inf,re.M|re.I) and re.search(r'^\s*UserFiles\s*=\s*11\s*$',inf,re.M|re.I) and re.search(r'^\s*FirmwareFiles\s*=\s*12\s*$',inf,re.M|re.I),'Actual 386 INF version/destinations')
+ row['extra_members']=[dict(name=name,installed=installed,sha256=files[name]) for name,installed in (('ge8300-umd.dll','ge8300-umd.dll'),('ge8300-mips.fw','Drivers\\ge8300-mips.fw'))]
+ return shared.base.package(root,row,'render'),files,m,review
+
 def candidate(root,spec):
  lock=read(LOCK)
  require(lock['schema']=='SIGNED_RENDER_CAPTURE_ACCEPTED_V1' and lock['status']=='actual-signed-package-main-reviewed','Actual signed candidate lock required')
@@ -201,6 +231,8 @@ def candidate(root,spec):
   return candidate384(root,spec,lock,ref,m,review,certs)
  if m.get('schema')=='vidpn385-pivot-trace-v1':
   return candidate385(root,spec,lock,ref,m,review,certs)
+ if m.get('schema')=='vidpn386-modeset-v1':
+  return candidate386(root,spec,lock,ref,m,review,certs)
  require(review['signed_manifest_sha256']==ref['sha256'] and review['source_commit']==lock['source_commit'] and review['package_version']==lock['driver_version'] and review['verified_recovered_files']==152 and review['verified_package_outputs']==15,'Actual main native review shape/source/output scope')
  require(review['all_build_steps_exit0'] is True and review['CAT_membership_steps_exit0'] is True and review['actual_Windows_signature_reports_bound_to_same_bytes']==6 and review['certificate_report_sha256']==lock['certificates']['sha256'] and review['hardware_verified'] is False and review['GPU_drawing_success'] is False and review['private_key_exported'] is False,'Actual main signature/member evidence, no device success')
  row=dict(directory=Path(ref['path']).parent.as_posix(),manifest=ref['path'],manifest_sha256=ref['sha256'],source_commit=lock['source_commit'],driver_version=lock['driver_version'],driver_date=lock['driver_date'],names=dict(inf='ge8300-render.inf',sys='ge8300-render.sys',cat='ge8300-render.cat'))
