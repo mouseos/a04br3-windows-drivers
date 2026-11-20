@@ -169,7 +169,11 @@ def configure(spec,root):
   def validate_output_review(self,review,hashes):require(hashes==self.hashes,'Complete final output set')
   def package_rows(self,rows,pin):return rows
   def adopt(self,role,prior,originals,hashes):
-   require(role=='render' and prior['hashes']['sys']!=self.row['hashes']['sys'],'Only a changed render SYS; do not reinstall same candidate')
+   if role=='render' and prior['hashes']['sys']==self.row['hashes']['sys']:
+    ev=spec.get('render_reinstall_never_booted')
+    require(isinstance(ev,dict) and ev.get('prior_run_seal')=='3271404acf9178265f00cc9b99de800510dcd656d0e84cc26bffa5b4ba7387b7' and ev.get('prior_terminal_phase')==0 and ev.get('prior_status')=='install-failed-await-disk-verification','Identical render SYS reinstall requires the pinned never-booted prior run')
+   else:
+    require(role=='render' and prior['hashes']['sys']!=self.row['hashes']['sys'],'Only a changed render SYS; do not reinstall same candidate')
    old=read(rooted(root,prior['manifest']));oldfiles={x['name']:x['sha256'] for x in old['outputs']}
    require(set(oldfiles)==set(hashes),'Candidate full leaf set equals actual retained package')
    for x in prior['extra_members']:
