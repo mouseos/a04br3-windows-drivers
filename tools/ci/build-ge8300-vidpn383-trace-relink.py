@@ -14,6 +14,8 @@ p.add_argument('--msvc-root', type=Path, required=True)
 p.add_argument('--kit-lib', type=Path, required=True)
 p.add_argument('--signtool', type=Path, required=True)
 p.add_argument('--wdk81', type=Path, required=True)
+p.add_argument('--signer-thumbprint', required=True)
+p.add_argument('--signer-cert', type=Path, required=True)
 a = p.parse_args()
 t = a.task_root
 base = t / 'baseline'
@@ -112,12 +114,15 @@ for n in ['.text', '.rdata', '.data', '.pdata']:
     if not h['sections'].get(n, 0) & 0x08000000:
         raise ValueError('Baseline nonpageable section contract: ' + n)
 sign = a.signtool
-thumb = 'BCBF6C456C6F0DD0818434763B189488FBF13570'
+thumb = a.signer_thumbprint
+if not __import__('re').fullmatch(r'[0-9A-Fa-f]{40}', thumb or ''):
+    raise ValueError('Explicit 40-hex signer thumbprint required')
 run([sign, 'sign', '/fd', 'SHA256', '/sha1', thumb, out / 'ge8300-render.sys'])
 run([sign, 'verify', '/pa', out / 'ge8300-render.sys'])
 for f in old.iterdir():
-    if f.is_file() and f.name not in ['ge8300-render.sys', 'ge8300-render.cat', 'ge8300-render.inf', 'signed-manifest.json'] and not f.name.endswith('-build-manifest.json'):
+    if f.is_file() and f.name not in ['ge8300-render.sys', 'ge8300-render.cat', 'ge8300-render.inf', 'signed-manifest.json', 'mt8167-development.cer'] and not f.name.endswith('-build-manifest.json'):
         shutil.copyfile(f, pkg / f.name)
+shutil.copyfile(a.signer_cert, pkg / 'mt8167-development.cer')
 for d in old.iterdir():
     if d.is_dir():
         shutil.copytree(d, pkg / d.name)
@@ -147,7 +152,7 @@ for f in sorted((old / 'display-transport').iterdir()):
 for n in ['ge8300-render.inf', 'ge8300-render.sys', 'ge8300-umd.dll', 'ge8300-mips.fw']:
     run([sign, 'verify', '/pa', '/c', pkg / 'ge8300-render.cat', pkg / n])
 new = dict(m)
-new.update(schema='vidpn383-trace-relink-v1', version=NEW_VERSION, candidate_version=383, package_source_commit=a.recipe_commit, link_recipe_source_commit=a.recipe_commit, compiled_units=[{'source': 'drivers/gpu/mt8167/wddm-display/bdd_dmm.cxx', 'object': 'display_bdd_dmm.obj', 'tool': 'cl', 'arguments': flags[1:]}], reused_382_compiled_units=[t for t in m.get('compiled_units', []) if t.get('source') != 'drivers/gpu/mt8167/wddm-display/bdd_dmm.cxx'], compiler_reexecuted=True, source_changed=True, native_owner_changed=False, linker_changed=False, runtime_build_id='GPU383-vidpn-trace-v1', inf_driverver='11/11/2026,0.0.3.83', baseline_manifest_file='baseline382-signed-manifest.json', baseline_manifest_sha256=sha(pkg / 'baseline382-signed-manifest.json'), PE_contract=h, hardware_verified=False, runtime_verified=False)
+new.update(schema='vidpn383-trace-relink-v1', version=NEW_VERSION, candidate_version=383, signer_thumbprint=thumb, package_source_commit=a.recipe_commit, link_recipe_source_commit=a.recipe_commit, compiled_units=[{'source': 'drivers/gpu/mt8167/wddm-display/bdd_dmm.cxx', 'object': 'display_bdd_dmm.obj', 'tool': 'cl', 'arguments': flags[1:]}], reused_382_compiled_units=[t for t in m.get('compiled_units', []) if t.get('source') != 'drivers/gpu/mt8167/wddm-display/bdd_dmm.cxx'], compiler_reexecuted=True, source_changed=True, native_owner_changed=False, linker_changed=False, runtime_build_id='GPU383-vidpn-trace-v1', inf_driverver='11/11/2026,0.0.3.83', baseline_manifest_file='baseline382-signed-manifest.json', baseline_manifest_sha256=sha(pkg / 'baseline382-signed-manifest.json'), PE_contract=h, hardware_verified=False, runtime_verified=False)
 new['outputs'] = [{'name': x['name'], 'sha256': sha(pkg / x['name'])} for x in m['outputs']]
 new['retained_provenance'] = [{'name': f.name, 'sha256': sha(f)} for f in pkg.iterdir() if f.is_file() and f.name not in {x['name'] for x in new['outputs']}]
 (out / 'build-manifest.json').write_text(json.dumps(new, indent=2) + '\n')
