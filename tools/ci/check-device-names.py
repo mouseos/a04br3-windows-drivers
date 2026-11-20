@@ -7,7 +7,8 @@ import sys
 root = Path(__file__).resolve().parents[2]
 errors = []
 for inf in sorted((root / "drivers").rglob("*.inf")):
-    text = inf.read_text(encoding="utf-8-sig")
+    raw = inf.read_bytes()
+    text = raw.decode("utf-16" if raw[:2] in (b"\xff\xfe", b"\xfe\xff") else "utf-8-sig")
     match = re.search(r"(?ims)^\[Strings\]\s*$(.*?)(?=^\[|\Z)", text)
     if not match:
         errors.append(f"{inf.relative_to(root)}: missing Strings section")
