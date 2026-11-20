@@ -400,6 +400,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::EnumVidPnCofuncModality(_In_ CONST DXGKARG_ENUMVI
     if (!NT_SUCCESS(Status))
     {
         BDD_LOG_ERROR2("DxgkCbQueryVidPnInterface failed with Status = 0x%I64x, hFunctionalVidPn = 0x%I64x", Status, pEnumCofuncModality->hConstrainingVidPn);
+        A04VidPnTrace(0xF0, (ULONG)Status, 0);
         return Status;
     }
 
@@ -408,6 +409,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::EnumVidPnCofuncModality(_In_ CONST DXGKARG_ENUMVI
     if (!NT_SUCCESS(Status))
     {
         BDD_LOG_ERROR2("pfnGetTopology failed with Status = 0x%I64x, hFunctionalVidPn = 0x%I64x", Status, pEnumCofuncModality->hConstrainingVidPn);
+        A04VidPnTrace(0xF1, (ULONG)Status, 0);
         return Status;
     }
 
@@ -416,6 +418,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::EnumVidPnCofuncModality(_In_ CONST DXGKARG_ENUMVI
     if (!NT_SUCCESS(Status))
     {
         BDD_LOG_ERROR2("pfnAcquireFirstPathInfo failed with Status = 0x%I64x, hVidPnTopology = 0x%I64x", Status, hVidPnTopology);
+        A04VidPnTrace(0xF2, (ULONG)Status, 0);
         return Status;
     }
 
@@ -431,6 +434,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::EnumVidPnCofuncModality(_In_ CONST DXGKARG_ENUMVI
         {
             BDD_LOG_ERROR3("pfnAcquireSourceModeSet failed with Status = 0x%I64x, hConstrainingVidPn = 0x%I64x, SourceId = 0x%I64x",
                            Status, pEnumCofuncModality->hConstrainingVidPn, pVidPnPresentPath->VidPnSourceId);
+            A04VidPnTrace(0xF3, (ULONG)Status, (ULONG)pVidPnPresentPath->VidPnSourceId);
             break;
         }
 
@@ -439,6 +443,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::EnumVidPnCofuncModality(_In_ CONST DXGKARG_ENUMVI
         if (!NT_SUCCESS(Status))
         {
             BDD_LOG_ERROR2("pfnAcquirePinnedModeInfo failed with Status = 0x%I64x, hVidPnSourceModeSet = 0x%I64x", Status, hVidPnSourceModeSet);
+            A04VidPnTrace(0xF4, (ULONG)Status, 0);
             break;
         }
 
@@ -478,6 +483,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::EnumVidPnCofuncModality(_In_ CONST DXGKARG_ENUMVI
 
                 if (!NT_SUCCESS(Status))
                 {
+                    A04VidPnTrace(0xF7, (ULONG)Status, (ULONG)pVidPnPresentPath->VidPnSourceId);
                     break;
                 }
 
@@ -487,6 +493,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::EnumVidPnCofuncModality(_In_ CONST DXGKARG_ENUMVI
                 {
                     BDD_LOG_ERROR4("pfnAssignSourceModeSet failed with Status = 0x%I64x, hConstrainingVidPn = 0x%I64x, SourceId = 0x%I64x, hVidPnSourceModeSet = 0x%I64x",
                                    Status, pEnumCofuncModality->hConstrainingVidPn, pVidPnPresentPath->VidPnSourceId, hVidPnSourceModeSet);
+                    A04VidPnTrace(0xF8, (ULONG)Status, (ULONG)pVidPnPresentPath->VidPnSourceId);
                     break;
                 }
                 hVidPnSourceModeSet = 0; // Successfully assigned it (equivalent to releasing it)
@@ -506,6 +513,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::EnumVidPnCofuncModality(_In_ CONST DXGKARG_ENUMVI
             {
                 BDD_LOG_ERROR3("pfnAcquireTargetModeSet failed with Status = 0x%I64x, hConstrainingVidPn = 0x%I64x, TargetId = 0x%I64x",
                                Status, pEnumCofuncModality->hConstrainingVidPn, pVidPnPresentPath->VidPnTargetId);
+                A04VidPnTrace(0xF9, (ULONG)Status, (ULONG)pVidPnPresentPath->VidPnTargetId);
                 break;
             }
 
@@ -513,7 +521,13 @@ NTSTATUS BASIC_DISPLAY_DRIVER::EnumVidPnCofuncModality(_In_ CONST DXGKARG_ENUMVI
             if (!NT_SUCCESS(Status))
             {
                 BDD_LOG_ERROR2("pfnAcquirePinnedModeInfo failed with Status = 0x%I64x, hVidPnTargetModeSet = 0x%I64x", Status, hVidPnTargetModeSet);
+                A04VidPnTrace(0xFA, (ULONG)Status, (ULONG)pVidPnPresentPath->VidPnTargetId);
                 break;
+            }
+
+            if (pVidPnPinnedTargetModeInfo != NULL)
+            {
+                A04VidPnTrace(0xFB, (ULONG)pVidPnPinnedTargetModeInfo->VideoSignalInfo.VSyncFreq.Numerator, (ULONG)pVidPnPinnedTargetModeInfo->VideoSignalInfo.VSyncFreq.Denominator);
             }
 
             // If there's no pinned target add possible modes (otherwise they've already been added)
@@ -545,6 +559,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::EnumVidPnCofuncModality(_In_ CONST DXGKARG_ENUMVI
 
                 if (!NT_SUCCESS(Status))
                 {
+                    A04VidPnTrace(0xFC, (ULONG)Status, (ULONG)pVidPnPresentPath->VidPnTargetId);
                     break;
                 }
 
@@ -554,6 +569,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::EnumVidPnCofuncModality(_In_ CONST DXGKARG_ENUMVI
                 {
                     BDD_LOG_ERROR4("pfnAssignTargetModeSet failed with Status = 0x%I64x, hConstrainingVidPn = 0x%I64x, TargetId = 0x%I64x, hVidPnTargetModeSet = 0x%I64x",
                                    Status, pEnumCofuncModality->hConstrainingVidPn, pVidPnPresentPath->VidPnTargetId, hVidPnTargetModeSet);
+                    A04VidPnTrace(0xFD, (ULONG)Status, (ULONG)pVidPnPresentPath->VidPnTargetId);
                     break;
                 }
                 hVidPnTargetModeSet = 0; // Successfully assigned it (equivalent to releasing it)
@@ -668,6 +684,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::EnumVidPnCofuncModality(_In_ CONST DXGKARG_ENUMVI
             if (!NT_SUCCESS(Status))
             {
                 BDD_LOG_ERROR2("pfnUpdatePathSupportInfo failed with Status = 0x%I64x, hVidPnTopology = 0x%I64x", Status, hVidPnTopology);
+                A04VidPnTrace(0xF5, (ULONG)Status, 0);
                 break;
             }
         }
@@ -679,6 +696,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::EnumVidPnCofuncModality(_In_ CONST DXGKARG_ENUMVI
         if (!NT_SUCCESS(Status))
         {
             BDD_LOG_ERROR3("pfnAcquireNextPathInfo failed with Status = 0x%I64x, hVidPnTopology = 0x%I64x, pVidPnPresentPathTemp = 0x%I64x", Status, hVidPnTopology, pVidPnPresentPathTemp);
+            A04VidPnTrace(0xF6, (ULONG)Status, 0);
             break;
         }
 

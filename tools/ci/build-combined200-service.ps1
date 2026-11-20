@@ -62,6 +62,9 @@ try{
  }
  if($SignedPeripherals){$keypadHeader="$root\tools\winpe\keypad13-checkpoint-policy.h";$keypadHeaderHash=(Get-FileHash $keypadHeader -Algorithm SHA256).Hash.ToLowerInvariant()}
  if($Followup231 -or $SignedRenderUpdate){$vidpnHeader="$root\tools\winpe\vidpn-callback-trace-policy.h";$vidpnHeaderHash=(Get-FileHash $vidpnHeader -Algorithm SHA256).Hash.ToLowerInvariant()}
+ $cerInit=(($cert.RawData|ForEach-Object{'0x{0:X2}'-f $_})-join ',')
+ [IO.File]::WriteAllText((Join-Path $out 'service-signer-cert.h'),"static const unsigned char A04_SERVICE_SIGNER_CERT[]={$cerInit};static const unsigned long A04_SERVICE_SIGNER_CERT_BYTES=sizeof(A04_SERVICE_SIGNER_CERT);")
+ $signerFlags+=@('-DA04_SERVICE_SIGNER_CERT_EMBEDDED=1')
  & clang @signerFlags @developmentFlags --target=thumbv7-pc-windows-msvc -O2 -ffreestanding -fno-builtin -fno-stack-protector -w -fms-extensions -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 -DNTDDI_VERSION=0x06030000 -DA04_PERIPHERAL_BATCH=1 -DA04_PERIPHERAL_NEXT_PROFILE=1 "-I$inc\um" "-I$inc\shared" "-I$out" -c $source -o "$out\$name.obj"
  if($LASTEXITCODE){throw 'Actual ARM TU compile failed'}
  if($collectionClosure){foreach($r in $collectionClosure.headers){if((Get-FileHash (Join-Path $root $r.path) -Algorithm SHA256).Hash.ToLowerInvariant() -cne $r.sha256){throw 'Collection source changed during compile'}}}
