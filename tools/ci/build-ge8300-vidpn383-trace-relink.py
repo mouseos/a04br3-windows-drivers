@@ -10,6 +10,10 @@ from pathlib import Path
 p = argparse.ArgumentParser()
 p.add_argument('--task-root', type=Path, required=True)
 p.add_argument('--recipe-commit', required=True)
+p.add_argument('--msvc-root', type=Path, required=True)
+p.add_argument('--kit-lib', type=Path, required=True)
+p.add_argument('--signtool', type=Path, required=True)
+p.add_argument('--wdk81', type=Path, required=True)
 a = p.parse_args()
 t = a.task_root
 base = t / 'baseline'
