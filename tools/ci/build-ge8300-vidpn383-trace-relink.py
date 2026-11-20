@@ -62,9 +62,9 @@ for x in m['outputs'] + m.get('retained_provenance', []):
     pin(old / x['name'], x['sha256'])
 pin(base / 'ge8300-kmd-clear.lib', '12c4503000b44f5303a5b0ae5cfed771529ffd222f422118a9f6fab447eb3f54')
 pin(base / 'ge8300-native-owner-core.lib', 'c7dcbffb1d3de151e22796c0494c033502570950d0afebb4162a6a2f598fa836')
-link = Path('C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/14.29.30133/bin/Hostx64/arm/link.exe')
+link = a.msvc_root / 'bin/Hostx64/arm/link.exe'
 pin(link, 'f8b2e9c5341419525f915b61b87d1bc8aa307adca6e1e022071175912e965938')
-cl = Path('C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/14.29.30133/bin/Hostx64/arm/cl.exe')
+cl = a.msvc_root / 'bin/Hostx64/arm/cl.exe'
 pin(cl, '697a8f41ff7fcb71e7c6625f5517ef6e2f8ea146d1e351e078317ff92da0839c')
 out.mkdir()
 pkg.mkdir()
@@ -72,8 +72,8 @@ repo = Path(__file__).resolve().parents[2]
 root = repo
 src_file = root / 'drivers/gpu/mt8167/wddm-display/bdd_dmm.cxx'
 wddm_display = root / 'drivers/gpu/mt8167/wddm-display'
-wdk = Path('C:/Program Files (x86)/Windows Kits/8.1/Include')
-vc_inc = Path('C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/14.29.30133/include')
+wdk = a.wdk81 / 'Include'
+vc_inc = a.msvc_root / 'include'
 ucrt = sorted(Path('C:/Program Files (x86)/Windows Kits/10/Include').glob('*/ucrt/stddef.h'))
 assert ucrt, 'UCRT headers required'
 ucrt_inc = ucrt[-1].parent
@@ -88,7 +88,7 @@ obj = out / 'display_bdd_dmm.obj'
 flags = ['/nologo', '/c', '/kernel', '/Gy', '/GS-', '/Zl', '/D_KERNEL_MODE', '/D_ARM_', '/DARM', '/DNTDDI_VERSION=0x06030000', '/D_WIN32_WINNT=0x0603', '/DDXGKDDI_INTERFACE_VERSION=0x4002', '/DA04_MT8167_DISPLAY_BRIGHTNESS=1', '/DA04_GE8300_UNIFIED_DISPLAY356=1', '/DA04_GE8300_WDDM_DIRECT_EXPERIMENT=0', '/DA04_GE8300_WDDM_SHARED_AUTOSTART=0', '/DA04_GE8300_WDDM_VENDOR_TILE=0', '/DA04_GE8300_WDDM_COPY=0', '/DA04_GE8300_VIDPN_TRACE=1', '/I' + str(wdk / 'km'), '/I' + str(wdk / 'shared'), '/I' + str(wdk / 'um'), '/I' + str(vc_inc), '/I' + str(ucrt_inc), '/I' + str(wddm_display), '/Fo' + str(obj), str(src_file)]
 run([cl, *flags])
 assert obj.stat().st_size > 0, 'Empty object'
-lib_exe = Path('C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/lib.exe')
+lib_exe = a.msvc_root / 'bin/Hostx64/x64/lib.exe'
 kmd = out / 'ge8300-kmd-clear.lib'
 shutil.copyfile(base / 'ge8300-kmd-clear.lib', kmd)
 listed = subprocess.run([str(lib_exe), '/LIST', str(kmd)], capture_output=True, text=True, check=True).stdout
@@ -98,7 +98,7 @@ if len(victims) != 1:
 run([lib_exe, '/REMOVE:' + victims[0], str(kmd)])
 native = base / 'ge8300-native-owner-core.lib'
 shutil.copyfile(native, out / native.name)
-kit = Path('C:/mt8167-native245-44570440701/cache/gdi376-inputs/wdk81/Lib/winv6.3/km/arm')
+kit = a.kit_lib
 kargs = ['/nologo', '/driver', '/subsystem:native,6.03', '/machine:arm', '/entry:DriverEntry', '/nodefaultlib', '/incremental:no', '/largeaddressaware', '/tsaware:no', '/base:0x400000', str(obj), str(kmd), str(out / native.name), *[str(kit / (n + '.lib')) for n in ['displib', 'ntoskrnl', 'hal', 'libcntpr', 'bufferoverflowfastfailk']], '/out:' + str(out / 'ge8300-render.sys'), '/map:' + str(out / 'ge8300-render.map')]
 run([link, *kargs])
 h = header(out / 'ge8300-render.sys')
@@ -107,7 +107,7 @@ if (h['machine'], h['magic'], h['characteristics'], h['subsystem'], h['dll_chara
 for n in ['.text', '.rdata', '.data', '.pdata']:
     if not h['sections'].get(n, 0) & 0x08000000:
         raise ValueError('Baseline nonpageable section contract: ' + n)
-sign = Path('C:/mt8167-native245-44570440701/cache/signing-tools/bin/signtool.exe')
+sign = a.signtool
 thumb = 'BCBF6C456C6F0DD0818434763B189488FBF13570'
 run([sign, 'sign', '/fd', 'SHA256', '/sha1', thumb, out / 'ge8300-render.sys'])
 run([sign, 'verify', '/pa', out / 'ge8300-render.sys'])
@@ -127,7 +127,7 @@ after = 'DriverVer=11/11/2026,0.0.3.83'
 if s.count(before) != 1:
     raise ValueError('Fixed382 DriverVer required')
 (pkg / 'ge8300-render.inf').write_text(s.replace(before, after), encoding=enc)
-cat = Path('C:/Program Files (x86)/Windows Kits/8.1/bin/x86/Inf2Cat.exe')
+cat = a.wdk81 / 'bin/x86/Inf2Cat.exe'
 run([cat, '/driver:' + str(pkg), '/os:6_3_ARM', '/uselocaltime'])
 run([sign, 'sign', '/fd', 'SHA256', '/sha1', thumb, pkg / 'ge8300-render.cat'])
 for n in ['ge8300-render.inf', 'ge8300-render.sys', 'ge8300-umd.dll', 'ge8300-mips.fw']:
