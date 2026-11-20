@@ -156,7 +156,7 @@ def validate_seal(root,path,digest,known_profile="run201",entrypoint=None):
  require(c['target_tools']=='port/gsi/logs/ios-feasibility/windows-rt-target-tools.sh' and c['reset_script']=='unixnu/UniXNU-a04br3/scripts/a04br3-reset.sh','既target/reset実装のみ')
  require(c['boot_written'] is False and c['gpt_written'] is False and c['hardware_success_claimed'] is False,'sealは実行前状態、GPT変更/成功主張は禁止')
  require(c['service_name']==c['data_directory']==service and re.fullmatch('[A-Za-z0-9_-]{1,100}',c['gpu_log_directory']),'service/data directory不一致')
- require(c['planned_windows_reboots'] in ((0,1) if k.get('followup231') else (0,) if k.get('diagnostic378') else (0,1) if k.get('client373') else (1,)) and ((c['GPU_client_index'] is None and c['globaldiag_client_index'] is None and c['diagnostic_client_count']==0) if k.get('signed_peripherals') else (c['GPU_client_index']==0 and c['globaldiag_client_index']==1 and c['diagnostic_client_count']==2)),'render install/reboot1＋Present1/helper1のみ')
+ require(c['planned_windows_reboots'] in ((0,1) if k.get('followup231') else (0,) if k.get('diagnostic378') else (0,1) if k.get('client373') else (1,)) and ((c['GPU_client_index'] is None and c['globaldiag_client_index'] is None and c['diagnostic_client_count']==0) if k.get('signed_peripherals') else (c['GPU_client_index']==0 and c['globaldiag_client_index']==1 and c['diagnostic_client_count'] in (2,3) and (c['diagnostic_client_count']==2 or c.get('modeset_client_index')==2))),'render install/reboot1＋Present1/helper1(+modeset1)のみ')
  require(c['install_timeout_seconds']==900 and c['diagnostic_boot_wait_seconds']==180 and c['diagnostic_timeout_seconds']==1140 and c['terminal_settle_seconds'] in range(3,46),'固定timeout契約不一致')
  pins={}
  for row in c['pinned_files']:
@@ -276,8 +276,8 @@ def validate_seal(root,path,digest,known_profile="run201",entrypoint=None):
  if k.get('signed_peripherals'):
   require(clients==[] and p['gpu_client_count']==0 and p['gpu_client_execute'] is False and p['observer_contract']['absolute_batch_timeout_seconds']==1140,'No diagnostic client execution')
  else:
-  require(len(clients)==2 and [x['name'] for x in clients]==['gpu_present','gpu_globaldiag'] and all(x['phase']==1 for x in clients),'Present/helper各1回のみ')
-  require(clients[0]['timeout_ms']==900000 and clients[1]['timeout_ms']==60000 and p['observer_contract']['absolute_batch_timeout_seconds']==1140,'client timeout不一致')
+  require((len(clients)==2 and [x['name'] for x in clients]==['gpu_present','gpu_globaldiag'] or len(clients)==3 and [x['name'] for x in clients]==['gpu_present','gpu_globaldiag','gpu_modeset']) and all(x['phase']==1 for x in clients),'Present/helper各1回(+modeset1回)のみ')
+  require(clients[0]['timeout_ms']==900000 and clients[1]['timeout_ms']==60000 and (len(clients)==2 or clients[2]['timeout_ms']==120000) and p['observer_contract']['absolute_batch_timeout_seconds']==1140,'client timeout不一致')
  fm=read(pinned('fresh_manifest'));require(c['fresh_manifest']==('port/xnu/out/private-windows-rt-prebackup-run225/manifest.json' if k.get('output377') else 'port/xnu/out/private-windows-rt-prebackup-run%d/manifest.json'%k['fresh']) and sha(pinned('fresh_manifest'))==c['fresh_manifest_sha256'],'旧freshの改名流用は禁止')
  require(fm['status']=='captured-unmounted' and fm['read_only'] is True and fm['unmounted'] is True and fm['errors']==[] and fm['recovery_boot_id']==c['recovery_boot_id'],'完了済み実fresh必須')
  require(c['prepare_token']==c['policy_sha256'][:16].upper(),'CRC token不一致')
@@ -306,7 +306,7 @@ def validate_seal(root,path,digest,known_profile="run201",entrypoint=None):
 class Observation:
  """実機APIを持たないPB状態機械。UART code0をGPU機能成功とは扱わない。"""
  def __init__(self,planned_reboots=1,client_count=2):
-  require(type(client_count) is int and client_count in (0,2),'Explicit client count0/2')
+  require(type(client_count) is int and client_count in (0,2,3),'Explicit client count0/2/3')
   require(planned_reboots in (0,1),'既知restart数のみ');self.planned_reboots=planned_reboots
   self.phase=0 if planned_reboots else 1;self.seen_os=False;self.await_resume=False;self.run=None;self.pid=None;self.flush=None;self.install_3010=False;self.waiter_3010=False;self.restarts=0;self.clients={i:{} for i in range(client_count)};self.terminal=None
  def line(self,line):

@@ -20,7 +20,7 @@ def policy_config(p):
   require(type(n) is int and 237<=n<=999 and signed==dict(schema='SIGNED_RENDER_UNATTENDED_COLLECTION_V1',capture=n,bounded_winpe_required=True,require_atomic_publication=True) and p['profile']=='combined-features-fresh'+str(n)+'-signed-render-v1' and p.get('signed_render_contract',{}).get('terminal_windows_hold') is False,'Exact new unattended signed-render contract required')
  require(json.dumps(c,sort_keys=True)==json.dumps(CONFIG,sort_keys=True) and (p['profile'].endswith('-collection-reboot-v1') or signed is not None),'explicit new collection-reboot profile required')
  require(p['service']==p['data_directory'] and p['first_install_mask']==p['deferred_unbound_mask']==0,'no new install mode')
- require(len(p['diagnostic_clients'])==2 and [x['name'] for x in p['diagnostic_clients']]==['gpu_present','gpu_globaldiag'] and all(x['phase']==1 for x in p['diagnostic_clients']),'exact two phase1 clients')
+ require((len(p['diagnostic_clients'])==2 and [x['name'] for x in p['diagnostic_clients']]==['gpu_present','gpu_globaldiag'] or len(p['diagnostic_clients'])==3 and [x['name'] for x in p['diagnostic_clients']]==['gpu_present','gpu_globaldiag','gpu_modeset']) and all(x['phase']==1 for x in p['diagnostic_clients']),'exact two/three phase1 clients')
  return dict(c)
 def macros(p):
  result=['#define A04_COLLECTION_REBOOT 1','#define A04_COLLECTION_REBOOT_PROFILE 1'] if policy_config(p) else []
@@ -35,7 +35,7 @@ def admit(c,p,explicit):
  return cfg
 def proof_events(raw,terminal,policy):
  clients=terminal.get('clients',{})
- require(terminal.get('phase')==1 and terminal.get('flush')==0 and all(type(terminal.get(k)) is int for k in ('run','PID','code')) and isinstance(clients,dict) and all(isinstance(clients.get(i),dict) and clients[i].get('pid',0)>0 and 'result' in clients[i] for i in (0,1)),'both clients must finish in the same terminal')
+ require(terminal.get('phase')==1 and terminal.get('flush')==0 and all(type(terminal.get(k)) is int for k in ('run','PID','code')) and isinstance(clients,dict) and all(isinstance(clients.get(i),dict) and clients[i].get('pid',0)>0 and 'result' in clients[i] for i in ((0,1) if 2 not in clients else (0,1,2))),'all planned clients must finish in the same terminal')
  events=[]
  for line in raw.splitlines():
   hit=re.fullmatch(rb'PB 00000000 (000002[D-E][0-9A-F]) ([0-9A-F]{8})\r?',line)
